@@ -15,8 +15,22 @@ data/cache/
 data/simulated_remote/
 transfer_debug.log
 
+# Main project now lives under DeepReport_plus/
+DeepReport_plus/data/outputs/
+DeepReport_plus/data/outputs_real/
+DeepReport_plus/data/reports/
+DeepReport_plus/data/reports_real/
+DeepReport_plus/data/features/
+DeepReport_plus/data/features_real/
+DeepReport_plus/data/curated/
+DeepReport_plus/data/curated_real/
+DeepReport_plus/data/cache/
+DeepReport_plus/data/simulated_remote/
+DeepReport_plus/transfer_debug.log
+
 # Local reference clone (read-only audit source)
 references/DeepReport_ref/
+DeepReport_plus/references/DeepReport_ref/
 
 # Nested repositories (avoid accidental gitlink/submodule commit)
 receipt_vlm_project/

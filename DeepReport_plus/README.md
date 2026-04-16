@@ -59,7 +59,7 @@ data/raw/real_data/<symbol>/<period>/
   filings.jsonl
 ```
 
-Detailed contract: [docs/real_data_contract.md](H:/cord/docs/real_data_contract.md)
+Detailed contract: [docs/real_data_contract.md](./docs/real_data_contract.md)
 
 ### Run Real Data Smoke
 
