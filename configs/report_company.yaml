@@ -1,0 +1,13 @@
+report:
+  type: company
+  sections:
+    - executive_summary
+    - business_overview
+    - financial_analysis
+    - valuation
+    - risks
+    - conclusion
+  exports:
+    markdown: true
+    html: true
+

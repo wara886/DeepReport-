@@ -1,0 +1,3 @@
+symbol,period,publish_time,close,volume,source_url,trust_level
+AAPL,2025Q4,2026-01-31,212.35,85432123,https://example.com/real/market/aapl,high
+

@@ -1,0 +1,19 @@
+extends: app.yaml
+
+runtime:
+  mode: cloud_train
+  dry_run: false
+
+cloud:
+  device: cuda:0
+  gpu_memory_gb: 48
+  offline_only: true
+  local_simulation: true
+  transfer:
+    remote_host: ""
+    remote_port: 22
+    remote_user: ""
+    remote_base_dir: data/simulated_remote
+    local_export_dir: data/outputs/training/reranker
+    local_checkpoint_dir: data/outputs/checkpoints
+    log_path: data/outputs/transfer_debug.log

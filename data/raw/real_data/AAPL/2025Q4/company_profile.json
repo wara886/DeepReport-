@@ -1,0 +1,12 @@
+{
+  "symbol": "AAPL",
+  "period": "2025Q4",
+  "company_name": "Apple Inc.",
+  "industry": "Consumer Electronics",
+  "sector": "Technology",
+  "description": "Designs and sells consumer devices, software, and services.",
+  "as_of_date": "2026-01-31",
+  "source_url": "https://example.com/real/company/aapl",
+  "trust_level": "high"
+}
+

@@ -1,0 +1,16 @@
+extends: app.yaml
+
+runtime:
+  mode: local_debug
+  dry_run: true
+
+generation:
+  backend: mock
+  model_name: mock-model
+  max_tokens: 512
+  temperature: 0.1
+
+report:
+  type: company
+  format: markdown
+

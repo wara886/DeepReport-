@@ -1,0 +1,12 @@
+reranker:
+  enabled: true
+  model_name: reranker-placeholder
+  topk: 10
+  batch_size: 8
+  checkpoint_path: data/outputs/checkpoints/reranker_checkpoint.json
+  training:
+    dataset_path: data/outputs/training/reranker/dataset.parquet
+  inference:
+    input_path: data/outputs/retrieval_results.json
+    output_path: data/outputs/reranked_results.json
+    mode: bm25

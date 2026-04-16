@@ -1,0 +1,5 @@
+rewriter:
+  enabled: false
+  model_name: rewriter-placeholder
+  batch_size: 4
+

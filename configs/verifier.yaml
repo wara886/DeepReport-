@@ -1,0 +1,8 @@
+verifier:
+  mode: rule_based
+  model_name: verifier-placeholder
+  batch_size: 4
+  thresholds:
+    minimum_citations: 1
+    minimum_claim_confidence: 0.5
+

@@ -1,0 +1,31 @@
+extends: app.yaml
+
+runtime:
+  mode: local_real_smoke
+  dry_run: true
+
+real_data:
+  data_mode: local_file_real
+  symbol: AAPL
+  period: 2025Q4
+  raw_root: data/raw/real_data
+  curated_root: data/curated_real
+  features_root: data/features_real
+  outputs_root: data/outputs_real
+  reports_root: data/reports_real
+  sources:
+    company_profile:
+      filename: company_profile.json
+    financials:
+      filename: financials.csv
+    market:
+      filename: market.csv
+    news:
+      filename: news.jsonl
+    filings:
+      filename: filings.jsonl
+
+generation:
+  backend: mock
+  writer_mode: template_only
+  backend_config_path: configs/model_backends.yaml

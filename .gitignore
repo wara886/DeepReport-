@@ -1,0 +1,23 @@
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Local runtime artifacts
+data/outputs/
+data/outputs_real/
+data/reports/
+data/reports_real/
+data/features/
+data/features_real/
+data/curated/
+data/curated_real/
+data/cache/
+data/simulated_remote/
+transfer_debug.log
+
+# Local reference clone (read-only audit source)
+references/DeepReport_ref/
+
+# Nested repositories (avoid accidental gitlink/submodule commit)
+receipt_vlm_project/
+novei2video/
