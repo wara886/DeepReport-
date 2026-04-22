@@ -1,0 +1,34 @@
+{
+  "scenario_id": "numeric_relaxed_diag",
+  "sample_count": 30,
+  "verifier_switch": "on",
+  "writer_hit_switch": "top3",
+  "numeric_matcher": "relaxed",
+  "claim_grounded_rate": 0.5,
+  "writer_hit_proxy": 1.0,
+  "numeric_accuracy": 1.0,
+  "numeric_error_breakdown": {
+    "value_mismatch": 0,
+    "unit_mismatch": 0,
+    "period_mismatch": 0,
+    "unsupported_number": 0,
+    "hallucinated_number": 0
+  },
+  "by_task_type": {
+    "event": {
+      "claim_grounded_rate": 0.5,
+      "writer_hit_proxy": 1.0,
+      "numeric_accuracy": 1.0
+    },
+    "financial": {
+      "claim_grounded_rate": 0.5,
+      "writer_hit_proxy": 1.0,
+      "numeric_accuracy": 1.0
+    },
+    "fundamental": {
+      "claim_grounded_rate": 0.5,
+      "writer_hit_proxy": 1.0,
+      "numeric_accuracy": 1.0
+    }
+  }
+}

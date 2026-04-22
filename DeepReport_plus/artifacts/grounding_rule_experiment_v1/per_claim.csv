@@ -1,0 +1,11 @@
+claim_id,section_name,claim_type,confidence,baseline_threshold,baseline_is_grounded,rule_aware_is_grounded,changed,status_transition,high_trust_source,direct_literal_alignment,numeric_consistent_with_evidence,direct_supported,rule_branch,review_root_cause_primary
+cl_0001,financial_analysis,direct_factual_extraction,0.8,0.75,True,True,False,unchanged,True,True,True,True,direct_confidence_branch,none
+cl_0002,financial_analysis,direct_factual_extraction,0.78,0.75,True,True,False,unchanged,True,True,True,True,direct_confidence_branch,none
+cl_0003,financial_analysis,direct_factual_extraction,0.76,0.75,True,True,False,unchanged,True,True,True,True,direct_confidence_branch,near_threshold_boundary
+cl_0004,financial_analysis,direct_factual_extraction,0.74,0.75,False,True,True,false_negative_to_pass,True,True,True,True,direct_supported_branch,threshold_too_strict
+cl_0005,financial_analysis,direct_factual_extraction,0.73,0.75,False,True,True,false_negative_to_pass,True,True,True,True,direct_supported_branch,threshold_too_strict
+cl_0006,financial_analysis,direct_factual_extraction,0.72,0.75,False,True,True,false_negative_to_pass,True,True,True,True,direct_supported_branch,threshold_too_strict
+cl_0007,financial_analysis,direct_factual_extraction,0.75,0.75,True,True,False,unchanged,True,True,True,True,direct_confidence_branch,near_threshold_boundary
+cl_0008,business_overview,derived_aggregated,0.75,0.75,True,True,False,unchanged,True,True,False,False,derived_strict_branch,requires_manual_semantic_review
+cl_0009,valuation,derived_aggregated,0.72,0.75,False,False,False,unchanged,True,True,True,True,derived_strict_branch,requires_manual_semantic_review
+cl_0010,risks,derived_aggregated,0.7,0.75,False,False,False,unchanged,True,True,False,False,derived_strict_branch,requires_manual_semantic_review

@@ -1,0 +1,2 @@
+symbol,period,publish_time,revenue_billion,revenue_growth_pct,gross_margin_pct,net_margin_pct,roe_pct,roa_pct,operating_cash_flow_billion,free_cash_flow_billion,source_url,trust_level,notes
+NVDA,2025Q4,2026-01-31,41.8,38.6,74.1,52.4,96.2,44.1,19.8,17.3,https://example.com/real/financials/nvda,high,quarterly summary

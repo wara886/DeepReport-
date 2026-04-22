@@ -169,3 +169,55 @@ Required variables (env or args):
 Fallback:
 
 - If reranker checkpoint is missing, retrieval automatically falls back to original BM25 ordering.
+
+## Evaluation & Quality Baseline (Stage 12A)
+
+Stage 12A adds an evaluation harness that measures quality without changing core feature logic.
+
+Evaluated dimensions:
+
+- structure completeness
+- numeric consistency
+- evidence alignment
+- reranker before/after behavior
+
+Supported A/B comparisons:
+
+- BM25 vs reranker
+- template_only vs real writer backend
+- rule verifier vs current verifier path
+
+Run evaluation:
+
+```bash
+bash scripts/run_stage12a_eval.sh
+```
+
+Or:
+
+```bash
+python -m src.evaluation.stage12a_harness --config configs/evaluation_stage12a.yaml
+```
+
+Outputs:
+
+- `data/evaluation/stage12a/evaluation_summary.json`
+- `data/evaluation/stage12a/per_report_metrics.jsonl`
+- `data/evaluation/stage12a/ablation_report.md`
+
+Run fixed regression baseline (`regression_v1`):
+
+```bash
+python scripts/run_eval_v1.py --max-samples 5
+```
+
+Regression outputs:
+
+- `reports/eval_v1/summary.json`
+- `reports/eval_v1/summary.md`
+- `reports/eval_v1/per_case.csv`
+
+Sample control:
+
+- default auto-discovery from `data/raw/real_data/<symbol>/<period>/`
+- configurable `max_samples` and `samples` in `configs/evaluation_stage12a.yaml`

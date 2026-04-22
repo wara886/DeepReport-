@@ -14,6 +14,7 @@ def build_trend_features(manifest_df: pd.DataFrame) -> pd.DataFrame:
             evidence_count=("sample_id", "count"),
             unique_sources=("source_type", "nunique"),
             latest_publish_time=("publish_time", "max"),
+            sample_ids=("sample_id", lambda s: "|".join(sorted({str(x) for x in s.dropna().tolist()}))),
         )
         .reset_index()
     )
@@ -25,4 +26,3 @@ def save_trend_features(df: pd.DataFrame, output_path: str | Path = "data/featur
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out, index=False)
     return out
-

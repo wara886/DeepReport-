@@ -1,0 +1,11 @@
+{
+  "symbol": "MSFT",
+  "period": "2025Q4",
+  "company_name": "Microsoft Corporation",
+  "industry": "Software Infrastructure",
+  "sector": "Technology",
+  "description": "Builds cloud, productivity, enterprise, and developer platforms.",
+  "as_of_date": "2026-01-31",
+  "source_url": "https://example.com/real/company/msft",
+  "trust_level": "high"
+}

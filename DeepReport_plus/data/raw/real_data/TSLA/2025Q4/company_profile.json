@@ -1,0 +1,11 @@
+{
+  "symbol": "TSLA",
+  "period": "2025Q4",
+  "company_name": "Tesla, Inc.",
+  "industry": "Auto Manufacturers",
+  "sector": "Consumer Cyclical",
+  "description": "Manufactures electric vehicles and energy storage systems.",
+  "as_of_date": "2026-01-31",
+  "source_url": "https://example.com/real/company/tsla",
+  "trust_level": "high"
+}

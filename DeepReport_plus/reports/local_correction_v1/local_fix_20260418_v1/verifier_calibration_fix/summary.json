@@ -1,0 +1,35 @@
+{
+  "experiment_name": "verifier_calibration_fix_v1",
+  "primary_variant": "bm25_real_writer",
+  "baseline_threshold": 0.75,
+  "baseline_claim_grounded_rate": 0.5,
+  "candidate_thresholds": [
+    0.7,
+    0.65,
+    0.6
+  ],
+  "candidate_summary": {
+    "0.7": {
+      "claim_grounded_rate": 1.0,
+      "grounded_rate_delta_vs_baseline": 0.5,
+      "potential_false_positive_rate_proxy": 0.5
+    },
+    "0.65": {
+      "claim_grounded_rate": 1.0,
+      "grounded_rate_delta_vs_baseline": 0.5,
+      "potential_false_positive_rate_proxy": 0.5
+    },
+    "0.6": {
+      "claim_grounded_rate": 1.0,
+      "grounded_rate_delta_vs_baseline": 0.5,
+      "potential_false_positive_rate_proxy": 0.5
+    }
+  },
+  "recommended_threshold_offline": 0.7,
+  "false_positive_risk_note": "potential_false_positive_rate_proxy 基于新增放行 claim 的离线代理估计，不等价真实假阳性标注。",
+  "outputs": {
+    "summary_json": "reports\\local_correction_v1\\local_fix_20260418_v1\\verifier_calibration_fix\\summary.json",
+    "summary_md": "reports\\local_correction_v1\\local_fix_20260418_v1\\verifier_calibration_fix\\summary.md",
+    "per_case_csv": "reports\\local_correction_v1\\local_fix_20260418_v1\\verifier_calibration_fix\\per_case.csv"
+  }
+}

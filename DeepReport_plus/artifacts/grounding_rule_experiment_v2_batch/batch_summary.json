@@ -1,0 +1,59 @@
+{
+  "experiment_name": "grounding_rule_experiment_v2_batch",
+  "rules": {
+    "baseline": "is_grounded = confidence >= 0.75",
+    "rule_aware": "direct_factual_extraction: baseline OR direct_supported; derived_aggregated: baseline only"
+  },
+  "case_coverage": {
+    "discovered_case_count": 15,
+    "sufficient_case_count": 1,
+    "insufficient_case_count": 14,
+    "covered_ratio": 0.0667,
+    "insufficient_case_ids": [
+      "AAPL:2025Q4:bm25_template",
+      "AAPL:2025Q4:reranker_template",
+      "GOOGL:2025Q4:bm25_real_writer",
+      "GOOGL:2025Q4:bm25_template",
+      "GOOGL:2025Q4:reranker_template",
+      "MSFT:2025Q4:bm25_real_writer",
+      "MSFT:2025Q4:bm25_template",
+      "MSFT:2025Q4:reranker_template",
+      "NVDA:2025Q4:bm25_real_writer",
+      "NVDA:2025Q4:bm25_template",
+      "NVDA:2025Q4:reranker_template",
+      "TSLA:2025Q4:bm25_real_writer",
+      "TSLA:2025Q4:bm25_template",
+      "TSLA:2025Q4:reranker_template"
+    ]
+  },
+  "direct_factual_grounded_rate": {
+    "baseline": 0.5714,
+    "rule_aware": 1.0,
+    "delta": 0.4286
+  },
+  "derived_stability": {
+    "derived_claim_count": 3,
+    "derived_changed_count": 0,
+    "stability_rate": 1.0
+  },
+  "potential_false_positive": {
+    "count": 0,
+    "claim_ids": [],
+    "flag": false
+  },
+  "false_negative_to_pass_claim_ids": [
+    "AAPL:2025Q4:bm25_real_writer:cl_0004",
+    "AAPL:2025Q4:bm25_real_writer:cl_0005",
+    "AAPL:2025Q4:bm25_real_writer:cl_0006"
+  ],
+  "precondition_for_canary": {
+    "ready": false,
+    "reason": "未满足灰度前置条件：请先补齐 review 数据并扩展多样本验证后再评估灰度。"
+  },
+  "outputs": {
+    "batch_summary_json": "H:\\cord\\DeepReport_plus\\artifacts\\grounding_rule_experiment_v2_batch\\batch_summary.json",
+    "batch_summary_md": "H:\\cord\\DeepReport_plus\\artifacts\\grounding_rule_experiment_v2_batch\\batch_summary.md",
+    "per_case_summary_csv": "H:\\cord\\DeepReport_plus\\artifacts\\grounding_rule_experiment_v2_batch\\per_case_summary.csv",
+    "per_claim_all_csv": "H:\\cord\\DeepReport_plus\\artifacts\\grounding_rule_experiment_v2_batch\\per_claim_all.csv"
+  }
+}

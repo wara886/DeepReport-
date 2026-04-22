@@ -1,0 +1,7 @@
+evidence_id,source_file,text_preview,source_type
+2df4aaa2d036460b,H:\cord\DeepReport_plus\data\evaluation\eval_v1\runs\AAPL\2025Q4\bm25_real_writer\curated\news.parquet,Lead times normalized in most product categories.,news
+325dacc7e125bcea,H:\cord\DeepReport_plus\data\evaluation\eval_v1\runs\AAPL\2025Q4\bm25_real_writer\curated\market.parquet,"close=212.35, volume=85432123",market
+51e2d60dd503ed55,H:\cord\DeepReport_plus\data\evaluation\eval_v1\runs\AAPL\2025Q4\bm25_real_writer\curated\news.parquet,New on-device AI features are rolling out across major product lines.,news
+57867d7a18d8f858,H:\cord\DeepReport_plus\data\evaluation\eval_v1\runs\AAPL\2025Q4\bm25_real_writer\curated\financials.parquet,"Revenue 126.3B, revenue growth 11.2%, gross margin 46.8%, net margin 24.6%, ROE 132.4%, ROA 29.7%, operating cash flow 38.1B, free cash flow 31.2B.",financials
+6a0352640594b75d,H:\cord\DeepReport_plus\data\evaluation\eval_v1\runs\AAPL\2025Q4\bm25_real_writer\curated\company_profile.parquet,"Industry=Consumer Electronics; Sector=Technology; Description=Designs and sells consumer devices, software, and services.",company_profile
+c9d82f339472b002,H:\cord\DeepReport_plus\data\evaluation\eval_v1\runs\AAPL\2025Q4\bm25_real_writer\curated\filings.parquet,Filed update describing upcoming product launch timeline.,filings

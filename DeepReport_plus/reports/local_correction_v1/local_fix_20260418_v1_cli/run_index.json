@@ -1,0 +1,20 @@
+{
+  "run_id": "local_fix_20260418_v1_cli",
+  "primary_variant": "bm25_real_writer",
+  "outputs": {
+    "spot_check_root_cause_summary": {
+      "spot_check_root_cause_summary_json": "reports\\local_correction_v1\\local_fix_20260418_v1_cli\\spot_check_root_cause_summary\\spot_check_root_cause_summary.json",
+      "spot_check_root_cause_summary_md": "reports\\local_correction_v1\\local_fix_20260418_v1_cli\\spot_check_root_cause_summary\\spot_check_root_cause_summary.md"
+    },
+    "verifier_calibration_fix": {
+      "summary_json": "reports\\local_correction_v1\\local_fix_20260418_v1_cli\\verifier_calibration_fix\\summary.json",
+      "summary_md": "reports\\local_correction_v1\\local_fix_20260418_v1_cli\\verifier_calibration_fix\\summary.md",
+      "per_case_csv": "reports\\local_correction_v1\\local_fix_20260418_v1_cli\\verifier_calibration_fix\\per_case.csv"
+    },
+    "numeric_collision_fix": {
+      "summary_json": "reports\\local_correction_v1\\local_fix_20260418_v1_cli\\numeric_collision_fix\\summary.json",
+      "summary_md": "reports\\local_correction_v1\\local_fix_20260418_v1_cli\\numeric_collision_fix\\summary.md",
+      "per_case_csv": "reports\\local_correction_v1\\local_fix_20260418_v1_cli\\numeric_collision_fix\\per_case.csv"
+    }
+  }
+}

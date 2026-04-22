@@ -22,6 +22,7 @@ def build_peer_compare(manifest_df: pd.DataFrame) -> pd.DataFrame:
             evidence_count=("sample_id", "count"),
             avg_trust_weight=("trust_weight", "mean"),
             unique_source_types=("source_type", "nunique"),
+            sample_ids=("sample_id", lambda s: "|".join(sorted({str(x) for x in s.dropna().tolist()}))),
         )
         .reset_index()
     )
@@ -35,4 +36,3 @@ def save_peer_compare(df: pd.DataFrame, output_path: str | Path = "data/features
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out, index=False)
     return out
-

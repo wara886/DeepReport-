@@ -20,6 +20,7 @@ def run_pipeline(
     retrieval_curated_dir: str = "data/curated",
     retrieval_ranking_mode: str = "bm25",
     reranker_checkpoint_path: str = "data/outputs/checkpoints/reranker_checkpoint.json",
+    verifier_checkpoint_path: str = "data/outputs/checkpoints/verifier_checkpoint.json",
 ) -> Dict[str, str]:
     orchestrator = Orchestrator(
         output_dir=output_dir,
@@ -34,5 +35,6 @@ def run_pipeline(
         retrieval_curated_dir=retrieval_curated_dir,
         retrieval_ranking_mode=retrieval_ranking_mode,
         reranker_checkpoint_path=reranker_checkpoint_path,
+        verifier_checkpoint_path=verifier_checkpoint_path,
     )
     return orchestrator.run()

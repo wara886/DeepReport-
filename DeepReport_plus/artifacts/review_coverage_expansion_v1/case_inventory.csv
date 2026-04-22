@@ -1,0 +1,16 @@
+company_or_case,period,case_id,variant,has_claim_table,has_review_csv,review_version,is_evaluable,missing_components
+AAPL,2025Q4,AAPL:2025Q4:bm25_real_writer,bm25_real_writer,True,True,v2,True,none
+AAPL,2025Q4,AAPL:2025Q4:bm25_template,bm25_template,True,False,none,False,review_csv
+AAPL,2025Q4,AAPL:2025Q4:reranker_template,reranker_template,True,False,none,False,review_csv
+GOOGL,2025Q4,GOOGL:2025Q4:bm25_real_writer,bm25_real_writer,True,False,none,False,review_csv
+GOOGL,2025Q4,GOOGL:2025Q4:bm25_template,bm25_template,True,False,none,False,review_csv
+GOOGL,2025Q4,GOOGL:2025Q4:reranker_template,reranker_template,True,False,none,False,review_csv
+MSFT,2025Q4,MSFT:2025Q4:bm25_real_writer,bm25_real_writer,True,False,none,False,review_csv
+MSFT,2025Q4,MSFT:2025Q4:bm25_template,bm25_template,True,False,none,False,review_csv
+MSFT,2025Q4,MSFT:2025Q4:reranker_template,reranker_template,True,False,none,False,review_csv
+NVDA,2025Q4,NVDA:2025Q4:bm25_real_writer,bm25_real_writer,True,False,none,False,review_csv
+NVDA,2025Q4,NVDA:2025Q4:bm25_template,bm25_template,True,False,none,False,review_csv
+NVDA,2025Q4,NVDA:2025Q4:reranker_template,reranker_template,True,False,none,False,review_csv
+TSLA,2025Q4,TSLA:2025Q4:bm25_real_writer,bm25_real_writer,True,False,none,False,review_csv
+TSLA,2025Q4,TSLA:2025Q4:bm25_template,bm25_template,True,False,none,False,review_csv
+TSLA,2025Q4,TSLA:2025Q4:reranker_template,reranker_template,True,False,none,False,review_csv

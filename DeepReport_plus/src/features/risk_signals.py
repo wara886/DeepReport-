@@ -31,6 +31,7 @@ def build_risk_signals(manifest_df: pd.DataFrame) -> pd.DataFrame:
         .agg(
             total_evidence=("sample_id", "count"),
             risk_keyword_hits=("risk_keyword_hits", "sum"),
+            sample_ids=("sample_id", lambda s: "|".join(sorted({str(x) for x in s.dropna().tolist()}))),
         )
         .reset_index()
     )
@@ -46,4 +47,3 @@ def save_risk_signals(df: pd.DataFrame, output_path: str | Path = "data/features
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out, index=False)
     return out
-

@@ -1,0 +1,17 @@
+{
+  "scenario_id": "baseline_diag",
+  "sample_count": 30,
+  "verifier_switch": "on",
+  "writer_hit_switch": "top3",
+  "numeric_matcher": "strict",
+  "claim_grounded_rate": 0.5,
+  "writer_evidence_hit_rate_proxy": 1.0,
+  "numeric_accuracy": 0.75,
+  "numeric_error_breakdown": {
+    "value_mismatch": 30,
+    "unit_mismatch": 0,
+    "period_mismatch": 0,
+    "unsupported_number": 0,
+    "hallucinated_number": 0
+  }
+}

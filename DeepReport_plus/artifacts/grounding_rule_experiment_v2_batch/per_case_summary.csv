@@ -1,0 +1,16 @@
+case_id,symbol,period,variant,status,insufficient_reason,claim_count,direct_claim_count,derived_claim_count,direct_grounded_rate_baseline,direct_grounded_rate_rule_aware,direct_grounded_rate_delta,derived_changed_count,potential_false_positive_claim_ids,false_negative_to_pass_claim_ids
+AAPL:2025Q4:bm25_real_writer,AAPL,2025Q4,bm25_real_writer,ok,,10,7,3,0.5714,1.0,0.4286,0,,cl_0004|cl_0005|cl_0006
+AAPL:2025Q4:bm25_template,AAPL,2025Q4,bm25_template,insufficient_review_data,missing_review_csv,10,,,,,,,,
+AAPL:2025Q4:reranker_template,AAPL,2025Q4,reranker_template,insufficient_review_data,missing_review_csv,10,,,,,,,,
+GOOGL:2025Q4:bm25_real_writer,GOOGL,2025Q4,bm25_real_writer,insufficient_review_data,missing_review_csv,10,,,,,,,,
+GOOGL:2025Q4:bm25_template,GOOGL,2025Q4,bm25_template,insufficient_review_data,missing_review_csv,10,,,,,,,,
+GOOGL:2025Q4:reranker_template,GOOGL,2025Q4,reranker_template,insufficient_review_data,missing_review_csv,10,,,,,,,,
+MSFT:2025Q4:bm25_real_writer,MSFT,2025Q4,bm25_real_writer,insufficient_review_data,missing_review_csv,10,,,,,,,,
+MSFT:2025Q4:bm25_template,MSFT,2025Q4,bm25_template,insufficient_review_data,missing_review_csv,10,,,,,,,,
+MSFT:2025Q4:reranker_template,MSFT,2025Q4,reranker_template,insufficient_review_data,missing_review_csv,10,,,,,,,,
+NVDA:2025Q4:bm25_real_writer,NVDA,2025Q4,bm25_real_writer,insufficient_review_data,missing_review_csv,10,,,,,,,,
+NVDA:2025Q4:bm25_template,NVDA,2025Q4,bm25_template,insufficient_review_data,missing_review_csv,10,,,,,,,,
+NVDA:2025Q4:reranker_template,NVDA,2025Q4,reranker_template,insufficient_review_data,missing_review_csv,10,,,,,,,,
+TSLA:2025Q4:bm25_real_writer,TSLA,2025Q4,bm25_real_writer,insufficient_review_data,missing_review_csv,10,,,,,,,,
+TSLA:2025Q4:bm25_template,TSLA,2025Q4,bm25_template,insufficient_review_data,missing_review_csv,10,,,,,,,,
+TSLA:2025Q4:reranker_template,TSLA,2025Q4,reranker_template,insufficient_review_data,missing_review_csv,10,,,,,,,,

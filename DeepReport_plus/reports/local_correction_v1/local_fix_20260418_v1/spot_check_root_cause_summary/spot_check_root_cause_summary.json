@@ -1,0 +1,14 @@
+{
+  "summary_name": "spot_check_root_cause_summary",
+  "template_csv": "reports\\eval_v1_diagnostics\\diag_20260418_cn_final\\spot_check_10_root_cause_template.csv",
+  "total_rows": 10,
+  "filled_rows": 0,
+  "top_root_causes": [],
+  "metric_impact": {},
+  "repair_priority": [],
+  "note": "如 filled_rows=0，说明尚未回填根因字段。",
+  "outputs": {
+    "spot_check_root_cause_summary_json": "reports\\local_correction_v1\\local_fix_20260418_v1\\spot_check_root_cause_summary\\spot_check_root_cause_summary.json",
+    "spot_check_root_cause_summary_md": "reports\\local_correction_v1\\local_fix_20260418_v1\\spot_check_root_cause_summary\\spot_check_root_cause_summary.md"
+  }
+}

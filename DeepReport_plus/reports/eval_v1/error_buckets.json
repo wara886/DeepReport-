@@ -1,0 +1,60 @@
+{
+  "claim_grounded_rate_buckets": {
+    "[0.0,0.2)": 0,
+    "[0.2,0.4)": 0,
+    "[0.4,0.6)": 30,
+    "[0.6,0.8)": 0,
+    "[0.8,1.0]": 0
+  },
+  "numeric_accuracy_buckets": {
+    "[0.0,0.2)": 0,
+    "[0.2,0.4)": 0,
+    "[0.4,0.6)": 0,
+    "[0.6,0.8)": 30,
+    "[0.8,1.0]": 0
+  },
+  "low_grounded_cases": [
+    "ev1_aapl_2025q4_01",
+    "ev1_aapl_2025q4_02",
+    "ev1_aapl_2025q4_03",
+    "ev1_aapl_2025q4_04",
+    "ev1_aapl_2025q4_05",
+    "ev1_aapl_2025q4_06",
+    "ev1_googl_2025q4_01",
+    "ev1_googl_2025q4_02",
+    "ev1_googl_2025q4_03",
+    "ev1_googl_2025q4_04",
+    "ev1_googl_2025q4_05",
+    "ev1_googl_2025q4_06",
+    "ev1_msft_2025q4_01",
+    "ev1_msft_2025q4_02",
+    "ev1_msft_2025q4_03",
+    "ev1_msft_2025q4_04",
+    "ev1_msft_2025q4_05",
+    "ev1_msft_2025q4_06",
+    "ev1_nvda_2025q4_01",
+    "ev1_nvda_2025q4_02"
+  ],
+  "low_numeric_cases": [
+    "ev1_aapl_2025q4_01",
+    "ev1_aapl_2025q4_02",
+    "ev1_aapl_2025q4_03",
+    "ev1_aapl_2025q4_04",
+    "ev1_aapl_2025q4_05",
+    "ev1_aapl_2025q4_06",
+    "ev1_googl_2025q4_01",
+    "ev1_googl_2025q4_02",
+    "ev1_googl_2025q4_03",
+    "ev1_googl_2025q4_04",
+    "ev1_googl_2025q4_05",
+    "ev1_googl_2025q4_06",
+    "ev1_msft_2025q4_01",
+    "ev1_msft_2025q4_02",
+    "ev1_msft_2025q4_03",
+    "ev1_msft_2025q4_04",
+    "ev1_msft_2025q4_05",
+    "ev1_msft_2025q4_06",
+    "ev1_nvda_2025q4_01",
+    "ev1_nvda_2025q4_02"
+  ]
+}

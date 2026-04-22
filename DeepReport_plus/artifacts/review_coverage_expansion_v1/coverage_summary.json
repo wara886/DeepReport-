@@ -1,0 +1,27 @@
+{
+  "experiment_name": "review_coverage_expansion_v1",
+  "case_inventory": {
+    "total_case_count": 15,
+    "evaluable_case_count": 1,
+    "missing_review_case_count": 14,
+    "missing_claim_table_case_count": 0,
+    "coverage_ratio": 0.0667
+  },
+  "review_queue": {
+    "total_queue_claims": 140,
+    "priority_counts": {
+      "P0": 42,
+      "P1": 56,
+      "P2": 42
+    },
+    "direct_claims": 98,
+    "derived_claims": 42
+  },
+  "outputs": {
+    "case_inventory_csv": "H:\\cord\\DeepReport_plus\\artifacts\\review_coverage_expansion_v1\\case_inventory.csv",
+    "review_queue_csv": "H:\\cord\\DeepReport_plus\\artifacts\\review_coverage_expansion_v1\\review_queue.csv",
+    "review_template_csv": "H:\\cord\\DeepReport_plus\\artifacts\\review_coverage_expansion_v1\\review_template.csv",
+    "coverage_summary_json": "H:\\cord\\DeepReport_plus\\artifacts\\review_coverage_expansion_v1\\coverage_summary.json",
+    "coverage_summary_md": "H:\\cord\\DeepReport_plus\\artifacts\\review_coverage_expansion_v1\\coverage_summary.md"
+  }
+}

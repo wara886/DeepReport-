@@ -12,16 +12,22 @@ def test_stage4_pipeline_generates_required_outputs(tmp_path: Path):
     claim_path = Path(result["claim_table"])
     report_path = Path(result["report_markdown"])
     verify_path = Path(result["verification_report"])
+    per_claim_json = Path(result["per_claim_verification_json"])
+    per_claim_csv = Path(result["per_claim_verification_csv"])
 
     assert claim_path.exists()
     assert report_path.exists()
     assert verify_path.exists()
+    assert per_claim_json.exists()
+    assert per_claim_csv.exists()
 
     claims = json.loads(claim_path.read_text(encoding="utf-8"))
     verify = json.loads(verify_path.read_text(encoding="utf-8"))
     markdown = report_path.read_text(encoding="utf-8")
+    per_claim = json.loads(per_claim_json.read_text(encoding="utf-8"))
 
     assert isinstance(claims, list)
     assert "## Financial Analysis" in markdown
     assert "passed" in verify
-
+    assert "rows" in per_claim
+    assert "rule" in per_claim

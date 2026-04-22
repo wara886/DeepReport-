@@ -1,0 +1,47 @@
+{
+  "experiment_name": "grounding_rule_experiment_v1",
+  "input_paths": {
+    "claim_table": "H:\\cord\\DeepReport_plus\\data\\evaluation\\eval_v1\\runs\\AAPL\\2025Q4\\bm25_real_writer\\outputs\\claim_table.json",
+    "review_csv": "H:\\cord\\DeepReport_plus\\data\\evaluation\\eval_v1\\runs\\AAPL\\2025Q4\\bm25_real_writer\\reports\\claim_review_backfill_v2.csv",
+    "manifest_json": "H:\\cord\\DeepReport_plus\\data\\evaluation\\eval_v1\\runs\\AAPL\\2025Q4\\bm25_real_writer\\curated\\real_data_manifest.json",
+    "verification_report": "H:\\cord\\DeepReport_plus\\data\\evaluation\\eval_v1\\runs\\AAPL\\2025Q4\\bm25_real_writer\\outputs\\verification_report.json"
+  },
+  "rules": {
+    "baseline": "is_grounded = confidence >= 0.75",
+    "rule_aware": "direct_factual_extraction: baseline OR direct_supported; derived_aggregated: baseline only",
+    "direct_supported_definition": "high_trust_source AND direct_literal_alignment AND numeric_consistent_with_evidence"
+  },
+  "total_claims": 10,
+  "direct_claim_count": 7,
+  "derived_claim_count": 3,
+  "false_negative_to_pass_claim_ids": [
+    "cl_0004",
+    "cl_0005",
+    "cl_0006"
+  ],
+  "direct_grounded_rate": {
+    "baseline": 0.5714,
+    "rule_aware": 1.0,
+    "delta": 0.4286
+  },
+  "derived_stability": {
+    "changed_count": 0,
+    "changed_claim_ids": [],
+    "stable": true
+  },
+  "false_positive_risk": {
+    "flag": false,
+    "message": "未见明显假阳性风险：新增通过条目均落在人审确认的阈值误杀集合内。",
+    "suspicious_new_accept_claim_ids": []
+  },
+  "canary_readiness": {
+    "ready": false,
+    "reason": "当前仅覆盖 AAPL 单 case，样本范围不足，不建议直接进入大范围灰度。"
+  },
+  "outputs": {
+    "summary_json": "H:\\cord\\DeepReport_plus\\artifacts\\grounding_rule_experiment_v2_batch\\cases\\AAPL__2025Q4__bm25_real_writer\\summary.json",
+    "summary_md": "H:\\cord\\DeepReport_plus\\artifacts\\grounding_rule_experiment_v2_batch\\cases\\AAPL__2025Q4__bm25_real_writer\\summary.md",
+    "per_claim_csv": "H:\\cord\\DeepReport_plus\\artifacts\\grounding_rule_experiment_v2_batch\\cases\\AAPL__2025Q4__bm25_real_writer\\per_claim.csv",
+    "evidence_lookup_csv": "H:\\cord\\DeepReport_plus\\artifacts\\grounding_rule_experiment_v2_batch\\cases\\AAPL__2025Q4__bm25_real_writer\\evidence_lookup.csv"
+  }
+}

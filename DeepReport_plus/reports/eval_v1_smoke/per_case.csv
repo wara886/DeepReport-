@@ -1,0 +1,2 @@
+case_id,task_type,variant_id,evidence_coverage,claim_grounded_rate,numeric_accuracy,supported_numeric_claims,numeric_claims,writer_fallback_triggered,fallback_reason,top1_evidence_hit,top3_evidence_hit,error_taxonomy
+ev1_aapl_2025q4_01,fundamental,bm25_real_writer,1.0,0.5,0.75,3,4,False,none,False,True,value_mismatch:1

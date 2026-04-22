@@ -1,3 +1,2 @@
-symbol,period,publish_time,revenue_billion,gross_margin_pct,source_url,trust_level,notes
-AAPL,2025Q4,2026-01-31,126.3,46.8,https://example.com/real/financials/aapl,high,quarterly summary
-
+symbol,period,publish_time,revenue_billion,revenue_growth_pct,gross_margin_pct,net_margin_pct,roe_pct,roa_pct,operating_cash_flow_billion,free_cash_flow_billion,source_url,trust_level,notes
+AAPL,2025Q4,2026-01-31,126.3,11.2,46.8,24.6,132.4,29.7,38.1,31.2,https://example.com/real/financials/aapl,high,quarterly summary

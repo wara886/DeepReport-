@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepReport++ Stage12 eval_v1 case schema",
+  "type": "object",
+  "required": [
+    "case_id",
+    "query",
+    "task_type",
+    "source_scope",
+    "gold_claims",
+    "gold_evidence_ids",
+    "gold_numeric_facts",
+    "allow_fallback",
+    "symbol",
+    "period"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_type": {
+      "type": "string",
+      "enum": [
+        "event",
+        "financial",
+        "fundamental"
+      ]
+    },
+    "source_scope": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "company_page",
+          "filing",
+          "financials",
+          "market",
+          "news"
+        ]
+      },
+      "minItems": 1
+    },
+    "gold_claims": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "gold_evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "gold_numeric_facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "metric",
+          "value",
+          "unit",
+          "period"
+        ],
+        "properties": {
+          "metric": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "allow_fallback": {
+      "type": "boolean"
+    },
+    "symbol": {
+      "type": "string",
+      "minLength": 1
+    },
+    "period": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": true
+}

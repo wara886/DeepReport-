@@ -1,0 +1,11 @@
+{
+  "symbol": "GOOGL",
+  "period": "2025Q4",
+  "company_name": "Alphabet Inc.",
+  "industry": "Internet Content & Information",
+  "sector": "Communication Services",
+  "description": "Operates search, ads, cloud, and video platforms.",
+  "as_of_date": "2026-01-31",
+  "source_url": "https://example.com/real/company/googl",
+  "trust_level": "high"
+}

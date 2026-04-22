@@ -1,0 +1,2 @@
+symbol,period,publish_time,revenue_billion,revenue_growth_pct,gross_margin_pct,net_margin_pct,roe_pct,roa_pct,operating_cash_flow_billion,free_cash_flow_billion,source_url,trust_level,notes
+TSLA,2025Q4,2026-01-31,28.7,9.4,19.6,7.8,15.2,8.6,6.3,3.9,https://example.com/real/financials/tsla,high,quarterly summary

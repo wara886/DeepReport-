@@ -1,0 +1,18 @@
+{
+  "experiment_name": "numeric_collision_fix_v1",
+  "primary_variant": "bm25_real_writer",
+  "before_numeric_accuracy": 0.75,
+  "after_numeric_accuracy": 1.0,
+  "numeric_accuracy_delta": 0.25,
+  "fix_breakdown": {
+    "nearest_number_collision": 30,
+    "unit_fix": 30,
+    "period_fix": 0
+  },
+  "scope_note": "优先覆盖 revenue/yoy 近邻碰撞，并补 unit/period 三类离线修复对比。",
+  "outputs": {
+    "summary_json": "reports\\local_correction_v1\\test_local_fix_v1\\numeric_collision_fix\\summary.json",
+    "summary_md": "reports\\local_correction_v1\\test_local_fix_v1\\numeric_collision_fix\\summary.md",
+    "per_case_csv": "reports\\local_correction_v1\\test_local_fix_v1\\numeric_collision_fix\\per_case.csv"
+  }
+}

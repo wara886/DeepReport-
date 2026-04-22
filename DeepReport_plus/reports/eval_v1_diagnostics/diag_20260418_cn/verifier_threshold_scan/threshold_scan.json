@@ -1,0 +1,108 @@
+{
+  "threshold_rows": [
+    {
+      "threshold": 0.5,
+      "claim_grounded_rate": 1.0,
+      "by_task_type": {
+        "event": 1.0,
+        "financial": 1.0,
+        "fundamental": 1.0
+      }
+    },
+    {
+      "threshold": 0.55,
+      "claim_grounded_rate": 1.0,
+      "by_task_type": {
+        "event": 1.0,
+        "financial": 1.0,
+        "fundamental": 1.0
+      }
+    },
+    {
+      "threshold": 0.6,
+      "claim_grounded_rate": 1.0,
+      "by_task_type": {
+        "event": 1.0,
+        "financial": 1.0,
+        "fundamental": 1.0
+      }
+    },
+    {
+      "threshold": 0.65,
+      "claim_grounded_rate": 1.0,
+      "by_task_type": {
+        "event": 1.0,
+        "financial": 1.0,
+        "fundamental": 1.0
+      }
+    },
+    {
+      "threshold": 0.7,
+      "claim_grounded_rate": 1.0,
+      "by_task_type": {
+        "event": 1.0,
+        "financial": 1.0,
+        "fundamental": 1.0
+      }
+    },
+    {
+      "threshold": 0.75,
+      "claim_grounded_rate": 0.5,
+      "by_task_type": {
+        "event": 0.5,
+        "financial": 0.5,
+        "fundamental": 0.5
+      }
+    },
+    {
+      "threshold": 0.8,
+      "claim_grounded_rate": 0.1,
+      "by_task_type": {
+        "event": 0.1,
+        "financial": 0.1,
+        "fundamental": 0.1
+      }
+    },
+    {
+      "threshold": 0.85,
+      "claim_grounded_rate": 0.0,
+      "by_task_type": {
+        "event": 0.0,
+        "financial": 0.0,
+        "fundamental": 0.0
+      }
+    },
+    {
+      "threshold": 0.9,
+      "claim_grounded_rate": 0.0,
+      "by_task_type": {
+        "event": 0.0,
+        "financial": 0.0,
+        "fundamental": 0.0
+      }
+    },
+    {
+      "threshold": 0.95,
+      "claim_grounded_rate": 0.0,
+      "by_task_type": {
+        "event": 0.0,
+        "financial": 0.0,
+        "fundamental": 0.0
+      }
+    }
+  ],
+  "best_threshold_by_grounded_rate": {
+    "threshold": 0.5,
+    "claim_grounded_rate": 1.0,
+    "by_task_type": {
+      "event": 1.0,
+      "financial": 1.0,
+      "fundamental": 1.0
+    }
+  },
+  "outputs": {
+    "threshold_scan_csv": "reports\\eval_v1_diagnostics\\diag_20260418_cn\\verifier_threshold_scan\\threshold_scan.csv",
+    "threshold_scan_md": "reports\\eval_v1_diagnostics\\diag_20260418_cn\\verifier_threshold_scan\\threshold_scan.md",
+    "threshold_scan_json": "reports\\eval_v1_diagnostics\\diag_20260418_cn\\verifier_threshold_scan\\threshold_scan.json"
+  }
+}

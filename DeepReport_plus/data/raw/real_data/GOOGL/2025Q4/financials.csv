@@ -1,0 +1,2 @@
+symbol,period,publish_time,revenue_billion,revenue_growth_pct,gross_margin_pct,net_margin_pct,roe_pct,roa_pct,operating_cash_flow_billion,free_cash_flow_billion,source_url,trust_level,notes
+GOOGL,2025Q4,2026-01-31,96.4,12.5,58.7,28.9,33.1,15.4,29.5,22.7,https://example.com/real/financials/googl,high,quarterly summary
