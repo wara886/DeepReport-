@@ -6,6 +6,7 @@ from src.agents.deep_analyze_agent import apply_evidence_gate
 from src.data.company_universe import resolve_company_identifier_with_diagnostics, resolve_symbol
 from src.schemas.claim import ClaimItem
 from src.features.company_valuation import build_peer_comparison, perform_company_valuation
+from src.features.financial_metric_lineage import build_financial_metric_lineage, build_financial_metric_tables
 from src.features.financial_ratios import build_financial_ratios
 from src.features.financial_statements import build_three_statement_view
 from src.features.peer_compare import build_peer_compare
@@ -182,3 +183,61 @@ def test_valuation_uses_optional_market_context():
 
     assert valuation["market_context"]["market_cap_billion"] == 3000.0
     assert valuation["market_gap"]["available"] is True
+
+
+def test_financial_metric_lineage_outputs_core_metrics_with_sources():
+    records = [
+        {
+            "evidence_id": "ev_fin",
+            "sample_id": "ev_fin",
+            "symbol": "AAPL",
+            "period": "2025Q4",
+            "source_type": "financials",
+            "metadata": {
+                "revenue_billion": 100.0,
+                "net_margin_pct": 20.0,
+                "gross_margin_pct": 40.0,
+                "free_cash_flow_billion": 18.0,
+                "source_table_id": "tbl_income_aapl_2025q4",
+            },
+            "content": "Revenue 100B.",
+        }
+    ]
+
+    payload = build_financial_metric_lineage(records)
+    metrics = {item["metric_name"]: item for item in payload["metrics"]}
+
+    assert payload["coverage"]["has_core_metric_lineage"] is True
+    assert metrics["revenue"]["source_evidence_id"] == "ev_fin"
+    assert metrics["revenue"]["source_table_id"] == "tbl_income_aapl_2025q4"
+    assert metrics["net_income"]["value"] == 20.0
+    assert metrics["net_income"]["calculation_formula"] == "revenue_billion * net_margin_pct / 100"
+    assert metrics["gross_margin"]["unit"] == "pct"
+
+
+def test_financial_metric_tables_emit_table_artifacts():
+    records = [
+        {
+            "evidence_id": "ev_fin",
+            "sample_id": "ev_fin",
+            "symbol": "AAPL",
+            "period": "2025Q4",
+            "source_type": "financials",
+            "metadata": {
+                "revenue_billion": 100.0,
+                "gross_margin_pct": 40.0,
+                "net_margin_pct": 20.0,
+                "roe_pct": 50.0,
+                "roa_pct": 10.0,
+                "operating_cash_flow_billion": 25.0,
+                "free_cash_flow_billion": 18.0,
+            },
+            "content": "Revenue 100B.",
+        }
+    ]
+
+    tables = build_financial_metric_tables(records)
+
+    assert tables
+    assert {table["table_type"] for table in tables} >= {"income_statement", "cash_flow_statement", "balance_sheet"}
+    assert all(table["source_evidence_id"] == "ev_fin" for table in tables)

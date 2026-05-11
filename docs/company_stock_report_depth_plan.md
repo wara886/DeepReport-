@@ -29,7 +29,8 @@
 | 模块 | 状态 | 最近提交 | 验证 |
 | --- | --- | --- | --- |
 | P0 SourceAuthorityPolicy | 已完成 | `751af9b` | `tests/test_source_authority_policy.py`、search/feature/multi-agent 核心回归通过 |
-| P1 Table/Chart/Visual schema | 已完成 | 待提交 | `tests/test_schemas.py` 加入 TableArtifact、ChartArtifact、VisualEvidence 和 chart lineage audit 回归 |
+| P1 Table/Chart/Visual schema | 已完成 | `bf018a0` | `tests/test_schemas.py` 加入 TableArtifact、ChartArtifact、VisualEvidence 和 chart lineage audit 回归 |
+| P2a 核心财务指标 lineage builder | 已完成 | 待提交 | `tests/test_feature_layer.py` 覆盖 revenue、net_income、gross_margin、free_cash_flow 的 source_table/source_evidence lineage |
 
 ## 1. 目标研报形态
 
