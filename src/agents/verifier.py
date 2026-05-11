@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 from typing import Any, Dict, List
 
+from src.data.source_authority import grade_source_authority
 from src.schemas.claim import ClaimItem
 
 
@@ -66,6 +67,7 @@ class Verifier:
             warnings=warnings,
         )
         _check_evidence_support(claims=claims, evidence_records=evidence_records, markdown=markdown, errors=errors, warnings=warnings)
+        _check_primary_source_support(claims=claims, evidence_records=evidence_records, errors=errors, warnings=warnings)
         _check_chart_support(claims=claims, evidence_records=evidence_records, charts=charts, warnings=warnings)
 
         return {
@@ -171,6 +173,81 @@ def _check_numeric_support(
     for key, value in claim.numeric_values.items():
         if not _has_close_number(float(value), evidence_numbers):
             warnings.append(f"Claim {claim.claim_id} numeric value {key}={value} was not found in linked evidence.")
+
+
+def _check_primary_source_support(
+    claims: List[ClaimItem],
+    evidence_records: List[Dict[str, Any]],
+    errors: List[str],
+    warnings: List[str],
+) -> None:
+    evidence_by_id = {
+        str(item.get("evidence_id") or item.get("sample_id") or ""): item
+        for item in evidence_records
+        if isinstance(item, dict) and str(item.get("evidence_id") or item.get("sample_id") or "")
+    }
+    for claim in claims:
+        if not _requires_primary_financial_source(claim):
+            continue
+        linked_records = [evidence_by_id[evidence_id] for evidence_id in claim.evidence_ids if evidence_id in evidence_by_id]
+        if not linked_records:
+            continue
+        if not any(_has_explicit_source_metadata(record) for record in linked_records):
+            warnings.append(
+                f"Claim {claim.claim_id} cannot be checked for primary-source support because linked evidence has no source metadata."
+            )
+            continue
+        grades = [_authority_grade(record) for record in linked_records]
+        if not any(grade.get("authority_level") == "primary" for grade in grades):
+            errors.append(
+                f"Claim {claim.claim_id} is a core financial claim but has no primary evidence source."
+            )
+        elif any(grade.get("authority_level") in {"secondary", "tertiary", "unknown"} for grade in grades):
+            warnings.append(
+                f"Claim {claim.claim_id} mixes primary evidence with lower-authority sources; keep the primary source as the controlling citation."
+            )
+
+
+def _requires_primary_financial_source(claim: ClaimItem) -> bool:
+    if not claim.numeric_values or _is_derived_numeric_claim(claim):
+        return False
+    text = f"{claim.section_name} {claim.claim_text} {claim.notes}".lower()
+    financial_markers = [
+        "financial",
+        "revenue",
+        "net income",
+        "gross margin",
+        "operating income",
+        "cash flow",
+        "free cash flow",
+        "eps",
+        "profit",
+        "income statement",
+        "balance sheet",
+        "营收",
+        "收入",
+        "净利润",
+        "毛利率",
+        "现金流",
+    ]
+    return claim.section_name in {"financial_analysis", "financial_statements"} or any(marker in text for marker in financial_markers)
+
+
+def _authority_grade(record: Dict[str, Any]) -> Dict[str, Any]:
+    if record.get("authority_level"):
+        return {
+            "source_authority": str(record.get("source_authority", "")),
+            "authority_level": str(record.get("authority_level", "")),
+            "authority_score": record.get("authority_score", 0.0),
+        }
+    return grade_source_authority(record)
+
+
+def _has_explicit_source_metadata(record: Dict[str, Any]) -> bool:
+    return any(
+        str(record.get(key, "")).strip()
+        for key in ("source_type", "source_url", "url", "source_authority", "authority_level")
+    )
 
 
 def _is_derived_numeric_claim(claim: ClaimItem) -> bool:

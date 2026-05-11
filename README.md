@@ -307,6 +307,12 @@ FINANCIAL_AGENT_PROJECT_SUMMARY.md
 docs/financial_multi_agent_detailed_guide.md
 ```
 
+下一阶段只聚焦公司/个股研报深度、多模态一致性、权威数据源、严谨估值建模和 Agent 自主补证闭环，具体落地方案见：
+
+```text
+docs/company_stock_report_depth_plan.md
+```
+
 DeepReport 原始骨架参考：
 
 ```text

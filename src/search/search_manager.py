@@ -36,6 +36,8 @@ class SearchResult:
     score: float = 0.0
     source_type: str = ""
     source_authority: str = ""
+    authority_level: str = ""
+    source_document_type: str = ""
     authority_score: float = 0.0
     raw: Dict[str, Any] = field(default_factory=dict)
 
@@ -49,6 +51,8 @@ class SearchResult:
             "score": self.score,
             "source_type": self.source_type,
             "source_authority": self.source_authority,
+            "authority_level": self.authority_level,
+            "source_document_type": self.source_document_type,
             "authority_score": self.authority_score,
             "raw": dict(self.raw),
         }
@@ -564,6 +568,8 @@ def _normalize_hits(engine: str, hits: Any) -> List[SearchResult]:
                 score=score,
                 source_type=source_type,
                 source_authority=str(item.get("source_authority", "")),
+                authority_level=str(item.get("authority_level", "")),
+                source_document_type=str(item.get("source_document_type", "")),
                 authority_score=_safe_float(item.get("authority_score", 0.0)),
                 raw=dict(item),
             )
