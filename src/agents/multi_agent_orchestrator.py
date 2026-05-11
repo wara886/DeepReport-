@@ -22,6 +22,7 @@ from src.agents.gap_router import build_gap_resolution_trace
 from src.agents.planning_agent import PlanningAgent
 from src.agents.verifier_agent import VerifierAgent
 from src.data.company_universe import resolve_company_identifier, resolve_company_identifier_with_diagnostics
+from src.evaluation.company_report_scorecard import build_company_report_scorecard
 from src.evaluation.multimodal_consistency import audit_multimodal_consistency
 from src.models import ModelAdapter
 from src.report import (
@@ -382,6 +383,15 @@ class MultiAgentOrchestrator:
             verification_report.get("evidence_gaps", []) if isinstance(verification_report, dict) else []
         )
         self._write_jsonl("gap_resolution_trace.jsonl", gap_resolution_trace)
+        scorecard = build_company_report_scorecard(
+            evidence_records=evidence_records if isinstance(evidence_records, list) else [],
+            financial_metrics=analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
+            multimodal_consistency=multimodal_consistency,
+            valuation=analysis_artifacts.get("valuation", {}) if isinstance(analysis_artifacts, dict) else {},
+            verification_report=verification_report if isinstance(verification_report, dict) else {},
+            gap_resolution_trace=gap_resolution_trace,
+        )
+        scorecard_path = self._write_json("company_report_scorecard.json", scorecard)
         conversation.add_verifier_feedback(verification_report)
         conversation_brief = conversation.context_brief()
         conversation_path = self._write_json("conversation_context.json", conversation.to_dict())
@@ -412,6 +422,7 @@ class MultiAgentOrchestrator:
             "retrieval_ranking_mode": retrieval_ranking_mode,
             "verification_passed": bool(verification_report.get("passed", False)),
             "evidence_gap_count": len(verification_report.get("evidence_gaps", [])) if isinstance(verification_report, dict) else 0,
+            "company_report_overall_score": scorecard["overall_score"],
             "entity_resolution": entity_resolution,
             "conversation_brief_chars": len(conversation_brief),
             "total_duration_sec": round(time.perf_counter() - run_started_at, 3),
@@ -441,6 +452,7 @@ class MultiAgentOrchestrator:
             "verification_report": str(verification_path),
             "conversation_context": str(conversation_path),
             "gap_resolution_trace": str(self.output_dir / "gap_resolution_trace.jsonl"),
+            "company_report_scorecard": str(scorecard_path),
             "run_summary": str(summary_path),
         }
 
@@ -582,6 +594,15 @@ class MultiAgentOrchestrator:
         self._write_json("multimodal_consistency.json", multimodal_consistency)
         self._write_json("revision_history.json", state.get("revision_history", []))
         self._write_jsonl("gap_resolution_trace.jsonl", state.get("gap_resolution_trace", []))
+        scorecard = build_company_report_scorecard(
+            evidence_records=list(evidence_records) if isinstance(evidence_records, list) else [],
+            financial_metrics=analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
+            multimodal_consistency=multimodal_consistency,
+            valuation=analysis_artifacts.get("valuation", {}) if isinstance(analysis_artifacts, dict) else {},
+            verification_report=state.get("verification_report", {}) if isinstance(state.get("verification_report"), dict) else {},
+            gap_resolution_trace=list(state.get("gap_resolution_trace", [])) if isinstance(state.get("gap_resolution_trace"), list) else [],
+        )
+        scorecard_path = self._write_json("company_report_scorecard.json", scorecard)
         conversation_path = self._write_json("conversation_context.json", state.get("conversation_context", {}))
         mcp_manifest_path = self.mcp_manager.export_manifest(self.output_dir / "mcp_manifest.json")
         citations_md_path = self.output_dir / "citations.md"
@@ -634,6 +655,7 @@ class MultiAgentOrchestrator:
             "evidence_gap_count": len(state.get("verification_report", {}).get("evidence_gaps", []))
             if isinstance(state.get("verification_report"), dict)
             else 0,
+            "company_report_overall_score": scorecard["overall_score"],
             "entity_resolution": entity_resolution,
             "conversation_brief_chars": len(str(state.get("conversation_brief", ""))),
             "total_duration_sec": round(time.perf_counter() - run_started_at, 3),
@@ -660,6 +682,7 @@ class MultiAgentOrchestrator:
             "mcp_manifest": str(mcp_manifest_path),
             "revision_history": str(self.output_dir / "revision_history.json"),
             "gap_resolution_trace": str(self.output_dir / "gap_resolution_trace.jsonl"),
+            "company_report_scorecard": str(scorecard_path),
             "conversation_context": str(conversation_path),
             "report_md": str(report_md_path),
             "report_html": str(report_html_path),

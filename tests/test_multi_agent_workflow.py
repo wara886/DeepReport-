@@ -328,6 +328,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert result["tables"].endswith("tables.json")
     assert result["valuation_model"].endswith("valuation_model.json")
     assert result["valuation_sensitivity"].endswith("valuation_sensitivity.json")
+    assert result["company_report_scorecard"].endswith("company_report_scorecard.json")
     assert result["mcp_manifest"].endswith("mcp_manifest.json")
     assert result["conversation_context"].endswith("conversation_context.json")
     assert (tmp_path / "outputs" / "citations.json").exists()
@@ -337,6 +338,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert (tmp_path / "outputs" / "valuation_model.json").exists()
     assert (tmp_path / "outputs" / "valuation_assumptions.json").exists()
     assert (tmp_path / "outputs" / "valuation_sensitivity.json").exists()
+    assert (tmp_path / "outputs" / "company_report_scorecard.json").exists()
     assert (tmp_path / "outputs" / "conversation_context.json").exists()
     assert (tmp_path / "outputs" / "mcp_manifest.json").exists()
     assert "## 参考来源" in (tmp_path / "reports" / "report.md").read_text(encoding="utf-8")
@@ -345,6 +347,10 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert financial_metrics["metric_count"] >= 1
     valuation_model = json.loads((tmp_path / "outputs" / "valuation_model.json").read_text(encoding="utf-8"))
     assert "dcf_model" in valuation_model
+    scorecard = json.loads((tmp_path / "outputs" / "company_report_scorecard.json").read_text(encoding="utf-8"))
+    assert scorecard["scores"]["numeric_lineage_score"] > 0
+    assert "valuation_reproducibility_score" in scorecard["scores"]
+    assert summary["company_report_overall_score"] == scorecard["overall_score"]
 
 
 def test_multi_agent_orchestrator_fast_mode_uses_smaller_context(tmp_path):

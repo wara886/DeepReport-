@@ -34,7 +34,8 @@
 | P2b DeepAnalyzeAgent 输出 financial_metrics/tables | 已完成 | `a633b46` | `DeepAnalyzeAgent` 输出 `financial_metrics`/`tables`，`MultiAgentOrchestrator` 落盘 `financial_metrics.json`/`tables.json`；multi-agent 回归覆盖非空指标 lineage |
 | P3 多模态一致性校验 | 已完成 | `459eb08` | `multimodal_consistency.json` 汇总图表正文一致性、chart lineage、财务数值图表格门禁；Verifier 将多模态失败作为 blocking error |
 | P4 相对估值 + 简化 DCF + valuation audit | 已完成 | `b31cc78` | `valuation_model.json`、`valuation_assumptions.json`、`valuation_sensitivity.json` 可复算输出；Verifier 将估值公式错误作为 blocking error |
-| P5 EvidenceGap routing | 已完成 | 待提交 | Verifier 输出结构化 `evidence_gaps`；Orchestrator 写出 `gap_resolution_trace.jsonl`，记录缺口路由、尝试次数和解决/降级状态 |
+| P5 EvidenceGap routing | 已完成 | `1ef55a7` | Verifier 输出结构化 `evidence_gaps`；Orchestrator 写出 `gap_resolution_trace.jsonl`，记录缺口路由、尝试次数和解决/降级状态 |
+| P6 Company report harness scorecard | 已完成 | 待提交 | `company_report_scorecard.json` 汇总 authority、numeric lineage、multimodal、valuation、gap resolution 五类评分；`run_summary.json` 输出 overall score |
 
 ## 1. 目标研报形态
 

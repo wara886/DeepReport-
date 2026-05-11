@@ -5,6 +5,7 @@ import pandas as pd
 from src.agents.deep_analyze_agent import apply_evidence_gate
 from src.data.company_universe import resolve_company_identifier_with_diagnostics, resolve_symbol
 from src.evaluation.valuation_audit import audit_valuation_model
+from src.evaluation.company_report_scorecard import build_company_report_scorecard
 from src.schemas.claim import ClaimItem
 from src.features.company_valuation import build_peer_comparison, perform_company_valuation
 from src.features.financial_metric_lineage import build_financial_metric_lineage, build_financial_metric_tables
@@ -188,6 +189,32 @@ def test_valuation_uses_optional_market_context():
     assert valuation["market_context"]["market_cap_billion"] == 3000.0
     assert valuation["market_gap"]["available"] is True
     assert valuation["valuation_model"]["target_price"] is not None
+
+
+def test_company_report_scorecard_aggregates_module_scores():
+    scorecard = build_company_report_scorecard(
+        evidence_records=[{"evidence_id": "ev_1", "authority_level": "primary"}],
+        financial_metrics={
+            "metric_count": 4,
+            "metrics": [
+                {"metric_name": "revenue", "source_table_id": "tbl", "source_evidence_id": "ev_1"},
+                {"metric_name": "net_income", "source_table_id": "tbl", "source_evidence_id": "ev_1"},
+                {"metric_name": "gross_margin", "source_table_id": "tbl", "source_evidence_id": "ev_1"},
+                {"metric_name": "free_cash_flow", "source_table_id": "tbl", "source_evidence_id": "ev_1"},
+            ],
+            "coverage": {
+                "required_metrics": ["revenue", "net_income", "gross_margin", "free_cash_flow"],
+                "present_metrics": ["revenue", "net_income", "gross_margin", "free_cash_flow"],
+            },
+        },
+        multimodal_consistency={"passed": True},
+        valuation={"valuation_available": False},
+        verification_report={"passed": True, "valuation_audit": {"passed": True, "errors": []}},
+        gap_resolution_trace=[],
+    )
+
+    assert scorecard["overall_score"] >= 0.9
+    assert scorecard["scores"]["authority_score"] == 1.0
 
 
 def test_financial_metric_lineage_outputs_core_metrics_with_sources():
