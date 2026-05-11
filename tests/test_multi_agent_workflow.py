@@ -403,6 +403,12 @@ def test_multi_agent_orchestrator_auto_reworks_failed_report(tmp_path):
     assert summary["revision_rounds"] == 1
     assert len(revision_history) == 1
     assert revision_history[0]["passed_after_round"] is True
+    gap_trace = [
+        json.loads(line)
+        for line in (tmp_path / "outputs" / "gap_resolution_trace.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert gap_trace
+    assert gap_trace[0]["route"] in {"research_browser", "deep_analyze", "final_answer"}
     assert json.loads((tmp_path / "outputs" / "conversation_context.json").read_text(encoding="utf-8"))["verifier_feedback"]
     assert sum(1 for item in trace if item["agent"] == "FinalAnswerAgent") == 2
     assert sum(1 for item in trace if item["agent"] == "VerifierAgent") == 2
@@ -706,6 +712,45 @@ def test_verifier_agent_reports_context_pack_meta():
     report = result.output["verification_report"]
     assert report["context_pack_meta"]["claims"]["packed_count"] == 3
     assert report["context_pack_meta"]["evidence"]["packed_ids"] == ["ev_0", "ev_1", "ev_2"]
+
+
+def test_verifier_agent_emits_structured_evidence_gaps():
+    verifier = VerifierAgent()
+    claim = ClaimItem(
+        claim_id="cl_missing_primary",
+        section_name="financial_analysis",
+        claim_text="AAPL revenue was 126.3B.",
+        evidence_ids=["ev_news"],
+        numeric_values={"revenue_billion": 126.3},
+        confidence=0.82,
+    )
+
+    result = verifier.execute_task(
+        AgentTask(
+            task_id="task_verify_gap",
+            task_type="verifier",
+            description="Verify gaps",
+            parameters={
+                "claims": [claim.to_dict()],
+                "markdown": "# Report\n\n## Executive Summary\n\n## Financial Analysis\n\nAAPL revenue [ev_news]\n\n## Risk Assessment\n",
+                "evidence_records": [
+                    {
+                        "evidence_id": "ev_news",
+                        "source_type": "news",
+                        "source_url": "https://example.com/news",
+                        "content": "Revenue 126.3B.",
+                    }
+                ],
+                "expected_symbol": "AAPL",
+                "period": "2025Q4",
+            },
+        )
+    )
+
+    gaps = result.output["verification_report"]["evidence_gaps"]
+    assert gaps
+    assert gaps[0]["gap_type"] == "missing_primary_evidence"
+    assert gaps[0]["blocking"] is True
 
 
 def test_browser_pdf_reader_extracts_text_and_table(monkeypatch, tmp_path):

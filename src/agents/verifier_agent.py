@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 from src.agents.base_agent import AgentTask, BaseAgent, TaskResult
 from src.agents.context_packer import build_revision_brief, pack_claims, pack_evidence_records, pack_markdown_excerpt
+from src.agents.evidence_gap import build_evidence_gaps
 from src.agents.verifier import Verifier
 from src.models import ModelAdapter
 from src.schemas.claim import ClaimItem
@@ -107,6 +108,12 @@ class VerifierAgent(BaseAgent):
         report["rework_required"] = not bool(report.get("passed", False))
         if report["rework_required"] and not report.get("fix_recommendations"):
             report["fix_recommendations"] = ["Revise unsupported numbers, missing citations, and section coverage before finalizing."]
+        report["evidence_gaps"] = build_evidence_gaps(
+            verification_report=report,
+            claims=[item.to_dict() for item in claims],
+            expected_symbol=expected_symbol,
+            period=str(task.parameters.get("period", "")),
+        )
         report["revision_brief"] = build_revision_brief(report)
 
         return self.success(task, {"verification_report": report})

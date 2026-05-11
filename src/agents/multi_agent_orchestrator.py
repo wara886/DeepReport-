@@ -18,6 +18,7 @@ from src.agents.conversation_memory import (
 from src.agents.deep_analyze_agent import DeepAnalyzeAgent
 from src.agents.deep_researcher_agent import DeepResearcherAgent
 from src.agents.final_answer_agent import FinalAnswerAgent
+from src.agents.gap_router import build_gap_resolution_trace
 from src.agents.planning_agent import PlanningAgent
 from src.agents.verifier_agent import VerifierAgent
 from src.data.company_universe import resolve_company_identifier, resolve_company_identifier_with_diagnostics
@@ -369,6 +370,7 @@ class MultiAgentOrchestrator:
                     "valuation": analysis_artifacts.get("valuation", {}) if isinstance(analysis_artifacts, dict) else {},
                     "conversation_brief": conversation_brief,
                     "expected_symbol": symbol,
+                    "period": period,
                     "entity_resolution": entity_resolution,
                 },
                 dependencies=["task_004_final_answer"],
@@ -376,6 +378,10 @@ class MultiAgentOrchestrator:
             ),
         )
         verification_report = verifier_result.output.get("verification_report", {})
+        gap_resolution_trace = build_gap_resolution_trace(
+            verification_report.get("evidence_gaps", []) if isinstance(verification_report, dict) else []
+        )
+        self._write_jsonl("gap_resolution_trace.jsonl", gap_resolution_trace)
         conversation.add_verifier_feedback(verification_report)
         conversation_brief = conversation.context_brief()
         conversation_path = self._write_json("conversation_context.json", conversation.to_dict())
@@ -405,6 +411,7 @@ class MultiAgentOrchestrator:
             "mcp_tool_count": len(self.mcp_manager.list_tools()),
             "retrieval_ranking_mode": retrieval_ranking_mode,
             "verification_passed": bool(verification_report.get("passed", False)),
+            "evidence_gap_count": len(verification_report.get("evidence_gaps", [])) if isinstance(verification_report, dict) else 0,
             "entity_resolution": entity_resolution,
             "conversation_brief_chars": len(conversation_brief),
             "total_duration_sec": round(time.perf_counter() - run_started_at, 3),
@@ -433,6 +440,7 @@ class MultiAgentOrchestrator:
             "report_json": str(report_json_path),
             "verification_report": str(verification_path),
             "conversation_context": str(conversation_path),
+            "gap_resolution_trace": str(self.output_dir / "gap_resolution_trace.jsonl"),
             "run_summary": str(summary_path),
         }
 
@@ -505,6 +513,7 @@ class MultiAgentOrchestrator:
             "chart_output_dir": str(self.output_dir / "charts"),
             "verification_report": {},
             "revision_history": [],
+            "gap_resolution_trace": [],
             "conversation_context": conversation.to_dict(),
             "conversation_brief": conversation_brief,
             "performance_profile": "fast" if fast else "default",
@@ -572,6 +581,7 @@ class MultiAgentOrchestrator:
         )
         self._write_json("multimodal_consistency.json", multimodal_consistency)
         self._write_json("revision_history.json", state.get("revision_history", []))
+        self._write_jsonl("gap_resolution_trace.jsonl", state.get("gap_resolution_trace", []))
         conversation_path = self._write_json("conversation_context.json", state.get("conversation_context", {}))
         mcp_manifest_path = self.mcp_manager.export_manifest(self.output_dir / "mcp_manifest.json")
         citations_md_path = self.output_dir / "citations.md"
@@ -621,6 +631,9 @@ class MultiAgentOrchestrator:
             "retrieval_ranking_mode": retrieval_ranking_mode,
             "revision_rounds": len(state.get("revision_history", [])) if isinstance(state.get("revision_history"), list) else 0,
             "verification_passed": bool(state.get("verification_report", {}).get("passed", False)),
+            "evidence_gap_count": len(state.get("verification_report", {}).get("evidence_gaps", []))
+            if isinstance(state.get("verification_report"), dict)
+            else 0,
             "entity_resolution": entity_resolution,
             "conversation_brief_chars": len(str(state.get("conversation_brief", ""))),
             "total_duration_sec": round(time.perf_counter() - run_started_at, 3),
@@ -646,6 +659,7 @@ class MultiAgentOrchestrator:
             "multimodal_consistency": str(self.output_dir / "multimodal_consistency.json"),
             "mcp_manifest": str(mcp_manifest_path),
             "revision_history": str(self.output_dir / "revision_history.json"),
+            "gap_resolution_trace": str(self.output_dir / "gap_resolution_trace.jsonl"),
             "conversation_context": str(conversation_path),
             "report_md": str(report_md_path),
             "report_html": str(report_html_path),
@@ -760,6 +774,7 @@ class MultiAgentOrchestrator:
                         "valuation": dict(state.get("analysis_artifacts", {})).get("valuation", {}),
                         "conversation_brief": refresh_conversation_brief(state),
                         "expected_symbol": str(state.get("symbol", "")),
+                        "period": str(state.get("period", "")),
                         "entity_resolution": dict(state.get("entity_resolution", {}))
                         if isinstance(state.get("entity_resolution"), dict)
                         else {},
@@ -770,6 +785,7 @@ class MultiAgentOrchestrator:
             )
             merge_task_result(state=state, task_type="verifier", result=verify_result)
             absorb_verifier_feedback(state)
+            _update_gap_trace_after_rework(state=state, round_index=round_index)
             state.setdefault("revision_history", []).append(
                 {
                     "round": round_index,
@@ -781,6 +797,12 @@ class MultiAgentOrchestrator:
     def _write_json(self, file_name: str, payload: Any) -> Path:
         path = self.output_dir / file_name
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
+
+    def _write_jsonl(self, file_name: str, rows: List[Dict[str, Any]]) -> Path:
+        path = self.output_dir / file_name
+        payload = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows if isinstance(row, dict))
+        path.write_text((payload + "\n") if payload else "", encoding="utf-8")
         return path
 
 
@@ -1013,6 +1035,7 @@ def enrich_task_parameters(
             params["valuation"] = dict(state.get("analysis_artifacts", {})).get("valuation", {})
         params.setdefault("conversation_brief", str(state.get("conversation_brief", "")))
         params.setdefault("expected_symbol", str(state.get("symbol", "")))
+        params.setdefault("period", str(state.get("period", "")))
         params.setdefault("entity_resolution", dict(state.get("entity_resolution", {})) if isinstance(state.get("entity_resolution"), dict) else {})
 
     return AgentTask(
@@ -1086,6 +1109,33 @@ def merge_task_result(state: Dict[str, Any], task_type: str, result: TaskResult)
         state["report_json"] = report_json
     elif task_type == "verifier":
         state["verification_report"] = result.output.get("verification_report", {})
+        gaps = state["verification_report"].get("evidence_gaps", []) if isinstance(state["verification_report"], dict) else []
+        if gaps or not state.get("gap_resolution_trace"):
+            state["gap_resolution_trace"] = build_gap_resolution_trace(gaps)
+
+
+def _update_gap_trace_after_rework(state: Dict[str, Any], round_index: int) -> None:
+    latest_gaps = {
+        str(gap.get("gap_id", ""))
+        for gap in state.get("verification_report", {}).get("evidence_gaps", [])
+        if isinstance(gap, dict)
+    } if isinstance(state.get("verification_report"), dict) else set()
+    updated = []
+    for item in state.get("gap_resolution_trace", []):
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        row["attempt"] = int(row.get("attempt", 0) or 0) + 1
+        row["last_round"] = round_index
+        row["status"] = "still_open" if row.get("gap_id") in latest_gaps else "resolved_or_downgraded"
+        updated.append(row)
+    new_gaps = [
+        gap
+        for gap in state.get("verification_report", {}).get("evidence_gaps", [])
+        if isinstance(gap, dict) and str(gap.get("gap_id", "")) not in {str(item.get("gap_id", "")) for item in updated}
+    ] if isinstance(state.get("verification_report"), dict) else []
+    updated.extend(build_gap_resolution_trace(new_gaps))
+    state["gap_resolution_trace"] = updated
 
 
 def agent_key_for_task(task_type: str) -> str:
