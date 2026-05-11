@@ -1,0 +1,57 @@
+sources:
+  market:
+    mode: mock
+    local_path: data/raw/mock/market.jsonl
+  financials:
+    mode: mock
+    local_path: data/raw/mock/financials.jsonl
+  news:
+    mode: mock
+    local_path: data/raw/mock/news.jsonl
+  filings:
+    mode: mock
+    local_path: data/raw/mock/filings.jsonl
+search:
+  tavily:
+    mode: remote
+    base_url: https://api.tavily.com/search
+    api_key_env: TAVILY_API_KEY
+    default_depth: basic
+    max_results: 5
+  serper:
+    mode: remote
+    base_url: https://google.serper.dev/search
+    api_key_env: SERPER_API_KEY
+    gl: us
+    hl: en
+    max_results: 5
+  metaso:
+    mode: remote_optional
+    base_url: https://api.metaso.com/v1/search
+    api_key_env: METASO_API_KEY
+    language: zh-cn
+    region: cn
+    max_results: 5
+    timeout: 20
+  sogou:
+    mode: remote_optional
+    base_url: https://api.sogou.com/v1/search
+    api_key_env: SOGOU_API_KEY
+    language: zh-cn
+    max_results: 5
+    timeout: 20
+  jina_reader:
+    mode: remote
+    base_url: https://r.jina.ai
+    timeout: 12
+    max_chars: 2500
+  pdf_reader:
+    mode: optional
+    timeout: 20
+    max_pages: 12
+    max_chars: 4000
+  playwright_browser:
+    mode: optional
+    timeout_ms: 12000
+    wait_until: domcontentloaded
+    max_chars: 3000

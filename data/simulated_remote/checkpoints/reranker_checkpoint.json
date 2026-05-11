@@ -1,0 +1,8 @@
+{
+  "model": "reranker-placeholder",
+  "trained": true,
+  "rows": 2,
+  "batch_size": 8,
+  "dataset_path": "data\\simulated_remote\\exports\\reranker\\dataset.parquet",
+  "positive_ratio": 0.5
+}

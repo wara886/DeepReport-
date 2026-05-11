@@ -1,0 +1,16 @@
+extends: app.yaml
+
+runtime:
+  mode: local_smoke
+  dry_run: true
+
+generation:
+  backend: mock
+  model_name: smoke-model
+  max_tokens: 256
+  temperature: 0.0
+
+report:
+  type: company
+  format: markdown
+

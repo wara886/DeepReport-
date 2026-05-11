@@ -1,0 +1,5 @@
+local_rag:
+  embedding_model_name: BAAI/bge-small-en-v1.5
+  reranker_model_name: BAAI/bge-reranker-base
+  retrieval_ranking_mode: hybrid_rerank
+  vector_store: chroma

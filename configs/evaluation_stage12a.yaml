@@ -1,0 +1,72 @@
+extends: local_real_smoke.yaml
+
+evaluation:
+  enabled: true
+  # Supports 5-10 samples in one run. If fewer samples exist, runs all discovered.
+  max_samples: 10
+  raw_root: data/raw/real_data
+  output_root: data/evaluation/stage12a
+  eval_case_path: data/eval_v1/cases.jsonl
+  # Optional manual sample list. If empty, auto-discover from raw_root/<symbol>/<period>/.
+  samples: []
+  required_headers:
+    - "## Executive Summary"
+    - "## Business Overview"
+    - "## Financial Analysis"
+    - "## Valuation"
+    - "## Risk Assessment"
+    - "## Conclusion"
+  verifier:
+    checkpoint_path: data/outputs/checkpoints/verifier_checkpoint.json
+  retrieval:
+    query: "revenue margin risk valuation guidance"
+    topk: 5
+    ranking_modes:
+      - bm25
+      - reranker
+    reranker_checkpoint_path: data/outputs/checkpoints/reranker_checkpoint.json
+  writer:
+    backend_config_path: configs/model_backends.yaml
+    compare_template_vs_real: true
+    real_backend: remote
+    local_remote_simulation:
+      enabled: true
+      host: 127.0.0.1
+      port: 18081
+      model_name: stage12a-remote-sim
+    diagnosis:
+      enabled: true
+    variants:
+      - id: bm25_template
+        writer_mode: template_only
+        writer_backend: mock
+        ranking_mode: bm25
+      - id: reranker_template
+        writer_mode: template_only
+        writer_backend: mock
+        ranking_mode: reranker
+      - id: bm25_real_writer
+        writer_mode: backend_generate
+        writer_backend: remote
+        ranking_mode: bm25
+  numeric_audit:
+    enabled: true
+    tolerance:
+      absolute: 0.2
+      relative: 0.02
+    metrics:
+      - key: revenue_growth_pct
+        display_name: Revenue Growth
+        unit: pct
+      - key: net_margin_pct
+        display_name: Net Margin
+        unit: pct
+      - key: roe_pct
+        display_name: ROE
+        unit: pct
+      - key: roa_pct
+        display_name: ROA
+        unit: pct
+      - key: operating_cash_flow_billion
+        display_name: Operating Cash Flow
+        unit: billion

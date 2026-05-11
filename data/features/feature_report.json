@@ -1,0 +1,15 @@
+{
+  "input_rows": 8,
+  "outputs": {
+    "financial_ratios_rows": 8,
+    "trend_analysis_rows": 2,
+    "peer_compare_rows": 2,
+    "risk_signals_rows": 2
+  },
+  "files": [
+    "data\\features\\financial_ratios.parquet",
+    "data\\features\\trend_analysis.parquet",
+    "data\\features\\peer_compare.parquet",
+    "data\\features\\risk_signals.parquet"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "input_rows": 6,
+  "outputs": {
+    "financial_ratios_rows": 6,
+    "trend_analysis_rows": 1,
+    "peer_compare_rows": 1,
+    "risk_signals_rows": 1
+  }
+}

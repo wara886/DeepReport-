@@ -1,0 +1,17 @@
+evaluation:
+  enabled: true
+  max_samples: 1
+  raw_root: data/raw/real_data
+  eval_case_path: data/eval_v1/cases.jsonl
+  multi_agent:
+    output_root: data/evaluation/multi_agent_bge_react_full_smoke
+    max_samples: 1
+    model_config_path: configs/model_backends.yaml
+    variants:
+      - id: dynamic_default_react
+        execution_mode: dynamic
+        fast: false
+        engines:
+          - local_real_data
+          - local_evidence
+        retrieval_ranking_mode: hybrid_rerank

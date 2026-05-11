@@ -1,0 +1,11 @@
+{
+  "symbol": "NVDA",
+  "period": "2025Q4",
+  "company_name": "NVIDIA Corporation",
+  "industry": "Semiconductors",
+  "sector": "Technology",
+  "description": "Designs accelerated computing hardware and software platforms.",
+  "as_of_date": "2026-01-31",
+  "source_url": "https://example.com/real/company/nvda",
+  "trust_level": "high"
+}

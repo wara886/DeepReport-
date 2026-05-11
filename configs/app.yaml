@@ -1,0 +1,13 @@
+project:
+  name: open-deepreport-plus
+  stage: 0
+
+runtime:
+  log_level: INFO
+  timezone: Asia/Shanghai
+
+paths:
+  data_root: data
+  output_root: data/outputs
+  report_root: data/reports
+
