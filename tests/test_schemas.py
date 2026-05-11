@@ -1,7 +1,9 @@
 from src.schemas.chart import ChartSpec
 from src.schemas.claim import ClaimItem
 from src.schemas.evidence import EvidenceItem
+from src.schemas.multimodal import ChartArtifact, VisualEvidence, audit_chart_lineage
 from src.schemas.report import ReportDocument, ReportSection
+from src.schemas.table import TableArtifact
 from src.schemas.task import ReportTask
 
 
@@ -111,3 +113,96 @@ def test_task_round_trip():
     obj = ReportTask.from_dict(raw)
     assert obj.to_dict() == raw
 
+
+def test_table_artifact_round_trip_and_lineage():
+    raw = {
+        "table_id": "tbl_income_2025q4",
+        "table_type": "income_statement",
+        "rows": [{"metric": "revenue", "value": 126.3}],
+        "columns": ["metric", "value"],
+        "source_evidence_id": "ev_10q",
+        "source_url": "https://www.sec.gov/aapl/10-q",
+        "source_page": "42",
+        "period": "2025Q4",
+        "currency": "USD",
+        "unit": "billion",
+        "extraction_method": "sec_companyfacts",
+        "confidence": 0.98,
+        "metadata": {"audited": False},
+    }
+
+    obj = TableArtifact.from_dict(raw)
+
+    assert obj.to_dict() == raw
+    assert obj.has_lineage() is True
+
+
+def test_chart_artifact_round_trip_and_lineage():
+    raw = {
+        "chart_id": "chart_revenue_profit",
+        "chart_type": "line",
+        "title": "Revenue and Profit Trend",
+        "input_table_ids": ["tbl_income_2025q4"],
+        "input_claim_ids": ["cl_revenue"],
+        "source_evidence_ids": ["ev_10q"],
+        "source_fields": ["revenue", "net_income"],
+        "output_path": "data/outputs/multi_agent/charts/revenue_profit.png",
+        "alt_text": "Revenue and net income both increased.",
+        "period": "2025Q4",
+        "unit": "USD billion",
+        "consistency_status": "unchecked",
+        "metadata": {"renderer": "pil"},
+    }
+
+    obj = ChartArtifact.from_dict(raw)
+
+    assert obj.to_dict() == raw
+    assert obj.has_lineage() is True
+
+
+def test_visual_evidence_round_trip():
+    raw = {
+        "evidence_id": "visual_10q_page_42",
+        "source_url": "https://www.sec.gov/aapl/10-q.pdf",
+        "image_path": "data/outputs/multi_agent/visual/page_42.png",
+        "page_number": 42,
+        "ocr_text": "Condensed consolidated statements of operations",
+        "linked_table_ids": ["tbl_income_2025q4"],
+        "linked_claim_ids": ["cl_revenue"],
+        "extraction_method": "pdf_render_ocr",
+        "confidence": 0.91,
+        "metadata": {"dpi": 180},
+    }
+
+    obj = VisualEvidence.from_dict(raw)
+
+    assert obj.to_dict() == raw
+
+
+def test_chart_lineage_audit_blocks_missing_lineage():
+    tables = [{"table_id": "tbl_income_2025q4"}]
+    evidence = [{"evidence_id": "ev_10q"}]
+    charts = [
+        {
+            "chart_id": "good_chart",
+            "chart_type": "line",
+            "title": "Revenue",
+            "input_table_ids": ["tbl_income_2025q4"],
+            "source_evidence_ids": ["ev_10q"],
+            "source_fields": ["revenue"],
+        },
+        {
+            "chart_id": "bad_chart",
+            "chart_type": "line",
+            "title": "Revenue",
+            "input_table_ids": [],
+            "source_evidence_ids": [],
+            "source_fields": [],
+        },
+    ]
+
+    audit = audit_chart_lineage(charts=charts, tables=tables, evidence_records=evidence)
+
+    assert audit["passed"] is False
+    assert audit["results"][0]["passed"] is True
+    assert "missing_input_table_ids" in audit["results"][1]["errors"]

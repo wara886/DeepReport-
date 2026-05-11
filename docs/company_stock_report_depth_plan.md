@@ -24,6 +24,13 @@
 
 当前立即执行 P0。P0 完成后才进入 P1，避免在没有权威来源分层的情况下继续堆图表和估值。
 
+### 当前执行进度
+
+| 模块 | 状态 | 最近提交 | 验证 |
+| --- | --- | --- | --- |
+| P0 SourceAuthorityPolicy | 已完成 | `751af9b` | `tests/test_source_authority_policy.py`、search/feature/multi-agent 核心回归通过 |
+| P1 Table/Chart/Visual schema | 已完成 | 待提交 | `tests/test_schemas.py` 加入 TableArtifact、ChartArtifact、VisualEvidence 和 chart lineage audit 回归 |
+
 ## 1. 目标研报形态
 
 一份合格的公司/个股研报至少包含以下章节：
