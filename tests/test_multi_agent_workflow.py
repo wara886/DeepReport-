@@ -230,6 +230,8 @@ def test_browser_analyze_final_verify_agents_can_share_one_model():
         )
     )
     assert analyze_result.metadata["llm_used"] is True
+    assert analyze_result.output["analysis_artifacts"]["financial_metrics"]["metric_count"] >= 1
+    assert isinstance(analyze_result.output["analysis_artifacts"]["tables"], list)
 
     claims = analyze_result.output["claims"]
     final_result = final.execute_task(
@@ -322,14 +324,20 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert result["report_md"].endswith("report.md")
     assert result["citations"].endswith("citations.json")
     assert result["charts"].endswith("charts.json")
+    assert result["financial_metrics"].endswith("financial_metrics.json")
+    assert result["tables"].endswith("tables.json")
     assert result["mcp_manifest"].endswith("mcp_manifest.json")
     assert result["conversation_context"].endswith("conversation_context.json")
     assert (tmp_path / "outputs" / "citations.json").exists()
     assert (tmp_path / "outputs" / "charts.json").exists()
+    assert (tmp_path / "outputs" / "financial_metrics.json").exists()
+    assert (tmp_path / "outputs" / "tables.json").exists()
     assert (tmp_path / "outputs" / "conversation_context.json").exists()
     assert (tmp_path / "outputs" / "mcp_manifest.json").exists()
     assert "## 参考来源" in (tmp_path / "reports" / "report.md").read_text(encoding="utf-8")
     assert "## 图表" in (tmp_path / "reports" / "report.md").read_text(encoding="utf-8")
+    financial_metrics = json.loads((tmp_path / "outputs" / "financial_metrics.json").read_text(encoding="utf-8"))
+    assert financial_metrics["metric_count"] >= 1
 
 
 def test_multi_agent_orchestrator_fast_mode_uses_smaller_context(tmp_path):

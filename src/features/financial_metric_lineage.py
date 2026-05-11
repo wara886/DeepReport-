@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+import pandas as pd
+
+from src.features.financial_ratios import build_financial_ratios
 from src.features.financial_statements import build_three_statement_view
 
 
@@ -175,7 +178,38 @@ def _coerce_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
     ):
         if key in record and key not in metrics:
             metrics[key] = record[key]
+
+    content_metrics = _extract_content_metrics(record)
+    for key, value in content_metrics.items():
+        if key not in metrics or _safe_float(metrics.get(key)) is None:
+            metrics[key] = value
     return {key: _safe_float(value) for key, value in metrics.items()}
+
+
+def _extract_content_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
+    content = str(record.get("content", "") or "")
+    if not content.strip():
+        return {}
+    parsed = build_financial_ratios(
+        pd.DataFrame(
+            [
+                {
+                    "sample_id": record.get("sample_id") or record.get("evidence_id") or "",
+                    "symbol": record.get("symbol", ""),
+                    "period": record.get("period", ""),
+                    "source_type": record.get("source_type", ""),
+                    "content": content,
+                }
+            ]
+        )
+    )
+    if parsed.empty:
+        return {}
+    return {
+        key: value
+        for key, value in parsed.iloc[0].to_dict().items()
+        if key.endswith("_billion") or key.endswith("_pct")
+    }
 
 
 def _table_id(symbol: str, period: str, evidence_id: str, table_type: str) -> str:

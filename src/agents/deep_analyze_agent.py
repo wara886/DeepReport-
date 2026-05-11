@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from src.agents.base_agent import AgentTask, BaseAgent, TaskResult
 from src.agents.react_loop import run_react_tool_loop
+from src.features.financial_metric_lineage import build_financial_metric_lineage, build_financial_metric_tables
 from src.models import ModelAdapter
 from src.schemas.claim import ClaimItem
 from src.tools import ToolRegistry, build_core_tool_registry
@@ -80,6 +81,8 @@ class DeepAnalyzeAgent(BaseAgent):
                 records=records,
                 raw_data_root=raw_data_root,
             )
+        financial_metric_lineage = build_financial_metric_lineage(records)
+        table_artifacts = build_financial_metric_tables(records)
         claims = build_rule_claims(
             records=records,
             ratio_rows=ratio_rows,
@@ -92,6 +95,8 @@ class DeepAnalyzeAgent(BaseAgent):
             "ratio_row_count": len(ratio_rows),
             "trend_row_count": len(trend_rows),
             "statement_line_item_count": int(statement_view.get("coverage", {}).get("line_item_count", 0)),
+            "financial_metric_count": int(financial_metric_lineage.get("metric_count", 0) or 0),
+            "table_artifact_count": len(table_artifacts),
             "peer_count": int(peer_context.get("peer_count", 0) or 0),
             "valuation_available": bool(valuation.get("valuation_available", False)),
             "llm_used": False,
@@ -135,6 +140,8 @@ class DeepAnalyzeAgent(BaseAgent):
                     "ratio_rows": ratio_rows,
                     "trend_rows": trend_rows,
                     "statement_view": statement_view,
+                    "financial_metrics": financial_metric_lineage,
+                    "tables": table_artifacts,
                     "peer_context": peer_context,
                     "valuation": valuation,
                 },

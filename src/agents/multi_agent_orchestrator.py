@@ -254,6 +254,14 @@ class MultiAgentOrchestrator:
         analysis_artifacts = analyze_result.output.get("analysis_artifacts", {})
         self._write_json("claims.json", claims)
         self._write_json("analysis_artifacts.json", analysis_artifacts)
+        financial_metrics_path = self._write_json(
+            "financial_metrics.json",
+            analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
+        tables_path = self._write_json(
+            "tables.json",
+            analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
+        )
 
         final_result = self._execute(
             "final_answer",
@@ -383,6 +391,8 @@ class MultiAgentOrchestrator:
             "evidence": str(self.output_dir / "evidence.json"),
             "claims": str(self.output_dir / "claims.json"),
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
+            "financial_metrics": str(financial_metrics_path),
+            "tables": str(tables_path),
             "citations": str(self.output_dir / "citations.json"),
             "citations_md": str(citations_md_path),
             "charts": str(self.output_dir / "charts.json"),
@@ -491,6 +501,15 @@ class MultiAgentOrchestrator:
         self._write_json("evidence.json", evidence_records)
         self._write_json("claims.json", claims)
         self._write_json("analysis_artifacts.json", state.get("analysis_artifacts", {}))
+        analysis_artifacts = state.get("analysis_artifacts", {})
+        financial_metrics_path = self._write_json(
+            "financial_metrics.json",
+            analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
+        tables_path = self._write_json(
+            "tables.json",
+            analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
+        )
         self._write_json("citations.json", state.get("citations", []))
         self._write_json("charts.json", state.get("charts", []))
         chart_consistency = audit_chart_consistency(
@@ -563,6 +582,8 @@ class MultiAgentOrchestrator:
             "evidence": str(self.output_dir / "evidence.json"),
             "claims": str(self.output_dir / "claims.json"),
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
+            "financial_metrics": str(financial_metrics_path),
+            "tables": str(tables_path),
             "citations": str(self.output_dir / "citations.json"),
             "citations_md": str(citations_md_path),
             "charts": str(self.output_dir / "charts.json"),
