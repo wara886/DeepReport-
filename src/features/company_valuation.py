@@ -69,6 +69,7 @@ def perform_company_valuation(
         net_income = revenue * net_margin / 100
     free_cash_flow = _safe_float(target.get("free_cash_flow_billion")) or max(net_income * 0.75, 0.0)
     market_context = _market_context_from_records(records=records or [], symbol=symbol, period=period)
+    shares_outstanding = _safe_float(market_context.get("shares_outstanding_billion"))
     revenue_growth = _safe_float(target.get("revenue_growth_pct")) or 0.0
     net_margin = _safe_float(target.get("net_margin_pct")) or 0.0
     roe = _safe_float(target.get("roe_pct")) or 0.0
@@ -90,6 +91,31 @@ def perform_company_valuation(
     dcf_value = _dcf_value(free_cash_flow=free_cash_flow, growth_rate=fcf_growth, discount_rate=discount_rate, terminal_growth=terminal_growth)
     values = [value for value in [pe_value, ps_value, dcf_value] if value > 0]
     blended_value = sum(values) / len(values) if values else 0.0
+    relative_valuation = _relative_valuation_model(
+        symbol=symbol,
+        period=period,
+        revenue=revenue,
+        net_income=net_income,
+        pe_multiple=pe_multiple,
+        ps_multiple=ps_multiple,
+        shares_outstanding_billion=shares_outstanding,
+    )
+    dcf_model = _build_dcf_model(
+        symbol=symbol,
+        period=period,
+        free_cash_flow=free_cash_flow,
+        growth_rate=fcf_growth,
+        discount_rate=discount_rate,
+        terminal_growth=terminal_growth,
+        shares_outstanding_billion=shares_outstanding,
+    )
+    valuation_sensitivity = _valuation_sensitivity(
+        free_cash_flow=free_cash_flow,
+        growth_rate=fcf_growth,
+        discount_rate=discount_rate,
+        terminal_growth=terminal_growth,
+        shares_outstanding_billion=shares_outstanding,
+    )
 
     recommendation = _recommendation(
         revenue_growth=revenue_growth,
@@ -122,6 +148,20 @@ def perform_company_valuation(
         "market_context": market_context,
         "market_gap": _market_gap(blended_value=blended_value, market_context=market_context),
         "peer_context": peer_payload,
+        "relative_valuation": relative_valuation,
+        "dcf_model": dcf_model,
+        "valuation_model": {
+            "symbol": symbol,
+            "period": period,
+            "currency": "USD",
+            "unit": "billion",
+            "relative_valuation": relative_valuation,
+            "dcf_model": dcf_model,
+            "blended_equity_value_billion": round(blended_value, 2),
+            "target_price": _target_price(blended_value, shares_outstanding),
+        },
+        "valuation_assumptions": dcf_model["assumptions"],
+        "valuation_sensitivity": valuation_sensitivity,
         "recommendation": recommendation,
         "assumptions": [
             "估值为规则模型生成的第一版相对估值/DCF 区间，不构成投资建议。",
@@ -256,6 +296,127 @@ def _dcf_value(free_cash_flow: float, growth_rate: float, discount_rate: float, 
     terminal = projected[-1] * (1 + terminal_growth) / (discount_rate - terminal_growth)
     discounted_terminal = terminal / ((1 + discount_rate) ** 5)
     return sum(discounted) + discounted_terminal
+
+
+def _relative_valuation_model(
+    symbol: str,
+    period: str,
+    revenue: float,
+    net_income: float,
+    pe_multiple: float,
+    ps_multiple: float,
+    shares_outstanding_billion: float | None,
+) -> Dict[str, Any]:
+    pe_value = net_income * pe_multiple
+    ps_value = revenue * ps_multiple
+    return {
+        "symbol": symbol,
+        "period": period,
+        "currency": "USD",
+        "unit": "billion",
+        "multiples": {
+            "pe": {
+                "numerator": "equity_value_billion",
+                "denominator": "net_income_billion",
+                "denominator_value": round(net_income, 6),
+                "multiple": pe_multiple,
+                "equity_value_billion": round(pe_value, 2),
+                "target_price": _target_price(pe_value, shares_outstanding_billion),
+            },
+            "ps": {
+                "numerator": "equity_value_billion",
+                "denominator": "revenue_billion",
+                "denominator_value": round(revenue, 6),
+                "multiple": ps_multiple,
+                "equity_value_billion": round(ps_value, 2),
+                "target_price": _target_price(ps_value, shares_outstanding_billion),
+            },
+        },
+        "scenario_values": {
+            "bear": round(min(pe_value, ps_value) * 0.9, 2),
+            "base": round((pe_value + ps_value) / 2, 2),
+            "bull": round(max(pe_value, ps_value) * 1.1, 2),
+        },
+    }
+
+
+def _build_dcf_model(
+    symbol: str,
+    period: str,
+    free_cash_flow: float,
+    growth_rate: float,
+    discount_rate: float,
+    terminal_growth: float,
+    shares_outstanding_billion: float | None,
+) -> Dict[str, Any]:
+    forecast = []
+    pv_fcf = 0.0
+    for year in range(1, 6):
+        fcf = free_cash_flow * ((1 + growth_rate) ** year)
+        pv = fcf / ((1 + discount_rate) ** year)
+        pv_fcf += pv
+        forecast.append({"year": year, "free_cash_flow_billion": round(fcf, 6), "present_value_billion": round(pv, 6)})
+    terminal_value = forecast[-1]["free_cash_flow_billion"] * (1 + terminal_growth) / (discount_rate - terminal_growth)
+    pv_terminal = terminal_value / ((1 + discount_rate) ** 5)
+    enterprise_value = pv_fcf + pv_terminal
+    net_debt = 0.0
+    equity_value = enterprise_value - net_debt
+    return {
+        "symbol": symbol,
+        "period": period,
+        "currency": "USD",
+        "unit": "billion",
+        "assumptions": {
+            "base_free_cash_flow_billion": round(free_cash_flow, 6),
+            "fcf_growth": round(growth_rate, 6),
+            "discount_rate": round(discount_rate, 6),
+            "terminal_growth": round(terminal_growth, 6),
+            "forecast_years": 5,
+            "net_debt_billion": net_debt,
+            "shares_outstanding_billion": shares_outstanding_billion,
+        },
+        "forecast": forecast,
+        "terminal_value_billion": round(terminal_value, 6),
+        "pv_terminal_value_billion": round(pv_terminal, 6),
+        "enterprise_value_billion": round(enterprise_value, 6),
+        "equity_value_billion": round(equity_value, 6),
+        "target_price": _target_price(equity_value, shares_outstanding_billion),
+    }
+
+
+def _valuation_sensitivity(
+    free_cash_flow: float,
+    growth_rate: float,
+    discount_rate: float,
+    terminal_growth: float,
+    shares_outstanding_billion: float | None,
+) -> Dict[str, Any]:
+    scenarios = {}
+    for name, growth_delta, discount_delta in [
+        ("bear", -0.02, 0.01),
+        ("base", 0.0, 0.0),
+        ("bull", 0.02, -0.01),
+    ]:
+        value = _dcf_value(
+            free_cash_flow=free_cash_flow,
+            growth_rate=max(growth_rate + growth_delta, 0.0),
+            discount_rate=max(discount_rate + discount_delta, terminal_growth + 0.01),
+            terminal_growth=terminal_growth,
+        )
+        scenarios[name] = {
+            "equity_value_billion": round(value, 2),
+            "target_price": _target_price(value, shares_outstanding_billion),
+        }
+    return {
+        "scenario_values": scenarios,
+        "directional_check": scenarios["bull"]["equity_value_billion"] >= scenarios["base"]["equity_value_billion"] >= scenarios["bear"]["equity_value_billion"],
+    }
+
+
+def _target_price(equity_value_billion: float, shares_outstanding_billion: float | None) -> float | None:
+    if not shares_outstanding_billion:
+        return None
+    return round(equity_value_billion / shares_outstanding_billion, 4)
 
 
 def _recommendation(revenue_growth: float, net_margin: float, roe: float, peer_growth: float, peer_margin: float) -> str:

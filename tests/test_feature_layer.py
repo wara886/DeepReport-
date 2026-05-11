@@ -4,6 +4,7 @@ import pandas as pd
 
 from src.agents.deep_analyze_agent import apply_evidence_gate
 from src.data.company_universe import resolve_company_identifier_with_diagnostics, resolve_symbol
+from src.evaluation.valuation_audit import audit_valuation_model
 from src.schemas.claim import ClaimItem
 from src.features.company_valuation import build_peer_comparison, perform_company_valuation
 from src.features.financial_metric_lineage import build_financial_metric_lineage, build_financial_metric_tables
@@ -161,6 +162,9 @@ def test_peer_comparison_and_valuation_use_local_real_data():
     assert valuation["valuation_available"] is True
     assert valuation["blended_equity_value_billion"] > 0
     assert valuation["recommendation"] in {"积极关注", "中性偏积极", "中性观察"}
+    assert valuation["valuation_model"]["dcf_model"]["enterprise_value_billion"] > 0
+    assert valuation["valuation_sensitivity"]["directional_check"] is True
+    assert audit_valuation_model(valuation)["passed"] is True
 
 
 def test_valuation_uses_optional_market_context():
@@ -183,6 +187,7 @@ def test_valuation_uses_optional_market_context():
 
     assert valuation["market_context"]["market_cap_billion"] == 3000.0
     assert valuation["market_gap"]["available"] is True
+    assert valuation["valuation_model"]["target_price"] is not None
 
 
 def test_financial_metric_lineage_outputs_core_metrics_with_sources():

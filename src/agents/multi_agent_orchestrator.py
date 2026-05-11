@@ -263,6 +263,18 @@ class MultiAgentOrchestrator:
             "tables.json",
             analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
         )
+        valuation_model_path = self._write_json(
+            "valuation_model.json",
+            analysis_artifacts.get("valuation_model", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
+        valuation_assumptions_path = self._write_json(
+            "valuation_assumptions.json",
+            analysis_artifacts.get("valuation_assumptions", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
+        valuation_sensitivity_path = self._write_json(
+            "valuation_sensitivity.json",
+            analysis_artifacts.get("valuation_sensitivity", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
 
         final_result = self._execute(
             "final_answer",
@@ -354,6 +366,7 @@ class MultiAgentOrchestrator:
                     "evidence_records": evidence_records,
                     "charts": charts,
                     "tables": analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
+                    "valuation": analysis_artifacts.get("valuation", {}) if isinstance(analysis_artifacts, dict) else {},
                     "conversation_brief": conversation_brief,
                     "expected_symbol": symbol,
                     "entity_resolution": entity_resolution,
@@ -406,6 +419,9 @@ class MultiAgentOrchestrator:
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
             "financial_metrics": str(financial_metrics_path),
             "tables": str(tables_path),
+            "valuation_model": str(valuation_model_path),
+            "valuation_assumptions": str(valuation_assumptions_path),
+            "valuation_sensitivity": str(valuation_sensitivity_path),
             "citations": str(self.output_dir / "citations.json"),
             "citations_md": str(citations_md_path),
             "charts": str(self.output_dir / "charts.json"),
@@ -524,6 +540,18 @@ class MultiAgentOrchestrator:
             "tables.json",
             analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
         )
+        valuation_model_path = self._write_json(
+            "valuation_model.json",
+            analysis_artifacts.get("valuation_model", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
+        valuation_assumptions_path = self._write_json(
+            "valuation_assumptions.json",
+            analysis_artifacts.get("valuation_assumptions", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
+        valuation_sensitivity_path = self._write_json(
+            "valuation_sensitivity.json",
+            analysis_artifacts.get("valuation_sensitivity", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
         self._write_json("citations.json", state.get("citations", []))
         self._write_json("charts.json", state.get("charts", []))
         chart_consistency = audit_chart_consistency(
@@ -608,6 +636,9 @@ class MultiAgentOrchestrator:
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
             "financial_metrics": str(financial_metrics_path),
             "tables": str(tables_path),
+            "valuation_model": str(valuation_model_path),
+            "valuation_assumptions": str(valuation_assumptions_path),
+            "valuation_sensitivity": str(valuation_sensitivity_path),
             "citations": str(self.output_dir / "citations.json"),
             "citations_md": str(citations_md_path),
             "charts": str(self.output_dir / "charts.json"),
@@ -726,6 +757,7 @@ class MultiAgentOrchestrator:
                         "evidence_records": list(state.get("evidence_records", [])),
                         "charts": list(state.get("charts", [])),
                         "tables": dict(state.get("analysis_artifacts", {})).get("tables", []),
+                        "valuation": dict(state.get("analysis_artifacts", {})).get("valuation", {}),
                         "conversation_brief": refresh_conversation_brief(state),
                         "expected_symbol": str(state.get("symbol", "")),
                         "entity_resolution": dict(state.get("entity_resolution", {}))
@@ -977,6 +1009,8 @@ def enrich_task_parameters(
             params["charts"] = list(state.get("charts", []))
         if not params.get("tables"):
             params["tables"] = dict(state.get("analysis_artifacts", {})).get("tables", [])
+        if not params.get("valuation"):
+            params["valuation"] = dict(state.get("analysis_artifacts", {})).get("valuation", {})
         params.setdefault("conversation_brief", str(state.get("conversation_brief", "")))
         params.setdefault("expected_symbol", str(state.get("symbol", "")))
         params.setdefault("entity_resolution", dict(state.get("entity_resolution", {})) if isinstance(state.get("entity_resolution"), dict) else {})

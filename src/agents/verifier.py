@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from src.data.source_authority import grade_source_authority
 from src.evaluation.multimodal_consistency import audit_multimodal_consistency
+from src.evaluation.valuation_audit import audit_valuation_model
 from src.schemas.claim import ClaimItem
 
 
@@ -21,6 +22,7 @@ class Verifier:
         evidence_records: List[Dict[str, Any]] | None = None,
         charts: List[Dict[str, Any]] | None = None,
         tables: List[Dict[str, Any]] | None = None,
+        valuation: Dict[str, Any] | None = None,
         use_candidate_grounded_rule: bool = False,
         expected_symbol: str | None = None,
     ) -> Dict[str, object]:
@@ -29,6 +31,7 @@ class Verifier:
         evidence_records = evidence_records or []
         charts = charts or []
         tables = tables or []
+        valuation = valuation or {}
 
         if not claims:
             errors.append("No claims generated.")
@@ -82,6 +85,9 @@ class Verifier:
         )
         if charts and not multimodal_consistency.get("passed", False):
             errors.append("Multimodal consistency check failed.")
+        valuation_audit = audit_valuation_model(valuation)
+        if valuation and not valuation_audit.get("passed", False):
+            errors.append("Valuation reproducibility check failed.")
 
         return {
             "passed": len(errors) == 0,
@@ -93,6 +99,7 @@ class Verifier:
             "grounded_claim_count": grounded_count,
             "expected_symbol": str(expected_symbol or "").upper(),
             "multimodal_consistency": multimodal_consistency,
+            "valuation_audit": valuation_audit,
         }
 
 

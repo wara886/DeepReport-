@@ -39,6 +39,7 @@ class VerifierAgent(BaseAgent):
         evidence_records = task.parameters.get("evidence_records", [])
         charts = task.parameters.get("charts", [])
         tables = task.parameters.get("tables", [])
+        valuation = task.parameters.get("valuation", {})
         conversation_brief = str(task.parameters.get("conversation_brief", "")).strip()
         expected_symbol = str(task.parameters.get("expected_symbol", "")).strip().upper()
         entity_resolution = task.parameters.get("entity_resolution", {})
@@ -48,6 +49,7 @@ class VerifierAgent(BaseAgent):
             evidence_records=evidence_records if isinstance(evidence_records, list) else [],
             charts=charts if isinstance(charts, list) else [],
             tables=tables if isinstance(tables, list) else [],
+            valuation=valuation if isinstance(valuation, dict) else {},
             expected_symbol=expected_symbol,
         )
         report: Dict[str, Any] = dict(rule_report)

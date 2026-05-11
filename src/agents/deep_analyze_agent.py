@@ -83,6 +83,9 @@ class DeepAnalyzeAgent(BaseAgent):
             )
         financial_metric_lineage = build_financial_metric_lineage(records)
         table_artifacts = build_financial_metric_tables(records)
+        valuation_model = valuation.get("valuation_model", {}) if isinstance(valuation, dict) else {}
+        valuation_assumptions = valuation.get("valuation_assumptions", {}) if isinstance(valuation, dict) else {}
+        valuation_sensitivity = valuation.get("valuation_sensitivity", {}) if isinstance(valuation, dict) else {}
         claims = build_rule_claims(
             records=records,
             ratio_rows=ratio_rows,
@@ -144,6 +147,9 @@ class DeepAnalyzeAgent(BaseAgent):
                     "tables": table_artifacts,
                     "peer_context": peer_context,
                     "valuation": valuation,
+                    "valuation_model": valuation_model,
+                    "valuation_assumptions": valuation_assumptions,
+                    "valuation_sensitivity": valuation_sensitivity,
                 },
             },
             metadata=metadata,
