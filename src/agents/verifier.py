@@ -7,6 +7,7 @@ import re
 from typing import Any, Dict, List
 
 from src.data.source_authority import grade_source_authority
+from src.evaluation.multimodal_consistency import audit_multimodal_consistency
 from src.schemas.claim import ClaimItem
 
 
@@ -19,6 +20,7 @@ class Verifier:
         markdown: str,
         evidence_records: List[Dict[str, Any]] | None = None,
         charts: List[Dict[str, Any]] | None = None,
+        tables: List[Dict[str, Any]] | None = None,
         use_candidate_grounded_rule: bool = False,
         expected_symbol: str | None = None,
     ) -> Dict[str, object]:
@@ -26,6 +28,7 @@ class Verifier:
         warnings: List[str] = []
         evidence_records = evidence_records or []
         charts = charts or []
+        tables = tables or []
 
         if not claims:
             errors.append("No claims generated.")
@@ -69,6 +72,16 @@ class Verifier:
         _check_evidence_support(claims=claims, evidence_records=evidence_records, markdown=markdown, errors=errors, warnings=warnings)
         _check_primary_source_support(claims=claims, evidence_records=evidence_records, errors=errors, warnings=warnings)
         _check_chart_support(claims=claims, evidence_records=evidence_records, charts=charts, warnings=warnings)
+        multimodal_consistency = audit_multimodal_consistency(
+            charts=charts,
+            tables=tables,
+            claims=[claim.to_dict() for claim in claims],
+            evidence_records=evidence_records,
+            markdown=markdown,
+            require_files=False,
+        )
+        if charts and not multimodal_consistency.get("passed", False):
+            errors.append("Multimodal consistency check failed.")
 
         return {
             "passed": len(errors) == 0,
@@ -79,6 +92,7 @@ class Verifier:
             "claim_count": len(claims),
             "grounded_claim_count": grounded_count,
             "expected_symbol": str(expected_symbol or "").upper(),
+            "multimodal_consistency": multimodal_consistency,
         }
 
 

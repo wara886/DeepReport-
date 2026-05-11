@@ -28,12 +28,12 @@ class ChartArtifact:
     def from_dict(cls, data: Dict[str, Any]) -> "ChartArtifact":
         return cls(
             chart_id=str(data["chart_id"]),
-            chart_type=str(data["chart_type"]),
-            title=str(data["title"]),
-            input_table_ids=[str(item) for item in data.get("input_table_ids", [])],
-            input_claim_ids=[str(item) for item in data.get("input_claim_ids", [])],
-            source_evidence_ids=[str(item) for item in data.get("source_evidence_ids", [])],
-            source_fields=[str(item) for item in data.get("source_fields", [])],
+            chart_type=str(data.get("chart_type", "")),
+            title=str(data.get("title", "")),
+            input_table_ids=_str_list(data.get("input_table_ids", [])),
+            input_claim_ids=_str_list(data.get("input_claim_ids", [])),
+            source_evidence_ids=_str_list(data.get("source_evidence_ids", [])),
+            source_fields=_str_list(data.get("source_fields", [])),
             output_path=str(data.get("output_path", "")),
             alt_text=str(data.get("alt_text", "")),
             period=str(data.get("period", "")),
@@ -60,7 +60,7 @@ class ChartArtifact:
         }
 
     def has_lineage(self) -> bool:
-        return bool(self.input_table_ids and self.source_fields and (self.source_evidence_ids or self.input_claim_ids))
+        return bool((self.input_table_ids or self.input_claim_ids or self.source_evidence_ids) and self.source_fields)
 
 
 @dataclass
@@ -129,12 +129,13 @@ def audit_chart_lineage(
         missing_tables = [table_id for table_id in chart.input_table_ids if table_id not in table_ids]
         missing_evidence = [evidence_id for evidence_id in chart.source_evidence_ids if evidence_id not in evidence_ids]
         errors: List[str] = []
-        if not chart.input_table_ids:
+        if not chart.input_table_ids and not chart.input_claim_ids and not chart.source_evidence_ids:
+            errors.append("missing_table_or_claim_lineage")
             errors.append("missing_input_table_ids")
         if not chart.source_fields:
             errors.append("missing_source_fields")
-        if not chart.source_evidence_ids and not chart.input_claim_ids:
-            errors.append("missing_evidence_or_claim_lineage")
+        if (chart.input_table_ids or chart.input_claim_ids) and not chart.source_evidence_ids:
+            errors.append("missing_source_evidence_ids")
         if missing_tables:
             errors.append("missing_tables:" + ",".join(missing_tables))
         if missing_evidence:
@@ -151,3 +152,13 @@ def audit_chart_lineage(
         "chart_count": len(results),
         "results": results,
     }
+
+
+def _str_list(value: Any) -> List[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    return [str(value)]

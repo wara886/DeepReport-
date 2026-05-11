@@ -21,6 +21,7 @@ from src.agents.final_answer_agent import FinalAnswerAgent
 from src.agents.planning_agent import PlanningAgent
 from src.agents.verifier_agent import VerifierAgent
 from src.data.company_universe import resolve_company_identifier, resolve_company_identifier_with_diagnostics
+from src.evaluation.multimodal_consistency import audit_multimodal_consistency
 from src.models import ModelAdapter
 from src.report import (
     append_compliance_disclosures,
@@ -286,6 +287,7 @@ class MultiAgentOrchestrator:
             claims=claims,
             evidence_records=evidence_records,
             output_dir=self.output_dir / "charts",
+            tables=analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
         )
         markdown = attach_charts_to_markdown(markdown, charts)
         html = polish_report_html(attach_charts_to_html(html, charts))
@@ -321,6 +323,15 @@ class MultiAgentOrchestrator:
             require_files=True,
         )
         self._write_json("chart_consistency.json", chart_consistency)
+        multimodal_consistency = audit_multimodal_consistency(
+            charts=charts,
+            tables=analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
+            claims=claims,
+            evidence_records=evidence_records,
+            markdown=markdown,
+            require_files=True,
+        )
+        self._write_json("multimodal_consistency.json", multimodal_consistency)
         mcp_manifest_path = self.mcp_manager.export_manifest(self.output_dir / "mcp_manifest.json")
         citations_md_path = self.output_dir / "citations.md"
         citations_md_path.write_text(citation_artifacts["citations_markdown"], encoding="utf-8")
@@ -342,6 +353,7 @@ class MultiAgentOrchestrator:
                     "markdown": markdown,
                     "evidence_records": evidence_records,
                     "charts": charts,
+                    "tables": analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
                     "conversation_brief": conversation_brief,
                     "expected_symbol": symbol,
                     "entity_resolution": entity_resolution,
@@ -376,6 +388,7 @@ class MultiAgentOrchestrator:
             "claim_count": len(claims) if isinstance(claims, list) else 0,
             "citation_count": len(citations) if isinstance(citations, list) else 0,
             "chart_count": len(charts) if isinstance(charts, list) else 0,
+            "multimodal_consistency_passed": bool(multimodal_consistency.get("passed", False)),
             "mcp_tool_count": len(self.mcp_manager.list_tools()),
             "retrieval_ranking_mode": retrieval_ranking_mode,
             "verification_passed": bool(verification_report.get("passed", False)),
@@ -397,6 +410,7 @@ class MultiAgentOrchestrator:
             "citations_md": str(citations_md_path),
             "charts": str(self.output_dir / "charts.json"),
             "chart_consistency": str(self.output_dir / "chart_consistency.json"),
+            "multimodal_consistency": str(self.output_dir / "multimodal_consistency.json"),
             "mcp_manifest": str(mcp_manifest_path),
             "report_md": str(report_md_path),
             "report_html": str(report_html_path),
@@ -520,6 +534,15 @@ class MultiAgentOrchestrator:
             require_files=True,
         )
         self._write_json("chart_consistency.json", chart_consistency)
+        multimodal_consistency = audit_multimodal_consistency(
+            charts=list(state.get("charts", [])),
+            tables=analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
+            claims=list(claims),
+            evidence_records=list(evidence_records),
+            markdown=str(state.get("markdown", "")),
+            require_files=True,
+        )
+        self._write_json("multimodal_consistency.json", multimodal_consistency)
         self._write_json("revision_history.json", state.get("revision_history", []))
         conversation_path = self._write_json("conversation_context.json", state.get("conversation_context", {}))
         mcp_manifest_path = self.mcp_manager.export_manifest(self.output_dir / "mcp_manifest.json")
@@ -564,6 +587,7 @@ class MultiAgentOrchestrator:
             "claim_count": len(claims) if isinstance(claims, list) else 0,
             "citation_count": len(state.get("citations", [])) if isinstance(state.get("citations"), list) else 0,
             "chart_count": len(state.get("charts", [])) if isinstance(state.get("charts"), list) else 0,
+            "multimodal_consistency_passed": bool(multimodal_consistency.get("passed", False)),
             "mcp_tool_count": len(self.mcp_manager.list_tools()),
             "search_engines": state.get("search_meta", {}).get("engines", []),
             "retrieval_ranking_mode": retrieval_ranking_mode,
@@ -588,6 +612,7 @@ class MultiAgentOrchestrator:
             "citations_md": str(citations_md_path),
             "charts": str(self.output_dir / "charts.json"),
             "chart_consistency": str(self.output_dir / "chart_consistency.json"),
+            "multimodal_consistency": str(self.output_dir / "multimodal_consistency.json"),
             "mcp_manifest": str(mcp_manifest_path),
             "revision_history": str(self.output_dir / "revision_history.json"),
             "conversation_context": str(conversation_path),
@@ -700,6 +725,7 @@ class MultiAgentOrchestrator:
                         "markdown": str(state.get("markdown", "")),
                         "evidence_records": list(state.get("evidence_records", [])),
                         "charts": list(state.get("charts", [])),
+                        "tables": dict(state.get("analysis_artifacts", {})).get("tables", []),
                         "conversation_brief": refresh_conversation_brief(state),
                         "expected_symbol": str(state.get("symbol", "")),
                         "entity_resolution": dict(state.get("entity_resolution", {}))
@@ -949,6 +975,8 @@ def enrich_task_parameters(
             params["evidence_records"] = list(state.get("evidence_records", []))
         if not params.get("charts"):
             params["charts"] = list(state.get("charts", []))
+        if not params.get("tables"):
+            params["tables"] = dict(state.get("analysis_artifacts", {})).get("tables", [])
         params.setdefault("conversation_brief", str(state.get("conversation_brief", "")))
         params.setdefault("expected_symbol", str(state.get("symbol", "")))
         params.setdefault("entity_resolution", dict(state.get("entity_resolution", {})) if isinstance(state.get("entity_resolution"), dict) else {})
@@ -993,6 +1021,7 @@ def merge_task_result(state: Dict[str, Any], task_type: str, result: TaskResult)
             claims=list(state.get("claims", [])),
             evidence_records=list(state.get("evidence_records", [])),
             output_dir=str(state.get("chart_output_dir") or "data/outputs/multi_agent/charts"),
+            tables=dict(state.get("analysis_artifacts", {})).get("tables", []),
         )
         markdown = attach_charts_to_markdown(markdown, charts)
         html = polish_report_html(attach_charts_to_html(html, charts))

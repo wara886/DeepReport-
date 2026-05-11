@@ -14,12 +14,14 @@ def generate_report_charts(
     claims: List[Dict[str, Any]],
     evidence_records: List[Dict[str, Any]],
     output_dir: str | Path,
-) -> List[Dict[str, str]]:
+    tables: List[Dict[str, Any]] | None = None,
+) -> List[Dict[str, Any]]:
     """Render simple report charts directly from claims and evidence records."""
 
     chart_dir = Path(output_dir)
     chart_dir.mkdir(parents=True, exist_ok=True)
-    charts: List[Dict[str, str]] = []
+    charts: List[Dict[str, Any]] = []
+    table_ids = _table_ids(tables or [])
 
     metric_points = _metric_points_from_claims(claims)
     if metric_points:
@@ -35,6 +37,9 @@ def generate_report_charts(
                 "title": "关键指标",
                 "output_path": str(path),
                 "source_fields": "claims.numeric_values",
+                "input_table_ids": table_ids,
+                "input_claim_ids": _claim_ids_with_numeric_values(claims),
+                "source_evidence_ids": _evidence_ids_from_claims(claims),
                 "chart_js": _chart_js_payload(chart_type="bar", points=metric_points[:8], label="指标值"),
             }
         )
@@ -53,6 +58,8 @@ def generate_report_charts(
                 "title": "结论置信度",
                 "output_path": str(path),
                 "source_fields": "claims.confidence",
+                "input_claim_ids": _claim_ids(claims),
+                "source_evidence_ids": _evidence_ids_from_claims(claims),
                 "chart_js": _chart_js_payload(chart_type="bar", points=confidence_points[:10], label="置信度"),
             }
         )
@@ -72,6 +79,7 @@ def generate_report_charts(
                 "title": "证据来源结构",
                 "output_path": str(path),
                 "source_fields": "evidence_records.source_type",
+                "source_evidence_ids": _evidence_ids(evidence_records),
                 "chart_js": _chart_js_payload(
                     chart_type="doughnut",
                     points=[(row[0], float(row[1])) for row in source_rows],
@@ -117,6 +125,47 @@ def _source_rows_from_evidence(evidence_records: List[Dict[str, Any]]) -> List[L
             continue
         counter[str(item.get("source_type") or "unknown")] += 1
     return [[source_type, str(count)] for source_type, count in counter.most_common()]
+
+
+def _claim_ids(claims: List[Dict[str, Any]]) -> List[str]:
+    return [str(claim.get("claim_id")) for claim in claims if isinstance(claim, dict) and str(claim.get("claim_id", "")).strip()]
+
+
+def _claim_ids_with_numeric_values(claims: List[Dict[str, Any]]) -> List[str]:
+    return [
+        str(claim.get("claim_id"))
+        for claim in claims
+        if isinstance(claim, dict) and isinstance(claim.get("numeric_values"), dict) and claim.get("numeric_values")
+    ]
+
+
+def _evidence_ids_from_claims(claims: List[Dict[str, Any]]) -> List[str]:
+    ids: List[str] = []
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        ids.extend(str(item) for item in claim.get("evidence_ids", []) if str(item).strip())
+    return sorted(set(ids))
+
+
+def _evidence_ids(evidence_records: List[Dict[str, Any]]) -> List[str]:
+    return sorted(
+        {
+            str(item.get("evidence_id") or item.get("sample_id") or "")
+            for item in evidence_records
+            if isinstance(item, dict) and str(item.get("evidence_id") or item.get("sample_id") or "").strip()
+        }
+    )
+
+
+def _table_ids(tables: List[Dict[str, Any]]) -> List[str]:
+    return sorted(
+        {
+            str(item.get("table_id", ""))
+            for item in tables
+            if isinstance(item, dict) and str(item.get("table_id", "")).strip()
+        }
+    )
 
 
 def _safe_float(value: Any) -> float | None:

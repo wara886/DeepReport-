@@ -31,7 +31,8 @@
 | P0 SourceAuthorityPolicy | 已完成 | `751af9b` | `tests/test_source_authority_policy.py`、search/feature/multi-agent 核心回归通过 |
 | P1 Table/Chart/Visual schema | 已完成 | `bf018a0` | `tests/test_schemas.py` 加入 TableArtifact、ChartArtifact、VisualEvidence 和 chart lineage audit 回归 |
 | P2a 核心财务指标 lineage builder | 已完成 | `4669002` | `tests/test_feature_layer.py` 覆盖 revenue、net_income、gross_margin、free_cash_flow 的 source_table/source_evidence lineage |
-| P2b DeepAnalyzeAgent 输出 financial_metrics/tables | 已完成 | 待提交 | `DeepAnalyzeAgent` 输出 `financial_metrics`/`tables`，`MultiAgentOrchestrator` 落盘 `financial_metrics.json`/`tables.json`；multi-agent 回归覆盖非空指标 lineage |
+| P2b DeepAnalyzeAgent 输出 financial_metrics/tables | 已完成 | `a633b46` | `DeepAnalyzeAgent` 输出 `financial_metrics`/`tables`，`MultiAgentOrchestrator` 落盘 `financial_metrics.json`/`tables.json`；multi-agent 回归覆盖非空指标 lineage |
+| P3 多模态一致性校验 | 已完成 | 待提交 | `multimodal_consistency.json` 汇总图表正文一致性、chart lineage、财务数值图表格门禁；Verifier 将多模态失败作为 blocking error |
 
 ## 1. 目标研报形态
 

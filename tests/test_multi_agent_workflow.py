@@ -487,7 +487,7 @@ def test_rule_verifier_checks_evidence_citations_numbers_and_charts(tmp_path):
     ]
     report = verifier.verify(
         claims=claims,
-        markdown="# Report\n\n## 执行摘要\n\n## 财务分析\n\nAAPL revenue [ev_fin]\n\n## 风险评估\n",
+        markdown="# Report\n\n## Executive Summary\n\n## Financial Analysis\n\nAAPL revenue [ev_fin]\n\n## Risk Assessment\n\n关键指标\n",
         evidence_records=[
             {
                 "evidence_id": "ev_fin",
@@ -495,7 +495,19 @@ def test_rule_verifier_checks_evidence_citations_numbers_and_charts(tmp_path):
                 "metadata": {"revenue_billion": 126.3},
             }
         ],
-        charts=[{"chart_id": "metrics", "source_fields": "claims.numeric_values", "output_path": str(chart_path)}],
+        charts=[
+            {
+                "chart_id": "metrics",
+                "chart_type": "bar",
+                "title": "关键指标",
+                "source_fields": "claims.numeric_values",
+                "input_table_ids": ["tbl_fin"],
+                "input_claim_ids": ["cl_1"],
+                "source_evidence_ids": ["ev_fin"],
+                "output_path": str(chart_path),
+            }
+        ],
+        tables=[{"table_id": "tbl_fin", "source_evidence_id": "ev_fin"}],
     )
 
     assert report["passed"] is True
