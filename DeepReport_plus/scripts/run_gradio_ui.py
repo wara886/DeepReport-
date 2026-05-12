@@ -30,7 +30,7 @@ _run_lock = threading.Lock()
 
 APP_CSS = """
 :root {
-  --dr-bg: #f4f6f8;
+  --dr-bg: #eef2f6;
   --dr-panel: #ffffff;
   --dr-panel-soft: #f8fafc;
   --dr-ink: #111827;
@@ -38,20 +38,23 @@ APP_CSS = """
   --dr-line: #d9e0e7;
   --dr-accent: #0f766e;
   --dr-accent-strong: #115e59;
-  --dr-warm: #a16207;
+  --dr-accent-soft: #e8f6f3;
+  --dr-navy: #172033;
+  --dr-shadow: 0 18px 42px rgba(15, 23, 42, .08);
 }
 html,
 body,
 gradio-app,
 .gradio-container {
   background: var(--dr-bg) !important;
+  overflow-x: hidden !important;
 }
 .gradio-container {
   max-width: none !important;
-  width: 100vw !important;
+  width: 100% !important;
   min-height: 100vh !important;
   margin: 0 !important;
-  padding: 22px 28px 34px !important;
+  padding: 0 !important;
   background: var(--dr-bg) !important;
   color: var(--dr-ink) !important;
   font-family: Inter, "Segoe UI", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif !important;
@@ -61,29 +64,137 @@ gradio-app,
 .gradio-container .wrap {
   max-width: none !important;
 }
+.app-shell {
+  width: min(1840px, calc(100vw - 56px));
+  margin: 0 auto !important;
+  padding: 22px 0 34px !important;
+}
 .dr-hero {
-  padding: 6px 2px 18px;
-  border-bottom: 1px solid var(--dr-line);
-  margin-bottom: 18px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 116px;
+  padding: 24px 28px;
+  margin: 0 0 18px;
+  border: 1px solid rgba(217, 224, 231, .9);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, .10), rgba(37, 99, 235, .06) 42%, rgba(255,255,255,.92)),
+    var(--dr-panel);
+  box-shadow: var(--dr-shadow);
+  color: var(--dr-ink) !important;
+  opacity: 1 !important;
+}
+.dr-hero,
+.dr-hero * {
+  opacity: 1 !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: currentColor !important;
 }
 .dr-kicker {
   color: var(--dr-accent);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 800;
   letter-spacing: .04em;
   text-transform: uppercase;
 }
 .dr-hero h1 {
-  margin: 4px 0 7px;
-  font-size: 28px;
+  margin: 6px 0 8px;
+  font-size: clamp(26px, 2.5vw, 42px);
   line-height: 1.2;
-  color: var(--dr-ink);
+  color: var(--dr-ink) !important;
   letter-spacing: 0;
 }
 .dr-hero p {
   margin: 0;
+  color: var(--dr-muted) !important;
+  font-size: 15px;
+}
+.dr-hero-copy {
+  max-width: 840px;
+}
+.dr-hero-metrics {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.dr-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid #b7d8d2;
+  border-radius: 999px;
+  background: rgba(232, 246, 243, .92);
+  color: var(--dr-accent-strong) !important;
+  font-size: 12px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+.workspace {
+  align-items: stretch !important;
+  gap: 18px !important;
+}
+.control-panel {
+  flex: 0 0 430px !important;
+  max-width: 430px !important;
+}
+.result-panel {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+.panel-card,
+.result-card {
+  border: 1px solid rgba(217, 224, 231, .95) !important;
+  border-radius: 14px !important;
+  background: var(--dr-panel) !important;
+  box-shadow: var(--dr-shadow) !important;
+  overflow: hidden !important;
+}
+.panel-card {
+  padding: 16px !important;
+}
+.result-card {
+  padding: 0 18px 18px !important;
+}
+.result-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 2px 14px;
+  border-bottom: 1px solid var(--dr-line);
+  margin-bottom: 6px;
+}
+.result-titlebar h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+  color: var(--dr-ink);
+  letter-spacing: 0;
+}
+.result-titlebar p {
+  margin: 3px 0 0;
   color: var(--dr-muted);
-  font-size: 14px;
+  font-size: 13px;
+}
+.status-pill {
+  color: #155e75 !important;
+  background: #ecfeff;
+  border-color: #a5f3fc;
+}
+.panel-card .markdown,
+.panel-card .markdown *,
+.panel-card h1,
+.panel-card h2,
+.panel-card h3,
+.result-titlebar,
+.result-titlebar * {
+  color: var(--dr-ink) !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: currentColor !important;
 }
 .gradio-container label,
 .gradio-container .block-title,
@@ -97,9 +208,38 @@ gradio-app,
 .gradio-container .block {
   border-radius: 8px !important;
 }
+.gradio-container .block {
+  border-color: var(--dr-line) !important;
+}
+.control-panel .block,
+.control-panel .form,
+.control-panel .input-container,
+.control-panel .wrap {
+  background: #ffffff !important;
+  color: var(--dr-ink) !important;
+}
+.control-panel .block label,
+.control-panel .form label,
+.control-panel span,
+.control-panel p {
+  color: var(--dr-ink) !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: currentColor !important;
+}
 .gradio-container textarea,
 .gradio-container input {
   font-family: Inter, "Segoe UI", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif !important;
+}
+.control-panel textarea,
+.control-panel input {
+  background: #fbfdff !important;
+  color: var(--dr-ink) !important;
+  border-color: #cfd8e3 !important;
+}
+.control-panel textarea:focus,
+.control-panel input:focus {
+  border-color: var(--dr-accent) !important;
+  box-shadow: 0 0 0 3px rgba(15,118,110,.13) !important;
 }
 .gradio-container .prose,
 .gradio-container .markdown,
@@ -120,6 +260,14 @@ gradio-app,
 .gradio-container table {
   font-size: 13px !important;
 }
+.result-panel .tab-nav,
+.result-panel .tabs {
+  margin-top: 8px !important;
+}
+.result-panel button[role="tab"],
+.result-panel .tabitem button {
+  font-weight: 720 !important;
+}
 .gradio-container button.primary {
   background: var(--dr-accent) !important;
   border-color: var(--dr-accent) !important;
@@ -133,6 +281,22 @@ gradio-app,
 .gradio-container code,
 .gradio-container pre {
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace !important;
+}
+footer {
+  display: none !important;
+}
+@media (max-width: 1100px) {
+  .app-shell {
+    width: min(100% - 28px, 960px);
+  }
+  .dr-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .control-panel {
+    flex: 1 1 auto !important;
+    max-width: none !important;
+  }
 }
 """
 
@@ -362,50 +526,70 @@ def _build_diagnostics_md(
 
 def build_ui(output_dir: str, report_dir: str) -> gr.Blocks:
     with gr.Blocks(title="DeepReport+ 金融研究工作台") as demo:
-        gr.HTML(
-            """
-            <section class="dr-hero">
-              <div class="dr-kicker">Realtime Financial Multi-Agent</div>
-              <h1>DeepReport+ 金融研究工作台</h1>
-              <p>实时检索、证据归因、图表与报告产物统一查看。默认数据源为 Yahoo Finance、Tavily、Serper。</p>
-            </section>
-            """
-        )
+        with gr.Column(elem_classes=["app-shell"]):
+            gr.HTML(
+                """
+                <section class="dr-hero">
+                  <div class="dr-hero-copy">
+                    <div class="dr-kicker">Realtime Financial Multi-Agent</div>
+                    <h1>DeepReport+ 金融研究工作台</h1>
+                    <p>面向公司研报的实时 SEC 财报抽取、证据归因、三表摘要、估值模型与可视化产物工作台。</p>
+                  </div>
+                  <div class="dr-hero-metrics">
+                    <span class="dr-chip">SEC CompanyFacts</span>
+                    <span class="dr-chip">Evidence-first</span>
+                    <span class="dr-chip">Markdown + HTML</span>
+                  </div>
+                </section>
+                """
+            )
 
-        with gr.Row():
-            with gr.Column(scale=1):
-                topic = gr.Textbox(label="研究任务", value=DEFAULT_TOPIC, lines=3)
-                with gr.Row():
-                    symbol = gr.Textbox(label="股票代码", value="MSFT")
-                    period = gr.Textbox(label="期间", value="latest")
-                engines = gr.Textbox(label="搜索/数据源 (逗号分隔)", value=DEFAULT_ENGINES)
-                with gr.Row():
-                    execution_mode = gr.Radio(
-                        ["dynamic", "static"], label="执行模式", value="dynamic"
+            with gr.Row(elem_classes=["workspace"]):
+                with gr.Column(elem_classes=["control-panel", "panel-card"]):
+                    gr.Markdown("### 任务配置")
+                    topic = gr.Textbox(label="研究任务", value=DEFAULT_TOPIC, lines=3)
+                    with gr.Row():
+                        symbol = gr.Textbox(label="股票代码", value="MSFT")
+                        period = gr.Textbox(label="期间", value="latest")
+                    engines = gr.Textbox(label="实时搜索/数据源", value=DEFAULT_ENGINES)
+                    with gr.Row():
+                        execution_mode = gr.Radio(
+                            ["dynamic", "static"], label="执行模式", value="dynamic"
+                        )
+                        fast = gr.Checkbox(label="快速模式", value=True)
+                    with gr.Accordion("高级路径设置", open=False):
+                        out_dir_input = gr.Textbox(label="output-dir", value=output_dir)
+                        rep_dir_input = gr.Textbox(label="report-dir", value=report_dir)
+                    with gr.Row():
+                        run_btn = gr.Button("生成研究报告", variant="primary")
+                        refresh_btn = gr.Button("读取最近结果", variant="secondary")
+                    status_box = gr.Textbox(label="运行状态", lines=7, interactive=False)
+
+                with gr.Column(elem_classes=["result-panel", "result-card"]):
+                    gr.HTML(
+                        """
+                        <div class="result-titlebar">
+                          <div>
+                            <h2>报告结果</h2>
+                            <p>启动时自动载入最近一次产物；生成后会刷新摘要、诊断、引用与报告文件。</p>
+                          </div>
+                          <span class="dr-chip status-pill">Live artifact view</span>
+                        </div>
+                        """
                     )
-                    fast = gr.Checkbox(label="快速模式", value=True)
-                with gr.Accordion("高级路径设置", open=False):
-                    out_dir_input = gr.Textbox(label="output-dir", value=output_dir)
-                    rep_dir_input = gr.Textbox(label="report-dir", value=report_dir)
-                with gr.Row():
-                    run_btn = gr.Button("生成多智能体研究报告", variant="primary")
-                    refresh_btn = gr.Button("读取最近结果", variant="secondary")
-                status_box = gr.Textbox(label="运行状态", lines=6, interactive=False)
-
-            with gr.Column(scale=2):
-                with gr.Tabs():
-                    with gr.Tab("总览"):
-                        summary_md = gr.Markdown()
-                    with gr.Tab("数据诊断"):
-                        diagnostics_md = gr.Markdown()
-                    with gr.Tab("报告 (Markdown)"):
-                        report_md = gr.Markdown()
-                    with gr.Tab("引用"):
-                        citations_md = gr.Markdown()
-                    with gr.Tab("原始 JSON"):
-                        raw_json = gr.Code(language="json", label="result JSON")
-                    with gr.Tab("报告 HTML"):
-                        html_file = gr.File(label="下载 report.html", visible=False)
+                    with gr.Tabs():
+                        with gr.Tab("总览"):
+                            summary_md = gr.Markdown()
+                        with gr.Tab("数据诊断"):
+                            diagnostics_md = gr.Markdown()
+                        with gr.Tab("报告 Markdown"):
+                            report_md = gr.Markdown()
+                        with gr.Tab("引用"):
+                            citations_md = gr.Markdown()
+                        with gr.Tab("原始 JSON"):
+                            raw_json = gr.Code(language="json", label="result JSON")
+                        with gr.Tab("报告 HTML"):
+                            html_file = gr.File(label="report.html", visible=False)
 
         outputs = [status_box, summary_md, diagnostics_md, report_md, citations_md, raw_json, html_file]
 
@@ -416,6 +600,11 @@ def build_ui(output_dir: str, report_dir: str) -> gr.Blocks:
         )
 
         refresh_btn.click(
+            fn=load_latest,
+            inputs=[out_dir_input, rep_dir_input],
+            outputs=outputs,
+        )
+        demo.load(
             fn=load_latest,
             inputs=[out_dir_input, rep_dir_input],
             outputs=outputs,
