@@ -102,7 +102,7 @@ def _metric_points_from_claims(claims: List[Dict[str, Any]]) -> List[Tuple[str, 
             parsed = _safe_float(value)
             if parsed is None:
                 continue
-            label = f"{claim_id}:{key}"[:28]
+            label = _metric_label(key=key, claim_id=claim_id)
             points.append((label, parsed))
     return points
 
@@ -187,3 +187,22 @@ def _chart_js_payload(chart_type: str, points: List[Tuple[str, float]], label: s
         "data": [value for _, value in points],
         "label": label,
     }
+
+
+def _metric_label(key: str, claim_id: str) -> str:
+    labels = {
+        "revenue_billion": "Revenue",
+        "gross_margin_pct": "Gross margin",
+        "operating_cash_flow_billion": "Operating cash flow",
+        "net_income_billion": "Net income",
+        "free_cash_flow_billion": "Free cash flow",
+        "blended_equity_value_billion": "Blended equity value",
+        "dcf_value_billion": "DCF value",
+        "dcf_growth_down_billion": "DCF growth -2pct",
+        "dcf_growth_up_billion": "DCF growth +2pct",
+        "discount_rate_up_billion": "Discount rate +1pct",
+    }
+    cleaned = labels.get(key)
+    if cleaned:
+        return cleaned
+    return f"{claim_id} {key}".replace("_", " ")

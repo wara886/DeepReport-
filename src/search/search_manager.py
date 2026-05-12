@@ -13,6 +13,7 @@ from urllib import error, request
 import pandas as pd
 
 from src.data.company_universe import resolve_company_identifier, resolve_symbol
+from src.data.sec_companyfacts import fetch_sec_companyfacts_evidence
 from src.data.source_quality import apply_source_quality
 from src.data.yahoo_finance import yahoo_snapshot_to_evidence
 from src.retrieval.chunking import chunk_records
@@ -76,6 +77,7 @@ class SearchManager:
         manager = cls()
         manager.register_engine("local_real_data", local_real_data_search)
         manager.register_engine("yahoo_finance", yahoo_finance_search)
+        manager.register_engine("sec_companyfacts", sec_companyfacts_search)
         manager.register_engine("serper", serper_search)
         manager.register_engine("tavily", tavily_search)
         manager.register_engine("metaso", metaso_search)
@@ -533,6 +535,39 @@ def yahoo_finance_search(
             "symbol": resolved_symbol,
             "range": range_,
             "interval": interval,
+            "result_count": 1,
+        },
+    }
+
+
+def sec_companyfacts_search(
+    query: str,
+    topk: int = 5,
+    symbol: str | None = None,
+    period: str | None = None,
+    raw_data_root: str = "data/raw/real_data",
+    **_: Any,
+) -> Dict[str, Any]:
+    resolved_symbol = resolve_symbol(
+        symbol or query,
+        raw_data_root=raw_data_root,
+        default=symbol or _extract_symbol_from_query(query) or "",
+    )
+    resolved_symbol = resolved_symbol.strip().upper()
+    if not resolved_symbol:
+        return {
+            "hits": [],
+            "meta": {"mode": "sec_companyfacts", "error": "symbol is required for SEC CompanyFacts search"},
+        }
+    evidence = fetch_sec_companyfacts_evidence(symbol=resolved_symbol, period=period or "latest")
+    return {
+        "hits": [evidence][:topk],
+        "meta": {
+            "mode": "sec_companyfacts",
+            "symbol": resolved_symbol,
+            "period": evidence.get("period", period or "latest"),
+            "form": evidence.get("metadata", {}).get("form", ""),
+            "filed": evidence.get("metadata", {}).get("filed", ""),
             "result_count": 1,
         },
     }

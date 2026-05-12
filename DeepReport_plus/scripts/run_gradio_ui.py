@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
+from html import escape
 import json
 import sys
 import threading
 from pathlib import Path
 from typing import Any, Dict, Generator, List
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -23,7 +24,7 @@ from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 
 DEFAULT_OUTPUT_DIR = "data/outputs/multi_agent"
 DEFAULT_REPORT_DIR = "data/reports/multi_agent"
-DEFAULT_ENGINES = "yahoo_finance,sec_companyfacts,tavily,serper"
+DEFAULT_ENGINES = "sec_companyfacts,yahoo_finance,tavily"
 DEFAULT_TOPIC = "Analyze MSFT latest quarter company stock research report with citations, charts, valuation and risk review"
 
 _run_lock = threading.Lock()
@@ -65,7 +66,8 @@ gradio-app,
   max-width: none !important;
 }
 .app-shell {
-  width: min(1840px, calc(100vw - 56px));
+  width: calc(100vw - 28px);
+  max-width: none !important;
   margin: 0 auto !important;
   padding: 22px 0 34px !important;
 }
@@ -134,16 +136,26 @@ gradio-app,
   white-space: nowrap;
 }
 .workspace {
-  align-items: stretch !important;
-  gap: 18px !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: start !important;
+  gap: 16px !important;
+  width: 100% !important;
 }
 .control-panel {
-  flex: 0 0 430px !important;
-  max-width: 430px !important;
+  flex: 0 0 410px !important;
+  width: 410px !important;
+  min-width: 410px !important;
+  max-width: 410px !important;
+  position: sticky !important;
+  top: 16px !important;
 }
 .result-panel {
-  min-width: 0 !important;
   flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  display: block !important;
 }
 .panel-card,
 .result-card {
@@ -231,42 +243,39 @@ gradio-app,
   font-family: Inter, "Segoe UI", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif !important;
 }
 .control-panel textarea,
-.control-panel input {
+.control-panel input,
+.control-panel select {
   background: #fbfdff !important;
   color: var(--dr-ink) !important;
   border-color: #cfd8e3 !important;
 }
 .control-panel textarea:focus,
-.control-panel input:focus {
+.control-panel input:focus,
+.control-panel select:focus {
   border-color: var(--dr-accent) !important;
   box-shadow: 0 0 0 3px rgba(15,118,110,.13) !important;
 }
-.gradio-container .prose,
-.gradio-container .markdown,
-.gradio-container .output-markdown {
+.control-panel .radio-group,
+.control-panel [role="radiogroup"] {
+  display: flex !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+}
+.control-panel label:has(input[type="radio"]) {
+  min-height: 40px !important;
+  padding: 8px 12px !important;
+  border: 1px solid #cfd8e3 !important;
+  border-radius: 10px !important;
+  background: #fbfdff !important;
+  cursor: pointer !important;
+}
+.result-panel,
+.result-panel * {
   font-family: Inter, "Segoe UI", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif !important;
   line-height: 1.78 !important;
   color: var(--dr-ink) !important;
-}
-.gradio-container .prose h1,
-.gradio-container .prose h2,
-.gradio-container .prose h3,
-.gradio-container .markdown h1,
-.gradio-container .markdown h2,
-.gradio-container .markdown h3 {
-  letter-spacing: 0 !important;
-  color: var(--dr-ink) !important;
-}
-.gradio-container table {
-  font-size: 13px !important;
-}
-.result-panel .tab-nav,
-.result-panel .tabs {
-  margin-top: 8px !important;
-}
-.result-panel button[role="tab"],
-.result-panel .tabitem button {
-  font-weight: 720 !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: currentColor !important;
 }
 .gradio-container button.primary {
   background: var(--dr-accent) !important;
@@ -275,12 +284,69 @@ gradio-app,
 .gradio-container button.primary:hover {
   background: var(--dr-accent-strong) !important;
 }
-.gradio-container .tabs {
-  border-bottom-color: var(--dr-line) !important;
+.dr-output-grid {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  max-height: none;
+  overflow: visible;
+  padding-right: 6px;
 }
-.gradio-container code,
-.gradio-container pre {
+.dr-output-box {
+  background: #ffffff;
+  border: 1px solid var(--dr-line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  color: var(--dr-ink);
+  max-height: none;
+  overflow: auto;
+}
+.dr-output-box h3 {
+  margin: 0 0 10px;
+  color: var(--dr-ink);
+}
+.dr-output-box dl {
+  display: grid;
+  grid-template-columns: minmax(170px, 260px) 1fr;
+  gap: 8px 14px;
+  margin: 0;
+}
+.dr-output-box dt {
+  font-weight: 800;
+  color: #263241;
+}
+.dr-output-box dd {
+  margin: 0;
+  color: var(--dr-ink);
+  overflow-wrap: anywhere;
+}
+.dr-output-box ul {
+  margin: 0;
+  padding-left: 20px;
+}
+.dr-output-box li {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.dr-report-pre,
+.dr-json-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  color: #111827 !important;
+  background: #f8fafc !important;
+  border: 1px solid #d9e0e7;
+  border-radius: 8px;
+  padding: 12px;
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace !important;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.dr-link {
+  display: inline-flex;
+  margin-top: 8px;
+  color: var(--dr-accent) !important;
+  font-weight: 800;
 }
 footer {
   display: none !important;
@@ -294,8 +360,14 @@ footer {
     flex-direction: column;
   }
   .control-panel {
-    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
     max-width: none !important;
+    flex-basis: auto !important;
+    position: static !important;
+  }
+  .workspace {
+    flex-direction: column !important;
   }
 }
 """
@@ -322,14 +394,15 @@ def run_report(
     period: str,
     engines: str,
     execution_mode: str,
-    fast: bool,
+    fast: bool | str,
     output_dir: str,
     report_dir: str,
 ) -> Generator[tuple, None, None]:
     if not _run_lock.acquire(blocking=False):
+        busy = _output_box("运行状态", "<p>另一个任务正在运行，请稍候...</p>")
         yield (
             "另一个任务正在运行，请稍候...",
-            "", "", "", "", gr.update(value=None),
+            busy, "", "", "", "", gr.update(value=None),
         )
         return
 
@@ -339,10 +412,11 @@ def run_report(
         status_lines.append(msg)
 
     try:
+        fast_enabled = _coerce_fast_mode(fast)
         log(f"启动多智能体任务: {symbol} / {period}")
         log(f"搜索引擎: {engines}")
-        log(f"执行模式: {execution_mode} | 快速模式: {fast}")
-        yield (_fmt_status(status_lines), "", "", "", "", "", gr.update(value=None))
+        log(f"执行模式: {execution_mode} | 快速模式: {fast_enabled}")
+        yield (_fmt_status(status_lines), _busy_output_html(status_lines), "", "", "", "", gr.update(value=None))
 
         engine_list = [e.strip() for e in engines.split(",") if e.strip()] or None
         orchestrator = MultiAgentOrchestrator(
@@ -353,19 +427,19 @@ def run_report(
         )
 
         log("Orchestrator 初始化完成，开始运行...")
-        yield (_fmt_status(status_lines), "", "", "", "", "", gr.update(value=None))
+        yield (_fmt_status(status_lines), _busy_output_html(status_lines), "", "", "", "", gr.update(value=None))
 
         result = orchestrator.run(
             research_topic=topic,
             symbol=symbol,
             period=period,
             execution_mode=execution_mode,
-            fast=fast,
+            fast=fast_enabled,
             search_engines=engine_list,
         )
 
         log("运行完成，正在读取产物...")
-        yield (_fmt_status(status_lines), "", "", "", "", "", gr.update(value=None))
+        yield (_fmt_status(status_lines), _busy_output_html(status_lines), "", "", "", "", gr.update(value=None))
 
         out_root = Path(output_dir)
         rep_root = Path(report_dir)
@@ -386,7 +460,8 @@ def run_report(
             multimodal=multimodal,
         )
         citations_md = _build_citations_md(citations)
-        result_json = json.dumps(result, ensure_ascii=False, indent=2)
+        result_json = _build_json_html(result)
+        report_view = _build_report_preview_html(report_md, report_html_path)
 
         log("完成！")
 
@@ -395,7 +470,7 @@ def run_report(
             _fmt_status(status_lines),
             summary_md,
             diagnostics_md,
-            report_md,
+            report_view,
             citations_md,
             result_json,
             gr.update(value=html_file, visible=html_file is not None),
@@ -403,7 +478,8 @@ def run_report(
 
     except Exception as exc:
         log(f"错误: {exc}")
-        yield (_fmt_status(status_lines, error=True), "", "", "", "", str(exc), gr.update(value=None))
+        error_html = _output_box("运行失败", f"<p>{escape(str(exc))}</p>")
+        yield (_fmt_status(status_lines, error=True), error_html, "", "", "", _build_json_html({"error": str(exc)}), gr.update(value=None))
     finally:
         _run_lock.release()
 
@@ -432,14 +508,15 @@ def load_latest(output_dir: str, report_dir: str) -> tuple:
     )
     citations_md = _build_citations_md(citations)
     html_file = str(report_html_path) if report_html_path.exists() else None
+    report_view = _build_report_preview_html(report_md, report_html_path)
 
     return (
         "已读取最近一次输出。",
         summary_md,
         diagnostics_md,
-        report_md,
+        report_view,
         citations_md,
-        "",
+        _build_json_html({"run_summary": summary, "search_meta": search_meta}),
         gr.update(value=html_file, visible=html_file is not None),
     )
 
@@ -451,24 +528,47 @@ def _fmt_status(lines: List[str], error: bool = False) -> str:
 
 def _build_summary_md(summary: Dict[str, Any]) -> str:
     if not summary:
-        return "_暂无摘要数据。_"
-    lines = ["| 指标 | 值 |", "|---|---|"]
-    for k, v in summary.items():
-        lines.append(f"| {k} | {v} |")
-    return "\n".join(lines)
+        return _output_box("总览", "<p>暂无摘要数据。</p>")
+    preferred = [
+        "research_topic",
+        "symbol",
+        "period",
+        "execution_mode",
+        "performance_profile",
+        "search_engines",
+        "evidence_count",
+        "claim_count",
+        "citation_count",
+        "chart_count",
+        "multimodal_consistency_passed",
+        "verification_passed",
+        "company_report_overall_score",
+        "total_duration_sec",
+    ]
+    keys = [key for key in preferred if key in summary]
+    keys.extend([key for key in summary.keys() if key not in keys])
+    rows = []
+    for k in keys:
+        v = summary.get(k)
+        rows.append(f"<dt>{escape(str(k))}</dt><dd>{escape(_stringify_value(v))}</dd>")
+    return _output_box("总览", "<dl>" + "\n".join(rows) + "</dl>")
 
 
 def _build_citations_md(citations: List[Dict[str, Any]]) -> str:
     if not citations:
-        return "_暂无引用数据。_"
-    lines = ["| 证据ID | 标题 | 类型 | 来源 |", "|---|---|---|---|"]
+        return _output_box("引用", "<p>暂无引用数据。</p>")
+    items = []
     for r in citations[:50]:
-        url = r.get("source_url", "")
-        src = f"[链接]({url})" if url else ""
-        lines.append(
-            f"| {r.get('evidence_id','')} | {r.get('title','')} | {r.get('source_type','')} | {src} |"
+        url = str(r.get("source_url", "") or "")
+        src = f' <a class="dr-link" href="{escape(url, quote=True)}" target="_blank">打开来源</a>' if url else ""
+        items.append(
+            "<li>"
+            f"<strong>{escape(str(r.get('evidence_id','')))}</strong>: "
+            f"{escape(str(r.get('title','')))} "
+            f"({escape(str(r.get('source_type','')))})."
+            f"{src}</li>"
         )
-    return "\n".join(lines)
+    return _output_box("引用", "<ul>" + "\n".join(items) + "</ul>")
 
 
 def _build_diagnostics_md(
@@ -498,18 +598,19 @@ def _build_diagnostics_md(
         ("估值模型", "已生成" if valuation.get("valuation_available") else f"未生成: {valuation.get('error', '缺少输入')}"),
         ("多模态校验", "通过" if multimodal.get("passed") else "未通过/未触发"),
     ]
-    lines = ["### 本次后台数据诊断", "", "| 项目 | 状态 |", "|---|---|"]
+    items = []
     for k, v in rows:
-        lines.append(f"| {k} | {v} |")
+        items.append(f"<li><strong>{escape(str(k))}</strong>: {escape(_stringify_value(v))}</li>")
 
     if engine_meta:
-        lines.extend(["", "### 搜索源命中", "", "| 来源 | 命中/返回 | 备注 |", "|---|---:|---|"])
+        items.append("<li><strong>搜索源命中</strong><ul>")
         for name, meta in engine_meta.items():
             if not isinstance(meta, dict):
                 continue
             count = meta.get("result_count", "-")
             note = meta.get("mode") or meta.get("search_depth") or ""
-            lines.append(f"| {name} | {count} | {note} |")
+            items.append(f"<li>{escape(str(name))}: {escape(_stringify_value(count))} ({escape(str(note))})</li>")
+        items.append("</ul></li>")
 
     missing = []
     if not coverage.get("has_three_statement_view"):
@@ -519,9 +620,46 @@ def _build_diagnostics_md(
     if valuation and not valuation.get("valuation_available"):
         missing.append(f"估值未生成：{valuation.get('error', '缺少目标财务数据')}")
     if missing:
-        lines.extend(["", "### 为什么有些章节为空", ""])
-        lines.extend([f"- {item}" for item in missing])
-    return "\n".join(lines)
+        items.append("<li><strong>为什么有些章节为空</strong><ul>")
+        items.extend([f"<li>{escape(item)}</li>" for item in missing])
+        items.append("</ul></li>")
+    return _output_box("本次后台数据诊断", "<ul>" + "\n".join(items) + "</ul>")
+
+
+def _build_report_preview_html(report_md: str, report_html_path: Path) -> str:
+    link = ""
+    if report_html_path.exists():
+        link = f'<a class="dr-link" href="http://127.0.0.1:8787/artifacts/report.html" target="_blank">打开 HTML 报告</a>'
+    body = f"{link}<pre class=\"dr-report-pre\">{escape(report_md[:12000])}</pre>"
+    return _output_box("报告 Markdown 预览", body)
+
+
+def _build_json_html(payload: Any) -> str:
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    return _output_box("原始 JSON", f'<pre class="dr-json-pre">{escape(text[:16000])}</pre>')
+
+
+def _busy_output_html(lines: List[str]) -> str:
+    items = "".join(f"<li>{escape(line)}</li>" for line in lines)
+    return _output_box("任务运行中", f"<ul>{items}</ul>")
+
+
+def _output_box(title: str, body: str) -> str:
+    return f'<section class="dr-output-box"><h3>{escape(title)}</h3>{body}</section>'
+
+
+def _stringify_value(value: Any) -> str:
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(item) for item in value)
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
+def _coerce_fast_mode(value: bool | str) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"fast", "true", "1", "yes", "快速模式"}
 
 
 def build_ui(output_dir: str, report_dir: str) -> gr.Blocks:
@@ -553,10 +691,18 @@ def build_ui(output_dir: str, report_dir: str) -> gr.Blocks:
                         period = gr.Textbox(label="期间", value="latest")
                     engines = gr.Textbox(label="实时搜索/数据源", value=DEFAULT_ENGINES)
                     with gr.Row():
-                        execution_mode = gr.Radio(
-                            ["dynamic", "static"], label="执行模式", value="dynamic"
+                        execution_mode = gr.Dropdown(
+                            ["dynamic", "static"],
+                            label="执行模式",
+                            value="dynamic",
+                            interactive=True,
                         )
-                        fast = gr.Checkbox(label="快速模式", value=True)
+                        fast = gr.Radio(
+                            ["快速模式", "完整模式"],
+                            label="运行速度",
+                            value="快速模式",
+                            interactive=True,
+                        )
                     with gr.Accordion("高级路径设置", open=False):
                         out_dir_input = gr.Textbox(label="output-dir", value=output_dir)
                         rep_dir_input = gr.Textbox(label="report-dir", value=report_dir)
@@ -577,19 +723,13 @@ def build_ui(output_dir: str, report_dir: str) -> gr.Blocks:
                         </div>
                         """
                     )
-                    with gr.Tabs():
-                        with gr.Tab("总览"):
-                            summary_md = gr.Markdown()
-                        with gr.Tab("数据诊断"):
-                            diagnostics_md = gr.Markdown()
-                        with gr.Tab("报告 Markdown"):
-                            report_md = gr.Markdown()
-                        with gr.Tab("引用"):
-                            citations_md = gr.Markdown()
-                        with gr.Tab("原始 JSON"):
-                            raw_json = gr.Code(language="json", label="result JSON")
-                        with gr.Tab("报告 HTML"):
-                            html_file = gr.File(label="report.html", visible=False)
+                    with gr.Column(elem_classes=["dr-output-grid"]):
+                        summary_md = gr.HTML()
+                        diagnostics_md = gr.HTML()
+                        report_md = gr.HTML()
+                        citations_md = gr.HTML()
+                        raw_json = gr.HTML()
+                        html_file = gr.File(label="report.html", visible=False)
 
         outputs = [status_box, summary_md, diagnostics_md, report_md, citations_md, raw_json, html_file]
 
