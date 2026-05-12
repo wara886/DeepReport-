@@ -66,8 +66,8 @@ gradio-app,
   max-width: none !important;
 }
 .app-shell {
-  width: calc(100vw - 28px);
-  max-width: none !important;
+  width: min(1680px, calc(100vw - 40px));
+  max-width: 1680px !important;
   margin: 0 auto !important;
   padding: 22px 0 34px !important;
 }
@@ -136,25 +136,23 @@ gradio-app,
   white-space: nowrap;
 }
 .workspace {
-  display: flex !important;
-  flex-wrap: nowrap !important;
+  display: grid !important;
+  grid-template-columns: minmax(380px, 420px) minmax(760px, 1fr) !important;
   align-items: start !important;
-  gap: 16px !important;
+  gap: 20px !important;
   width: 100% !important;
 }
 .control-panel {
-  flex: 0 0 410px !important;
-  width: 410px !important;
-  min-width: 410px !important;
-  max-width: 410px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 420px !important;
   position: sticky !important;
   top: 16px !important;
 }
 .result-panel {
-  flex: 1 1 auto !important;
   min-width: 0 !important;
   width: 100% !important;
-  max-width: none !important;
+  max-width: 1240px !important;
   display: block !important;
 }
 .panel-card,
@@ -288,9 +286,10 @@ gradio-app,
   display: grid;
   gap: 14px;
   width: 100%;
-  max-height: none;
-  overflow: visible;
+  max-height: calc(100vh - 235px);
+  overflow: auto;
   padding-right: 6px;
+  overscroll-behavior: contain;
 }
 .dr-output-box {
   background: #ffffff;
@@ -367,7 +366,7 @@ footer {
     position: static !important;
   }
   .workspace {
-    flex-direction: column !important;
+    grid-template-columns: 1fr !important;
   }
 }
 """
