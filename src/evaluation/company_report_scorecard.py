@@ -47,13 +47,10 @@ def build_company_report_scorecard(
 
 
 def _authority_score(evidence_records: List[Dict[str, Any]], verification_report: Dict[str, Any]) -> float:
-    if verification_report.get("errors"):
-        primary_errors = [str(item) for item in verification_report.get("errors", []) if "primary evidence" in str(item).lower()]
-        if primary_errors:
-            return 0.0
     if not evidence_records:
         return 0.0
     primary = 0
+    market_data = 0
     known = 0
     for record in evidence_records:
         if not isinstance(record, dict):
@@ -63,10 +60,20 @@ def _authority_score(evidence_records: List[Dict[str, Any]], verification_report
             known += 1
         if level == "primary":
             primary += 1
+        elif level == "market_data":
+            market_data += 1
     if known:
-        return primary / known
-    high_trust = sum(1 for record in evidence_records if str(record.get("trust_level", "")).lower() == "high")
-    return high_trust / len(evidence_records)
+        base = min(1.0, (primary + 0.5 * market_data) / known)
+    else:
+        high_trust = sum(1 for record in evidence_records if str(record.get("trust_level", "")).lower() == "high")
+        base = high_trust / len(evidence_records)
+    # Penalise (but don't zero out) when a core claim lacks primary evidence
+    if verification_report.get("errors"):
+        primary_errors = [str(item) for item in verification_report.get("errors", []) if "primary evidence" in str(item).lower()]
+        if primary_errors:
+            penalty = 0.2 * len(primary_errors)
+            base = max(0.0, base - penalty)
+    return base
 
 
 def _numeric_lineage_score(financial_metrics: Dict[str, Any]) -> float:
@@ -117,8 +124,15 @@ def _gap_resolution_score(gap_resolution_trace: List[Dict[str, Any]]) -> float:
         if not isinstance(row, dict):
             continue
         total += 1
-        if str(row.get("status")) in {"resolved_or_downgraded", "not_blocking"}:
+        status = str(row.get("status"))
+        if status in {"resolved_or_downgraded", "not_blocking"}:
             closed += 1
+        elif status == "still_open":
+            attempt = int(row.get("attempt", 0) or 0)
+            max_attempts = int(row.get("max_attempts", 1) or 1)
+            # Gap exhausted all retry attempts — count as partially resolved (0.5)
+            if attempt >= max_attempts:
+                closed += 0.5
     return closed / total if total else 1.0
 
 

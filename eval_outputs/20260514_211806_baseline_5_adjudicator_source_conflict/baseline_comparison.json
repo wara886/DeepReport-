@@ -1,0 +1,32 @@
+{
+  "run_id": "20260514_211806_baseline_5_adjudicator_source_conflict",
+  "baselines": {
+    "baseline_5_adjudicator_source_conflict": {
+      "case_count": 4,
+      "task_completion_rate": 0.0,
+      "required_sections_coverage": 0.5714,
+      "artifact_generation_pass_rate": 1.0,
+      "verification_pass_rate": 0.0,
+      "claim_count_mean": 13.25,
+      "evidence_count_mean": 5.25,
+      "citation_count_mean": 3.25,
+      "gap_detection_count_mean": 4.0,
+      "gap_resolution_rate_mean": 0.0,
+      "message_count_mean": 42.25,
+      "task_blocked_count_mean": 0.0,
+      "task_resolution_rate_mean": 0.5445,
+      "total_latency_sec_sum": 1012.1036,
+      "total_latency_sec_mean": 253.0259,
+      "router_decision_count_sum": 16,
+      "dynamic_dispatch_count_sum": 13,
+      "fallback_decision_count_sum": 3,
+      "budget_exceeded_count_sum": 0,
+      "repeated_dispatch_count_sum": 0,
+      "unsupported_gap_fallback_count_sum": 3,
+      "router_stop_reasons": {},
+      "conflict_resolution_count_sum": 0,
+      "adjudication_decision_distribution": {}
+    }
+  },
+  "comparison_note": "Phase 0 may contain a single baseline; future runs can append additional baselines for deltas."
+}

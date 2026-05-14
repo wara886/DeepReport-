@@ -1,0 +1,123 @@
+{
+  "session_id": "7d7efdc1da58",
+  "user_intent": "Kweichow Moutai Co., Ltd.（600519.SS）latest_quarter deep_company_research：盈利质量、估值、行业风险、同业对比、主要风险",
+  "symbol": "600519.SS",
+  "period": "latest_quarter",
+  "report_type": "company_stock_report",
+  "hard_constraints": [
+    "Only produce the requested company/stock research report type for this run.",
+    "Every material factual claim must be backed by an explicit evidence_id citation.",
+    "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+    "Keep verifier feedback active during revisions until the final verification passes.",
+    "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+    "报告类型：deep_company_research",
+    "时间范围：latest_quarter，粒度：quarter",
+    "重点关注：盈利质量、估值、行业风险、同业对比、主要风险",
+    "输出偏好：language=zh, format=markdown_html_json, depth=deep",
+    "上传文件是可选补充证据；公开公司研报优先使用可信公开来源。"
+  ],
+  "pinned_facts": [
+    "Target symbol: 600519.SS",
+    "Target period: latest_quarter",
+    "Report type: company_stock_report"
+  ],
+  "rejected_claims": [
+    "Claim cl_risk_0001 missing evidence_ids.",
+    "Claim cl_peer_0001 missing evidence_ids."
+  ],
+  "verifier_feedback": [
+    "warnings: Target symbol 600519.SS is not explicitly mentioned in report claims or markdown.",
+    "warnings: Report mentions non-target ticker-like tokens: FCF, SS.",
+    "warnings: Claim cl_risk_0001 has no evidence_ids.",
+    "warnings: Claim cl_peer_0001 has no evidence_ids.",
+    "fix_recommendations: Provide explicit evidence_ids for every factual claim, referencing reliable financial data sources.",
+    "fix_recommendations: Populate peer comparison table with actual data and attach corresponding evidence.",
+    "fix_recommendations: Add structured citations in the reference sources section.",
+    "fix_recommendations: Verify all chart data with source evidence records.",
+    "llm_errors: Claim cl_risk_0001 missing evidence_ids.",
+    "llm_errors: Claim cl_peer_0001 missing evidence_ids.",
+    "llm_errors: Chart peer_comparison_table lacks source evidence IDs.",
+    "llm_errors: Chart claim_confidence_bar lacks source evidence IDs.",
+    "llm_errors: Multiple report sections contain only placeholder text without substantive claims.",
+    "revision_brief: - Errors: Multimodal consistency check failed. - Warnings: No financial_analysis claims found. - Warnings: 1 claims have confidence lower than 0.5. - Warnings: Target symbol 600519.SS is not explicitly mentioned in report claims or markdown. - Warnings: Report mentions non-target ticker-like tokens: FCF, SS. - Warnings: Claim cl_risk_0001 has no evidence_ids. - Warnings: Claim cl_peer_0001 has no evidence_ids. - Fix recommendations: Provide explicit evidence_ids for every factual"
+  ],
+  "open_questions": [],
+  "turns": [
+    {
+      "role": "user",
+      "content": "Kweichow Moutai Co., Ltd.（600519.SS）latest_quarter deep_company_research：盈利质量、估值、行业风险、同业对比、主要风险",
+      "metadata": {
+        "source": "run_request"
+      }
+    }
+  ],
+  "scope_memory": {
+    "user_intent": "Kweichow Moutai Co., Ltd.（600519.SS）latest_quarter deep_company_research：盈利质量、估值、行业风险、同业对比、主要风险",
+    "run_scope": "report_type=company_stock_report; symbol=600519.SS; period=latest_quarter",
+    "report_type": "company_stock_report",
+    "symbol": "600519.SS",
+    "period": "latest_quarter",
+    "hard_constraints": [
+      "Only produce the requested company/stock research report type for this run.",
+      "Every material factual claim must be backed by an explicit evidence_id citation.",
+      "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+      "Keep verifier feedback active during revisions until the final verification passes.",
+      "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+      "报告类型：deep_company_research",
+      "时间范围：latest_quarter，粒度：quarter",
+      "重点关注：盈利质量、估值、行业风险、同业对比、主要风险",
+      "输出偏好：language=zh, format=markdown_html_json, depth=deep",
+      "上传文件是可选补充证据；公开公司研报优先使用可信公开来源。"
+    ],
+    "pinned_facts": [
+      "Target symbol: 600519.SS",
+      "Target period: latest_quarter",
+      "Report type: company_stock_report"
+    ]
+  },
+  "working_memory": {
+    "pipeline_stage": "verified",
+    "evidence_count": 0,
+    "claim_count": 2,
+    "generated_sections": [
+      "peer_compare",
+      "risks"
+    ],
+    "chart_count": 2,
+    "verification_passed": false
+  },
+  "evidence_memory": {
+    "core_evidence_ids": [],
+    "primary_source_ids": [],
+    "market_snapshot_ids": [],
+    "numeric_lineage": [
+      "metric_count=0"
+    ]
+  },
+  "reflection_memory": {
+    "verifier_feedback": [
+      "fix_recommendations: Add structured citations in the reference sources section.",
+      "fix_recommendations: Verify all chart data with source evidence records.",
+      "llm_errors: Claim cl_risk_0001 missing evidence_ids.",
+      "llm_errors: Claim cl_peer_0001 missing evidence_ids.",
+      "llm_errors: Chart peer_comparison_table lacks source evidence IDs.",
+      "llm_errors: Chart claim_confidence_bar lacks source evidence IDs.",
+      "llm_errors: Multiple report sections contain only placeholder text without substantive claims.",
+      "revision_brief: - Errors: Multimodal consistency check failed. - Warnings: No financial_analysis claims found. - Warnings: 1 claims have confidence lower than 0.5. - Warnings: Target symbol 600519.SS is not explicitly mentioned in report claims or markdown. - Warnings: Report mentions non-target ticker-like tokens: FCF, SS. - Warnings: Claim cl_risk_0001 has no evidence_ids. - Warnings: Claim cl_peer_0001 has no evidence_ids. - Fix recommendations: Provide explicit evidence_ids for every factual"
+    ],
+    "rejected_claims": [
+      "Claim cl_risk_0001 missing evidence_ids.",
+      "Claim cl_peer_0001 missing evidence_ids."
+    ],
+    "revision_rounds": 0,
+    "open_gap_count": 3,
+    "last_passed": false
+  },
+  "domain_memory": {
+    "rules": [
+      "Peer compare must name core peers, extended references, fiscal-period alignment, and selection rationale.",
+      "Valuation claims must preserve model assumptions and market snapshot timestamp."
+    ]
+  },
+  "context_brief": "[ConversationMemory]\nscope_memory:\n- user_intent: Kweichow Moutai Co., Ltd.（600519.SS）latest_quarter deep_company_research：盈利质量、估值、行业风险、同业对比、主要风险\n- run_scope: report_type=company_stock_report; symbol=600519.SS; period=latest_quarter\n- report_type: company_stock_report\n- symbol: 600519.SS\n- period: latest_quarter\n- hard_constraints: Only produce the requested company/stock research report type for this run.; Every material factual claim must be backed by an explicit evidence_id citation.; Do not invent numbers, dates, sources, ratings, or unsupported conclusions.; Keep verifier feedback act\n- pinned_facts: Target symbol: 600519.SS; Target period: latest_quarter; Report type: company_stock_report\nworking_memory:\n- pipeline_stage: verified\n- evidence_count: 0\n- claim_count: 2\n- generated_sections: peer_compare; risks\n- chart_count: 2\n- verification_passed: False\nevidence_memory:\n- numeric_lineage: metric_count=0\nreflection_memory:\n- verifier_feedback: fix_recommendations: Add structured citations in the reference sources section.; fix_recommendations: Verify all chart data with source evidence records.; llm_errors: Claim cl_risk_0001 missing evidence_ids.; llm_errors: Claim cl_peer_0001 missing evidence_ids.\n- rejected_claims: Claim cl_risk_0001 missing evidence_ids.; Claim cl_peer_0001 missing evidence_ids.\n- revision_rounds: 0\n- open_gap_count: 3\n- last_passed: False\ndomain_memory:\n- rules: Peer compare must name core peers, extended references, fiscal-period alignment, and selection rationale.; Valuation claims must preserve model assumptions and market snapshot timestamp."
+}

@@ -1,0 +1,67 @@
+{
+  "engines": [
+    "local_real_data",
+    "local_evidence"
+  ],
+  "engine_meta": {
+    "local_real_data": {
+      "mode": "local_real_data",
+      "raw_data_root": "data/raw/real_data",
+      "symbol": "META",
+      "period": "latest_quarter",
+      "record_count": 0,
+      "returned_hit_count": 0,
+      "failure_reason": "no_records_for_symbol_period",
+      "chunking_enabled": true,
+      "query_original": "META peer valuation comparison PE PS EV/EBITDA 2023 2024",
+      "query_adapted": "META peer valuation comparison PE PS EV/EBITDA 2023 2024 latest_quarter Meta Platforms, Inc. Internet Content & Information Technology",
+      "adapted_query": "META peer valuation comparison PE PS EV/EBITDA 2023 2024 latest_quarter Meta Platforms, Inc. Internet Content & Information Technology",
+      "query_terms_added": [
+        "latest_quarter",
+        "Meta Platforms, Inc.",
+        "Internet Content & Information",
+        "Technology"
+      ],
+      "query_expansion_version": "finance_query_expansion_v1"
+    },
+    "local_evidence": {
+      "mode": "hybrid_rerank",
+      "backend": "financial_heuristic",
+      "model_name": "BAAI/bge-reranker-base",
+      "checkpoint_path": "data/outputs/checkpoints/reranker_checkpoint.json",
+      "checkpoint_used": true,
+      "fallback_used": false,
+      "score_components": [
+        "base_score",
+        "query_overlap",
+        "numeric_match",
+        "source_authority",
+        "freshness",
+        "chunk_type"
+      ],
+      "feature_weights": {},
+      "vector_backend": "memory",
+      "vector_hit_count": 0,
+      "query": "META peer valuation comparison PE PS EV/EBITDA 2023 2024 latest_quarter Meta Platforms, Inc. Internet Content & Information Technology",
+      "source_record_count": 0,
+      "record_count": 0,
+      "bm25_hit_count": 0,
+      "chunking_enabled": true,
+      "chunk_count": 0,
+      "returned_hit_count": 0,
+      "failure_reason": "no_records_for_symbol_period",
+      "query_original": "META peer valuation comparison PE PS EV/EBITDA 2023 2024",
+      "query_adapted": "META peer valuation comparison PE PS EV/EBITDA 2023 2024 latest_quarter Meta Platforms, Inc. Internet Content & Information Technology",
+      "adapted_query": "META peer valuation comparison PE PS EV/EBITDA 2023 2024 latest_quarter Meta Platforms, Inc. Internet Content & Information Technology",
+      "query_terms_added": [
+        "latest_quarter",
+        "Meta Platforms, Inc.",
+        "Internet Content & Information",
+        "Technology"
+      ],
+      "query_expansion_version": "finance_query_expansion_v1"
+    }
+  },
+  "total_hits_before_dedupe": 0,
+  "returned_hits": 0
+}

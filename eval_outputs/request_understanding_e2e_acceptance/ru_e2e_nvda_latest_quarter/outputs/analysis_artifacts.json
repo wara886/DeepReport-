@@ -1,0 +1,537 @@
+{
+  "ratio_rows": [],
+  "trend_rows": [],
+  "statement_view": {
+    "rows": [],
+    "coverage": {
+      "statements": {},
+      "has_three_statement_view": false,
+      "line_item_count": 0
+    },
+    "source_record_count": 0
+  },
+  "financial_metrics": {
+    "metrics": [],
+    "metric_count": 0,
+    "coverage": {
+      "required_metrics": [
+        "revenue",
+        "net_income",
+        "gross_margin",
+        "free_cash_flow"
+      ],
+      "present_metrics": [],
+      "has_core_metric_lineage": false
+    }
+  },
+  "tables": [],
+  "peer_context": {
+    "target_symbol": "NVDA",
+    "target_sector": "Technology",
+    "target_industry": "Semiconductors",
+    "peer_groups": {
+      "core": [],
+      "extended": []
+    },
+    "peer_rows": [
+      {
+        "symbol": "NVDA",
+        "company_name": "NVIDIA Corporation",
+        "sector": "Technology",
+        "industry": "Semiconductors",
+        "is_target": true,
+        "revenue_billion": 41.8,
+        "revenue_growth_pct": 38.6,
+        "gross_margin_pct": 74.1,
+        "net_margin_pct": 52.4,
+        "roe_pct": 96.2,
+        "free_cash_flow_billion": 17.3,
+        "net_income_billion": 21.9032,
+        "shareholder_equity_billion": null,
+        "total_assets_billion": null,
+        "currency": ""
+      },
+      {
+        "symbol": "AAPL",
+        "company_name": "Apple Inc.",
+        "sector": "Technology",
+        "industry": "Consumer Electronics",
+        "is_target": false,
+        "revenue_billion": 126.3,
+        "revenue_growth_pct": 11.2,
+        "gross_margin_pct": 46.8,
+        "net_margin_pct": 24.6,
+        "roe_pct": 132.4,
+        "free_cash_flow_billion": 31.2,
+        "net_income_billion": 31.0698,
+        "shareholder_equity_billion": null,
+        "total_assets_billion": null,
+        "currency": ""
+      },
+      {
+        "symbol": "MSFT",
+        "company_name": "Microsoft Corporation",
+        "sector": "Technology",
+        "industry": "Software Infrastructure",
+        "is_target": false,
+        "revenue_billion": 72.1,
+        "revenue_growth_pct": 14.8,
+        "gross_margin_pct": 69.2,
+        "net_margin_pct": 36.4,
+        "roe_pct": 41.7,
+        "free_cash_flow_billion": 28.4,
+        "net_income_billion": 26.2444,
+        "shareholder_equity_billion": null,
+        "total_assets_billion": null,
+        "currency": ""
+      }
+    ],
+    "peer_count": 2,
+    "ranking": {
+      "revenue_growth_pct": {
+        "rank": 1,
+        "peer_count": 3,
+        "value": 38.6
+      },
+      "gross_margin_pct": {
+        "rank": 1,
+        "peer_count": 3,
+        "value": 74.1
+      },
+      "net_margin_pct": {
+        "rank": 1,
+        "peer_count": 3,
+        "value": 52.4
+      },
+      "roe_pct": {
+        "rank": 2,
+        "peer_count": 3,
+        "value": 96.2
+      }
+    }
+  },
+  "valuation": {
+    "symbol": "NVDA",
+    "period": "latest_quarter",
+    "valuation_available": true,
+    "currency": "USD_billion",
+    "is_financial_sector": false,
+    "methods": {
+      "pe": {
+        "multiple": 27.56,
+        "value_billion": 603.65
+      },
+      "ps": {
+        "multiple": 7.66,
+        "value_billion": 320.19,
+        "note": ""
+      },
+      "dcf": {
+        "discount_rate": 0.1,
+        "terminal_growth": 0.025,
+        "fcf_growth": 0.2,
+        "value_billion": 478.45,
+        "note": ""
+      }
+    },
+    "blended_equity_value_billion": 467.43,
+    "blended_method_note": "综合估值基于 P/E + P/S + DCF 等权平均",
+    "sensitivity": {
+      "type": "dcf",
+      "fcf_growth_minus_2pct": 443.16,
+      "fcf_growth_plus_2pct": 516.05,
+      "discount_rate_plus_1pct": 418.02
+    },
+    "market_context": {},
+    "market_gap": {
+      "available": false
+    },
+    "peer_context": {
+      "target_symbol": "NVDA",
+      "target_sector": "Technology",
+      "target_industry": "Semiconductors",
+      "peer_groups": {
+        "core": [],
+        "extended": []
+      },
+      "peer_rows": [
+        {
+          "symbol": "NVDA",
+          "company_name": "NVIDIA Corporation",
+          "sector": "Technology",
+          "industry": "Semiconductors",
+          "is_target": true,
+          "revenue_billion": 41.8,
+          "revenue_growth_pct": 38.6,
+          "gross_margin_pct": 74.1,
+          "net_margin_pct": 52.4,
+          "roe_pct": 96.2,
+          "free_cash_flow_billion": 17.3,
+          "net_income_billion": 21.9032,
+          "shareholder_equity_billion": null,
+          "total_assets_billion": null,
+          "currency": ""
+        },
+        {
+          "symbol": "AAPL",
+          "company_name": "Apple Inc.",
+          "sector": "Technology",
+          "industry": "Consumer Electronics",
+          "is_target": false,
+          "revenue_billion": 126.3,
+          "revenue_growth_pct": 11.2,
+          "gross_margin_pct": 46.8,
+          "net_margin_pct": 24.6,
+          "roe_pct": 132.4,
+          "free_cash_flow_billion": 31.2,
+          "net_income_billion": 31.0698,
+          "shareholder_equity_billion": null,
+          "total_assets_billion": null,
+          "currency": ""
+        },
+        {
+          "symbol": "MSFT",
+          "company_name": "Microsoft Corporation",
+          "sector": "Technology",
+          "industry": "Software Infrastructure",
+          "is_target": false,
+          "revenue_billion": 72.1,
+          "revenue_growth_pct": 14.8,
+          "gross_margin_pct": 69.2,
+          "net_margin_pct": 36.4,
+          "roe_pct": 41.7,
+          "free_cash_flow_billion": 28.4,
+          "net_income_billion": 26.2444,
+          "shareholder_equity_billion": null,
+          "total_assets_billion": null,
+          "currency": ""
+        }
+      ],
+      "peer_count": 2,
+      "ranking": {
+        "revenue_growth_pct": {
+          "rank": 1,
+          "peer_count": 3,
+          "value": 38.6
+        },
+        "gross_margin_pct": {
+          "rank": 1,
+          "peer_count": 3,
+          "value": 74.1
+        },
+        "net_margin_pct": {
+          "rank": 1,
+          "peer_count": 3,
+          "value": 52.4
+        },
+        "roe_pct": {
+          "rank": 2,
+          "peer_count": 3,
+          "value": 96.2
+        }
+      }
+    },
+    "relative_valuation": {
+      "symbol": "NVDA",
+      "period": "latest_quarter",
+      "currency": "USD",
+      "unit": "billion",
+      "multiples": {
+        "pe": {
+          "numerator": "equity_value_billion",
+          "denominator": "net_income_billion",
+          "denominator_value": 21.9032,
+          "multiple": 27.56,
+          "equity_value_billion": 603.65,
+          "target_price": null
+        },
+        "ps": {
+          "numerator": "equity_value_billion",
+          "denominator": "revenue_billion",
+          "denominator_value": 41.8,
+          "multiple": 7.66,
+          "equity_value_billion": 320.19,
+          "target_price": null
+        }
+      },
+      "scenario_values": {
+        "bear": 288.17,
+        "base": 461.92,
+        "bull": 664.02
+      }
+    },
+    "dcf_model": {
+      "symbol": "NVDA",
+      "period": "latest_quarter",
+      "currency": "USD",
+      "unit": "billion",
+      "assumptions": {
+        "base_free_cash_flow_billion": 17.3,
+        "fcf_growth": 0.2,
+        "discount_rate": 0.1,
+        "terminal_growth": 0.025,
+        "forecast_years": 5,
+        "net_debt_billion": 0.0,
+        "shares_outstanding_billion": null
+      },
+      "forecast": [
+        {
+          "year": 1,
+          "free_cash_flow_billion": 20.76,
+          "present_value_billion": 18.872727
+        },
+        {
+          "year": 2,
+          "free_cash_flow_billion": 24.912,
+          "present_value_billion": 20.58843
+        },
+        {
+          "year": 3,
+          "free_cash_flow_billion": 29.8944,
+          "present_value_billion": 22.460105
+        },
+        {
+          "year": 4,
+          "free_cash_flow_billion": 35.87328,
+          "present_value_billion": 24.501933
+        },
+        {
+          "year": 5,
+          "free_cash_flow_billion": 43.047936,
+          "present_value_billion": 26.729381
+        }
+      ],
+      "terminal_value_billion": 588.321792,
+      "pv_terminal_value_billion": 365.301545,
+      "enterprise_value_billion": 478.454122,
+      "equity_value_billion": 478.454122,
+      "target_price": null
+    },
+    "valuation_model": {
+      "symbol": "NVDA",
+      "period": "latest_quarter",
+      "currency": "USD",
+      "unit": "billion",
+      "relative_valuation": {
+        "symbol": "NVDA",
+        "period": "latest_quarter",
+        "currency": "USD",
+        "unit": "billion",
+        "multiples": {
+          "pe": {
+            "numerator": "equity_value_billion",
+            "denominator": "net_income_billion",
+            "denominator_value": 21.9032,
+            "multiple": 27.56,
+            "equity_value_billion": 603.65,
+            "target_price": null
+          },
+          "ps": {
+            "numerator": "equity_value_billion",
+            "denominator": "revenue_billion",
+            "denominator_value": 41.8,
+            "multiple": 7.66,
+            "equity_value_billion": 320.19,
+            "target_price": null
+          }
+        },
+        "scenario_values": {
+          "bear": 288.17,
+          "base": 461.92,
+          "bull": 664.02
+        }
+      },
+      "dcf_model": {
+        "symbol": "NVDA",
+        "period": "latest_quarter",
+        "currency": "USD",
+        "unit": "billion",
+        "assumptions": {
+          "base_free_cash_flow_billion": 17.3,
+          "fcf_growth": 0.2,
+          "discount_rate": 0.1,
+          "terminal_growth": 0.025,
+          "forecast_years": 5,
+          "net_debt_billion": 0.0,
+          "shares_outstanding_billion": null
+        },
+        "forecast": [
+          {
+            "year": 1,
+            "free_cash_flow_billion": 20.76,
+            "present_value_billion": 18.872727
+          },
+          {
+            "year": 2,
+            "free_cash_flow_billion": 24.912,
+            "present_value_billion": 20.58843
+          },
+          {
+            "year": 3,
+            "free_cash_flow_billion": 29.8944,
+            "present_value_billion": 22.460105
+          },
+          {
+            "year": 4,
+            "free_cash_flow_billion": 35.87328,
+            "present_value_billion": 24.501933
+          },
+          {
+            "year": 5,
+            "free_cash_flow_billion": 43.047936,
+            "present_value_billion": 26.729381
+          }
+        ],
+        "terminal_value_billion": 588.321792,
+        "pv_terminal_value_billion": 365.301545,
+        "enterprise_value_billion": 478.454122,
+        "equity_value_billion": 478.454122,
+        "target_price": null
+      },
+      "blended_equity_value_billion": 467.43,
+      "target_price": null
+    },
+    "valuation_assumptions": {
+      "base_free_cash_flow_billion": 17.3,
+      "fcf_growth": 0.2,
+      "discount_rate": 0.1,
+      "terminal_growth": 0.025,
+      "forecast_years": 5,
+      "net_debt_billion": 0.0,
+      "shares_outstanding_billion": null
+    },
+    "valuation_sensitivity": {
+      "scenario_values": {
+        "bear": {
+          "equity_value_billion": 387.54,
+          "target_price": null
+        },
+        "base": {
+          "equity_value_billion": 478.45,
+          "target_price": null
+        },
+        "bull": {
+          "equity_value_billion": 602.04,
+          "target_price": null
+        }
+      },
+      "directional_check": true
+    },
+    "recommendation": "积极关注",
+    "valuation_method_warning": "",
+    "assumptions": [
+      "估值为规则模型生成的第一版相对估值/DCF 区间，不构成投资建议。",
+      "缺少完整股本与实时市值时，输出为企业/股权价值规模估计。"
+    ]
+  },
+  "valuation_model": {
+    "symbol": "NVDA",
+    "period": "latest_quarter",
+    "currency": "USD",
+    "unit": "billion",
+    "relative_valuation": {
+      "symbol": "NVDA",
+      "period": "latest_quarter",
+      "currency": "USD",
+      "unit": "billion",
+      "multiples": {
+        "pe": {
+          "numerator": "equity_value_billion",
+          "denominator": "net_income_billion",
+          "denominator_value": 21.9032,
+          "multiple": 27.56,
+          "equity_value_billion": 603.65,
+          "target_price": null
+        },
+        "ps": {
+          "numerator": "equity_value_billion",
+          "denominator": "revenue_billion",
+          "denominator_value": 41.8,
+          "multiple": 7.66,
+          "equity_value_billion": 320.19,
+          "target_price": null
+        }
+      },
+      "scenario_values": {
+        "bear": 288.17,
+        "base": 461.92,
+        "bull": 664.02
+      }
+    },
+    "dcf_model": {
+      "symbol": "NVDA",
+      "period": "latest_quarter",
+      "currency": "USD",
+      "unit": "billion",
+      "assumptions": {
+        "base_free_cash_flow_billion": 17.3,
+        "fcf_growth": 0.2,
+        "discount_rate": 0.1,
+        "terminal_growth": 0.025,
+        "forecast_years": 5,
+        "net_debt_billion": 0.0,
+        "shares_outstanding_billion": null
+      },
+      "forecast": [
+        {
+          "year": 1,
+          "free_cash_flow_billion": 20.76,
+          "present_value_billion": 18.872727
+        },
+        {
+          "year": 2,
+          "free_cash_flow_billion": 24.912,
+          "present_value_billion": 20.58843
+        },
+        {
+          "year": 3,
+          "free_cash_flow_billion": 29.8944,
+          "present_value_billion": 22.460105
+        },
+        {
+          "year": 4,
+          "free_cash_flow_billion": 35.87328,
+          "present_value_billion": 24.501933
+        },
+        {
+          "year": 5,
+          "free_cash_flow_billion": 43.047936,
+          "present_value_billion": 26.729381
+        }
+      ],
+      "terminal_value_billion": 588.321792,
+      "pv_terminal_value_billion": 365.301545,
+      "enterprise_value_billion": 478.454122,
+      "equity_value_billion": 478.454122,
+      "target_price": null
+    },
+    "blended_equity_value_billion": 467.43,
+    "target_price": null
+  },
+  "valuation_assumptions": {
+    "base_free_cash_flow_billion": 17.3,
+    "fcf_growth": 0.2,
+    "discount_rate": 0.1,
+    "terminal_growth": 0.025,
+    "forecast_years": 5,
+    "net_debt_billion": 0.0,
+    "shares_outstanding_billion": null
+  },
+  "valuation_sensitivity": {
+    "scenario_values": {
+      "bear": {
+        "equity_value_billion": 387.54,
+        "target_price": null
+      },
+      "base": {
+        "equity_value_billion": 478.45,
+        "target_price": null
+      },
+      "bull": {
+        "equity_value_billion": 602.04,
+        "target_price": null
+      }
+    },
+    "directional_check": true
+  }
+}

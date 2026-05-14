@@ -1,0 +1,30 @@
+{
+  "run_id": "20260514_191345_baseline_4_dynamic_multiagent_router",
+  "baselines": {
+    "baseline_4_dynamic_multiagent_router": {
+      "case_count": 4,
+      "task_completion_rate": 0.0,
+      "required_sections_coverage": 0.5714,
+      "artifact_generation_pass_rate": 1.0,
+      "verification_pass_rate": 0.0,
+      "claim_count_mean": 7.75,
+      "evidence_count_mean": 2.25,
+      "citation_count_mean": 1.25,
+      "gap_detection_count_mean": 4.25,
+      "gap_resolution_rate_mean": 0.0,
+      "message_count_mean": 36.0,
+      "task_blocked_count_mean": 0.0,
+      "task_resolution_rate_mean": 0.5972,
+      "total_latency_sec_sum": 698.0598,
+      "total_latency_sec_mean": 174.5149,
+      "router_decision_count_sum": 12,
+      "dynamic_dispatch_count_sum": 11,
+      "fallback_decision_count_sum": 1,
+      "budget_exceeded_count_sum": 0,
+      "repeated_dispatch_count_sum": 0,
+      "unsupported_gap_fallback_count_sum": 1,
+      "router_stop_reasons": {}
+    }
+  },
+  "comparison_note": "Phase 0 may contain a single baseline; future runs can append additional baselines for deltas."
+}

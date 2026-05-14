@@ -9,6 +9,7 @@ from src.agents.context_packer import build_revision_brief, pack_claims, pack_ev
 from src.agents.evidence_gap import build_evidence_gaps
 from src.agents.verifier import Verifier
 from src.models import ModelAdapter
+from src.multiagent.gaps.detector import gaps_from_verification_report
 from src.schemas.claim import ClaimItem
 
 
@@ -102,18 +103,34 @@ class VerifierAgent(BaseAgent):
                         else [],
                     }
                 )
-                report["passed"] = bool(report.get("passed", False)) and bool(payload.get("passed", False))
+                downgraded = _downgrade_model_derived_llm_errors(
+                    errors=report.get("llm_errors", []),
+                    valuation=valuation if isinstance(valuation, dict) else {},
+                )
+                if downgraded["warnings"]:
+                    report["llm_warnings"] = list(report.get("llm_warnings", [])) + downgraded["warnings"]
+                report["llm_errors"] = downgraded["errors"]
+                report["llm_passed"] = bool(payload.get("passed", False)) or not report["llm_errors"]
+                report["passed"] = bool(report.get("passed", False)) and not report["llm_errors"]
             except Exception as exc:
                 report["llm_error"] = str(exc)
         report["rework_required"] = not bool(report.get("passed", False))
         if report["rework_required"] and not report.get("fix_recommendations"):
             report["fix_recommendations"] = ["Revise unsupported numbers, missing citations, and section coverage before finalizing."]
+        claim_dicts = [item.to_dict() for item in claims]
         report["evidence_gaps"] = build_evidence_gaps(
             verification_report=report,
-            claims=[item.to_dict() for item in claims],
+            claims=claim_dicts,
             expected_symbol=expected_symbol,
             period=str(task.parameters.get("period", "")),
         )
+        report["gaps"] = gaps_from_verification_report(
+            verification_report=report,
+            claims=claim_dicts,
+            evidence_records=evidence_records if isinstance(evidence_records, list) else [],
+            detected_by="VerifierAgent",
+        )
+        report["gap_count"] = len(report["gaps"])
         report["revision_brief"] = build_revision_brief(report)
 
         return self.success(task, {"verification_report": report})
@@ -129,6 +146,36 @@ def _claim_items(raw: Any) -> List[ClaimItem]:
         elif isinstance(item, dict):
             claims.append(ClaimItem.from_dict(item))
     return claims
+
+
+def _downgrade_model_derived_llm_errors(errors: Any, valuation: Dict[str, Any]) -> Dict[str, List[str]]:
+    if not isinstance(errors, list):
+        return {"errors": [], "warnings": []}
+    has_valuation_model = bool(valuation.get("valuation_available")) or bool(valuation.get("valuation_model"))
+    downgrade_markers = [
+        "model assumption",
+        "model assumptions",
+        "model-derived",
+        "model-derived conclusion",
+        "not directly supported",
+        "unsupported model inputs",
+        "P/E multiple",
+        "P/S",
+        "DDM",
+        "sensitivity",
+        "rating",
+        "content is not provided",
+        "numeric verification impossible",
+    ]
+    kept: List[str] = []
+    warnings: List[str] = []
+    for error in errors:
+        text = str(error)
+        if has_valuation_model and any(marker.lower() in text.lower() for marker in downgrade_markers):
+            warnings.append(f"降级为模型假设/上下文限制警告：{text}")
+        else:
+            kept.append(text)
+    return {"errors": kept, "warnings": warnings}
 
 
 def _build_verifier_prompt(

@@ -1,0 +1,19 @@
+{
+  "baselines": [
+    {
+      "baseline_id": "baseline_0_single_prompt",
+      "description": "Single prompt LLM report generation without retrieval or tools.",
+      "status": "implemented_when_model_config_available"
+    },
+    {
+      "baseline_id": "baseline_1_single_rag",
+      "description": "Reserved single-agent RAG adapter; intentionally returns not_implemented until a single RAG path is added.",
+      "status": "stub"
+    },
+    {
+      "baseline_id": "baseline_2_current_workflow",
+      "description": "Frozen current MultiAgentOrchestrator workflow used as the Phase 0 comparison anchor.",
+      "status": "implemented"
+    }
+  ]
+}

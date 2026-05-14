@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from functools import lru_cache
 import hashlib
 import json
 import os
@@ -17,12 +18,35 @@ REVENUE_CONCEPTS = (
     "RevenueFromContractWithCustomerExcludingAssessedTax",
     "Revenues",
     "SalesRevenueNet",
+    # Bank / financial institution revenue concepts
+    "RevenuesNetOfInterestExpense",
+    "NoninterestIncome",
+    "InterestAndDividendIncomeOperating",
 )
 GROSS_PROFIT_CONCEPTS = ("GrossProfit",)
 OPERATING_INCOME_CONCEPTS = ("OperatingIncomeLoss",)
 NET_INCOME_CONCEPTS = ("NetIncomeLoss", "ProfitLoss")
 OPERATING_CASH_FLOW_CONCEPTS = ("NetCashProvidedByUsedInOperatingActivities",)
 CAPEX_CONCEPTS = ("PaymentsToAcquirePropertyPlantAndEquipment",)
+# Finance lease principal payments are part of the official FCF definition used by many companies
+# (e.g. Meta, Alphabet). Deducting them aligns with company-disclosed FCF.
+FINANCE_LEASE_CONCEPTS = (
+    "FinanceLeasePrincipalPayments",
+    "RepaymentsOfFinanceLeaseLiabilities",
+)
+# Non-recurring / one-time item concepts for earnings quality analysis
+INCOME_TAX_BENEFIT_CONCEPTS = (
+    "IncomeTaxExpenseBenefit",  # negative value = benefit
+)
+RESTRUCTURING_CONCEPTS = (
+    "RestructuringCharges",
+    "RestructuringAndRelatedCostIncurredCost",
+)
+ASSET_IMPAIRMENT_CONCEPTS = (
+    "GoodwillImpairmentLoss",
+    "AssetImpairmentCharges",
+    "ImpairmentOfIntangibleAssetsExcludingGoodwill",
+)
 ASSETS_CONCEPTS = ("Assets",)
 LIABILITIES_CONCEPTS = ("Liabilities",)
 EQUITY_CONCEPTS = ("StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest")
@@ -43,7 +67,7 @@ def fetch_sec_companyfacts_evidence(
         raise ValueError("symbol is required")
 
     user_agent = user_agent or _sec_user_agent()
-    ticker_payload = _get_json(SEC_TICKERS_URL, timeout=timeout, user_agent=user_agent)
+    ticker_payload = _cached_sec_tickers(timeout=timeout, user_agent=user_agent)
     cik, company_name = cik_for_symbol(symbol=symbol, ticker_payload=ticker_payload)
     if not cik:
         raise RuntimeError(f"SEC ticker mapping not found for symbol: {symbol}")
@@ -102,6 +126,10 @@ def companyfacts_to_evidence(
     net_income = _fact_value(_matching_duration_fact(us_gaap, NET_INCOME_CONCEPTS, anchor))
     operating_cash_flow = _fact_value(_matching_duration_fact(us_gaap, OPERATING_CASH_FLOW_CONCEPTS, anchor, allow_ytd=True))
     capex = _fact_value(_matching_duration_fact(us_gaap, CAPEX_CONCEPTS, anchor, allow_ytd=True))
+    finance_lease_payments = _fact_value(_matching_duration_fact(us_gaap, FINANCE_LEASE_CONCEPTS, anchor, allow_ytd=True))
+    income_tax = _fact_value(_matching_duration_fact(us_gaap, INCOME_TAX_BENEFIT_CONCEPTS, anchor, allow_ytd=True))
+    restructuring = _fact_value(_matching_duration_fact(us_gaap, RESTRUCTURING_CONCEPTS, anchor, allow_ytd=True))
+    asset_impairment = _fact_value(_matching_duration_fact(us_gaap, ASSET_IMPAIRMENT_CONCEPTS, anchor, allow_ytd=True))
     assets = _fact_value(_matching_instant_fact(us_gaap, ASSETS_CONCEPTS, end=end))
     liabilities = _fact_value(_matching_instant_fact(us_gaap, LIABILITIES_CONCEPTS, end=end))
     equity = _fact_value(_matching_instant_fact(us_gaap, EQUITY_CONCEPTS, end=end))
@@ -109,8 +137,35 @@ def companyfacts_to_evidence(
     diluted_eps = _fact_value(_matching_duration_fact(us_gaap, DILUTED_EPS_CONCEPTS, anchor), units=("USD/shares", "USD/shares"))
 
     free_cash_flow = None
+    fcf_methodology = None
     if operating_cash_flow is not None and capex is not None:
-        free_cash_flow = operating_cash_flow - abs(capex)
+        if finance_lease_payments is not None:
+            # Align with company-disclosed FCF: OCF - CapEx - finance lease principal payments
+            free_cash_flow = operating_cash_flow - abs(capex) - abs(finance_lease_payments)
+            fcf_methodology = "OCF - CapEx - finance lease payments (company-disclosed definition)"
+        else:
+            # Fallback: OCF - CapEx only; may differ from company-disclosed FCF if finance leases exist
+            free_cash_flow = operating_cash_flow - abs(capex)
+            fcf_methodology = "OCF - CapEx (simplified; finance lease payments not available in XBRL)"
+
+    # Determine period scope for cash flow metrics (YTD vs quarter)
+    anchor_days = _duration_days(anchor)
+    ocf_fact = _matching_duration_fact(us_gaap, OPERATING_CASH_FLOW_CONCEPTS, anchor, allow_ytd=True)
+    ocf_days = _duration_days(ocf_fact) if ocf_fact else anchor_days
+    # YTD if duration is more than 1.5x a single quarter (~135 days)
+    ocf_period_type = "YTD" if ocf_days > 135 else "quarter"
+
+    # Annualization factor: quarterly filings (10-Q, ~60-135 days) need ×4 for flow metrics used in ratios.
+    # Annual filings (10-K, ~300+ days) are already full-year, factor = 1.
+    is_quarterly = anchor_days < 135
+    annualization_factor = 4 if is_quarterly else 1
+
+    # Annualized net income for ratio purposes (ROE, ROA).
+    # We keep net_income_billion as the raw reported period value for transparency;
+    # ratios that require annual figures use the annualized version.
+    net_income_annualized = (net_income * annualization_factor) if net_income is not None else None
+    roa_pct = _pct(net_income_annualized, assets)
+    roe_pct = _pct(net_income_annualized, equity)
 
     metrics = {
         "symbol": symbol,
@@ -124,13 +179,24 @@ def companyfacts_to_evidence(
         "net_income_billion": _billions(net_income),
         "net_margin_pct": _pct(net_income, revenue),
         "operating_cash_flow_billion": _billions(operating_cash_flow),
+        "operating_cash_flow_period_type": ocf_period_type,
         "capital_expenditure_billion": _billions(abs(capex) if capex is not None else None),
+        "finance_lease_payments_billion": _billions(abs(finance_lease_payments) if finance_lease_payments is not None else None),
         "free_cash_flow_billion": _billions(free_cash_flow),
+        "free_cash_flow_period_type": ocf_period_type,
+        "free_cash_flow_methodology": fcf_methodology,
+        # Non-recurring items (negative income_tax = tax benefit)
+        "income_tax_billion": _billions(income_tax),
+        "income_tax_benefit_billion": _billions(-income_tax if income_tax is not None and income_tax < 0 else None),
+        "restructuring_charges_billion": _billions(restructuring),
+        "asset_impairment_billion": _billions(asset_impairment),
         "total_assets_billion": _billions(assets),
         "total_liabilities_billion": _billions(liabilities),
         "shareholder_equity_billion": _billions(equity),
-        "roa_pct": _pct(net_income, assets),
-        "roe_pct": _pct(net_income, equity),
+        "is_quarterly": is_quarterly,
+        "annualization_factor": annualization_factor,
+        "roa_pct": roa_pct,
+        "roe_pct": roe_pct,
         "diluted_shares_billion": _billions(diluted_shares),
         "diluted_eps": _round(diluted_eps),
     }
@@ -187,6 +253,11 @@ def _get_json(url: str, timeout: int, user_agent: str) -> Dict[str, Any]:
         raise RuntimeError(f"SEC URL error: {exc.reason}") from exc
 
 
+@lru_cache(maxsize=8)
+def _cached_sec_tickers(timeout: int, user_agent: str) -> Dict[str, Any]:
+    return _get_json(SEC_TICKERS_URL, timeout=timeout, user_agent=user_agent)
+
+
 def _sec_user_agent() -> str:
     return os.environ.get("SEC_USER_AGENT", "OpenDeepReportPlus/0.1 contact noreply@example.com").strip()
 
@@ -196,7 +267,11 @@ def _latest_duration_fact(us_gaap: Dict[str, Any], concepts: Iterable[str]) -> D
     forms = {"10-Q", "10-K"}
     candidates = [item for item in candidates if str(item.get("form") or "") in forms and _fact_value(item) is not None]
     quarterly = [item for item in candidates if _duration_days(item) in range(60, 121)]
-    pool = quarterly or candidates
+    if quarterly:
+        return _latest_by_filed_end(quarterly)
+    # Fallback: prefer the most recent annual (10-K) filing over arbitrary old data
+    annual = [item for item in candidates if str(item.get("form") or "") == "10-K"]
+    pool = annual or candidates
     return _latest_by_filed_end(pool)
 
 

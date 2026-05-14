@@ -1,0 +1,122 @@
+{
+  "overview": "Meta Platforms最新季度估值分析报告生成任务",
+  "research_topic": "Meta Platforms, Inc.（META）latest_quarter valuation_analysis：估值",
+  "requirements": [
+    "报告类型：valuation_analysis",
+    "时间范围：latest_quarter，粒度：quarter",
+    "重点关注：估值",
+    "输出偏好：language=zh, format=markdown_html_json, depth=standard",
+    "上传文件是可选补充证据；公开公司研报优先使用可信公开来源。"
+  ],
+  "output_format": "markdown, html, json with citations",
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "browser",
+      "description": "搜索META最新季度（latest quarter）的财务摘要，包括收入、净利润、EPS、自由现金流以及当前股价、市值、市盈率等估值数据。",
+      "parameters": {
+        "query": "META latest quarter financial highlights earnings revenue EPS free cash flow price market cap",
+        "source": "web",
+        "period": "latest_quarter"
+      },
+      "dependencies": [],
+      "priority": 5,
+      "expected_output": "包含META最新季度关键财务指标和当前市场数据的结构化文本或列表"
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "deep_researcher",
+      "description": "查找Meta Platforms（META）在通信服务板块中的可比公司（如GOOGL, SNAP, PINS）的最新估值倍数（PE、PS、EV/EBITDA等），比较META估值水平。",
+      "parameters": {
+        "query": "META peer valuation comparison PE PS EV/EBITDA 2023 2024",
+        "industry": "Communication Services",
+        "peers": [
+          "GOOGL",
+          "SNAP",
+          "PINS"
+        ]
+      },
+      "dependencies": [],
+      "priority": 4,
+      "expected_output": "包含可比公司估值倍数表格及META相对位置分析"
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "deep_analyze",
+      "description": "基于task_001和task_002的结果，进行DCF模型估值（假设合理的WACC和增长率）和相对估值（PE/PEG）计算，并评估当前估值是否合理。",
+      "parameters": {
+        "valuation_methods": [
+          "DCF",
+          "P/E",
+          "PEG"
+        ],
+        "dcf_assumptions": {
+          "wacc_range": "9%-11%",
+          "terminal_growth": "3%"
+        },
+        "relative_valuation": [
+          "PE",
+          "EV/EBITDA",
+          "P/S"
+        ]
+      },
+      "dependencies": [
+        "task_001",
+        "task_002"
+      ],
+      "priority": 4,
+      "expected_output": "包含DCF估值区间、相对估值表格以及综合结论的文本分析"
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "final_answer",
+      "description": "整合所有分析结果，撰写META最新季度估值分析报告。报告需包含摘要、财务数据、估值方法、结果与结论，并输出为Markdown、HTML和JSON三种格式，每个输出均附带证据引用（evidence_id）。",
+      "parameters": {
+        "report_format": [
+          "markdown",
+          "html",
+          "json"
+        ],
+        "language": "zh",
+        "output_preferences": "depth=standard",
+        "citations_required": true
+      },
+      "dependencies": [
+        "task_003"
+      ],
+      "priority": 5,
+      "expected_output": "包含三个字符串：markdown报告文本、HTML代码、JSON对象"
+    },
+    {
+      "task_id": "task_005",
+      "task_type": "verifier",
+      "description": "验证最终报告中的所有事实数字、引用来源、逻辑一致性。确保每个实质性声明都有对应的evidence_id，没有捏造数据，且估值结论符合输入数据。",
+      "parameters": {
+        "validation_rules": [
+          "Every financial figure must cite source from task_001 or task_002",
+          "No invented numbers or dates",
+          "Report structure meets requirements",
+          "DCF assumptions are clearly stated"
+        ]
+      },
+      "dependencies": [
+        "task_004"
+      ],
+      "priority": 5,
+      "expected_output": "验证通过或需要修订的问题列表"
+    }
+  ],
+  "data_sources": [
+    "Yahoo Finance",
+    "SEC 10-K/Q filings",
+    "MarketWatch",
+    "Bloomberg (if accessible)"
+  ],
+  "citations_required": true,
+  "final_outputs": [
+    "valuation_report_markdown",
+    "valuation_report_html",
+    "valuation_report_json"
+  ],
+  "fallback_used": false
+}

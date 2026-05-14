@@ -1,0 +1,49 @@
+{
+  "passed": false,
+  "chart_count": 2,
+  "chart_text_consistency": {
+    "chart_count": 2,
+    "passed_chart_count": 2,
+    "failed_chart_count": 0,
+    "passed": true,
+    "details": [
+      {
+        "chart_id": "peer_comparison_table",
+        "title": "同行对比：核心指标",
+        "passed": true,
+        "issues": []
+      },
+      {
+        "chart_id": "claim_confidence_bar",
+        "title": "附录：结论置信度",
+        "passed": true,
+        "issues": []
+      }
+    ]
+  },
+  "chart_lineage": {
+    "passed": false,
+    "chart_count": 2,
+    "results": [
+      {
+        "chart_id": "peer_comparison_table",
+        "passed": false,
+        "errors": [
+          "missing_source_evidence_ids"
+        ]
+      },
+      {
+        "chart_id": "claim_confidence_bar",
+        "passed": false,
+        "errors": [
+          "missing_source_evidence_ids"
+        ]
+      }
+    ]
+  },
+  "table_backed_financial_charts": {
+    "passed": true,
+    "checked_chart_count": 0,
+    "details": []
+  }
+}

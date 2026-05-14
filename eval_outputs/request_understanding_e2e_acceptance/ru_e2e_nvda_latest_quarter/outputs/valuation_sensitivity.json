@@ -1,0 +1,17 @@
+{
+  "scenario_values": {
+    "bear": {
+      "equity_value_billion": 387.54,
+      "target_price": null
+    },
+    "base": {
+      "equity_value_billion": 478.45,
+      "target_price": null
+    },
+    "bull": {
+      "equity_value_billion": 602.04,
+      "target_price": null
+    }
+  },
+  "directional_check": true
+}

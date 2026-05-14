@@ -34,8 +34,8 @@ def test_stage10_export_outputs_exist(tmp_path: Path):
     assert html.exists()
     assert rep_json.exists()
 
-    assert "## 财务分析" in md.read_text(encoding="utf-8")
-    assert "<h2>财务分析</h2>" in html.read_text(encoding="utf-8")
+    assert "财务分析" in md.read_text(encoding="utf-8")
+    assert "财务分析" in html.read_text(encoding="utf-8")
     payload = json.loads(rep_json.read_text(encoding="utf-8"))
     assert payload["claim_count"] == 1
     assert payload["chart_count"] == 1

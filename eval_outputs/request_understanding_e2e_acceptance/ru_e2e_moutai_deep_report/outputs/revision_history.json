@@ -1,0 +1,8 @@
+[
+  {
+    "round": 1,
+    "revision_request": "- Errors: Multimodal consistency check failed.\n- Warnings: No financial_analysis claims found.\n- Warnings: 1 claims have confidence lower than 0.5.\n- Warnings: Target symbol 600519.SS is not explicitly mentioned in report claims or markdown.\n- Warnings: Report mentions non-target ticker-like tokens: FCF, SS.\n- Warnings: Claim cl_risk_0001 has no evidence_ids.\n- Warnings: Claim cl_peer_0001 has no evidence_ids.\n- Fix recommendations: Add evidence_ids to all claims referencing available evidence records.",
+    "model_route": "pro_conditional",
+    "passed_after_round": false
+  }
+]

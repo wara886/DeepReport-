@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List
 import pandas as pd
 
 from src.charts.render import attach_charts_to_report, render_all_charts
+from src.data.china_finance import china_finance_source_map
 from src.data.yahoo_finance import yahoo_snapshot_to_evidence
 from src.features.company_valuation import build_peer_comparison, perform_company_valuation
 from src.features.financial_ratios import build_financial_ratios
@@ -195,6 +196,22 @@ def build_core_tool_registry() -> ToolRegistry:
     )
     registry.register(
         ToolSpec(
+            name="discover_china_finance_sources",
+            description="Discover official disclosure and market-data source candidates for A/H share research.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string", "description": "A/H share symbol, for example 600519, 000001.SZ, or 00700.HK."},
+                    "period": {"type": "string", "description": "Optional report period label."},
+                    "include_market_sources": {"type": "boolean", "description": "Include Eastmoney/10jqka market-data candidates."},
+                },
+                "required": ["symbol"],
+            },
+            handler=discover_china_finance_sources_tool,
+        )
+    )
+    registry.register(
+        ToolSpec(
             name="render_all_charts",
             description="Render report charts from generated feature parquet files.",
             parameters={
@@ -294,6 +311,19 @@ def fetch_yahoo_market_snapshot_tool(
 ) -> Dict[str, Any]:
     evidence = yahoo_snapshot_to_evidence(symbol=symbol, period=period, range_=range_, interval=interval)
     return {"evidence": evidence}
+
+
+def discover_china_finance_sources_tool(
+    symbol: str,
+    period: str = "latest",
+    include_market_sources: bool = True,
+) -> Dict[str, Any]:
+    evidence = china_finance_source_map(
+        identifier=symbol,
+        period=period,
+        include_market_sources=include_market_sources,
+    )
+    return {"evidence": evidence, "count": len(evidence)}
 
 
 def render_all_charts_tool(

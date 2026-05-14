@@ -16,9 +16,9 @@ from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a visible financial multi-agent workflow.")
-    parser.add_argument("--topic", default="分析 AAPL 2025Q4 财务表现，并生成带引用的研究报告")
-    parser.add_argument("--symbol", default="AAPL")
-    parser.add_argument("--period", default="2025Q4")
+    parser.add_argument("--topic", default="")
+    parser.add_argument("--symbol", default="NVDA")
+    parser.add_argument("--period", default="latest")
     parser.add_argument("--config-path", default="configs/model_backends.yaml")
     parser.add_argument("--raw-data-root", default="data/raw/real_data")
     parser.add_argument("--output-dir", default="data/outputs/multi_agent")
@@ -37,6 +37,7 @@ def main() -> int:
         help="Comma-separated search engines, e.g. local_real_data,yahoo_finance,tavily,local_evidence.",
     )
     args = parser.parse_args()
+    topic = args.topic or f"分析 {args.symbol} {args.period} 财务表现，并生成带引用的研究报告"
 
     orchestrator = MultiAgentOrchestrator(
         output_dir=args.output_dir,
@@ -45,7 +46,7 @@ def main() -> int:
         raw_data_root=args.raw_data_root,
     )
     result = orchestrator.run(
-        research_topic=args.topic,
+        research_topic=topic,
         symbol=args.symbol,
         period=args.period,
         execution_mode=args.execution_mode,

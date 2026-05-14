@@ -1,0 +1,393 @@
+[
+  {
+    "gap_id": "gap_0001_multimodal_conflict",
+    "gap_type": "FORMAT_GAP",
+    "routed_to": [
+      "FinalWriterAgent"
+    ],
+    "before_revision": {
+      "gap_id": "gap_0001_multimodal_conflict",
+      "gap_type": "FORMAT_GAP",
+      "severity": "high",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Multimodal consistency check failed.",
+      "recommended_action": "revise_report_structure_or_format",
+      "status": "routed",
+      "routed_to_agents": [
+        "FinalWriterAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "after_revision": {
+      "gap_id": "gap_0001_multimodal_conflict",
+      "gap_type": "FORMAT_GAP",
+      "severity": "high",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Multimodal consistency check failed.",
+      "recommended_action": "revise_report_structure_or_format",
+      "status": "routed",
+      "routed_to_agents": [
+        "FinalWriterAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "resolved": false,
+    "rounds": 1,
+    "latency": 0.0,
+    "status": "unresolved",
+    "created_at": "2026-05-14T09:05:15+00:00",
+    "resolved_at": ""
+  },
+  {
+    "gap_id": "gap_0010_multimodal_conflict",
+    "gap_type": "PEER_GAP",
+    "routed_to": [
+      "PeerComparisonAgent"
+    ],
+    "before_revision": {
+      "gap_id": "gap_0010_multimodal_conflict",
+      "gap_type": "PEER_GAP",
+      "severity": "high",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Chart peer_comparison_table lacks source evidence IDs.",
+      "recommended_action": "refresh_peer_selection_and_comparison",
+      "status": "routed",
+      "routed_to_agents": [
+        "PeerComparisonAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "after_revision": {
+      "gap_id": "gap_0010_multimodal_conflict",
+      "gap_type": "PEER_GAP",
+      "severity": "high",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Chart peer_comparison_table lacks source evidence IDs.",
+      "recommended_action": "refresh_peer_selection_and_comparison",
+      "status": "routed",
+      "routed_to_agents": [
+        "PeerComparisonAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "resolved": false,
+    "rounds": 1,
+    "latency": 0.0,
+    "status": "unresolved",
+    "created_at": "2026-05-14T09:05:15+00:00",
+    "resolved_at": ""
+  },
+  {
+    "gap_id": "gap_0011_multimodal_conflict",
+    "gap_type": "FORMAT_GAP",
+    "routed_to": [
+      "FinalWriterAgent"
+    ],
+    "before_revision": {
+      "gap_id": "gap_0011_multimodal_conflict",
+      "gap_type": "FORMAT_GAP",
+      "severity": "high",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Chart claim_confidence_bar lacks source evidence IDs.",
+      "recommended_action": "revise_report_structure_or_format",
+      "status": "routed",
+      "routed_to_agents": [
+        "FinalWriterAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "after_revision": {
+      "gap_id": "gap_0011_multimodal_conflict",
+      "gap_type": "FORMAT_GAP",
+      "severity": "high",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Chart claim_confidence_bar lacks source evidence IDs.",
+      "recommended_action": "revise_report_structure_or_format",
+      "status": "routed",
+      "routed_to_agents": [
+        "FinalWriterAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "resolved": false,
+    "rounds": 1,
+    "latency": 0.0,
+    "status": "unresolved",
+    "created_at": "2026-05-14T09:05:15+00:00",
+    "resolved_at": ""
+  },
+  {
+    "gap_id": "gap_0005_format_gap",
+    "gap_type": "FORMAT_GAP",
+    "routed_to": [
+      "FinalWriterAgent"
+    ],
+    "before_revision": {
+      "gap_id": "gap_0005_format_gap",
+      "gap_type": "FORMAT_GAP",
+      "severity": "medium",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Target symbol 600519.SS is not explicitly mentioned in report claims or markdown.",
+      "recommended_action": "revise_report_structure_or_format",
+      "status": "routed",
+      "routed_to_agents": [
+        "FinalWriterAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "after_revision": {
+      "gap_id": "gap_0005_format_gap",
+      "gap_type": "FORMAT_GAP",
+      "severity": "medium",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Target symbol 600519.SS is not explicitly mentioned in report claims or markdown.",
+      "recommended_action": "revise_report_structure_or_format",
+      "status": "routed",
+      "routed_to_agents": [
+        "FinalWriterAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "resolved": false,
+    "rounds": 1,
+    "latency": 0.0,
+    "status": "unresolved",
+    "created_at": "2026-05-14T09:05:15+00:00",
+    "resolved_at": ""
+  },
+  {
+    "gap_id": "gap_0006_peer_gap_cl_peer_0001",
+    "gap_type": "PEER_GAP",
+    "routed_to": [
+      "PeerComparisonAgent"
+    ],
+    "before_revision": {
+      "gap_id": "gap_0006_peer_gap_cl_peer_0001",
+      "gap_type": "PEER_GAP",
+      "severity": "low",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [
+        "cl_peer_0001"
+      ],
+      "related_evidence_ids": [],
+      "section": "peer_compare",
+      "description": "Claim cl_peer_0001 has no evidence_ids.",
+      "recommended_action": "refresh_peer_selection_and_comparison",
+      "status": "routed",
+      "routed_to_agents": [
+        "PeerComparisonAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "after_revision": {
+      "gap_id": "gap_0006_peer_gap_cl_peer_0001",
+      "gap_type": "PEER_GAP",
+      "severity": "low",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [
+        "cl_peer_0001"
+      ],
+      "related_evidence_ids": [],
+      "section": "peer_compare",
+      "description": "Claim cl_peer_0001 has no evidence_ids.",
+      "recommended_action": "refresh_peer_selection_and_comparison",
+      "status": "routed",
+      "routed_to_agents": [
+        "PeerComparisonAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "resolved": false,
+    "rounds": 1,
+    "latency": 0.0,
+    "status": "unresolved",
+    "created_at": "2026-05-14T09:05:15+00:00",
+    "resolved_at": ""
+  },
+  {
+    "gap_id": "gap_0007_risk_gap_cl_risk_0001",
+    "gap_type": "RISK_GAP",
+    "routed_to": [
+      "RiskAgent"
+    ],
+    "before_revision": {
+      "gap_id": "gap_0007_risk_gap_cl_risk_0001",
+      "gap_type": "RISK_GAP",
+      "severity": "low",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [
+        "cl_risk_0001"
+      ],
+      "related_evidence_ids": [],
+      "section": "risks",
+      "description": "Claim cl_risk_0001 missing evidence_ids.",
+      "recommended_action": "regenerate_or_expand_risk_analysis",
+      "status": "routed",
+      "routed_to_agents": [
+        "RiskAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "after_revision": {
+      "gap_id": "gap_0007_risk_gap_cl_risk_0001",
+      "gap_type": "RISK_GAP",
+      "severity": "low",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [
+        "cl_risk_0001"
+      ],
+      "related_evidence_ids": [],
+      "section": "risks",
+      "description": "Claim cl_risk_0001 missing evidence_ids.",
+      "recommended_action": "regenerate_or_expand_risk_analysis",
+      "status": "routed",
+      "routed_to_agents": [
+        "RiskAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "resolved": false,
+    "rounds": 1,
+    "latency": 0.0,
+    "status": "unresolved",
+    "created_at": "2026-05-14T09:05:15+00:00",
+    "resolved_at": ""
+  },
+  {
+    "gap_id": "gap_0008_peer_gap_cl_peer_0001",
+    "gap_type": "PEER_GAP",
+    "routed_to": [
+      "PeerComparisonAgent"
+    ],
+    "before_revision": {
+      "gap_id": "gap_0008_peer_gap_cl_peer_0001",
+      "gap_type": "PEER_GAP",
+      "severity": "low",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [
+        "cl_peer_0001"
+      ],
+      "related_evidence_ids": [],
+      "section": "peer_compare",
+      "description": "Claim cl_peer_0001 missing evidence_ids.",
+      "recommended_action": "refresh_peer_selection_and_comparison",
+      "status": "routed",
+      "routed_to_agents": [
+        "PeerComparisonAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "after_revision": {
+      "gap_id": "gap_0008_peer_gap_cl_peer_0001",
+      "gap_type": "PEER_GAP",
+      "severity": "low",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [
+        "cl_peer_0001"
+      ],
+      "related_evidence_ids": [],
+      "section": "peer_compare",
+      "description": "Claim cl_peer_0001 missing evidence_ids.",
+      "recommended_action": "refresh_peer_selection_and_comparison",
+      "status": "routed",
+      "routed_to_agents": [
+        "PeerComparisonAgent"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "resolved": false,
+    "rounds": 1,
+    "latency": 0.0,
+    "status": "unresolved",
+    "created_at": "2026-05-14T09:05:15+00:00",
+    "resolved_at": ""
+  },
+  {
+    "gap_id": "gap_0011_valuation_gap",
+    "gap_type": "VALUATION_GAP",
+    "routed_to": [
+      "ValuationAgent",
+      "CompanyValuationModule"
+    ],
+    "before_revision": {
+      "gap_id": "gap_0011_valuation_gap",
+      "gap_type": "VALUATION_GAP",
+      "severity": "high",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Multiple report sections contain only placeholder text without substantive claims.",
+      "recommended_action": "rerun_valuation_or_validate_assumptions",
+      "status": "routed",
+      "routed_to_agents": [
+        "ValuationAgent",
+        "CompanyValuationModule"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "after_revision": {
+      "gap_id": "gap_0011_valuation_gap",
+      "gap_type": "VALUATION_GAP",
+      "severity": "high",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Multiple report sections contain only placeholder text without substantive claims.",
+      "recommended_action": "rerun_valuation_or_validate_assumptions",
+      "status": "routed",
+      "routed_to_agents": [
+        "ValuationAgent",
+        "CompanyValuationModule"
+      ],
+      "created_at": "2026-05-14T09:05:15+00:00",
+      "resolved_at": ""
+    },
+    "resolved": false,
+    "rounds": 1,
+    "latency": 0.0,
+    "status": "unresolved",
+    "created_at": "2026-05-14T09:05:15+00:00",
+    "resolved_at": ""
+  }
+]

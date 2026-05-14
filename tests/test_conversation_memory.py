@@ -20,6 +20,8 @@ def test_conversation_memory_preserves_scope_constraints_and_pinned_facts():
     assert "period=2025Q4" in brief
     assert "evidence_id" in brief
     assert "Do not invent numbers" in brief
+    assert "scope_memory" in brief
+    assert "domain_memory" in brief
 
 
 def test_conversation_memory_absorbs_verifier_feedback_and_rejected_claims():
@@ -56,3 +58,40 @@ def test_conversation_memory_context_brief_is_bounded():
 
     assert len(brief) <= 500
     assert brief.endswith("...[compressed]")
+
+
+def test_conversation_memory_builds_layered_run_state_memory():
+    state = build_initial_conversation_state(
+        research_topic="Analyze META latest",
+        requirements=[],
+        symbol="META",
+        period="latest",
+    )
+    run_state = {
+        "conversation_context": state.to_dict(),
+        "symbol": "META",
+        "period": "latest",
+        "evidence_records": [
+            {"evidence_id": "ev_fin", "source_type": "financials", "metadata": {"symbol": "META"}},
+            {"evidence_id": "ev_mkt", "source_type": "market_api"},
+        ],
+        "claims": [
+            {
+                "claim_id": "cl_peer",
+                "section_name": "peer_compare",
+                "claim_text": "Peer claim",
+                "evidence_ids": ["ev_fin"],
+                "numeric_values": {"free_cash_flow_billion": 12.4},
+            }
+        ],
+        "analysis_artifacts": {"financial_metrics": {"metric_count": 3}},
+    }
+
+    restored = conversation_state_from_dict(run_state["conversation_context"])
+    assert restored is not None
+    restored.absorb_run_state(run_state)
+    payload = restored.to_dict()
+
+    assert payload["working_memory"]["evidence_count"] == 2
+    assert payload["evidence_memory"]["market_snapshot_ids"] == ["ev_mkt"]
+    assert any("FCF wording" in item for item in payload["domain_memory"]["rules"])

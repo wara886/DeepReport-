@@ -1,0 +1,39 @@
+[
+  {
+    "chart_id": "peer_comparison_table",
+    "chart_type": "table",
+    "title": "同行对比：核心指标",
+    "output_path": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/request_understanding_e2e_acceptance/ru_e2e_nvda_latest_quarter/outputs/charts/peer_comparison_table.png",
+    "chart_category": "report",
+    "source_fields": "claims.claim_text",
+    "input_claim_ids": [
+      "cl_peer_0001"
+    ],
+    "source_evidence_ids": []
+  },
+  {
+    "chart_id": "claim_confidence_bar",
+    "chart_type": "bar",
+    "title": "附录：结论置信度",
+    "output_path": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/request_understanding_e2e_acceptance/ru_e2e_nvda_latest_quarter/outputs/charts/claim_confidence_bar.png",
+    "chart_category": "audit",
+    "source_fields": "claims.confidence",
+    "input_claim_ids": [
+      "cl_risk_0001",
+      "cl_peer_0001"
+    ],
+    "source_evidence_ids": [],
+    "chart_js": {
+      "type": "bar",
+      "labels": [
+        "cl_risk_0001",
+        "cl_peer_0001"
+      ],
+      "data": [
+        0.65,
+        0.4
+      ],
+      "label": "置信度"
+    }
+  }
+]

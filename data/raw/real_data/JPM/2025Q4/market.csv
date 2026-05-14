@@ -1,0 +1,2 @@
+symbol,period,publish_time,close,volume,source_url,trust_level
+JPM,2025Q4,2026-01-31,248.32,9876543,https://example.com/real/market/jpm,high

@@ -1,0 +1,109 @@
+{
+  "runs": {
+    "baseline_2_current_workflow": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/baseline_2_current_workflow_anchor/eval_summary.json",
+    "baseline_3_gaprouter_routed_rework": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/baseline_3_gaprouter_routed_rework/eval_summary.json",
+    "baseline_4_dynamic_multiagent_router": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/20260514_191345_baseline_4_dynamic_multiagent_router/eval_summary.json"
+  },
+  "core_metrics": {
+    "task_completion_rate": {
+      "baseline_2_current_workflow": 0.0,
+      "baseline_3_gaprouter_routed_rework": 0.0,
+      "baseline_4_dynamic_multiagent_router": 0.0,
+      "delta_b3_vs_b2": 0.0,
+      "delta_b4_vs_b3": 0.0
+    },
+    "required_sections_coverage": {
+      "baseline_2_current_workflow": 0.5714,
+      "baseline_3_gaprouter_routed_rework": 0.5357,
+      "baseline_4_dynamic_multiagent_router": 0.5714,
+      "delta_b3_vs_b2": -0.0357,
+      "delta_b4_vs_b3": 0.0357
+    },
+    "artifact_generation_pass_rate": {
+      "baseline_2_current_workflow": 1.0,
+      "baseline_3_gaprouter_routed_rework": 1.0,
+      "baseline_4_dynamic_multiagent_router": 1.0,
+      "delta_b3_vs_b2": 0.0,
+      "delta_b4_vs_b3": 0.0
+    },
+    "verification_pass_rate": {
+      "baseline_2_current_workflow": 0.0,
+      "baseline_3_gaprouter_routed_rework": 0.0,
+      "baseline_4_dynamic_multiagent_router": 0.0,
+      "delta_b3_vs_b2": 0.0,
+      "delta_b4_vs_b3": 0.0
+    },
+    "gap_detection_count_mean": {
+      "baseline_2_current_workflow": 4.75,
+      "baseline_3_gaprouter_routed_rework": 5.0,
+      "baseline_4_dynamic_multiagent_router": 4.25,
+      "delta_b3_vs_b2": 0.25,
+      "delta_b4_vs_b3": -0.75
+    },
+    "gap_resolution_rate_mean": {
+      "baseline_2_current_workflow": 0.0,
+      "baseline_3_gaprouter_routed_rework": 0.0,
+      "baseline_4_dynamic_multiagent_router": 0.0,
+      "delta_b3_vs_b2": 0.0,
+      "delta_b4_vs_b3": 0.0
+    },
+    "task_resolution_rate_mean": {
+      "baseline_2_current_workflow": 0.4698,
+      "baseline_3_gaprouter_routed_rework": 0.5488,
+      "baseline_4_dynamic_multiagent_router": 0.5972,
+      "delta_b3_vs_b2": 0.079,
+      "delta_b4_vs_b3": 0.0484
+    },
+    "total_latency_sec_mean": {
+      "baseline_2_current_workflow": 138.0531,
+      "baseline_3_gaprouter_routed_rework": 169.7446,
+      "baseline_4_dynamic_multiagent_router": 174.5149,
+      "delta_b3_vs_b2": 31.6915,
+      "delta_b4_vs_b3": 4.7703
+    },
+    "claim_count_mean": {
+      "baseline_2_current_workflow": 4.75,
+      "baseline_3_gaprouter_routed_rework": 4.75,
+      "baseline_4_dynamic_multiagent_router": 7.75,
+      "delta_b3_vs_b2": 0.0,
+      "delta_b4_vs_b3": 3.0
+    },
+    "evidence_count_mean": {
+      "baseline_2_current_workflow": 2.25,
+      "baseline_3_gaprouter_routed_rework": 2.25,
+      "baseline_4_dynamic_multiagent_router": 2.25,
+      "delta_b3_vs_b2": 0.0,
+      "delta_b4_vs_b3": 0.0
+    },
+    "citation_count_mean": {
+      "baseline_2_current_workflow": 1.25,
+      "baseline_3_gaprouter_routed_rework": 2.75,
+      "baseline_4_dynamic_multiagent_router": 1.25,
+      "delta_b3_vs_b2": 1.5,
+      "delta_b4_vs_b3": -1.5
+    },
+    "message_count_mean": {
+      "baseline_2_current_workflow": 23.75,
+      "baseline_3_gaprouter_routed_rework": 33.0,
+      "baseline_4_dynamic_multiagent_router": 36.0,
+      "delta_b3_vs_b2": 9.25,
+      "delta_b4_vs_b3": 3.0
+    },
+    "task_blocked_count_mean": {
+      "baseline_2_current_workflow": 0.0,
+      "baseline_3_gaprouter_routed_rework": 0.0,
+      "baseline_4_dynamic_multiagent_router": 0.0,
+      "delta_b3_vs_b2": 0.0,
+      "delta_b4_vs_b3": 0.0
+    }
+  },
+  "phase3_process_metrics": {
+    "router_decision_count_sum": 12.0,
+    "dynamic_dispatch_count_sum": 11.0,
+    "fallback_decision_count_sum": 1.0,
+    "budget_exceeded_count_sum": 0.0,
+    "repeated_dispatch_count_sum": 0.0,
+    "unsupported_gap_fallback_count_sum": 1.0,
+    "router_stop_reasons": {}
+  }
+}

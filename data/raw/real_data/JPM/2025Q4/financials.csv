@@ -1,0 +1,2 @@
+symbol,period,publish_time,revenue_billion,revenue_growth_pct,net_interest_margin_pct,return_on_equity_pct,return_on_assets_pct,tier1_capital_ratio_pct,net_income_billion,source_url,trust_level,notes
+JPM,2025Q4,2026-01-31,43.7,12.0,2.74,17.8,1.42,15.3,14.0,https://example.com/real/financials/jpm,high,quarterly summary

@@ -1,0 +1,187 @@
+{
+  "tasks": [
+    {
+      "task_id": "gap_task_gap_0001_multimodal_conflict_FinalWriterAgent",
+      "task_type": "gap_rework:FORMAT_GAP",
+      "owner_agent": "FinalWriterAgent",
+      "dependencies": [],
+      "related_gap_ids": [
+        "gap_0001_multimodal_conflict"
+      ],
+      "status": "queued",
+      "last_update": "2026-05-14T09:03:17+00:00",
+      "result_ref": ""
+    },
+    {
+      "task_id": "gap_task_gap_0005_peer_gap_cl_peer_0001_PeerComparisonAgent",
+      "task_type": "gap_rework:PEER_GAP",
+      "owner_agent": "PeerComparisonAgent",
+      "dependencies": [],
+      "related_gap_ids": [
+        "gap_0005_peer_gap_cl_peer_0001"
+      ],
+      "status": "queued",
+      "last_update": "2026-05-14T09:03:17+00:00",
+      "result_ref": ""
+    },
+    {
+      "task_id": "gap_task_gap_0009_multimodal_conflict_PeerComparisonAgent",
+      "task_type": "gap_rework:PEER_GAP",
+      "owner_agent": "PeerComparisonAgent",
+      "dependencies": [],
+      "related_gap_ids": [
+        "gap_0009_multimodal_conflict"
+      ],
+      "status": "queued",
+      "last_update": "2026-05-14T09:03:17+00:00",
+      "result_ref": ""
+    },
+    {
+      "task_id": "gap_task_gap_0009_peer_gap_cl_peer_0001_PeerComparisonAgent",
+      "task_type": "gap_rework:PEER_GAP",
+      "owner_agent": "PeerComparisonAgent",
+      "dependencies": [],
+      "related_gap_ids": [
+        "gap_0009_peer_gap_cl_peer_0001"
+      ],
+      "status": "queued",
+      "last_update": "2026-05-14T09:03:17+00:00",
+      "result_ref": ""
+    },
+    {
+      "task_id": "gap_task_gap_0010_multimodal_conflict_FinalWriterAgent",
+      "task_type": "gap_rework:FORMAT_GAP",
+      "owner_agent": "FinalWriterAgent",
+      "dependencies": [],
+      "related_gap_ids": [
+        "gap_0010_multimodal_conflict"
+      ],
+      "status": "queued",
+      "last_update": "2026-05-14T09:03:17+00:00",
+      "result_ref": ""
+    },
+    {
+      "task_id": "task_001",
+      "task_type": "browser",
+      "owner_agent": "browser",
+      "dependencies": [],
+      "related_gap_ids": [],
+      "status": "resolved",
+      "last_update": "2026-05-14T09:01:38+00:00",
+      "result_ref": "BrowserAgent"
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "browser",
+      "owner_agent": "browser",
+      "dependencies": [],
+      "related_gap_ids": [],
+      "status": "resolved",
+      "last_update": "2026-05-14T09:01:38+00:00",
+      "result_ref": "BrowserAgent"
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "deep_researcher",
+      "owner_agent": "research",
+      "dependencies": [
+        "task_001"
+      ],
+      "related_gap_ids": [],
+      "status": "resolved",
+      "last_update": "2026-05-14T09:01:38+00:00",
+      "result_ref": "DeepResearcherAgent"
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "deep_researcher",
+      "owner_agent": "research",
+      "dependencies": [
+        "task_001"
+      ],
+      "related_gap_ids": [],
+      "status": "resolved",
+      "last_update": "2026-05-14T09:01:38+00:00",
+      "result_ref": "DeepResearcherAgent"
+    },
+    {
+      "task_id": "task_005",
+      "task_type": "deep_analyze",
+      "owner_agent": "analyze",
+      "dependencies": [
+        "task_002",
+        "task_003",
+        "task_001"
+      ],
+      "related_gap_ids": [],
+      "status": "resolved",
+      "last_update": "2026-05-14T09:01:38+00:00",
+      "result_ref": "DeepAnalyzeAgent"
+    },
+    {
+      "task_id": "task_006",
+      "task_type": "final_answer",
+      "owner_agent": "final_answer",
+      "dependencies": [
+        "task_003",
+        "task_004",
+        "task_005"
+      ],
+      "related_gap_ids": [],
+      "status": "resolved",
+      "last_update": "2026-05-14T09:01:50+00:00",
+      "result_ref": "FinalAnswerAgent"
+    },
+    {
+      "task_id": "task_007",
+      "task_type": "verifier",
+      "owner_agent": "verifier",
+      "dependencies": [
+        "task_006"
+      ],
+      "related_gap_ids": [],
+      "status": "resolved",
+      "last_update": "2026-05-14T09:02:00+00:00",
+      "result_ref": "VerifierAgent"
+    },
+    {
+      "task_id": "task_rework_001_final_answer",
+      "task_type": "final_answer_rework",
+      "owner_agent": "final_answer",
+      "dependencies": [],
+      "related_gap_ids": [
+        "gap_0001_multimodal_conflict",
+        "gap_0009_multimodal_conflict",
+        "gap_0010_multimodal_conflict",
+        "gap_0005_peer_gap_cl_peer_0001",
+        "gap_0009_peer_gap_cl_peer_0001"
+      ],
+      "status": "resolved",
+      "last_update": "2026-05-14T09:02:54+00:00",
+      "result_ref": "FinalAnswerAgent"
+    },
+    {
+      "task_id": "task_rework_001_verifier",
+      "task_type": "verifier_recheck",
+      "owner_agent": "verifier",
+      "dependencies": [
+        "task_rework_001_final_answer"
+      ],
+      "related_gap_ids": [
+        "gap_0001_multimodal_conflict",
+        "gap_0009_multimodal_conflict",
+        "gap_0010_multimodal_conflict",
+        "gap_0005_peer_gap_cl_peer_0001",
+        "gap_0009_peer_gap_cl_peer_0001"
+      ],
+      "status": "resolved",
+      "last_update": "2026-05-14T09:03:17+00:00",
+      "result_ref": "VerifierAgent"
+    }
+  ],
+  "summary": {
+    "task_count": 14,
+    "blocked_count": 0,
+    "resolution_rate": 0.6429
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "overview": "为NVIDIA最新季度生成公司研报，涵盖估值、经营情况和主要风险。任务图包含搜索、深度研究、分析和验证。",
+  "research_topic": "NVIDIA Corporation（NVDA）latest_quarter company_research：估值、经营情况、主要风险",
+  "requirements": [
+    "报告类型：company_research",
+    "时间范围：latest_quarter，粒度：quarter",
+    "重点关注：估值、经营情况、主要风险",
+    "输出偏好：language=zh, format=markdown_html_json, depth=standard",
+    "上传文件是可选补充证据；公开公司研报优先使用可信公开来源。"
+  ],
+  "output_format": "markdown, html, json with citations",
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "browser",
+      "description": "搜索NVIDIA最新季度（例如2025年第一季度）财报，包括收入、利润、各业务部门业绩（数据中心、游戏、专业可视化、汽车等）的关键数据。",
+      "parameters": {
+        "query": "NVIDIA NVDA latest quarterly earnings report revenue profit segments",
+        "source": "公开财报网站或财经新闻"
+      },
+      "dependencies": [],
+      "priority": 5,
+      "expected_output": "包含最新季度收入、净利润、各业务部门收入、毛利率等数据的文本摘要，并附上来源链接。"
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "browser",
+      "description": "搜索NVIDIA最新估值数据，包括市盈率（PE）、市净率（PB）、PEG、EV/EBITDA、可比公司估值对比等。",
+      "parameters": {
+        "query": "NVIDIA NVDA valuation PE ratio PEG EV/EBITDA 2025",
+        "source": "雅虎财经、路透、同花顺等"
+      },
+      "dependencies": [],
+      "priority": 4,
+      "expected_output": "当前及历史估值指标列表，包括数值和参考日期，以及可比公司（如AMD、英特尔）的估值对比。"
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "deep_researcher",
+      "description": "基于task_001获取的财报数据，深入研究NVIDIA最新季度的经营情况。重点分析收入增长驱动、毛利率趋势、运营支出、现金流、主要产品（如H100/B100 GPU）的销售情况、市场地位等。",
+      "parameters": {
+        "focus": "经营情况"
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 5,
+      "expected_output": "详细的经营分析报告，包含数据解读、趋势和关键指标。"
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "deep_researcher",
+      "description": "研究NVIDIA面临的主要风险，包括但不限于：行业竞争（AMD、自研芯片客户）、供应链风险、地缘政治（中美贸易限制）、AI需求波动、估值过高风险等。要求引用具体事实。",
+      "parameters": {
+        "focus": "主要风险"
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 4,
+      "expected_output": "风险列表，每个风险附上依据和可能影响。"
+    },
+    {
+      "task_id": "task_005",
+      "task_type": "deep_analyze",
+      "description": "基于估值数据（task_002）和经营情况（task_003），对NVIDIA当前估值进行合理性分析。计算隐含增长率、与历史估值对比、与行业平均对比，给出估值水平判断（高估/合理/低估）及理由。",
+      "parameters": {
+        "analysis_type": "估值分析"
+      },
+      "dependencies": [
+        "task_002",
+        "task_003"
+      ],
+      "priority": 5,
+      "expected_output": "估值分析报告，包含图表描述、关键指标对比和结论。"
+    },
+    {
+      "task_id": "task_006",
+      "task_type": "final_answer",
+      "description": "整合task_003、task_004、task_005的结果，生成最终的公司研报。报告结构：1. 估值分析 2. 经营情况 3. 主要风险。使用markdown格式，并包含html和json版本的标记。所有事实性陈述需引用具体证据来源。",
+      "parameters": {
+        "format": "markdown, html, json with citations",
+        "language": "zh"
+      },
+      "dependencies": [
+        "task_003",
+        "task_004",
+        "task_005"
+      ],
+      "priority": 5,
+      "expected_output": "完整的公司研报（string），同时提供三种格式标记。"
+    },
+    {
+      "task_id": "task_007",
+      "task_type": "verifier",
+      "description": "验证最终报告中的每个事实性声明是否都有明确的证据引用，且数据准确、逻辑一致。检查估值计算是否正确，风险表述是否基于可靠来源。输出验证报告，列出已更正或无问题。",
+      "parameters": {},
+      "dependencies": [
+        "task_006"
+      ],
+      "priority": 5,
+      "expected_output": "验证报告，包括通过/未通过项。"
+    }
+  ],
+  "data_sources": [
+    "雅虎财经",
+    "路透",
+    "NVIDIA官方投资者关系",
+    "财经新闻网站（如CNBC、Bloomberg）",
+    "Seeking Alpha",
+    "同花顺",
+    "东方财富"
+  ],
+  "citations_required": true,
+  "final_outputs": [
+    "final_report"
+  ],
+  "fallback_used": false
+}

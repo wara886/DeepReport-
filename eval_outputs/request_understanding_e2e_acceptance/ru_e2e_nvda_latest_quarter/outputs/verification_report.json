@@ -1,0 +1,342 @@
+{
+  "passed": false,
+  "error_count": 1,
+  "warning_count": 5,
+  "errors": [
+    "Multimodal consistency check failed."
+  ],
+  "warnings": [
+    "No financial_analysis claims found.",
+    "1 claims have confidence lower than 0.5.",
+    "Report mentions non-target ticker-like tokens: EDGAR, FCF, SEC.",
+    "Claim cl_risk_0001 has no evidence_ids.",
+    "Claim cl_peer_0001 has no evidence_ids."
+  ],
+  "claim_count": 2,
+  "grounded_claim_count": 0,
+  "expected_symbol": "NVDA",
+  "multimodal_consistency": {
+    "passed": false,
+    "chart_count": 2,
+    "chart_text_consistency": {
+      "chart_count": 2,
+      "passed_chart_count": 2,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": [
+        {
+          "chart_id": "peer_comparison_table",
+          "title": "同行对比：核心指标",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "title": "附录：结论置信度",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    },
+    "chart_lineage": {
+      "passed": false,
+      "chart_count": 2,
+      "results": [
+        {
+          "chart_id": "peer_comparison_table",
+          "passed": false,
+          "errors": [
+            "missing_source_evidence_ids"
+          ]
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "passed": false,
+          "errors": [
+            "missing_source_evidence_ids"
+          ]
+        }
+      ]
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 0,
+      "details": []
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [],
+    "checks": {
+      "has_relative_valuation": true,
+      "has_dcf_model": true,
+      "has_sensitivity": true
+    }
+  },
+  "llm_used": true,
+  "entity_resolution": {
+    "requested_symbol": "NVDA",
+    "research_topic": "NVIDIA Corporation（NVDA）latest_quarter company_research：估值、经营情况、主要风险",
+    "resolved_symbol": "NVDA",
+    "resolution_source": "symbol",
+    "topic_resolution": {
+      "input": "NVIDIA Corporation（NVDA）latest_quarter company_research：估值、经营情况、主要风险",
+      "resolved": true,
+      "symbol": "NVDA",
+      "company_name": "NVIDIA Corporation",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data/raw/real_data/NVDA/2025Q4/company_profile.json",
+      "ambiguous": false
+    },
+    "symbol_resolution": {
+      "input": "NVDA",
+      "resolved": true,
+      "symbol": "NVDA",
+      "company_name": "NVIDIA Corporation",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data/raw/real_data/NVDA/2025Q4/company_profile.json",
+      "ambiguous": false
+    },
+    "conflict": false,
+    "request_understanding": {
+      "original_query": "分析英伟达最近一个季度的经营情况，判断当前估值是否偏贵，并给出主要风险。",
+      "resolved_entity": {
+        "company_name": "NVIDIA Corporation",
+        "symbol": "NVDA",
+        "market": "US",
+        "confidence": 0.795,
+        "candidates": [
+          {
+            "company_name": "NVIDIA Corporation",
+            "symbol": "NVDA",
+            "market": "US",
+            "confidence": 0.795
+          }
+        ]
+      },
+      "report_type": "company_research",
+      "period": {
+        "type": "latest_quarter",
+        "explicit_start_date": "",
+        "explicit_end_date": "",
+        "granularity": "quarter"
+      },
+      "focus_areas": [
+        "估值",
+        "经营情况",
+        "主要风险"
+      ],
+      "output_preferences": {
+        "language": "zh",
+        "format": "markdown_html_json",
+        "depth": "standard"
+      },
+      "attachments": {
+        "optional": true,
+        "files": []
+      },
+      "clarification_needed": false,
+      "clarification_questions": []
+    }
+  },
+  "context_pack_meta": {
+    "claims": {
+      "input_count": 2,
+      "packed_count": 2,
+      "dropped_count": 0,
+      "packed_ids": [
+        "cl_risk_0001",
+        "cl_peer_0001"
+      ],
+      "dropped_ids": [],
+      "used_chars": 965,
+      "total_chars": 2600
+    },
+    "evidence": {
+      "input_count": 0,
+      "packed_count": 0,
+      "dropped_count": 0,
+      "packed_ids": [],
+      "dropped_ids": [],
+      "used_chars": 0,
+      "total_chars": 5200,
+      "prioritized_evidence_count": 0,
+      "prioritized_dropped_ids": []
+    }
+  },
+  "llm_passed": false,
+  "llm_errors": [
+    "Claim cl_risk_0001 has no evidence_ids.",
+    "Claim cl_peer_0001 has no evidence_ids.",
+    "Chart 'peer_comparison_table' missing source evidence_ids.",
+    "Chart 'claim_confidence_bar' missing source evidence_ids."
+  ],
+  "llm_warnings": [
+    "Claim cl_peer_0001 has low confidence (0.4).",
+    "Report mentions non-target ticker-like tokens: EDGAR, FCF, SEC."
+  ],
+  "fix_recommendations": [
+    "Assign evidence_ids to each claim referencing the specific data source (e.g., financial statements, SEC filings).",
+    "Provide source evidence_ids for charts to establish data lineage.",
+    "Ground all numerical values and rating conclusions in cited evidence."
+  ],
+  "rework_required": true,
+  "evidence_gaps": [
+    {
+      "gap_id": "gap_0001_multimodal_conflict",
+      "gap_type": "multimodal_conflict",
+      "description": "Multimodal consistency check failed.",
+      "claim_id": "",
+      "required_source_type": [
+        "tables.json",
+        "charts.json",
+        "claims.json"
+      ],
+      "required_fields": [
+        "input_table_ids",
+        "input_claim_ids",
+        "source_evidence_ids",
+        "source_fields"
+      ],
+      "suggested_queries": [],
+      "blocking": true,
+      "status": "open"
+    },
+    {
+      "gap_id": "gap_0009_multimodal_conflict",
+      "gap_type": "multimodal_conflict",
+      "description": "Chart 'peer_comparison_table' missing source evidence_ids.",
+      "claim_id": "",
+      "required_source_type": [
+        "tables.json",
+        "charts.json",
+        "claims.json"
+      ],
+      "required_fields": [
+        "input_table_ids",
+        "input_claim_ids",
+        "source_evidence_ids",
+        "source_fields"
+      ],
+      "suggested_queries": [],
+      "blocking": true,
+      "status": "open"
+    },
+    {
+      "gap_id": "gap_0010_multimodal_conflict",
+      "gap_type": "multimodal_conflict",
+      "description": "Chart 'claim_confidence_bar' missing source evidence_ids.",
+      "claim_id": "",
+      "required_source_type": [
+        "tables.json",
+        "charts.json",
+        "claims.json"
+      ],
+      "required_fields": [
+        "input_table_ids",
+        "input_claim_ids",
+        "source_evidence_ids",
+        "source_fields"
+      ],
+      "suggested_queries": [],
+      "blocking": true,
+      "status": "open"
+    }
+  ],
+  "gaps": [
+    {
+      "gap_id": "gap_0001_multimodal_conflict",
+      "gap_type": "FORMAT_GAP",
+      "severity": "high",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Multimodal consistency check failed.",
+      "recommended_action": "revise_report_structure_or_format",
+      "status": "routed",
+      "routed_to_agents": [
+        "FinalWriterAgent"
+      ],
+      "created_at": "2026-05-14T09:03:17+00:00",
+      "resolved_at": ""
+    },
+    {
+      "gap_id": "gap_0009_multimodal_conflict",
+      "gap_type": "PEER_GAP",
+      "severity": "high",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Chart 'peer_comparison_table' missing source evidence_ids.",
+      "recommended_action": "refresh_peer_selection_and_comparison",
+      "status": "routed",
+      "routed_to_agents": [
+        "PeerComparisonAgent"
+      ],
+      "created_at": "2026-05-14T09:03:17+00:00",
+      "resolved_at": ""
+    },
+    {
+      "gap_id": "gap_0010_multimodal_conflict",
+      "gap_type": "FORMAT_GAP",
+      "severity": "high",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [],
+      "related_evidence_ids": [],
+      "section": "",
+      "description": "Chart 'claim_confidence_bar' missing source evidence_ids.",
+      "recommended_action": "revise_report_structure_or_format",
+      "status": "routed",
+      "routed_to_agents": [
+        "FinalWriterAgent"
+      ],
+      "created_at": "2026-05-14T09:03:17+00:00",
+      "resolved_at": ""
+    },
+    {
+      "gap_id": "gap_0005_peer_gap_cl_peer_0001",
+      "gap_type": "PEER_GAP",
+      "severity": "low",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [
+        "cl_peer_0001"
+      ],
+      "related_evidence_ids": [],
+      "section": "peer_compare",
+      "description": "Claim cl_peer_0001 has no evidence_ids.",
+      "recommended_action": "refresh_peer_selection_and_comparison",
+      "status": "routed",
+      "routed_to_agents": [
+        "PeerComparisonAgent"
+      ],
+      "created_at": "2026-05-14T09:03:17+00:00",
+      "resolved_at": ""
+    },
+    {
+      "gap_id": "gap_0009_peer_gap_cl_peer_0001",
+      "gap_type": "PEER_GAP",
+      "severity": "low",
+      "detected_by": "VerifierAgent",
+      "related_claim_ids": [
+        "cl_peer_0001"
+      ],
+      "related_evidence_ids": [],
+      "section": "peer_compare",
+      "description": "Claim cl_peer_0001 has low confidence (0.4).",
+      "recommended_action": "refresh_peer_selection_and_comparison",
+      "status": "routed",
+      "routed_to_agents": [
+        "PeerComparisonAgent"
+      ],
+      "created_at": "2026-05-14T09:03:17+00:00",
+      "resolved_at": ""
+    }
+  ],
+  "gap_count": 5,
+  "revision_brief": "- Errors: Multimodal consistency check failed.\n- Warnings: No financial_analysis claims found.\n- Warnings: 1 claims have confidence lower than 0.5.\n- Warnings: Report mentions non-target ticker-like tokens: EDGAR, FCF, SEC.\n- Warnings: Claim cl_risk_0001 has no evidence_ids.\n- Warnings: Claim cl_peer_0001 has no evidence_ids.\n- Fix recommendations: Assign evidence_ids to each claim referencing the specific data source (e.g., financial statements, SEC filings).\n- Fix recommendations: Provide source evidence_ids for charts to establish data lineage."
+}

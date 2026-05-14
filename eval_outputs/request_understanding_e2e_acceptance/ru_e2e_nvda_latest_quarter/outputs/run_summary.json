@@ -1,0 +1,128 @@
+{
+  "research_topic": "NVIDIA Corporation（NVDA）latest_quarter company_research：估值、经营情况、主要风险",
+  "symbol": "NVDA",
+  "period": "latest_quarter",
+  "model": "deepseek-v4-flash",
+  "main_model": "deepseek-v4-flash",
+  "flash_long_model": "deepseek-v4-flash",
+  "pro_judge_model": "deepseek-v4-pro",
+  "pro_refiner_model": "deepseek-v4-pro",
+  "model_routing": {
+    "default_chain": "flash",
+    "pro_policy": "conditional",
+    "timeout_policy": {
+      "flash_default_timeout_sec": 30,
+      "flash_long_timeout_sec": 60,
+      "pro_judge_timeout_sec": 90,
+      "pro_refiner_timeout_sec": 120,
+      "external_api_timeout_isolated": true
+    },
+    "pro_triggers": [
+      "verifier_fail",
+      "evidence_gap",
+      "valuation_formula_error",
+      "multimodal_conflict",
+      "entity_or_period_mismatch"
+    ],
+    "pro_roles": [
+      "final_answer_rework",
+      "verifier_recheck"
+    ]
+  },
+  "pro_route_trace_count": 2,
+  "execution_mode": "dynamic",
+  "performance_profile": "fast",
+  "agent_count": 9,
+  "planned_task_count": 7,
+  "completed_task_count": 7,
+  "trace_count": 10,
+  "message_count": 28,
+  "task_blocked_count": 0,
+  "task_resolution_rate": 0.6429,
+  "evidence_count": 0,
+  "claim_count": 2,
+  "citation_count": 0,
+  "chart_count": 2,
+  "multimodal_consistency_passed": false,
+  "mcp_tool_count": 10,
+  "search_engines": [
+    "local_real_data",
+    "local_evidence"
+  ],
+  "retrieval_ranking_mode": "hybrid_rerank",
+  "revision_rounds": 1,
+  "verification_passed": false,
+  "evidence_gap_count": 3,
+  "gap_detection_count": 5,
+  "gap_resolution_rate": 0.0,
+  "company_report_overall_score": 0.45,
+  "entity_resolution": {
+    "requested_symbol": "NVDA",
+    "research_topic": "NVIDIA Corporation（NVDA）latest_quarter company_research：估值、经营情况、主要风险",
+    "resolved_symbol": "NVDA",
+    "resolution_source": "symbol",
+    "topic_resolution": {
+      "input": "NVIDIA Corporation（NVDA）latest_quarter company_research：估值、经营情况、主要风险",
+      "resolved": true,
+      "symbol": "NVDA",
+      "company_name": "NVIDIA Corporation",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data/raw/real_data/NVDA/2025Q4/company_profile.json",
+      "ambiguous": false
+    },
+    "symbol_resolution": {
+      "input": "NVDA",
+      "resolved": true,
+      "symbol": "NVDA",
+      "company_name": "NVIDIA Corporation",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data/raw/real_data/NVDA/2025Q4/company_profile.json",
+      "ambiguous": false
+    },
+    "conflict": false,
+    "request_understanding": {
+      "original_query": "分析英伟达最近一个季度的经营情况，判断当前估值是否偏贵，并给出主要风险。",
+      "resolved_entity": {
+        "company_name": "NVIDIA Corporation",
+        "symbol": "NVDA",
+        "market": "US",
+        "confidence": 0.795,
+        "candidates": [
+          {
+            "company_name": "NVIDIA Corporation",
+            "symbol": "NVDA",
+            "market": "US",
+            "confidence": 0.795
+          }
+        ]
+      },
+      "report_type": "company_research",
+      "period": {
+        "type": "latest_quarter",
+        "explicit_start_date": "",
+        "explicit_end_date": "",
+        "granularity": "quarter"
+      },
+      "focus_areas": [
+        "估值",
+        "经营情况",
+        "主要风险"
+      ],
+      "output_preferences": {
+        "language": "zh",
+        "format": "markdown_html_json",
+        "depth": "standard"
+      },
+      "attachments": {
+        "optional": true,
+        "files": []
+      },
+      "clarification_needed": false,
+      "clarification_questions": []
+    }
+  },
+  "conversation_brief_chars": 1455,
+  "total_duration_sec": 116.117
+}

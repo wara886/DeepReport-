@@ -15,14 +15,22 @@ def attach_charts_to_markdown(markdown: str, charts: List[Dict[str, Any]]) -> st
     if not charts:
         lines.append("- 暂无图表。")
     else:
-        for chart in charts:
-            title = str(chart.get("title") or chart.get("chart_id") or "图表")
-            output_path = str(chart.get("output_path") or "")
-            if output_path:
-                lines.append(f"![{title}]({output_path})")
-                lines.append("")
-            else:
-                lines.append(f"- {title}")
+        for heading, grouped in [
+            ("### 研报图表", _charts_by_category(charts, "report")),
+            ("### 审计附录图表", _charts_by_category(charts, "audit")),
+        ]:
+            if not grouped:
+                continue
+            lines.append(heading)
+            lines.append("")
+            for chart in grouped:
+                title = str(chart.get("title") or chart.get("chart_id") or "图表")
+                output_path = str(chart.get("output_path") or "")
+                if output_path:
+                    lines.append(f"![{title}]({output_path})")
+                    lines.append("")
+                else:
+                    lines.append(f"- {title}")
     return base + "\n\n" + "\n".join(lines).rstrip() + "\n"
 
 
@@ -38,15 +46,22 @@ def render_chart_html(charts: List[Dict[str, Any]]) -> str:
     if not charts:
         parts.append("<p>暂无图表。</p>")
     else:
-        for chart in charts:
-            title = escape(str(chart.get("title") or chart.get("chart_id") or "图表"))
-            output_path = str(chart.get("output_path") or "")
-            safe_path = escape(output_path, quote=True)
-            parts.append('<figure class="chart-card">')
-            if output_path:
-                parts.append(f'<img src="{safe_path}" alt="{title}">')
-            parts.append(f"<figcaption>{title}</figcaption>")
-            parts.append("</figure>")
+        for heading, grouped in [
+            ("研报图表", _charts_by_category(charts, "report")),
+            ("审计附录图表", _charts_by_category(charts, "audit")),
+        ]:
+            if not grouped:
+                continue
+            parts.append(f"<h3>{escape(heading)}</h3>")
+            for chart in grouped:
+                title = escape(str(chart.get("title") or chart.get("chart_id") or "图表"))
+                output_path = str(chart.get("output_path") or "")
+                safe_path = escape(output_path, quote=True)
+                parts.append('<figure class="chart-card">')
+                if output_path:
+                    parts.append(f'<img src="{safe_path}" alt="{title}">')
+                parts.append(f"<figcaption>{title}</figcaption>")
+                parts.append("</figure>")
     parts.append("</section>")
     return "\n".join(parts)
 
@@ -93,3 +108,12 @@ def _strip_markdown_charts(markdown: str) -> str:
     if next_header < 0:
         return markdown[:start]
     return markdown[:start] + markdown[next_header:]
+
+
+def _charts_by_category(charts: List[Dict[str, Any]], category: str) -> List[Dict[str, Any]]:
+    return [
+        chart
+        for chart in charts
+        if isinstance(chart, dict)
+        and str(chart.get("chart_category") or ("audit" if str(chart.get("title", "")).startswith("附录：") else "report")) == category
+    ]

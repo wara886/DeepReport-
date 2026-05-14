@@ -13,6 +13,7 @@ def apply_source_quality(record: Dict[str, Any]) -> Dict[str, Any]:
     output = dict(record)
     grade = grade_source(record)
     output["source_authority"] = grade["source_authority"]
+    output["authority_level"] = grade["authority_level"]
     output["authority_score"] = grade["authority_score"]
     output.setdefault("metadata", {})
     if isinstance(output["metadata"], dict):

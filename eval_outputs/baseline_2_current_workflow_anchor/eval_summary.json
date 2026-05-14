@@ -1,0 +1,29 @@
+{
+  "run_id": "baseline_2_current_workflow_anchor",
+  "baseline_id": "baseline_2_current_workflow",
+  "case_count": 4,
+  "created_at_unix": 1778749079,
+  "metrics": {
+    "case_count": 4,
+    "task_completion_rate": 0.0,
+    "required_sections_coverage": 0.5714,
+    "artifact_generation_pass_rate": 1.0,
+    "verification_pass_rate": 0.0,
+    "claim_count_mean": 4.75,
+    "evidence_count_mean": 2.25,
+    "citation_count_mean": 1.25,
+    "gap_detection_count_mean": 4.75,
+    "gap_resolution_rate_mean": 0.0,
+    "message_count_mean": 23.75,
+    "task_blocked_count_mean": 0.0,
+    "task_resolution_rate_mean": 0.4698,
+    "total_latency_sec_sum": 552.2124,
+    "total_latency_sec_mean": 138.0531
+  },
+  "outputs": {
+    "eval_summary": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/baseline_2_current_workflow_anchor/eval_summary.json",
+    "per_case_metrics": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/baseline_2_current_workflow_anchor/per_case_metrics.jsonl",
+    "baseline_comparison": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/baseline_2_current_workflow_anchor/baseline_comparison.json",
+    "failure_cases": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/baseline_2_current_workflow_anchor/failure_cases.jsonl"
+  }
+}

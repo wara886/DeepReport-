@@ -49,8 +49,8 @@ def create_ui_handler(
                 return
             try:
                 payload = self._read_json()
-                symbol = str(payload.get("symbol") or "AAPL").strip().upper()
-                period = str(payload.get("period") or "2025Q4").strip()
+                symbol = str(payload.get("symbol") or "NVDA").strip().upper()
+                period = str(payload.get("period") or "latest").strip()
                 topic = str(payload.get("topic") or f"分析 {symbol} {period} 财务表现，并生成带引用的研究报告").strip()
                 engines = _parse_engines(payload.get("engines") or DEFAULT_ENGINES)
                 fast = bool(payload.get("fast", True))
@@ -225,7 +225,11 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 
 def render_index_html() -> str:
-    default_topic = "分析 AAPL 2025Q4 财务表现，并生成带引用、图表和验证报告的研究报告"
+    from datetime import datetime
+    _current_year = datetime.now().year
+    _default_symbol = "NVDA"
+    _default_period = f"{_current_year}Q1"
+    default_topic = f"分析 {_default_symbol} {_default_period} 财务表现，并生成带引用的研究报告"
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -315,11 +319,11 @@ def render_index_html() -> str:
       <div class="row">
         <div>
           <label for="symbol">股票代码</label>
-          <input id="symbol" value="AAPL">
+          <input id="symbol" value="{_default_symbol}">
         </div>
         <div>
           <label for="period">期间</label>
-          <input id="period" value="2025Q4">
+          <input id="period" value="{_default_period}">
         </div>
       </div>
       <label for="engines">搜索/数据源</label>

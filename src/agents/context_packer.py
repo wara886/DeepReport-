@@ -21,8 +21,17 @@ def pack_claims(
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Trim and rank claims so prompts stay stable and auditable."""
 
+    # Sections that must always be included regardless of confidence score
+    _PINNED_SECTIONS = frozenset({
+        "executive_summary", "conclusion", "valuation", "valuation_sensitivity", "earnings_quality",
+        "risks", "peer_compare", "business_overview", "financial_statements",
+    })
+
     normalized = [_normalize_claim(item, text_limit=text_limit) for item in claims if isinstance(item, dict)]
-    normalized.sort(
+    # Separate pinned (must-include) from regular claims
+    pinned = [item for item in normalized if item.get("section_name") in _PINNED_SECTIONS]
+    regular = [item for item in normalized if item.get("section_name") not in _PINNED_SECTIONS]
+    regular.sort(
         key=lambda item: (
             float(item.get("confidence", 0.0)),
             len(item.get("evidence_ids", [])),
@@ -30,7 +39,13 @@ def pack_claims(
         ),
         reverse=True,
     )
-    packed, used_chars, dropped = _pack_with_char_budget(normalized, max_items=max_items, total_chars=total_chars)
+    # Pack pinned first, then fill remaining budget with regular claims
+    pinned_packed, used_chars, pinned_dropped = _pack_with_char_budget(pinned, max_items=max_items, total_chars=total_chars)
+    remaining_budget = max(0, total_chars - used_chars)
+    remaining_slots = max(0, max_items - len(pinned_packed))
+    regular_packed, _, regular_dropped = _pack_with_char_budget(regular, max_items=remaining_slots, total_chars=remaining_budget)
+    packed = pinned_packed + regular_packed
+    dropped = pinned_dropped + regular_dropped
     packed_ids = [str(item.get("claim_id", "")) for item in packed if str(item.get("claim_id", ""))]
     dropped_ids = [str(item.get("claim_id", "")) for item in dropped if str(item.get("claim_id", ""))]
     return packed, {

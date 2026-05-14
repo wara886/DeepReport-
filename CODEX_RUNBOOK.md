@@ -1,155 +1,92 @@
-# Codex 运行手册（给你自己用）
+# Codex 交接手册 — DeepReport++ 多智能体升级
 
-这份文档不是给模型看的，而是给你在终端里启动 Codex 时用的。
+> 本手册给下一个 Codex / Claude Code 用，说明当前项目状态、关键上下文、下一步做什么。
 
-## 先纠正一个关键点
-**要精准复用 DeepReport 的骨架，必须先把 GitHub 代码拉到本地再审计。**
+## 一、项目阶段总览
 
-如果没有 `git clone` 这一步，最多只能叫“参考 README 做近似设计”，不能叫“精准复用骨架”。
+当前项目已经走过了多智能体升级的 Phase 0-3，Phase 4 代码层面已完成但**评测闭环尚未确认**。不要推进 Phase 5/6/7。
 
-因此，新的推荐顺序是：
-1. 先 clone DeepReport 参考仓库
-2. 让 Codex 审计参考仓库并生成映射文档
-3. 再开始 Open DeepReport++ 的正式开发
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| Phase 0-2 | Eval Harness, GapRouter, TaskBoard | ✅ 完成 |
+| Phase 3 | DynamicRouter + BudgetGuard | ✅ 完成 |
+| **Phase 4** | Adjudicator + SOURCE_CONFLICT | **⏳ 代码完成，评测未闭环** |
+| Phase 5 | Memory（Agent 长期记忆） | ❌ 不要做 |
+| Phase 6 | SkillRegistry | ❌ 不要做 |
+| Phase 7 | 最终评测 + Ablation | ❌ 不要做 |
 
----
+## 二、Phase 4 当前状态
 
-## 方式 A：你先手动 clone，再让 Codex 读取 AGENTS.md（最稳）
-在你的项目根目录执行：
+### 已完成
+- `AdjudicatorAgent` — rule-based 冲突裁决（trust_level + source_type bonus）
+- Gap detector `infer_gap_type()` — 识别 SOURCE_CONFLICT
+- DynamicRouter — SOURCE_CONFLICT → "adjudicator" 路由
+- MultiAgentOrchestrator — run_summary 写入 adjudication 数据
+- Eval metrics — 统计 `conflict_resolution_count`, `adjudication_decision_distribution`
+- All 41 Phase 4 单元测试通过
 
-```bash
-mkdir -p references
-git clone https://github.com/wisdom-pan/DeepReport.git references/DeepReport_ref
-```
+### 阻塞项（最优先）
+1. **baseline_5 需要重新跑** — 上次跑的时候 Phase 4 修复代码还没生效
+2. **验证条件**: `conflict_resolution_count_sum > 0` 或 `adjudication_decision_distribution` 非空
+3. **对比 baseline_4**: 确认 verification_pass_rate 和 task_resolution_rate 不退化
 
-然后启动：
+### 已知问题
+- 1 个测试失败: `test_local_correction_v1.py::test_local_correction_v1_outputs_exist` — 缺少数据模板文件，不影响核心
+- `_count_dynamic_dispatches` 缺失函数 — **已修复**
+- 43 个文件有未提交变更（含 Phase 4 修复），建议先提交再继续
 
-```bash
-codex
-```
-
-进入后输入：
-
-```text
-请先读取仓库根目录的 AGENTS.md，检查 Stage -1 是否已经完成。如果参考仓库已存在，则直接执行 Stage -1 审计；完成后停止。
-```
-
----
-
-## 方式 B：让 Codex 自己 clone（依赖当前环境可联网且有 git）
-
-```bash
-codex "请读取 AGENTS.md，从 Stage -1 开始执行：如果 references/DeepReport_ref 不存在，就先 clone 参考仓库并完成审计；完成后停止。"
-```
-
-如果失败，通常是：
-- 当前环境不能联网
-- 当前环境没有 git
-- GitHub 访问失败
-
-这时不要让它继续开发，先手动 clone。
-
----
-
-## 为什么必须先 clone
-你后面要“精准复用”的东西，至少包括：
-- 真实目录结构
-- 主入口组织方式
-- 配置文件入口
-- `src/` 子模块边界
-- Docker / 部署组织
-- agent 与搜索模块如何切分
-- 报告导出相关模块位置
-
-这些东西**只有看真实仓库才能确定**，只看 README 不够精确。
-
----
-
-## 推荐操作顺序
-
-### Step 1：先做 Stage -1
+## 三、关键命令
 
 ```bash
-codex "请严格按 AGENTS.md 执行 Stage -1。不要进入 Stage 0。完成后输出：1. 审计到的真实目录树 2. 可复用骨架 3. 需要重写的部分 4. 下一步建议。"
+# 运行所有测试（在 DeepReport_plus 目录）
+PYTHONPATH=. python -m pytest tests/ --tb=short -q
+
+# 只跑 Phase 4 相关测试
+PYTHONPATH=. python -m pytest tests/test_phase4_adjudicator.py --tb=short -v
+
+# 跑 baseline_5 评测（1 个 case 快速验证）
+PYTHONPATH=. python scripts/run_eval_baseline.py baseline_5_adjudicator_source_conflict --max-cases 1
+
+# 跑完整 baseline_5（4 个 anchor cases，耗时长）
+PYTHONPATH=. python scripts/run_eval_baseline.py baseline_5_adjudicator_source_conflict
 ```
 
-### Step 2：再做 Stage 0
+## 四、关键文件
 
-```bash
-codex "请严格按 AGENTS.md 执行 Stage 0。骨架必须参考 docs/deepreport_skeleton_mapping.md。完成后停止。"
-```
+| 文件 | 作用 |
+|------|------|
+| `src/agents/adjudicator_agent.py` | 冲突裁决逻辑 |
+| `src/multiagent/gaps/detector.py` | Gap 检测（含 SOURCE_CONFLICT） |
+| `src/multiagent/gaps/schema.py` | GapType 枚举 + GapItem |
+| `src/multiagent/router/dynamic_router.py` | 动态路由 |
+| `src/agents/multi_agent_orchestrator.py` | 编排器 + run_summary |
+| `src/eval/metrics.py` | 评测指标 |
+| `scripts/run_eval_baseline.py` | Baseline 定义与执行 |
+| `tests/test_phase4_adjudicator.py` | Phase 4 单元测试 |
+| `docs/financial_deepreport_multiagent_upgrade_spec.md` | 完整升级路线文档 |
 
-### Step 3：后续分阶段推进
+## 五、Memory 系统
 
-```bash
-codex "请严格按 AGENTS.md 执行 Stage 1。不要进入 Stage 2。"
-codex "请严格按 AGENTS.md 执行 Stage 2，只做 mock/local_file 数据层，不要联网。"
-codex "请严格按 AGENTS.md 执行 Stage 3，完成程序化财务特征层。"
-codex "请严格按 AGENTS.md 执行 Stage 4，完成 claim-first 最小报告流水线。"
-codex "请严格按 AGENTS.md 执行 Stage 5，接入图表层。"
-codex "请严格按 AGENTS.md 执行 Stage 6，完成 generation backend 抽象与 writer fallback。"
-codex "请严格按 AGENTS.md 执行 Stage 7，只做 BM25 检索层，不要做真实 FAISS 实现。"
-```
+项目关键状态已持久化到 `/Users/yuan_dian/.claude/projects/-Users-yuan-dian-AI-project/memory/`，包括：
+- 项目阶段状态
+- Baseline 评测数据
+- 用户画像（偏好、工作风格）
+- 反馈记录（动态调整原则）
+- 关键文件索引
 
-### 云端阶段
-只有在本地 smoke test 稳定后，再做：
+首次启动 Codex 时，读取 memory 目录即可获得完整上下文。
 
-```bash
-codex "请严格按 AGENTS.md 执行 Stage 8，导出 reranker/rewriter/verifier 训练数据。"
-codex "请严格按 AGENTS.md 执行 Stage 9，生成云端训练脚本和本地 fallback 推理。"
-codex "请严格按 AGENTS.md 执行 Stage 10，完成 markdown/html 报告导出与回归测试。"
-```
+## 六、下一步建议（按优先级）
 
----
+1. 提交当前代码变更（git add + commit）
+2. 验收 plan → eval/outputs 中检查是否已有最新 run
+3. 跑 baseline_5 smoke eval: `--max-cases 1` 验证 SOURCE_CONFLICT case
+4. 如果达标: 对比 baseline_4，确认无退化
+5. 如果未达标: 分析 router_decisions.jsonl 中 adjudicator 为何没触发
+6. 达标后: 定义 baseline_6，考虑推进 Phase 5 Memory
 
-## 每个阶段结束后建议输入的检查指令
-
-```text
-请不要继续下一阶段。先总结：
-1. 当前完成了哪些文件
-2. 如何运行
-3. 还缺什么
-4. 哪些地方仍然是 mock
-5. 下一阶段最小任务是什么
-```
-
----
-
-## 如果 Codex 想一次做太多
-直接输入：
-
-```text
-停止扩展。请回到 AGENTS.md，只允许执行当前阶段，不要跨阶段实现后续模块。
-```
-
----
-
-## 如果你要它先做“骨架映射报告”而不是立刻写代码
-输入：
-
-```text
-先不要开发。请只完成 Stage -1，输出 deepreport_repo_audit.md 和 deepreport_skeleton_mapping.md，并说明哪些地方值得保留、哪些地方需要重写。
-```
-
----
-
-## 本地 3060 Ti 的定位
-本地只做：
-- Stage -1 到 Stage 7
-- mock / template / BM25 / 小样本 smoke
-- 不训练
-
-不要在本地追求：
-- 大模型训练
-- 重型多模态推理
-- 大规模 embedding 预计算
-
----
-
-## 云端 48GB 的定位
-云端只做：
-- Stage 8 到 Stage 10
-- 离线训练
-- 大规模离线推理
-- checkpoint 导出再回本地接入
-
+## 七、不要做的事
+- 不要直接推进 Phase 5 Memory / Phase 6 SkillRegistry
+- 不要创建 baseline_6 直到 Phase 4 闭环被验证
+- 不要简单调低 verifier threshold 造假象提升
+- 不要修改 AGENTS.md（已过时，属于旧版 Stage 体系）

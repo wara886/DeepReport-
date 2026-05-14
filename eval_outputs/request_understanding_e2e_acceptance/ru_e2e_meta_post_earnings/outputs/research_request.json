@@ -1,0 +1,38 @@
+{
+  "original_query": "做一份 Meta 最新财报后的公司研究，重点分析广告业务、资本开支和估值压力。",
+  "resolved_entity": {
+    "company_name": "Meta Platforms, Inc.",
+    "symbol": "META",
+    "market": "US",
+    "confidence": 1.0,
+    "candidates": [
+      {
+        "company_name": "Meta Platforms, Inc.",
+        "symbol": "META",
+        "market": "US",
+        "confidence": 1.0
+      }
+    ]
+  },
+  "report_type": "valuation_analysis",
+  "period": {
+    "type": "latest_quarter",
+    "explicit_start_date": "",
+    "explicit_end_date": "",
+    "granularity": "quarter"
+  },
+  "focus_areas": [
+    "估值"
+  ],
+  "output_preferences": {
+    "language": "zh",
+    "format": "markdown_html_json",
+    "depth": "standard"
+  },
+  "attachments": {
+    "optional": true,
+    "files": []
+  },
+  "clarification_needed": false,
+  "clarification_questions": []
+}

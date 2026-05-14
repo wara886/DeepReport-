@@ -1,0 +1,2 @@
+symbol,period,publish_time,revenue_billion,revenue_growth_pct,gross_margin_pct,net_margin_pct,roe_pct,roa_pct,operating_cash_flow_billion,free_cash_flow_billion,shareholder_equity_billion,total_assets_billion,currency,is_quarterly,annualization_factor,source_url,trust_level,notes
+000568.SZ,latest,2026-04-29,25.73,-17.52,86.62,42.21,22.29,,0.71,,,,CNY_billion,false,1,https://finance.sina.com.cn/stock/aigc/stockfs/2026-04-29/doc-inhwckrh8003525.shtml,medium,2025 annual structured summary from public annual-result coverage; replace with CNInfo PDF parser when available.

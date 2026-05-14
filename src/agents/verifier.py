@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import re
 from typing import Any, Dict, List
+from urllib.parse import urlparse
 
 from src.data.source_authority import grade_source_authority
 from src.evaluation.multimodal_consistency import audit_multimodal_consistency
@@ -64,6 +65,7 @@ class Verifier:
                 errors.append(f"Missing required header in report: {canonical}")
 
         _check_company_report_sections(claims=claims, markdown=markdown, errors=errors)
+        _check_section_completeness(claims=claims, markdown=markdown, errors=errors, warnings=warnings)
         _check_target_symbol_alignment(
             expected_symbol=expected_symbol,
             claims=claims,
@@ -118,6 +120,59 @@ def _check_company_report_sections(claims: List[ClaimItem], markdown: str, error
             errors.append(f"Missing required company-report header for claim section: {section_name}")
 
 
+def _check_section_completeness(
+    claims: List[ClaimItem],
+    markdown: str,
+    errors: List[str],
+    warnings: List[str],
+) -> None:
+    section_titles = {
+        "executive_summary": "执行摘要",
+        "business_overview": "业务概览",
+        "financial_statements": "三表摘要",
+        "peer_compare": "同行对比",
+    }
+    claim_sections = {claim.section_name for claim in claims}
+    for section_name, title in section_titles.items():
+        if section_name in claim_sections and _markdown_section_is_placeholder(markdown, title):
+            errors.append(f"Section {section_name} has claims but report body is empty placeholder.")
+
+    core_metric_keys = {
+        "revenue_billion",
+        "net_income_billion",
+        "operating_cash_flow_billion",
+        "free_cash_flow_billion",
+        "shareholder_equity_billion",
+        "total_assets_billion",
+    }
+    available_metrics = {
+        key
+        for claim in claims
+        for key in claim.numeric_values
+        if key in core_metric_keys
+    }
+    if len(available_metrics) >= 3:
+        if "financial_statements" not in claim_sections:
+            errors.append("Financial metrics are available but no financial_statements claim was generated.")
+        elif _markdown_section_is_placeholder(markdown, "三表摘要"):
+            errors.append("Financial metrics are available but 三表摘要 is empty.")
+    elif available_metrics and "financial_statements" not in claim_sections:
+        warnings.append("Some financial metrics are available but no financial_statements claim was generated.")
+
+
+def _markdown_section_is_placeholder(markdown: str, title: str) -> bool:
+    match = re.search(rf"(?m)^##\s+{re.escape(title)}\s*$", markdown)
+    if not match:
+        return False
+    next_header = re.search(r"(?m)^##\s+", markdown[match.end():])
+    section_end = match.end() + next_header.start() if next_header else len(markdown)
+    body = markdown[match.end():section_end].strip().lower()
+    if not body:
+        return True
+    markers = ["本节暂无可验证结论", "暂无可验证结论", "no verifiable conclusion", "no verifiable claims"]
+    return any(marker in body for marker in markers)
+
+
 def _check_target_symbol_alignment(
     expected_symbol: str | None,
     claims: List[ClaimItem],
@@ -170,7 +225,11 @@ def _check_evidence_support(
         missing = [evidence_id for evidence_id in claim.evidence_ids if evidence_id not in available_ids]
         if missing:
             errors.append(f"Claim {claim.claim_id} references missing evidence ids: {', '.join(missing)}")
-        uncited = [evidence_id for evidence_id in claim.evidence_ids if evidence_id not in markdown]
+        uncited = [
+            evidence_id
+            for evidence_id in claim.evidence_ids
+            if not _evidence_id_or_same_source_cited(evidence_id, evidence_by_id, markdown)
+        ]
         if uncited:
             errors.append(f"Claim {claim.claim_id} evidence ids are not cited in markdown: {', '.join(uncited)}")
         _check_numeric_support(claim=claim, evidence_by_id=evidence_by_id, warnings=warnings)
@@ -229,8 +288,48 @@ def _check_primary_source_support(
             )
 
 
+def _evidence_id_or_same_source_cited(
+    evidence_id: str,
+    evidence_by_id: Dict[str, Dict[str, Any]],
+    markdown: str,
+) -> bool:
+    if evidence_id in markdown:
+        return True
+    record = evidence_by_id.get(evidence_id)
+    if not record:
+        return False
+    source_key = _canonical_source_key(record)
+    if not source_key:
+        return False
+    for other_id, other in evidence_by_id.items():
+        if other_id == evidence_id:
+            continue
+        if other_id in markdown and _canonical_source_key(other) == source_key:
+            return True
+    return False
+
+
+def _canonical_source_key(record: Dict[str, Any]) -> str:
+    url = str(record.get("source_url") or record.get("url") or "").strip()
+    if url:
+        try:
+            parsed = urlparse(url)
+            return f"url:{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/").lower()
+        except Exception:
+            return f"url:{url.lower()}"
+    title = str(record.get("title") or "").strip().lower()
+    source_type = str(record.get("source_type") or "").strip().lower()
+    symbol = str(record.get("symbol") or record.get("metadata", {}).get("symbol") or "").strip().upper()
+    period = str(record.get("period") or record.get("metadata", {}).get("period") or "").strip()
+    if title and source_type:
+        return f"meta:{symbol}:{period}:{source_type}:{title}"
+    return ""
+
+
 def _requires_primary_financial_source(claim: ClaimItem) -> bool:
     if not claim.numeric_values or _is_derived_numeric_claim(claim):
+        return False
+    if _is_market_data_claim(claim):
         return False
     text = f"{claim.section_name} {claim.claim_text} {claim.notes}".lower()
     financial_markers = [
@@ -252,6 +351,30 @@ def _requires_primary_financial_source(claim: ClaimItem) -> bool:
         "现金流",
     ]
     return claim.section_name in {"financial_analysis", "financial_statements"} or any(marker in text for marker in financial_markers)
+
+
+def _is_market_data_claim(claim: ClaimItem) -> bool:
+    market_keys = {
+        "latest_close",
+        "last_close",
+        "close",
+        "close_price",
+        "price",
+        "share_price",
+        "monthly_price_change_pct",
+        "one_month_price_change_pct",
+        "price_change_pct",
+        "latest_volume",
+        "volume",
+        "market_cap_billion",
+        "shares_outstanding_billion",
+    }
+    keys = {str(key).lower() for key in claim.numeric_values.keys()}
+    if keys and keys.issubset(market_keys):
+        return True
+    text = f"{claim.section_name} {claim.claim_text} {claim.notes}".lower()
+    market_markers = ["market snapshot", "yahoo finance", "stock price", "share price", "收盘价", "股价", "市值", "成交量"]
+    return bool(keys & market_keys) and any(marker in text for marker in market_markers)
 
 
 def _authority_grade(record: Dict[str, Any]) -> Dict[str, Any]:

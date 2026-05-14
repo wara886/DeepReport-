@@ -1,0 +1,2 @@
+symbol,period,publish_time,revenue_billion,revenue_growth_pct,gross_margin_pct,net_margin_pct,roe_pct,roa_pct,operating_cash_flow_billion,free_cash_flow_billion,source_url,trust_level,notes
+META,2025Q4,2026-01-31,48.4,21.0,81.8,38.2,36.5,18.4,22.8,20.1,https://example.com/real/financials/meta,high,quarterly summary

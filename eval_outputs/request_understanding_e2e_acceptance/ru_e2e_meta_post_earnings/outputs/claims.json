@@ -1,0 +1,29 @@
+[
+  {
+    "claim_id": "cl_risk_0001",
+    "section_name": "risks",
+    "claim_text": "META 风险评估：\n• META 当前可识别风险包括：宏观经济不确定性、行业竞争加剧、监管政策变化及汇率波动。具体风险程度需结合最新年报、季报、公告或 10-Q/10-K 披露评估。",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "high",
+    "confidence": 0.65,
+    "notes": "由 RiskAgent 从非经常项、估值差异、证据关键词和行业特征综合生成。"
+  },
+  {
+    "claim_id": "cl_peer_0001",
+    "section_name": "peer_compare",
+    "claim_text": "META 同行对比数据不足，无法生成定量比较。\n\n| 公司 | 营收(B) | 营收增速(%) | 净利率(%) | ROE(%) | FCF(B) |\n|------|---------|------------|----------|--------|--------|\n| META ◀ | N/A | N/A | N/A | N/A | N/A |\n\n（同行数据优先通过 SEC EDGAR CompanyFacts API 实时获取；若实时接口不可用，则回退到本地同业缓存。）",
+    "evidence_ids": [],
+    "numeric_values": {
+      "peer_count": 0,
+      "core_peer_count": 0,
+      "extended_peer_count": 0,
+      "excluded_peer_count": 0,
+      "target_revenue_growth_pct": 0.0,
+      "target_net_margin_pct": 0.0
+    },
+    "risk_level": "low",
+    "confidence": 0.4,
+    "notes": "由 PeerComparisonAgent 生成；实时 SEC 数据同行 0 家；核心组=N/A；扩展组=N/A；剔除=N/A；period_aligned=True。"
+  }
+]

@@ -8,6 +8,11 @@ import pandas as pd
 
 
 def build_trend_features(manifest_df: pd.DataFrame) -> pd.DataFrame:
+    required = {"symbol", "period", "sample_id", "source_type", "publish_time"}
+    for col in required:
+        if col not in manifest_df.columns:
+            manifest_df = manifest_df.copy()
+            manifest_df[col] = None
     grouped = (
         manifest_df.groupby(["symbol", "period"], dropna=False)
         .agg(

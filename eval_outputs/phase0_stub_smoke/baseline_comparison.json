@@ -1,0 +1,18 @@
+{
+  "run_id": "phase0_stub_smoke",
+  "baselines": {
+    "baseline_1_single_rag": {
+      "case_count": 1,
+      "task_completion_rate": 0.0,
+      "required_sections_coverage": 0.0,
+      "artifact_generation_pass_rate": 0.0,
+      "verification_pass_rate": 0.0,
+      "claim_count_mean": 0.0,
+      "evidence_count_mean": 0.0,
+      "citation_count_mean": 0.0,
+      "total_latency_sec_sum": 0.0,
+      "total_latency_sec_mean": 0.0
+    }
+  },
+  "comparison_note": "Phase 0 may contain a single baseline; future runs can append additional baselines for deltas."
+}

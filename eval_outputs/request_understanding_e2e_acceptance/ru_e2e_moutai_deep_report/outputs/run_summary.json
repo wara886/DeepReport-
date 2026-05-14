@@ -1,0 +1,130 @@
+{
+  "research_topic": "Kweichow Moutai Co., Ltd.（600519.SS）latest_quarter deep_company_research：盈利质量、估值、行业风险、同业对比、主要风险",
+  "symbol": "600519.SS",
+  "period": "latest_quarter",
+  "model": "deepseek-v4-flash",
+  "main_model": "deepseek-v4-flash",
+  "flash_long_model": "deepseek-v4-flash",
+  "pro_judge_model": "deepseek-v4-pro",
+  "pro_refiner_model": "deepseek-v4-pro",
+  "model_routing": {
+    "default_chain": "flash",
+    "pro_policy": "conditional",
+    "timeout_policy": {
+      "flash_default_timeout_sec": 30,
+      "flash_long_timeout_sec": 60,
+      "pro_judge_timeout_sec": 90,
+      "pro_refiner_timeout_sec": 120,
+      "external_api_timeout_isolated": true
+    },
+    "pro_triggers": [
+      "verifier_fail",
+      "evidence_gap",
+      "valuation_formula_error",
+      "multimodal_conflict",
+      "entity_or_period_mismatch"
+    ],
+    "pro_roles": [
+      "final_answer_rework",
+      "verifier_recheck"
+    ]
+  },
+  "pro_route_trace_count": 2,
+  "execution_mode": "dynamic",
+  "performance_profile": "fast",
+  "agent_count": 9,
+  "planned_task_count": 5,
+  "completed_task_count": 5,
+  "trace_count": 8,
+  "message_count": 28,
+  "task_blocked_count": 0,
+  "task_resolution_rate": 0.35,
+  "evidence_count": 0,
+  "claim_count": 2,
+  "citation_count": 0,
+  "chart_count": 2,
+  "multimodal_consistency_passed": false,
+  "mcp_tool_count": 10,
+  "search_engines": [
+    "local_real_data",
+    "local_evidence"
+  ],
+  "retrieval_ranking_mode": "hybrid_rerank",
+  "revision_rounds": 1,
+  "verification_passed": false,
+  "evidence_gap_count": 3,
+  "gap_detection_count": 8,
+  "gap_resolution_rate": 0.0,
+  "company_report_overall_score": 0.45,
+  "entity_resolution": {
+    "requested_symbol": "600519.SS",
+    "research_topic": "Kweichow Moutai Co., Ltd.（600519.SS）latest_quarter deep_company_research：盈利质量、估值、行业风险、同业对比、主要风险",
+    "resolved_symbol": "600519.SS",
+    "resolution_source": "symbol",
+    "topic_resolution": {
+      "input": "Kweichow Moutai Co., Ltd.（600519.SS）latest_quarter deep_company_research：盈利质量、估值、行业风险、同业对比、主要风险",
+      "resolved": true,
+      "symbol": "600519.SS",
+      "company_name": "贵州茅台酒股份有限公司",
+      "match_type": "alias_contains",
+      "confidence": 0.681,
+      "profile_path": "data/raw/real_data/600519.SS/latest/company_profile.json",
+      "ambiguous": false
+    },
+    "symbol_resolution": {
+      "input": "600519.SS",
+      "resolved": true,
+      "symbol": "600519.SS",
+      "company_name": "贵州茅台酒股份有限公司",
+      "match_type": "symbol_exact",
+      "confidence": 1.0,
+      "profile_path": "data/raw/real_data/600519.SS/latest/company_profile.json",
+      "ambiguous": false
+    },
+    "conflict": false,
+    "request_understanding": {
+      "original_query": "帮我生成一份贵州茅台的最新深度金融研报，重点关注盈利质量、估值、行业风险和同业对比。",
+      "resolved_entity": {
+        "company_name": "Kweichow Moutai Co., Ltd.",
+        "symbol": "600519.SS",
+        "market": "CN-A",
+        "confidence": 0.797,
+        "candidates": [
+          {
+            "company_name": "Kweichow Moutai Co., Ltd.",
+            "symbol": "600519.SS",
+            "market": "CN-A",
+            "confidence": 0.797
+          }
+        ]
+      },
+      "report_type": "deep_company_research",
+      "period": {
+        "type": "latest_quarter",
+        "explicit_start_date": "",
+        "explicit_end_date": "",
+        "granularity": "quarter"
+      },
+      "focus_areas": [
+        "盈利质量",
+        "估值",
+        "行业风险",
+        "同业对比",
+        "主要风险"
+      ],
+      "output_preferences": {
+        "language": "zh",
+        "format": "markdown_html_json",
+        "depth": "deep"
+      },
+      "attachments": {
+        "optional": true,
+        "files": []
+      },
+      "clarification_needed": false,
+      "clarification_questions": []
+    }
+  },
+  "conversation_brief_chars": 1599,
+  "total_duration_sec": 118.286
+}

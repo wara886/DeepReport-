@@ -1,0 +1,29 @@
+[
+  {
+    "claim_id": "cl_risk_0001",
+    "section_name": "risks",
+    "claim_text": "600519.SS 风险评估：\n• 600519.SS 当前可识别风险包括：宏观经济与市场流动性变化、行业竞争、监管政策和公告披露不完整带来的数据风险。\n• 具体风险程度需结合最新年报、季报、临时公告、交易所问询函和行业政策文件评估。",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "high",
+    "confidence": 0.65,
+    "notes": "由 RiskAgent 从非经常项、估值差异、证据关键词和行业特征综合生成。"
+  },
+  {
+    "claim_id": "cl_peer_0001",
+    "section_name": "peer_compare",
+    "claim_text": "600519.SS 同行对比数据不足，无法生成定量比较。\n\n| 公司 | 营收(B) | 营收增速(%) | 净利率(%) | ROE(%) | FCF(B) |\n|------|---------|------------|----------|--------|--------|\n| 600519.SS ◀ | N/A | N/A | N/A | N/A | N/A |\n\n（A/H 股同行数据优先使用交易所、巨潮资讯和本地结构化财报缓存；行情源仅用于价格、市值等市场数据，不单独支撑核心财务结论。）",
+    "evidence_ids": [],
+    "numeric_values": {
+      "peer_count": 0,
+      "core_peer_count": 0,
+      "extended_peer_count": 0,
+      "excluded_peer_count": 3,
+      "target_revenue_growth_pct": 0.0,
+      "target_net_margin_pct": 0.0
+    },
+    "risk_level": "low",
+    "confidence": 0.4,
+    "notes": "由 PeerComparisonAgent 生成；实时 SEC 数据同行 0 家；核心组=N/A；扩展组=N/A；剔除=000568.SZ,000858.SZ,600809.SH；period_aligned=True。"
+  }
+]

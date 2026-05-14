@@ -34,6 +34,34 @@ def test_source_authority_policy_limits_market_data_to_market_claims():
     assert "revenue" not in grade["allowed_claim_types"]
 
 
+def test_source_authority_policy_marks_chinese_exchange_sources_as_primary():
+    grade = grade_source_authority(
+        {
+            "source_type": "company_page",
+            "source_url": "https://www.sse.com.cn/assortment/stock/list/info/company/index.shtml?COMPANY_CODE=600519",
+            "title": "600519 上交所上市公司资料",
+        }
+    )
+
+    assert grade["source_authority"] == "official"
+    assert grade["authority_level"] == "primary"
+    assert "revenue" in grade["allowed_claim_types"]
+
+
+def test_source_authority_policy_classifies_eastmoney_as_market_data():
+    grade = grade_source_authority(
+        {
+            "source_type": "market_data",
+            "source_url": "https://quote.eastmoney.com/sh600519.html",
+            "title": "600519 东方财富行情",
+        }
+    )
+
+    assert grade["source_authority"] == "market_data"
+    assert "market_price" in grade["allowed_claim_types"]
+    assert "revenue" not in grade["allowed_claim_types"]
+
+
 def test_source_authority_policy_does_not_allow_web_snippet_for_core_financial_claims():
     grade = grade_source_authority(
         {
@@ -99,6 +127,35 @@ def test_verifier_accepts_core_financial_claim_with_primary_evidence():
     result = Verifier().verify(
         claims=[claim],
         markdown="# Executive Summary\n\n## Financial Analysis\n\nAMD revenue was 9.2B in 2025Q4. [filing_1]\n\n## Risk Assessment\n",
+        evidence_records=evidence,
+    )
+
+    assert result["passed"] is True
+
+
+def test_verifier_accepts_market_data_claim_with_market_source():
+    claim = ClaimItem(
+        claim_id="cl_market",
+        section_name="financial_analysis",
+        claim_text="AMD latest close was 180.5 USD and monthly price change was -2.1%. [market_1]",
+        evidence_ids=["market_1"],
+        numeric_values={"latest_close": 180.5, "monthly_price_change_pct": -2.1},
+        confidence=0.8,
+        notes="Yahoo Finance market snapshot.",
+    )
+    evidence = [
+        {
+            "evidence_id": "market_1",
+            "source_type": "market_api",
+            "source_url": "https://finance.yahoo.com/quote/AMD",
+            "content": "AMD Yahoo Finance market snapshot: latest close 180.5 USD, 1mo price change -2.1%.",
+            "metadata": {},
+        }
+    ]
+
+    result = Verifier().verify(
+        claims=[claim],
+        markdown="# Executive Summary\n\n## Financial Analysis\n\nAMD latest close was 180.5 USD and monthly price change was -2.1%. [market_1]\n\n## Risk Assessment\n",
         evidence_records=evidence,
     )
 

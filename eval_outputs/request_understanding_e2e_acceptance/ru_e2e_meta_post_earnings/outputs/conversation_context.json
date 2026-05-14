@@ -1,0 +1,119 @@
+{
+  "session_id": "97caa63b613e",
+  "user_intent": "Meta Platforms, Inc.（META）latest_quarter valuation_analysis：估值",
+  "symbol": "META",
+  "period": "latest_quarter",
+  "report_type": "company_stock_report",
+  "hard_constraints": [
+    "Only produce the requested company/stock research report type for this run.",
+    "Every material factual claim must be backed by an explicit evidence_id citation.",
+    "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+    "Keep verifier feedback active during revisions until the final verification passes.",
+    "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+    "报告类型：valuation_analysis",
+    "时间范围：latest_quarter，粒度：quarter",
+    "重点关注：估值",
+    "输出偏好：language=zh, format=markdown_html_json, depth=standard",
+    "上传文件是可选补充证据；公开公司研报优先使用可信公开来源。"
+  ],
+  "pinned_facts": [
+    "Target symbol: META",
+    "Target period: latest_quarter",
+    "Report type: company_stock_report"
+  ],
+  "rejected_claims": [],
+  "verifier_feedback": [
+    "revision_brief: - Errors: Multimodal consistency check failed. - Warnings: No financial_analysis claims found. - Warnings: 1 claims have confidence lower than 0.5. - Warnings: Report mentions non-target ticker-like tokens: EDGAR, FCF, SEC. - Warnings: Claim cl_risk_0001 has no evidence_ids. - Warnings: Claim cl_peer_0001 has no evidence_ids. - Fix recommendations: All claims must have at least one evidence_id referencing a specific source. - Fix recommendations: Include citations in the report t",
+    "fix_recommendations: Each claim must include at least one evidence_id referencing a specific source, such as a financial filing or market data.",
+    "fix_recommendations: Add reference sources with proper identifiers and link them to claims.",
+    "fix_recommendations: For the peer comparison, provide actual data from reliable sources (e.g., SEC filings) or explicitly state the reason for unavailability and remove placeholder N/A entries.",
+    "fix_recommendations: Review risk assessment to include specific evidence-backed risks rather than generic statements.",
+    "fix_recommendations: Consider adding evidence records to the document.",
+    "llm_errors: Claim cl_risk_0001 has no evidence_ids; all material factual claims must be supported by evidence.",
+    "llm_errors: Claim cl_peer_0001 has no evidence_ids; all material factual claims must be supported by evidence.",
+    "llm_errors: Report lacks any reference sources.",
+    "llm_warnings: Claim cl_peer_0001 has a low confidence of 0.4.",
+    "llm_warnings: Peer comparison table contains only N/A values, indicating insufficient data.",
+    "llm_warnings: Report sections contain incomplete content ('本节暂无可验证结论' repeated).",
+    "llm_warnings: No evidence records available to support any claims.",
+    "revision_brief: - Errors: Multimodal consistency check failed. - Warnings: No financial_analysis claims found. - Warnings: 1 claims have confidence lower than 0.5. - Warnings: Report mentions non-target ticker-like tokens: EDGAR, FCF, SEC. - Warnings: Claim cl_risk_0001 has no evidence_ids. - Warnings: Claim cl_peer_0001 has no evidence_ids. - Fix recommendations: Each claim must include at least one evidence_id referencing a specific source, such as a financial filing or market data. - Fix reco"
+  ],
+  "open_questions": [],
+  "turns": [
+    {
+      "role": "user",
+      "content": "Meta Platforms, Inc.（META）latest_quarter valuation_analysis：估值",
+      "metadata": {
+        "source": "run_request"
+      }
+    }
+  ],
+  "scope_memory": {
+    "user_intent": "Meta Platforms, Inc.（META）latest_quarter valuation_analysis：估值",
+    "run_scope": "report_type=company_stock_report; symbol=META; period=latest_quarter",
+    "report_type": "company_stock_report",
+    "symbol": "META",
+    "period": "latest_quarter",
+    "hard_constraints": [
+      "Only produce the requested company/stock research report type for this run.",
+      "Every material factual claim must be backed by an explicit evidence_id citation.",
+      "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+      "Keep verifier feedback active during revisions until the final verification passes.",
+      "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+      "报告类型：valuation_analysis",
+      "时间范围：latest_quarter，粒度：quarter",
+      "重点关注：估值",
+      "输出偏好：language=zh, format=markdown_html_json, depth=standard",
+      "上传文件是可选补充证据；公开公司研报优先使用可信公开来源。"
+    ],
+    "pinned_facts": [
+      "Target symbol: META",
+      "Target period: latest_quarter",
+      "Report type: company_stock_report"
+    ]
+  },
+  "working_memory": {
+    "pipeline_stage": "verified",
+    "evidence_count": 0,
+    "claim_count": 2,
+    "generated_sections": [
+      "peer_compare",
+      "risks"
+    ],
+    "chart_count": 2,
+    "verification_passed": false
+  },
+  "evidence_memory": {
+    "core_evidence_ids": [],
+    "primary_source_ids": [],
+    "market_snapshot_ids": [],
+    "numeric_lineage": [
+      "metric_count=0"
+    ]
+  },
+  "reflection_memory": {
+    "verifier_feedback": [
+      "llm_errors: Claim cl_risk_0001 has no evidence_ids; all material factual claims must be supported by evidence.",
+      "llm_errors: Claim cl_peer_0001 has no evidence_ids; all material factual claims must be supported by evidence.",
+      "llm_errors: Report lacks any reference sources.",
+      "llm_warnings: Claim cl_peer_0001 has a low confidence of 0.4.",
+      "llm_warnings: Peer comparison table contains only N/A values, indicating insufficient data.",
+      "llm_warnings: Report sections contain incomplete content ('本节暂无可验证结论' repeated).",
+      "llm_warnings: No evidence records available to support any claims.",
+      "revision_brief: - Errors: Multimodal consistency check failed. - Warnings: No financial_analysis claims found. - Warnings: 1 claims have confidence lower than 0.5. - Warnings: Report mentions non-target ticker-like tokens: EDGAR, FCF, SEC. - Warnings: Claim cl_risk_0001 has no evidence_ids. - Warnings: Claim cl_peer_0001 has no evidence_ids. - Fix recommendations: Each claim must include at least one evidence_id referencing a specific source, such as a financial filing or market data. - Fix reco"
+    ],
+    "rejected_claims": [],
+    "revision_rounds": 0,
+    "open_gap_count": 1,
+    "last_passed": false
+  },
+  "domain_memory": {
+    "rules": [
+      "Communication services peer comparison must distinguish core ad-platform peers from extended media/telecom references.",
+      "FCF wording must follow free_cash_flow_methodology; distinguish simplified OCF - CapEx from lease-adjusted definitions.",
+      "Peer compare must name core peers, extended references, fiscal-period alignment, and selection rationale.",
+      "Valuation claims must preserve model assumptions and market snapshot timestamp."
+    ]
+  },
+  "context_brief": "[ConversationMemory]\nscope_memory:\n- user_intent: Meta Platforms, Inc.（META）latest_quarter valuation_analysis：估值\n- run_scope: report_type=company_stock_report; symbol=META; period=latest_quarter\n- report_type: company_stock_report\n- symbol: META\n- period: latest_quarter\n- hard_constraints: Only produce the requested company/stock research report type for this run.; Every material factual claim must be backed by an explicit evidence_id citation.; Do not invent numbers, dates, sources, ratings, or unsupported conclusions.; Keep verifier feedback act\n- pinned_facts: Target symbol: META; Target period: latest_quarter; Report type: company_stock_report\nworking_memory:\n- pipeline_stage: verified\n- evidence_count: 0\n- claim_count: 2\n- generated_sections: peer_compare; risks\n- chart_count: 2\n- verification_passed: False\nevidence_memory:\n- numeric_lineage: metric_count=0\nreflection_memory:\n- verifier_feedback: llm_errors: Claim cl_risk_0001 has no evidence_ids; all material factual claims must be supported by evidence.; llm_errors: Claim cl_peer_0001 has no evidence_ids; all material factual claims must be supported by evidence.; llm_errors: Report lacks any referenc\n- revision_rounds: 0\n- open_gap_count: 1\n- last_passed: False\ndomain_memory:\n- rules: Communication services peer comparison must distinguish core ad-platform peers from extended media/telecom references.; FCF wording must follow free_cash_flow_methodology; distinguish simplified OCF - CapEx from lease-adjusted definitions.; Peer compare must name core peer"
+}

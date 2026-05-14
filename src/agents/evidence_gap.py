@@ -86,6 +86,8 @@ def _gap_type(message: str) -> str:
         return "multimodal_conflict"
     if "valuation reproducibility" in text or "valuation" in text or "dcf" in text:
         return "valuation_formula_error"
+    if "source conflict" in text or "inconsistent source" in text or "conflicting evidence" in text:
+        return "source_conflict"
     if "target symbol mismatch" in text or "period" in text:
         return "entity_or_period_mismatch"
     return "unknown"
@@ -105,6 +107,8 @@ def _required_sources(gap_type: str) -> List[str]:
         return ["tables.json", "charts.json", "claims.json"]
     if gap_type == "valuation_formula_error":
         return ["valuation_model.json", "valuation_assumptions.json", "valuation_sensitivity.json"]
+    if gap_type == "source_conflict":
+        return ["claims.json", "evidence.json", "source_authority_policy"]
     return []
 
 
@@ -117,6 +121,8 @@ def _required_fields(gap_type: str, message: str) -> List[str]:
         return ["input_table_ids", "input_claim_ids", "source_evidence_ids", "source_fields"]
     if gap_type == "valuation_formula_error":
         return ["denominator_value", "multiple", "enterprise_value_billion", "equity_value_billion"]
+    if gap_type == "source_conflict":
+        return ["conflicting_claims", "conflicting_evidence", "source_priority"]
     return [message[:80]]
 
 

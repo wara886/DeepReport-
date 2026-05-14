@@ -1,0 +1,24 @@
+{
+  "run_id": "phase0_stub_smoke",
+  "baseline_id": "baseline_1_single_rag",
+  "case_count": 1,
+  "created_at_unix": 1778743378,
+  "metrics": {
+    "case_count": 1,
+    "task_completion_rate": 0.0,
+    "required_sections_coverage": 0.0,
+    "artifact_generation_pass_rate": 0.0,
+    "verification_pass_rate": 0.0,
+    "claim_count_mean": 0.0,
+    "evidence_count_mean": 0.0,
+    "citation_count_mean": 0.0,
+    "total_latency_sec_sum": 0.0,
+    "total_latency_sec_mean": 0.0
+  },
+  "outputs": {
+    "eval_summary": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/phase0_stub_smoke/eval_summary.json",
+    "per_case_metrics": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/phase0_stub_smoke/per_case_metrics.jsonl",
+    "baseline_comparison": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/phase0_stub_smoke/baseline_comparison.json",
+    "failure_cases": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/phase0_stub_smoke/failure_cases.jsonl"
+  }
+}

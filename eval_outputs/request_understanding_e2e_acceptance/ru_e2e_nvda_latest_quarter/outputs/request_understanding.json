@@ -1,0 +1,40 @@
+{
+  "original_query": "分析英伟达最近一个季度的经营情况，判断当前估值是否偏贵，并给出主要风险。",
+  "resolved_entity": {
+    "company_name": "NVIDIA Corporation",
+    "symbol": "NVDA",
+    "market": "US",
+    "confidence": 0.795,
+    "candidates": [
+      {
+        "company_name": "NVIDIA Corporation",
+        "symbol": "NVDA",
+        "market": "US",
+        "confidence": 0.795
+      }
+    ]
+  },
+  "report_type": "company_research",
+  "period": {
+    "type": "latest_quarter",
+    "explicit_start_date": "",
+    "explicit_end_date": "",
+    "granularity": "quarter"
+  },
+  "focus_areas": [
+    "估值",
+    "经营情况",
+    "主要风险"
+  ],
+  "output_preferences": {
+    "language": "zh",
+    "format": "markdown_html_json",
+    "depth": "standard"
+  },
+  "attachments": {
+    "optional": true,
+    "files": []
+  },
+  "clarification_needed": false,
+  "clarification_questions": []
+}

@@ -1,0 +1,13 @@
+{
+  "symbol": "600519.SS",
+  "period": "latest",
+  "company_name": "贵州茅台酒股份有限公司",
+  "industry": "白酒",
+  "sector": "Consumer Staples / 食品饮料",
+  "description": "贵州茅台主营贵州茅台酒及系列酒的生产与销售，是 A 股高端白酒龙头。公司收入以茅台酒为核心，同时经营其他系列酒，销售模式包括直销和批发代理，业务对高端消费、渠道库存、批价和分红政策较为敏感。",
+  "ownership_structure": "实际控制人为贵州省国资体系；详细股权结构需以后续年报股东名册和交易所公告解析为准。",
+  "governance": "公司治理信息应以年度报告、股东大会公告、董事会公告和交易所披露文件为准。",
+  "source_url": "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF",
+  "trust_level": "high",
+  "catalog_source": "china_a_share_fixture_v1"
+}

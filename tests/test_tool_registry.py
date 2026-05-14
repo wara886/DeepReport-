@@ -34,6 +34,7 @@ def test_core_tool_registry_exposes_function_schemas():
     assert "build_peer_comparison" in registry.names()
     assert "perform_company_valuation" in registry.names()
     assert "fetch_yahoo_market_snapshot" in registry.names()
+    assert "discover_china_finance_sources" in registry.names()
     assert "retrieve_local_evidence" in registry.names()
     assert all(item["type"] == "function" for item in schemas)
     assert schemas[0]["function"]["parameters"]["type"] == "object"
@@ -92,3 +93,13 @@ def test_yahoo_market_snapshot_tool_returns_evidence(monkeypatch):
 
     assert result["evidence"]["evidence_id"] == "AAPL_2025Q4_yahoo"
     assert result["evidence"]["source_type"] == "market_api"
+
+
+def test_china_finance_source_discovery_tool_returns_official_sources():
+    registry = build_core_tool_registry()
+
+    result = registry.call("discover_china_finance_sources", symbol="600519", period="latest", include_market_sources=False)
+
+    assert result["count"] >= 2
+    assert any("cninfo.com.cn" in item["source_url"] for item in result["evidence"])
+    assert all(item["source_type"] in {"filing", "company_page"} for item in result["evidence"])

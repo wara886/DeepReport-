@@ -44,20 +44,36 @@ def build_financial_ratios(manifest_df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for _, item in manifest_df.iterrows():
         content = str(item.get("content", ""))
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        # Pass-through fields from SEC metadata (preferred over regex extraction from text)
+        _meta_fcf = metadata.get("free_cash_flow_billion")
+        _meta_ocf = metadata.get("operating_cash_flow_billion")
         rows.append(
             {
                 "sample_id": item.get("sample_id", ""),
                 "symbol": item.get("symbol", ""),
                 "period": item.get("period", ""),
                 "source_type": item.get("source_type", ""),
+                "sector": metadata.get("sector", ""),
+                "industry": metadata.get("industry", ""),
                 "revenue_billion": _extract_revenue_billion(content),
                 "revenue_growth_pct": _extract_value(content, _RE_REVENUE_GROWTH),
                 "gross_margin_pct": _extract_gross_margin_pct(content),
                 "net_margin_pct": _extract_value(content, _RE_NET_MARGIN),
                 "roe_pct": _extract_value(content, _RE_ROE),
                 "roa_pct": _extract_value(content, _RE_ROA),
-                "operating_cash_flow_billion": _extract_value(content, _RE_OPERATING_CASH_FLOW),
-                "free_cash_flow_billion": _extract_value(content, _RE_FREE_CASH_FLOW),
+                "operating_cash_flow_billion": _meta_ocf if _meta_ocf is not None else _extract_value(content, _RE_OPERATING_CASH_FLOW),
+                "free_cash_flow_billion": _meta_fcf if _meta_fcf is not None else _extract_value(content, _RE_FREE_CASH_FLOW),
+                "free_cash_flow_methodology": metadata.get("free_cash_flow_methodology"),
+                "finance_lease_payments_billion": metadata.get("finance_lease_payments_billion"),
+                "income_tax_billion": metadata.get("income_tax_billion"),
+                "income_tax_benefit_billion": metadata.get("income_tax_benefit_billion"),
+                "restructuring_charges_billion": metadata.get("restructuring_charges_billion"),
+                "asset_impairment_billion": metadata.get("asset_impairment_billion"),
+                "shareholder_equity_billion": metadata.get("shareholder_equity_billion"),
+                "total_assets_billion": metadata.get("total_assets_billion"),
+                "is_quarterly": bool(metadata.get("is_quarterly", False)),
+                "annualization_factor": int(metadata.get("annualization_factor") or 1),
             }
         )
     return pd.DataFrame(rows)

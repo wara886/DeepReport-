@@ -1,0 +1,8 @@
+[
+  {
+    "round": 1,
+    "revision_request": "- Errors: Multimodal consistency check failed.\n- Warnings: No financial_analysis claims found.\n- Warnings: 1 claims have confidence lower than 0.5.\n- Warnings: Report mentions non-target ticker-like tokens: EDGAR, FCF, SEC.\n- Warnings: Claim cl_risk_0001 has no evidence_ids.\n- Warnings: Claim cl_peer_0001 has no evidence_ids.\n- Fix recommendations: All claims must have at least one evidence_id referencing a specific source.\n- Fix recommendations: Include citations in the report text for each material claim.",
+    "model_route": "pro_conditional",
+    "passed_after_round": false
+  }
+]

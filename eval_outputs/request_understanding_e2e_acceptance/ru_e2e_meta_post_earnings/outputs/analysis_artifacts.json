@@ -1,0 +1,43 @@
+{
+  "ratio_rows": [],
+  "trend_rows": [],
+  "statement_view": {
+    "rows": [],
+    "coverage": {
+      "statements": {},
+      "has_three_statement_view": false,
+      "line_item_count": 0
+    },
+    "source_record_count": 0
+  },
+  "financial_metrics": {
+    "metrics": [],
+    "metric_count": 0,
+    "coverage": {
+      "required_metrics": [
+        "revenue",
+        "net_income",
+        "gross_margin",
+        "free_cash_flow"
+      ],
+      "present_metrics": [],
+      "has_core_metric_lineage": false
+    }
+  },
+  "tables": [],
+  "peer_context": {
+    "target_symbol": "META",
+    "peer_rows": [],
+    "peer_count": 0,
+    "ranking": {}
+  },
+  "valuation": {
+    "symbol": "META",
+    "period": "latest_quarter",
+    "valuation_available": false,
+    "error": "target financials not found"
+  },
+  "valuation_model": {},
+  "valuation_assumptions": {},
+  "valuation_sensitivity": {}
+}

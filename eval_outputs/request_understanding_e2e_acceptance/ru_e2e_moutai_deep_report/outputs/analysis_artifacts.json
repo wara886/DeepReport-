@@ -1,0 +1,583 @@
+{
+  "ratio_rows": [],
+  "trend_rows": [],
+  "statement_view": {
+    "rows": [],
+    "coverage": {
+      "statements": {},
+      "has_three_statement_view": false,
+      "line_item_count": 0
+    },
+    "source_record_count": 0
+  },
+  "financial_metrics": {
+    "metrics": [],
+    "metric_count": 0,
+    "coverage": {
+      "required_metrics": [
+        "revenue",
+        "net_income",
+        "gross_margin",
+        "free_cash_flow"
+      ],
+      "present_metrics": [],
+      "has_core_metric_lineage": false
+    }
+  },
+  "tables": [],
+  "peer_context": {
+    "target_symbol": "600519.SS",
+    "target_sector": "Consumer Staples / 食品饮料",
+    "target_industry": "白酒",
+    "peer_groups": {
+      "core": [
+        "000858.SZ",
+        "000568.SZ",
+        "600809.SH"
+      ],
+      "extended": [
+        "603369.SH"
+      ]
+    },
+    "peer_rows": [
+      {
+        "symbol": "600519.SS",
+        "company_name": "贵州茅台酒股份有限公司",
+        "sector": "Consumer Staples / 食品饮料",
+        "industry": "白酒",
+        "is_target": true,
+        "revenue_billion": 53.91,
+        "revenue_growth_pct": 6.54,
+        "gross_margin_pct": 91.18,
+        "net_margin_pct": 50.53,
+        "roe_pct": 10.57,
+        "free_cash_flow_billion": null,
+        "net_income_billion": 27.2407,
+        "shareholder_equity_billion": 270.89,
+        "total_assets_billion": null,
+        "currency": "CNY_billion"
+      },
+      {
+        "symbol": "000568.SZ",
+        "company_name": "泸州老窖股份有限公司",
+        "sector": "Consumer Staples / 食品饮料",
+        "industry": "白酒",
+        "is_target": false,
+        "revenue_billion": 25.73,
+        "revenue_growth_pct": -17.52,
+        "gross_margin_pct": 86.62,
+        "net_margin_pct": 42.21,
+        "roe_pct": 22.29,
+        "free_cash_flow_billion": null,
+        "net_income_billion": 10.8606,
+        "shareholder_equity_billion": null,
+        "total_assets_billion": null,
+        "currency": "CNY_billion"
+      },
+      {
+        "symbol": "000858.SZ",
+        "company_name": "宜宾五粮液股份有限公司",
+        "sector": "Consumer Staples / 食品饮料",
+        "industry": "白酒",
+        "is_target": false,
+        "revenue_billion": 40.53,
+        "revenue_growth_pct": -54.55,
+        "gross_margin_pct": 77.54,
+        "net_margin_pct": 22.09,
+        "roe_pct": null,
+        "free_cash_flow_billion": null,
+        "net_income_billion": 8.9531,
+        "shareholder_equity_billion": null,
+        "total_assets_billion": null,
+        "currency": "CNY_billion"
+      },
+      {
+        "symbol": "600809.SH",
+        "company_name": "山西杏花村汾酒厂股份有限公司",
+        "sector": "Consumer Staples / 食品饮料",
+        "industry": "白酒",
+        "is_target": false,
+        "revenue_billion": 38.72,
+        "revenue_growth_pct": 7.52,
+        "gross_margin_pct": 74.9,
+        "net_margin_pct": 31.63,
+        "roe_pct": null,
+        "free_cash_flow_billion": null,
+        "net_income_billion": 12.2471,
+        "shareholder_equity_billion": null,
+        "total_assets_billion": null,
+        "currency": "CNY_billion"
+      }
+    ],
+    "peer_count": 3,
+    "ranking": {
+      "revenue_growth_pct": {
+        "rank": 2,
+        "peer_count": 4,
+        "value": 6.54
+      },
+      "gross_margin_pct": {
+        "rank": 1,
+        "peer_count": 4,
+        "value": 91.18
+      },
+      "net_margin_pct": {
+        "rank": 1,
+        "peer_count": 4,
+        "value": 50.53
+      },
+      "roe_pct": {
+        "rank": 2,
+        "peer_count": 2,
+        "value": 10.57
+      }
+    }
+  },
+  "valuation": {
+    "symbol": "600519.SS",
+    "period": "latest_quarter",
+    "valuation_available": true,
+    "currency": "CNY_billion",
+    "is_financial_sector": false,
+    "methods": {
+      "pe": {
+        "multiple": 26.55,
+        "value_billion": 723.24
+      },
+      "ps": {
+        "multiple": 7.47,
+        "value_billion": 402.71,
+        "note": ""
+      },
+      "dcf": {
+        "discount_rate": 0.1,
+        "terminal_growth": 0.025,
+        "fcf_growth": 0.0654,
+        "value_billion": 330.89,
+        "note": ""
+      }
+    },
+    "blended_equity_value_billion": 485.61,
+    "blended_method_note": "综合估值基于 P/E + P/S + DCF 等权平均",
+    "sensitivity": {
+      "type": "dcf",
+      "fcf_growth_minus_2pct": 304.38,
+      "fcf_growth_plus_2pct": 359.33,
+      "discount_rate_plus_1pct": 291.17
+    },
+    "market_context": {},
+    "market_gap": {
+      "available": false
+    },
+    "peer_context": {
+      "target_symbol": "600519.SS",
+      "target_sector": "Consumer Staples / 食品饮料",
+      "target_industry": "白酒",
+      "peer_groups": {
+        "core": [
+          "000858.SZ",
+          "000568.SZ",
+          "600809.SH"
+        ],
+        "extended": [
+          "603369.SH"
+        ]
+      },
+      "peer_rows": [
+        {
+          "symbol": "600519.SS",
+          "company_name": "贵州茅台酒股份有限公司",
+          "sector": "Consumer Staples / 食品饮料",
+          "industry": "白酒",
+          "is_target": true,
+          "revenue_billion": 53.91,
+          "revenue_growth_pct": 6.54,
+          "gross_margin_pct": 91.18,
+          "net_margin_pct": 50.53,
+          "roe_pct": 10.57,
+          "free_cash_flow_billion": null,
+          "net_income_billion": 27.2407,
+          "shareholder_equity_billion": 270.89,
+          "total_assets_billion": null,
+          "currency": "CNY_billion"
+        },
+        {
+          "symbol": "000568.SZ",
+          "company_name": "泸州老窖股份有限公司",
+          "sector": "Consumer Staples / 食品饮料",
+          "industry": "白酒",
+          "is_target": false,
+          "revenue_billion": 25.73,
+          "revenue_growth_pct": -17.52,
+          "gross_margin_pct": 86.62,
+          "net_margin_pct": 42.21,
+          "roe_pct": 22.29,
+          "free_cash_flow_billion": null,
+          "net_income_billion": 10.8606,
+          "shareholder_equity_billion": null,
+          "total_assets_billion": null,
+          "currency": "CNY_billion"
+        },
+        {
+          "symbol": "000858.SZ",
+          "company_name": "宜宾五粮液股份有限公司",
+          "sector": "Consumer Staples / 食品饮料",
+          "industry": "白酒",
+          "is_target": false,
+          "revenue_billion": 40.53,
+          "revenue_growth_pct": -54.55,
+          "gross_margin_pct": 77.54,
+          "net_margin_pct": 22.09,
+          "roe_pct": null,
+          "free_cash_flow_billion": null,
+          "net_income_billion": 8.9531,
+          "shareholder_equity_billion": null,
+          "total_assets_billion": null,
+          "currency": "CNY_billion"
+        },
+        {
+          "symbol": "600809.SH",
+          "company_name": "山西杏花村汾酒厂股份有限公司",
+          "sector": "Consumer Staples / 食品饮料",
+          "industry": "白酒",
+          "is_target": false,
+          "revenue_billion": 38.72,
+          "revenue_growth_pct": 7.52,
+          "gross_margin_pct": 74.9,
+          "net_margin_pct": 31.63,
+          "roe_pct": null,
+          "free_cash_flow_billion": null,
+          "net_income_billion": 12.2471,
+          "shareholder_equity_billion": null,
+          "total_assets_billion": null,
+          "currency": "CNY_billion"
+        }
+      ],
+      "peer_count": 3,
+      "ranking": {
+        "revenue_growth_pct": {
+          "rank": 2,
+          "peer_count": 4,
+          "value": 6.54
+        },
+        "gross_margin_pct": {
+          "rank": 1,
+          "peer_count": 4,
+          "value": 91.18
+        },
+        "net_margin_pct": {
+          "rank": 1,
+          "peer_count": 4,
+          "value": 50.53
+        },
+        "roe_pct": {
+          "rank": 2,
+          "peer_count": 2,
+          "value": 10.57
+        }
+      }
+    },
+    "relative_valuation": {
+      "symbol": "600519.SS",
+      "period": "latest_quarter",
+      "currency": "USD",
+      "unit": "billion",
+      "multiples": {
+        "pe": {
+          "numerator": "equity_value_billion",
+          "denominator": "net_income_billion",
+          "denominator_value": 27.2407,
+          "multiple": 26.55,
+          "equity_value_billion": 723.24,
+          "target_price": null
+        },
+        "ps": {
+          "numerator": "equity_value_billion",
+          "denominator": "revenue_billion",
+          "denominator_value": 53.91,
+          "multiple": 7.47,
+          "equity_value_billion": 402.71,
+          "target_price": null
+        }
+      },
+      "scenario_values": {
+        "bear": 362.44,
+        "base": 562.97,
+        "bull": 795.56
+      }
+    },
+    "dcf_model": {
+      "symbol": "600519.SS",
+      "period": "latest_quarter",
+      "currency": "USD",
+      "unit": "billion",
+      "assumptions": {
+        "base_free_cash_flow_billion": 20.430525,
+        "fcf_growth": 0.0654,
+        "discount_rate": 0.1,
+        "terminal_growth": 0.025,
+        "forecast_years": 5,
+        "net_debt_billion": 0.0,
+        "shares_outstanding_billion": null
+      },
+      "forecast": [
+        {
+          "year": 1,
+          "free_cash_flow_billion": 21.766681,
+          "present_value_billion": 19.787892
+        },
+        {
+          "year": 2,
+          "free_cash_flow_billion": 23.190222,
+          "present_value_billion": 19.165473
+        },
+        {
+          "year": 3,
+          "free_cash_flow_billion": 24.706863,
+          "present_value_billion": 18.562632
+        },
+        {
+          "year": 4,
+          "free_cash_flow_billion": 26.322692,
+          "present_value_billion": 17.978753
+        },
+        {
+          "year": 5,
+          "free_cash_flow_billion": 28.044196,
+          "present_value_billion": 17.413239
+        }
+      ],
+      "terminal_value_billion": 383.270679,
+      "pv_terminal_value_billion": 237.980937,
+      "enterprise_value_billion": 330.888925,
+      "equity_value_billion": 330.888925,
+      "target_price": null
+    },
+    "valuation_model": {
+      "symbol": "600519.SS",
+      "period": "latest_quarter",
+      "currency": "USD",
+      "unit": "billion",
+      "relative_valuation": {
+        "symbol": "600519.SS",
+        "period": "latest_quarter",
+        "currency": "USD",
+        "unit": "billion",
+        "multiples": {
+          "pe": {
+            "numerator": "equity_value_billion",
+            "denominator": "net_income_billion",
+            "denominator_value": 27.2407,
+            "multiple": 26.55,
+            "equity_value_billion": 723.24,
+            "target_price": null
+          },
+          "ps": {
+            "numerator": "equity_value_billion",
+            "denominator": "revenue_billion",
+            "denominator_value": 53.91,
+            "multiple": 7.47,
+            "equity_value_billion": 402.71,
+            "target_price": null
+          }
+        },
+        "scenario_values": {
+          "bear": 362.44,
+          "base": 562.97,
+          "bull": 795.56
+        }
+      },
+      "dcf_model": {
+        "symbol": "600519.SS",
+        "period": "latest_quarter",
+        "currency": "USD",
+        "unit": "billion",
+        "assumptions": {
+          "base_free_cash_flow_billion": 20.430525,
+          "fcf_growth": 0.0654,
+          "discount_rate": 0.1,
+          "terminal_growth": 0.025,
+          "forecast_years": 5,
+          "net_debt_billion": 0.0,
+          "shares_outstanding_billion": null
+        },
+        "forecast": [
+          {
+            "year": 1,
+            "free_cash_flow_billion": 21.766681,
+            "present_value_billion": 19.787892
+          },
+          {
+            "year": 2,
+            "free_cash_flow_billion": 23.190222,
+            "present_value_billion": 19.165473
+          },
+          {
+            "year": 3,
+            "free_cash_flow_billion": 24.706863,
+            "present_value_billion": 18.562632
+          },
+          {
+            "year": 4,
+            "free_cash_flow_billion": 26.322692,
+            "present_value_billion": 17.978753
+          },
+          {
+            "year": 5,
+            "free_cash_flow_billion": 28.044196,
+            "present_value_billion": 17.413239
+          }
+        ],
+        "terminal_value_billion": 383.270679,
+        "pv_terminal_value_billion": 237.980937,
+        "enterprise_value_billion": 330.888925,
+        "equity_value_billion": 330.888925,
+        "target_price": null
+      },
+      "blended_equity_value_billion": 485.61,
+      "target_price": null
+    },
+    "valuation_assumptions": {
+      "base_free_cash_flow_billion": 20.430525,
+      "fcf_growth": 0.0654,
+      "discount_rate": 0.1,
+      "terminal_growth": 0.025,
+      "forecast_years": 5,
+      "net_debt_billion": 0.0,
+      "shares_outstanding_billion": null
+    },
+    "valuation_sensitivity": {
+      "scenario_values": {
+        "bear": {
+          "equity_value_billion": 268.19,
+          "target_price": null
+        },
+        "base": {
+          "equity_value_billion": 330.89,
+          "target_price": null
+        },
+        "bull": {
+          "equity_value_billion": 416.3,
+          "target_price": null
+        }
+      },
+      "directional_check": true
+    },
+    "recommendation": "中性偏积极",
+    "valuation_method_warning": "",
+    "assumptions": [
+      "估值为规则模型生成的第一版相对估值/DCF 区间，不构成投资建议。",
+      "缺少完整股本与实时市值时，输出为企业/股权价值规模估计。"
+    ]
+  },
+  "valuation_model": {
+    "symbol": "600519.SS",
+    "period": "latest_quarter",
+    "currency": "USD",
+    "unit": "billion",
+    "relative_valuation": {
+      "symbol": "600519.SS",
+      "period": "latest_quarter",
+      "currency": "USD",
+      "unit": "billion",
+      "multiples": {
+        "pe": {
+          "numerator": "equity_value_billion",
+          "denominator": "net_income_billion",
+          "denominator_value": 27.2407,
+          "multiple": 26.55,
+          "equity_value_billion": 723.24,
+          "target_price": null
+        },
+        "ps": {
+          "numerator": "equity_value_billion",
+          "denominator": "revenue_billion",
+          "denominator_value": 53.91,
+          "multiple": 7.47,
+          "equity_value_billion": 402.71,
+          "target_price": null
+        }
+      },
+      "scenario_values": {
+        "bear": 362.44,
+        "base": 562.97,
+        "bull": 795.56
+      }
+    },
+    "dcf_model": {
+      "symbol": "600519.SS",
+      "period": "latest_quarter",
+      "currency": "USD",
+      "unit": "billion",
+      "assumptions": {
+        "base_free_cash_flow_billion": 20.430525,
+        "fcf_growth": 0.0654,
+        "discount_rate": 0.1,
+        "terminal_growth": 0.025,
+        "forecast_years": 5,
+        "net_debt_billion": 0.0,
+        "shares_outstanding_billion": null
+      },
+      "forecast": [
+        {
+          "year": 1,
+          "free_cash_flow_billion": 21.766681,
+          "present_value_billion": 19.787892
+        },
+        {
+          "year": 2,
+          "free_cash_flow_billion": 23.190222,
+          "present_value_billion": 19.165473
+        },
+        {
+          "year": 3,
+          "free_cash_flow_billion": 24.706863,
+          "present_value_billion": 18.562632
+        },
+        {
+          "year": 4,
+          "free_cash_flow_billion": 26.322692,
+          "present_value_billion": 17.978753
+        },
+        {
+          "year": 5,
+          "free_cash_flow_billion": 28.044196,
+          "present_value_billion": 17.413239
+        }
+      ],
+      "terminal_value_billion": 383.270679,
+      "pv_terminal_value_billion": 237.980937,
+      "enterprise_value_billion": 330.888925,
+      "equity_value_billion": 330.888925,
+      "target_price": null
+    },
+    "blended_equity_value_billion": 485.61,
+    "target_price": null
+  },
+  "valuation_assumptions": {
+    "base_free_cash_flow_billion": 20.430525,
+    "fcf_growth": 0.0654,
+    "discount_rate": 0.1,
+    "terminal_growth": 0.025,
+    "forecast_years": 5,
+    "net_debt_billion": 0.0,
+    "shares_outstanding_billion": null
+  },
+  "valuation_sensitivity": {
+    "scenario_values": {
+      "bear": {
+        "equity_value_billion": 268.19,
+        "target_price": null
+      },
+      "base": {
+        "equity_value_billion": 330.89,
+        "target_price": null
+      },
+      "bull": {
+        "equity_value_billion": 416.3,
+        "target_price": null
+      }
+    },
+    "directional_check": true
+  }
+}

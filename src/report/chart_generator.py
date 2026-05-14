@@ -16,31 +16,98 @@ def generate_report_charts(
     output_dir: str | Path,
     tables: List[Dict[str, Any]] | None = None,
 ) -> List[Dict[str, Any]]:
-    """Render simple report charts directly from claims and evidence records."""
+    """Render report-facing charts plus a small audit appendix."""
 
     chart_dir = Path(output_dir)
     chart_dir.mkdir(parents=True, exist_ok=True)
     charts: List[Dict[str, Any]] = []
     table_ids = _table_ids(tables or [])
 
-    metric_points = _metric_points_from_claims(claims)
-    if metric_points:
-        path = render_bar_chart(
-            bars=metric_points[:8],
-            output_path=chart_dir / "key_metrics_bar.png",
-            title="Key Metrics",
+    financial_rows, financial_claim_ids, financial_evidence_ids = _financial_statement_rows(claims)
+    if financial_rows:
+        path = render_table_chart(
+            headers=["Metric", "Value", "Unit"],
+            rows=financial_rows,
+            output_path=chart_dir / "financial_performance_table.png",
+            title="Financial Performance",
+            width=1180,
         )
         charts.append(
             {
-                "chart_id": "key_metrics_bar",
-                "chart_type": "bar",
-                "title": "关键指标",
+                "chart_id": "financial_performance_table",
+                "chart_type": "table",
+                "title": "核心财务表现",
                 "output_path": str(path),
+                "chart_category": "report",
                 "source_fields": "claims.numeric_values",
                 "input_table_ids": table_ids,
-                "input_claim_ids": _claim_ids_with_numeric_values(claims),
-                "source_evidence_ids": _evidence_ids_from_claims(claims),
-                "chart_js": _chart_js_payload(chart_type="bar", points=metric_points[:8], label="指标值"),
+                "input_claim_ids": financial_claim_ids,
+                "source_evidence_ids": financial_evidence_ids,
+            }
+        )
+
+    profitability_points, profitability_claim_ids, profitability_evidence_ids = _profitability_points(claims)
+    if profitability_points:
+        path = render_bar_chart(
+            bars=profitability_points[:5],
+            output_path=chart_dir / "profitability_returns_bar.png",
+            title="Profitability and Returns (%)",
+        )
+        charts.append(
+            {
+                "chart_id": "profitability_returns_bar",
+                "chart_type": "bar",
+                "title": "盈利能力与资本回报",
+                "output_path": str(path),
+                "chart_category": "report",
+                "source_fields": "claims.numeric_values",
+                "input_table_ids": table_ids,
+                "input_claim_ids": profitability_claim_ids,
+                "source_evidence_ids": profitability_evidence_ids,
+                "chart_js": _chart_js_payload(chart_type="bar", points=profitability_points[:5], label="百分比"),
+            }
+        )
+
+    valuation_points, valuation_claim_ids, valuation_evidence_ids = _valuation_market_points(claims)
+    if valuation_points:
+        path = render_bar_chart(
+            bars=valuation_points,
+            output_path=chart_dir / "valuation_market_compare_bar.png",
+            title="Valuation vs Market Cap",
+        )
+        charts.append(
+            {
+                "chart_id": "valuation_market_compare_bar",
+                "chart_type": "bar",
+                "title": "估值对照：模型价值与市场市值",
+                "output_path": str(path),
+                "chart_category": "report",
+                "source_fields": "claims.claim_text",
+                "input_claim_ids": valuation_claim_ids,
+                "source_evidence_ids": valuation_evidence_ids,
+                "chart_js": _chart_js_payload(chart_type="bar", points=valuation_points, label="USD billion"),
+            }
+        )
+
+    peer_rows, peer_claim_ids, peer_evidence_ids = _peer_table_rows(claims)
+    if peer_rows:
+        path = render_table_chart(
+            headers=["Company", "Revenue(B)", "Rev growth(%)", "Net margin(%)", "ROE(%)", "FCF(B)"],
+            rows=peer_rows[:8],
+            output_path=chart_dir / "peer_comparison_table.png",
+            title="Peer Comparison",
+            width=1320,
+        )
+        charts.append(
+            {
+                "chart_id": "peer_comparison_table",
+                "chart_type": "table",
+                "title": "同行对比：核心指标",
+                "output_path": str(path),
+                "chart_category": "report",
+                "source_fields": "claims.claim_text",
+                "input_claim_ids": peer_claim_ids,
+                "source_evidence_ids": peer_evidence_ids,
             }
         )
 
@@ -55,8 +122,9 @@ def generate_report_charts(
             {
                 "chart_id": "claim_confidence_bar",
                 "chart_type": "bar",
-                "title": "结论置信度",
+                "title": "附录：结论置信度",
                 "output_path": str(path),
+                "chart_category": "audit",
                 "source_fields": "claims.confidence",
                 "input_claim_ids": _claim_ids(claims),
                 "source_evidence_ids": _evidence_ids_from_claims(claims),
@@ -76,8 +144,9 @@ def generate_report_charts(
             {
                 "chart_id": "evidence_source_mix",
                 "chart_type": "table",
-                "title": "证据来源结构",
+                "title": "附录：证据来源结构",
                 "output_path": str(path),
+                "chart_category": "audit",
                 "source_fields": "evidence_records.source_type",
                 "source_evidence_ids": _evidence_ids(evidence_records),
                 "chart_js": _chart_js_payload(
@@ -91,20 +160,129 @@ def generate_report_charts(
     return charts
 
 
-def _metric_points_from_claims(claims: List[Dict[str, Any]]) -> List[Tuple[str, float]]:
+def _financial_statement_rows(claims: List[Dict[str, Any]]) -> Tuple[List[List[str]], List[str], List[str]]:
+    wanted = [
+        ("revenue_billion", "Revenue"),
+        ("net_income_billion", "Net income"),
+        ("operating_cash_flow_billion", "Operating cash flow"),
+        ("free_cash_flow_billion", "Free cash flow"),
+        ("shareholder_equity_billion", "Shareholder equity"),
+        ("total_assets_billion", "Total assets"),
+    ]
+    values, claim_ids, evidence_ids = _first_numeric_values_by_priority(
+        claims=claims,
+        keys=[key for key, _ in wanted],
+        preferred_sections=["financial_statements", "executive_summary", "financial_analysis"],
+    )
+    rows = [
+        [label, f"{values[key]:,.2f}", "USD billion"]
+        for key, label in wanted
+        if key in values
+    ]
+    return rows[:6], claim_ids, evidence_ids
+
+
+def _profitability_points(claims: List[Dict[str, Any]]) -> Tuple[List[Tuple[str, float]], List[str], List[str]]:
+    wanted = [
+        ("gross_margin_pct", "Gross margin"),
+        ("operating_margin_pct", "Operating margin"),
+        ("net_margin_pct", "Net margin"),
+        ("roe_pct", "ROE"),
+        ("roa_pct", "ROA"),
+    ]
+    values, claim_ids, evidence_ids = _first_numeric_values_by_priority(
+        claims=claims,
+        keys=[key for key, _ in wanted],
+        preferred_sections=["executive_summary", "financial_analysis", "financial_statements"],
+    )
+    points = [(label, values[key]) for key, label in wanted if key in values and values[key] >= 0]
+    return points, claim_ids, evidence_ids
+
+
+def _valuation_market_points(claims: List[Dict[str, Any]]) -> Tuple[List[Tuple[str, float]], List[str], List[str]]:
+    values, claim_ids, evidence_ids = _first_numeric_values_by_priority(
+        claims=claims,
+        keys=["blended_equity_value_billion", "dcf_value_billion", "market_cap_billion"],
+        preferred_sections=["valuation"],
+    )
     points: List[Tuple[str, float]] = []
+    if "blended_equity_value_billion" in values:
+        points.append(("Model valuation", values["blended_equity_value_billion"]))
+    if "dcf_value_billion" in values:
+        points.append(("DCF valuation", values["dcf_value_billion"]))
+    if "market_cap_billion" in values:
+        points.append(("Market cap", values["market_cap_billion"]))
+    return points, claim_ids, evidence_ids
+
+
+def _peer_table_rows(claims: List[Dict[str, Any]]) -> Tuple[List[List[str]], List[str], List[str]]:
     for claim in claims:
+        if not isinstance(claim, dict) or str(claim.get("section_name") or "") != "peer_compare":
+            continue
+        text = str(claim.get("claim_text") or "")
+        rows: List[List[str]] = []
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not (line.startswith("|") and line.endswith("|")):
+                continue
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if len(cells) < 6:
+                continue
+            if cells[0] in {"公司", "------"} or set(cells[0]) <= {"-"}:
+                continue
+            cells = [_ascii_cell(cell) for cell in cells]
+            rows.append(cells[:6])
+        if rows:
+            return rows, _claim_ids([claim]), _evidence_ids_from_claims([claim])
+    return [], [], []
+
+
+def _first_numeric_values_by_priority(
+    claims: List[Dict[str, Any]],
+    keys: List[str],
+    preferred_sections: List[str],
+) -> Tuple[Dict[str, float], List[str], List[str]]:
+    values: Dict[str, float] = {}
+    claim_ids: List[str] = []
+    evidence_ids: List[str] = []
+    section_rank = {section: index for index, section in enumerate(preferred_sections)}
+    ordered = sorted(
+        [claim for claim in claims if isinstance(claim, dict)],
+        key=lambda claim: (
+            section_rank.get(str(claim.get("section_name") or ""), 999),
+            -float(claim.get("confidence", 0.0) or 0.0),
+        ),
+    )
+    for claim in ordered:
         numeric_values = claim.get("numeric_values", {}) if isinstance(claim, dict) else {}
         if not isinstance(numeric_values, dict):
             continue
-        claim_id = str(claim.get("claim_id") or f"claim_{len(points) + 1}")
-        for key, value in numeric_values.items():
+        used_claim = False
+        for key in keys:
+            if key in values:
+                continue
+            value = numeric_values.get(key)
             parsed = _safe_float(value)
             if parsed is None:
                 continue
-            label = _metric_label(key=key, claim_id=claim_id)
-            points.append((label, parsed))
-    return points
+            values[key] = parsed
+            used_claim = True
+        if used_claim:
+            claim_id = str(claim.get("claim_id") or "")
+            if claim_id and claim_id not in claim_ids:
+                claim_ids.append(claim_id)
+            for evidence_id in claim.get("evidence_ids", []):
+                evidence_id = str(evidence_id)
+                if evidence_id and evidence_id not in evidence_ids:
+                    evidence_ids.append(evidence_id)
+        if all(key in values for key in keys):
+            break
+    return values, claim_ids, evidence_ids
+
+
+def _ascii_cell(value: Any) -> str:
+    text = str(value).replace("◀", "<").strip()
+    return text.encode("ascii", errors="ignore").decode("ascii") or "N/A"
 
 
 def _confidence_points_from_claims(claims: List[Dict[str, Any]]) -> List[Tuple[str, float]]:

@@ -24,11 +24,19 @@ PRIMARY_DOMAINS = (
 COMPANY_DOMAINS = (
     "amd.com",
     "apple.com",
+    "investor.apple.com",
     "microsoft.com",
     "alphabet.com",
     "abc.xyz",
     "nvidia.com",
+    "ir.nvidia.com",
     "tesla.com",
+    "ir.tesla.com",
+    "ir.aboutamazon.com",
+    "ir.meta.com",
+    "investor.fb.com",
+    "ir.netflix.net",
+    "investor.google.com",
 )
 MARKET_DOMAINS = (
     "finance.yahoo.com",
@@ -39,6 +47,12 @@ MARKET_DOMAINS = (
     "iexcloud.io",
     "tushare.pro",
     "akshare.akfamily.xyz",
+    "eastmoney.com",
+    "quote.eastmoney.com",
+    "data.eastmoney.com",
+    "10jqka.com.cn",
+    "stockpage.10jqka.com.cn",
+    "iwencai.com",
 )
 NEWSWIRE_DOMAINS = (
     "businesswire.com",
@@ -50,6 +64,9 @@ MEDIA_DOMAINS = (
     "bloomberg.com",
     "cnbc.com",
     "wsj.com",
+    "stcn.com",
+    "cs.com.cn",
+    "cnstock.com",
 )
 
 CORE_FINANCIAL_CLAIMS = {
@@ -106,6 +123,17 @@ class SourceAuthorityPolicy:
                 source_document_type=doc_type,
                 allowed_claim_types=tuple(sorted(CORE_FINANCIAL_CLAIMS | EVENT_CLAIMS)),
                 reason="official filing, structured financial record, or exchange disclosure",
+            )
+        # web_search results pointing to primary domains (e.g. tavily returning sec.gov URLs)
+        if source_type in NEWS_SOURCE_TYPES and matches_domain(domain, PRIMARY_DOMAINS):
+            return SourceAuthorityGrade(
+                source_authority="official",
+                authority_level="primary",
+                authority_score=0.95,
+                trust_level="high",
+                source_document_type=doc_type,
+                allowed_claim_types=tuple(sorted(CORE_FINANCIAL_CLAIMS | EVENT_CLAIMS)),
+                reason="web search result pointing to official exchange or regulatory filing",
             )
         if matches_domain(domain, COMPANY_DOMAINS):
             return SourceAuthorityGrade(
@@ -208,4 +236,8 @@ def infer_document_type(source_type: str, url: str, title: str = "") -> str:
         return "market_snapshot"
     if "news" in source_type or source_type == "web_search":
         return "web_or_news"
+    if "company_page" in source_type:
+        return "company_page"
+    if "filing" in source_type and any(domain in url.lower() for domain in ("cninfo.com.cn", "hkexnews.hk", "sse.com.cn", "szse.cn", "bse.cn")):
+        return "exchange_disclosure"
     return source_type or "unknown"

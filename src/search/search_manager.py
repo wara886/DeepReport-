@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import json
+import re
 import socket
 from pathlib import Path
 from typing import Any, Callable, Dict, List
@@ -12,6 +13,7 @@ from urllib import error, request
 
 import pandas as pd
 
+from src.data.china_finance import china_finance_source_map, normalize_china_symbol
 from src.data.company_universe import resolve_company_identifier, resolve_symbol
 from src.data.sec_companyfacts import fetch_sec_companyfacts_evidence
 from src.data.source_quality import apply_source_quality
@@ -76,6 +78,7 @@ class SearchManager:
         load_env_files(config_path="configs/data_sources.yaml")
         manager = cls()
         manager.register_engine("local_real_data", local_real_data_search)
+        manager.register_engine("china_finance", china_finance_search)
         manager.register_engine("yahoo_finance", yahoo_finance_search)
         manager.register_engine("sec_companyfacts", sec_companyfacts_search)
         manager.register_engine("serper", serper_search)
@@ -190,6 +193,43 @@ def local_real_data_search(
             "failure_reason": _local_search_failure_reason(records=records, hits=returned, symbol=resolved_symbol or symbol, period=period),
             "chunking_enabled": use_chunks,
             **query_info,
+        },
+    }
+
+
+def china_finance_search(
+    query: str,
+    topk: int = 5,
+    symbol: str | None = None,
+    period: str | None = None,
+    include_market_sources: bool = True,
+    **_: Any,
+) -> Dict[str, Any]:
+    resolved_symbol = _extract_china_symbol(symbol or query)
+    if not resolved_symbol:
+        return {
+            "hits": [],
+            "meta": {
+                "mode": "china_finance",
+                "error": "A/H share symbol is required, for example 600519, 000001.SZ, or 00700.HK",
+            },
+        }
+    records = china_finance_source_map(
+        identifier=resolved_symbol,
+        period=period or "latest",
+        include_market_sources=include_market_sources,
+    )
+    info = normalize_china_symbol(resolved_symbol)
+    return {
+        "hits": records[:topk],
+        "meta": {
+            "mode": "china_finance",
+            "symbol": info.get("normalized_symbol", ""),
+            "market": info.get("market", ""),
+            "exchange": info.get("exchange", ""),
+            "stock_code": info.get("stock_code", ""),
+            "result_count": len(records),
+            "include_market_sources": include_market_sources,
         },
     }
 
@@ -672,6 +712,32 @@ def _search_evidence_id(engine: str, url: str, title: str, index: int) -> str:
     return f"{engine}_{hashlib.sha1(seed.encode('utf-8')).hexdigest()[:10]}"
 
 
+def _resolve_period(symbol_dir: Path, period: str | None) -> List[str]:
+    """Resolve a period alias to actual directory names under symbol_dir.
+
+    Handles:
+    - None / "latest" / "latest_quarter" → most recent period directory
+    - Exact match (e.g. "2025Q4") → that directory only
+    """
+    if not symbol_dir.exists():
+        return []
+    available = sorted(
+        [p.name for p in symbol_dir.iterdir() if p.is_dir()],
+        reverse=True,
+    )
+    if not available:
+        return []
+    if period is None or period.lower() in ("latest", "latest_quarter", "latest_annual"):
+        return [available[0]]
+    if period in available:
+        return [period]
+    # Fuzzy: try prefix match (e.g. "2025" matches "2025Q4")
+    prefix_matches = [p for p in available if p.startswith(period)]
+    if prefix_matches:
+        return [prefix_matches[0]]
+    return []
+
+
 def _load_real_data_records(raw_data_root: str, symbol: str | None, period: str | None) -> List[Dict[str, Any]]:
     root = Path(raw_data_root)
     if not root.exists():
@@ -683,8 +749,10 @@ def _load_real_data_records(raw_data_root: str, symbol: str | None, period: str 
         symbol_dir = root / str(current_symbol)
         if not symbol_dir.exists():
             continue
-        periods = [period] if period else [path.name for path in symbol_dir.iterdir() if path.is_dir()]
-        for current_period in periods:
+        resolved_periods = _resolve_period(symbol_dir, period) if period else [
+            path.name for path in symbol_dir.iterdir() if path.is_dir()
+        ]
+        for current_period in resolved_periods:
             period_dir = symbol_dir / str(current_period)
             if not period_dir.exists():
                 continue
@@ -911,3 +979,25 @@ def _extract_symbol_from_query(query: str) -> str:
         if 1 <= len(cleaned) <= 6 and cleaned not in {"THE", "AND", "FOR", "WITH"}:
             return cleaned
     return ""
+
+
+def _extract_china_symbol(query: str) -> str:
+    text = str(query or "").upper()
+    dotted = re_search(r"\b\d{5}\.HK\b|\b\d{6}\.(?:SH|SS|SZ|BJ)\b", text)
+    if dotted:
+        return dotted
+    prefixed = re_search(r"\b(?:SH|SZ|BJ)\d{6}\b|\bHK\d{1,5}\b", text)
+    if prefixed:
+        return prefixed
+    digits = re_search(r"\b\d{6}\b", text)
+    if digits:
+        return digits
+    hk_digits = re_search(r"\b\d{4,5}\.HK\b", text)
+    if hk_digits:
+        return hk_digits
+    return ""
+
+
+def re_search(pattern: str, text: str) -> str:
+    match = re.search(pattern, text)
+    return match.group(0) if match else ""

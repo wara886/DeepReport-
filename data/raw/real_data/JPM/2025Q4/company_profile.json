@@ -1,0 +1,11 @@
+{
+  "symbol": "JPM",
+  "period": "2025Q4",
+  "company_name": "JPMorgan Chase & Co.",
+  "industry": "Diversified Banks",
+  "sector": "Financials",
+  "description": "JPMorgan Chase is a leading global financial services firm with assets of approximately $4 trillion and operations worldwide.",
+  "as_of_date": "2026-01-31",
+  "source_url": "https://example.com/real/company/jpm",
+  "trust_level": "high"
+}

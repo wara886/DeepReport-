@@ -1,0 +1,117 @@
+{
+  "session_id": "2326218df241",
+  "user_intent": "NVIDIA Corporation（NVDA）latest_quarter company_research：估值、经营情况、主要风险",
+  "symbol": "NVDA",
+  "period": "latest_quarter",
+  "report_type": "company_stock_report",
+  "hard_constraints": [
+    "Only produce the requested company/stock research report type for this run.",
+    "Every material factual claim must be backed by an explicit evidence_id citation.",
+    "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+    "Keep verifier feedback active during revisions until the final verification passes.",
+    "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+    "报告类型：company_research",
+    "时间范围：latest_quarter，粒度：quarter",
+    "重点关注：估值、经营情况、主要风险",
+    "输出偏好：language=zh, format=markdown_html_json, depth=standard",
+    "上传文件是可选补充证据；公开公司研报优先使用可信公开来源。"
+  ],
+  "pinned_facts": [
+    "Target symbol: NVDA",
+    "Target period: latest_quarter",
+    "Report type: company_stock_report"
+  ],
+  "rejected_claims": [],
+  "verifier_feedback": [
+    "warnings: 1 claims have confidence lower than 0.5.",
+    "warnings: Report mentions non-target ticker-like tokens: EDGAR, FCF, SEC.",
+    "warnings: Claim cl_risk_0001 has no evidence_ids.",
+    "warnings: Claim cl_peer_0001 has no evidence_ids.",
+    "fix_recommendations: Assign evidence_ids to each claim referencing the specific data source (e.g., financial statements, SEC filings).",
+    "fix_recommendations: Provide source evidence_ids for charts to establish data lineage.",
+    "fix_recommendations: Ground all numerical values and rating conclusions in cited evidence.",
+    "llm_errors: Claim cl_risk_0001 has no evidence_ids.",
+    "llm_errors: Claim cl_peer_0001 has no evidence_ids.",
+    "llm_errors: Chart 'peer_comparison_table' missing source evidence_ids.",
+    "llm_errors: Chart 'claim_confidence_bar' missing source evidence_ids.",
+    "llm_warnings: Claim cl_peer_0001 has low confidence (0.4).",
+    "llm_warnings: Report mentions non-target ticker-like tokens: EDGAR, FCF, SEC.",
+    "revision_brief: - Errors: Multimodal consistency check failed. - Warnings: No financial_analysis claims found. - Warnings: 1 claims have confidence lower than 0.5. - Warnings: Report mentions non-target ticker-like tokens: EDGAR, FCF, SEC. - Warnings: Claim cl_risk_0001 has no evidence_ids. - Warnings: Claim cl_peer_0001 has no evidence_ids. - Fix recommendations: Assign evidence_ids to each claim referencing the specific data source (e.g., financial statements, SEC filings). - Fix recommendatio"
+  ],
+  "open_questions": [],
+  "turns": [
+    {
+      "role": "user",
+      "content": "NVIDIA Corporation（NVDA）latest_quarter company_research：估值、经营情况、主要风险",
+      "metadata": {
+        "source": "run_request"
+      }
+    }
+  ],
+  "scope_memory": {
+    "user_intent": "NVIDIA Corporation（NVDA）latest_quarter company_research：估值、经营情况、主要风险",
+    "run_scope": "report_type=company_stock_report; symbol=NVDA; period=latest_quarter",
+    "report_type": "company_stock_report",
+    "symbol": "NVDA",
+    "period": "latest_quarter",
+    "hard_constraints": [
+      "Only produce the requested company/stock research report type for this run.",
+      "Every material factual claim must be backed by an explicit evidence_id citation.",
+      "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+      "Keep verifier feedback active during revisions until the final verification passes.",
+      "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+      "报告类型：company_research",
+      "时间范围：latest_quarter，粒度：quarter",
+      "重点关注：估值、经营情况、主要风险",
+      "输出偏好：language=zh, format=markdown_html_json, depth=standard",
+      "上传文件是可选补充证据；公开公司研报优先使用可信公开来源。"
+    ],
+    "pinned_facts": [
+      "Target symbol: NVDA",
+      "Target period: latest_quarter",
+      "Report type: company_stock_report"
+    ]
+  },
+  "working_memory": {
+    "pipeline_stage": "verified",
+    "evidence_count": 0,
+    "claim_count": 2,
+    "generated_sections": [
+      "peer_compare",
+      "risks"
+    ],
+    "chart_count": 2,
+    "verification_passed": false
+  },
+  "evidence_memory": {
+    "core_evidence_ids": [],
+    "primary_source_ids": [],
+    "market_snapshot_ids": [],
+    "numeric_lineage": [
+      "metric_count=0"
+    ]
+  },
+  "reflection_memory": {
+    "verifier_feedback": [
+      "fix_recommendations: Ground all numerical values and rating conclusions in cited evidence.",
+      "llm_errors: Claim cl_risk_0001 has no evidence_ids.",
+      "llm_errors: Claim cl_peer_0001 has no evidence_ids.",
+      "llm_errors: Chart 'peer_comparison_table' missing source evidence_ids.",
+      "llm_errors: Chart 'claim_confidence_bar' missing source evidence_ids.",
+      "llm_warnings: Claim cl_peer_0001 has low confidence (0.4).",
+      "llm_warnings: Report mentions non-target ticker-like tokens: EDGAR, FCF, SEC.",
+      "revision_brief: - Errors: Multimodal consistency check failed. - Warnings: No financial_analysis claims found. - Warnings: 1 claims have confidence lower than 0.5. - Warnings: Report mentions non-target ticker-like tokens: EDGAR, FCF, SEC. - Warnings: Claim cl_risk_0001 has no evidence_ids. - Warnings: Claim cl_peer_0001 has no evidence_ids. - Fix recommendations: Assign evidence_ids to each claim referencing the specific data source (e.g., financial statements, SEC filings). - Fix recommendatio"
+    ],
+    "rejected_claims": [],
+    "revision_rounds": 0,
+    "open_gap_count": 3,
+    "last_passed": false
+  },
+  "domain_memory": {
+    "rules": [
+      "Peer compare must name core peers, extended references, fiscal-period alignment, and selection rationale.",
+      "Valuation claims must preserve model assumptions and market snapshot timestamp."
+    ]
+  },
+  "context_brief": "[ConversationMemory]\nscope_memory:\n- user_intent: NVIDIA Corporation（NVDA）latest_quarter company_research：估值、经营情况、主要风险\n- run_scope: report_type=company_stock_report; symbol=NVDA; period=latest_quarter\n- report_type: company_stock_report\n- symbol: NVDA\n- period: latest_quarter\n- hard_constraints: Only produce the requested company/stock research report type for this run.; Every material factual claim must be backed by an explicit evidence_id citation.; Do not invent numbers, dates, sources, ratings, or unsupported conclusions.; Keep verifier feedback act\n- pinned_facts: Target symbol: NVDA; Target period: latest_quarter; Report type: company_stock_report\nworking_memory:\n- pipeline_stage: verified\n- evidence_count: 0\n- claim_count: 2\n- generated_sections: peer_compare; risks\n- chart_count: 2\n- verification_passed: False\nevidence_memory:\n- numeric_lineage: metric_count=0\nreflection_memory:\n- verifier_feedback: fix_recommendations: Ground all numerical values and rating conclusions in cited evidence.; llm_errors: Claim cl_risk_0001 has no evidence_ids.; llm_errors: Claim cl_peer_0001 has no evidence_ids.; llm_errors: Chart 'peer_comparison_table' missing source eviden\n- revision_rounds: 0\n- open_gap_count: 3\n- last_passed: False\ndomain_memory:\n- rules: Peer compare must name core peers, extended references, fiscal-period alignment, and selection rationale.; Valuation claims must preserve model assumptions and market snapshot timestamp."
+}

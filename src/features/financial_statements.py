@@ -24,19 +24,36 @@ def build_three_statement_view(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         period = str(record.get("period") or metrics.get("period") or "")
 
         revenue = _safe_float(metrics.get("revenue_billion"))
+        gross_profit_direct = _safe_float(metrics.get("gross_profit_billion"))
+        net_income_direct = _safe_float(metrics.get("net_income_billion"))
         gross_margin = _safe_float(metrics.get("gross_margin_pct"))
         net_margin = _safe_float(metrics.get("net_margin_pct"))
         roe = _safe_float(metrics.get("roe_pct"))
         roa = _safe_float(metrics.get("roa_pct"))
         operating_cash_flow = _safe_float(metrics.get("operating_cash_flow_billion"))
         free_cash_flow = _safe_float(metrics.get("free_cash_flow_billion"))
+        capex_direct = _safe_float(metrics.get("capital_expenditure_billion"))
+        total_assets_direct = _safe_float(metrics.get("total_assets_billion"))
+        total_liabilities_direct = _safe_float(metrics.get("total_liabilities_billion"))
+        shareholder_equity_direct = _safe_float(metrics.get("shareholder_equity_billion"))
 
-        gross_profit = revenue * gross_margin / 100 if revenue is not None and gross_margin is not None else None
-        net_income = revenue * net_margin / 100 if revenue is not None and net_margin is not None else None
-        capex = operating_cash_flow - free_cash_flow if operating_cash_flow is not None and free_cash_flow is not None else None
-        total_assets = net_income / (roa / 100) if net_income is not None and roa not in (None, 0) else None
-        shareholder_equity = net_income / (roe / 100) if net_income is not None and roe not in (None, 0) else None
+        gross_profit = gross_profit_direct if gross_profit_direct is not None else (
+            revenue * gross_margin / 100 if revenue is not None and gross_margin is not None else None
+        )
+        net_income = net_income_direct if net_income_direct is not None else (
+            revenue * net_margin / 100 if revenue is not None and net_margin is not None else None
+        )
+        capex = capex_direct if capex_direct is not None else (
+            operating_cash_flow - free_cash_flow if operating_cash_flow is not None and free_cash_flow is not None else None
+        )
+        total_assets = total_assets_direct if total_assets_direct is not None else (
+            net_income / (roa / 100) if net_income is not None and roa not in (None, 0) else None
+        )
+        shareholder_equity = shareholder_equity_direct if shareholder_equity_direct is not None else (
+            net_income / (roe / 100) if net_income is not None and roe not in (None, 0) else None
+        )
         liabilities = (
+            total_liabilities_direct if total_liabilities_direct is not None else
             total_assets - shareholder_equity
             if total_assets is not None and shareholder_equity is not None
             else None
@@ -50,8 +67,8 @@ def build_three_statement_view(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                 statement="income_statement",
                 items=[
                     ("revenue", revenue, False),
-                    ("gross_profit", gross_profit, True),
-                    ("net_income", net_income, True),
+                    ("gross_profit", gross_profit, gross_profit_direct is None),
+                    ("net_income", net_income, net_income_direct is None),
                 ],
             )
         )
@@ -63,7 +80,7 @@ def build_three_statement_view(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                 statement="cash_flow_statement",
                 items=[
                     ("operating_cash_flow", operating_cash_flow, False),
-                    ("capital_expenditure", capex, True),
+                    ("capital_expenditure", capex, capex_direct is None),
                     ("free_cash_flow", free_cash_flow, False),
                 ],
             )
@@ -75,9 +92,9 @@ def build_three_statement_view(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                 evidence_id=evidence_id,
                 statement="balance_sheet",
                 items=[
-                    ("total_assets", total_assets, True),
-                    ("total_liabilities", liabilities, True),
-                    ("shareholder_equity", shareholder_equity, True),
+                    ("total_assets", total_assets, total_assets_direct is None),
+                    ("total_liabilities", liabilities, total_liabilities_direct is None),
+                    ("shareholder_equity", shareholder_equity, shareholder_equity_direct is None),
                 ],
             )
         )
@@ -106,6 +123,12 @@ def _financial_metrics_from_record(record: Dict[str, Any]) -> Dict[str, Any]:
         "roa_pct",
         "operating_cash_flow_billion",
         "free_cash_flow_billion",
+        "gross_profit_billion",
+        "net_income_billion",
+        "capital_expenditure_billion",
+        "total_assets_billion",
+        "total_liabilities_billion",
+        "shareholder_equity_billion",
     ]:
         if key in record and key not in metrics:
             metrics[key] = record[key]

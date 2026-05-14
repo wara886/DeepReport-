@@ -1,0 +1,84 @@
+{
+  "symbol": "NVDA",
+  "period": "latest_quarter",
+  "currency": "USD",
+  "unit": "billion",
+  "relative_valuation": {
+    "symbol": "NVDA",
+    "period": "latest_quarter",
+    "currency": "USD",
+    "unit": "billion",
+    "multiples": {
+      "pe": {
+        "numerator": "equity_value_billion",
+        "denominator": "net_income_billion",
+        "denominator_value": 21.9032,
+        "multiple": 27.56,
+        "equity_value_billion": 603.65,
+        "target_price": null
+      },
+      "ps": {
+        "numerator": "equity_value_billion",
+        "denominator": "revenue_billion",
+        "denominator_value": 41.8,
+        "multiple": 7.66,
+        "equity_value_billion": 320.19,
+        "target_price": null
+      }
+    },
+    "scenario_values": {
+      "bear": 288.17,
+      "base": 461.92,
+      "bull": 664.02
+    }
+  },
+  "dcf_model": {
+    "symbol": "NVDA",
+    "period": "latest_quarter",
+    "currency": "USD",
+    "unit": "billion",
+    "assumptions": {
+      "base_free_cash_flow_billion": 17.3,
+      "fcf_growth": 0.2,
+      "discount_rate": 0.1,
+      "terminal_growth": 0.025,
+      "forecast_years": 5,
+      "net_debt_billion": 0.0,
+      "shares_outstanding_billion": null
+    },
+    "forecast": [
+      {
+        "year": 1,
+        "free_cash_flow_billion": 20.76,
+        "present_value_billion": 18.872727
+      },
+      {
+        "year": 2,
+        "free_cash_flow_billion": 24.912,
+        "present_value_billion": 20.58843
+      },
+      {
+        "year": 3,
+        "free_cash_flow_billion": 29.8944,
+        "present_value_billion": 22.460105
+      },
+      {
+        "year": 4,
+        "free_cash_flow_billion": 35.87328,
+        "present_value_billion": 24.501933
+      },
+      {
+        "year": 5,
+        "free_cash_flow_billion": 43.047936,
+        "present_value_billion": 26.729381
+      }
+    ],
+    "terminal_value_billion": 588.321792,
+    "pv_terminal_value_billion": 365.301545,
+    "enterprise_value_billion": 478.454122,
+    "equity_value_billion": 478.454122,
+    "target_price": null
+  },
+  "blended_equity_value_billion": 467.43,
+  "target_price": null
+}

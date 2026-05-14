@@ -1,0 +1,72 @@
+{
+  "old_run": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/baseline_2_current_workflow_anchor/eval_summary.json",
+  "new_run": "/Users/yuan_dian/AI_project/DeepReport_plus/eval_outputs/baseline_3_gaprouter_routed_rework/eval_summary.json",
+  "metrics": {
+    "task_completion_rate": {
+      "baseline_2_current_workflow_anchor": 0.0,
+      "baseline_3_gaprouter_routed_rework": 0.0,
+      "delta": 0.0,
+      "relative_delta": null
+    },
+    "required_sections_coverage": {
+      "baseline_2_current_workflow_anchor": 0.5714,
+      "baseline_3_gaprouter_routed_rework": 0.5357,
+      "delta": -0.0357,
+      "relative_delta": -0.0625
+    },
+    "artifact_generation_pass_rate": {
+      "baseline_2_current_workflow_anchor": 1.0,
+      "baseline_3_gaprouter_routed_rework": 1.0,
+      "delta": 0.0,
+      "relative_delta": 0.0
+    },
+    "verification_pass_rate": {
+      "baseline_2_current_workflow_anchor": 0.0,
+      "baseline_3_gaprouter_routed_rework": 0.0,
+      "delta": 0.0,
+      "relative_delta": null
+    },
+    "gap_detection_count_mean": {
+      "baseline_2_current_workflow_anchor": 4.75,
+      "baseline_3_gaprouter_routed_rework": 5.0,
+      "delta": 0.25,
+      "relative_delta": 0.0526
+    },
+    "gap_resolution_rate_mean": {
+      "baseline_2_current_workflow_anchor": 0.0,
+      "baseline_3_gaprouter_routed_rework": 0.0,
+      "delta": 0.0,
+      "relative_delta": null
+    },
+    "task_resolution_rate_mean": {
+      "baseline_2_current_workflow_anchor": 0.4698,
+      "baseline_3_gaprouter_routed_rework": 0.5488,
+      "delta": 0.079,
+      "relative_delta": 0.1682
+    },
+    "total_latency_sec_mean": {
+      "baseline_2_current_workflow_anchor": 138.0531,
+      "baseline_3_gaprouter_routed_rework": 169.7446,
+      "delta": 31.6915,
+      "relative_delta": 0.2296
+    },
+    "claim_count_mean": {
+      "baseline_2_current_workflow_anchor": 4.75,
+      "baseline_3_gaprouter_routed_rework": 4.75,
+      "delta": 0.0,
+      "relative_delta": 0.0
+    },
+    "evidence_count_mean": {
+      "baseline_2_current_workflow_anchor": 2.25,
+      "baseline_3_gaprouter_routed_rework": 2.25,
+      "delta": 0.0,
+      "relative_delta": 0.0
+    },
+    "citation_count_mean": {
+      "baseline_2_current_workflow_anchor": 1.25,
+      "baseline_3_gaprouter_routed_rework": 2.75,
+      "delta": 1.5,
+      "relative_delta": 1.2
+    }
+  }
+}
