@@ -1,0 +1,64 @@
+{
+  "research_topic": "总结GOOGL在2025Q4的业务基本面、优势与核心风险",
+  "symbol": "GOOGL",
+  "period": "2025Q4",
+  "model": "qwen3:8b",
+  "execution_mode": "dynamic",
+  "performance_profile": "fast",
+  "agent_count": 6,
+  "planned_task_count": 7,
+  "completed_task_count": 7,
+  "trace_count": 10,
+  "evidence_count": 8,
+  "claim_count": 12,
+  "citation_count": 8,
+  "chart_count": 3,
+  "multimodal_consistency_passed": true,
+  "mcp_tool_count": 9,
+  "search_engines": [
+    "local_real_data",
+    "local_evidence"
+  ],
+  "retrieval_ranking_mode": "hybrid_rerank",
+  "revision_rounds": 1,
+  "verification_passed": true,
+  "evidence_gap_count": 0,
+  "company_report_overall_score": 1.0,
+  "entity_resolution": {
+    "requested_symbol": "GOOGL",
+    "research_topic": "总结GOOGL在2025Q4的业务基本面、优势与核心风险",
+    "resolved_symbol": "GOOGL",
+    "resolution_source": "symbol",
+    "topic_resolution": {
+      "input": "总结GOOGL在2025Q4的业务基本面、优势与核心风险",
+      "resolved": true,
+      "symbol": "GOOGL",
+      "company_name": "Alphabet Inc.",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data\\raw\\real_data\\GOOGL\\2025Q4\\company_profile.json",
+      "ambiguous": false
+    },
+    "symbol_resolution": {
+      "input": "GOOGL",
+      "resolved": true,
+      "symbol": "GOOGL",
+      "company_name": "Alphabet Inc.",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data\\raw\\real_data\\GOOGL\\2025Q4\\company_profile.json",
+      "ambiguous": false
+    },
+    "conflict": false
+  },
+  "conversation_brief_chars": 2166,
+  "durable_memory_enabled": true,
+  "total_duration_sec": 133.387,
+  "durable_memory": {
+    "run_id": "fea9dcc554270e92",
+    "working_snapshot": "eval_outputs\\memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515\\memory_enabled_store\\working\\fea9dcc554270e92\\snapshot.json",
+    "episodic_snapshot": "eval_outputs\\memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515\\memory_enabled_store\\episodic\\GOOGL\\2025Q4\\fea9dcc554270e92.json",
+    "domain_memory": "eval_outputs\\memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515\\memory_enabled_store\\domain\\GOOGL.json",
+    "domain_item_count": "1"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "engines": [
+    "local_real_data",
+    "local_evidence"
+  ],
+  "engine_meta": {
+    "local_real_data": {
+      "mode": "local_real_data",
+      "raw_data_root": "data/raw/real_data",
+      "symbol": "MSFT",
+      "period": "2025Q4",
+      "record_count": 16,
+      "returned_hit_count": 6,
+      "failure_reason": "",
+      "chunking_enabled": true,
+      "query_original": "MSFT 2025Q4 Identify core risks impacting 2025Q4 performance",
+      "query_adapted": "MSFT 2025Q4 Identify core risks impacting 2025Q4 performance Microsoft Corporation Software Infrastructure Technology",
+      "adapted_query": "MSFT 2025Q4 Identify core risks impacting 2025Q4 performance Microsoft Corporation Software Infrastructure Technology",
+      "query_terms_added": [
+        "Microsoft Corporation",
+        "Software Infrastructure",
+        "Technology"
+      ],
+      "query_expansion_version": "finance_query_expansion_v1"
+    },
+    "local_evidence": {
+      "error": "Repetition level histogram size mismatch"
+    }
+  },
+  "total_hits_before_dedupe": 6,
+  "returned_hits": 6
+}

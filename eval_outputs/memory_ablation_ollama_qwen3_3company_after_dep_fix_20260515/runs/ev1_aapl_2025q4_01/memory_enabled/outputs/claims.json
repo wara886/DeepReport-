@@ -1,0 +1,182 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "strategy_business",
+    "claim_text": "AAPL（AAPL）主营业务位于未知板块板块、未知行业行业；业务描述为：Designs and sells consumer devices, software, and services.。",
+    "evidence_ids": [
+      "AAPL_2025Q4_company_profile_779e1263__paragraph_1_chunk_a09c7d241c"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.78,
+    "notes": "由 company_profile 证据生成主营业务与行业定位。"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "ownership_governance",
+    "claim_text": "AAPL 的股权结构与公司治理信息：当前本地 company_profile 尚未披露股权结构、董事会或管理层明细，需后续接入年报/DEF14A/公告表格补全。",
+    "evidence_ids": [
+      "AAPL_2025Q4_company_profile_779e1263__paragraph_1_chunk_a09c7d241c"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "治理信息由 company_profile 字段生成；缺失时显式标记数据缺口。"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "financial_analysis",
+    "claim_text": "AAPL 在可用证据中披露的营收约为 126.3B。",
+    "evidence_ids": [
+      "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+    ],
+    "numeric_values": {
+      "revenue_billion": 126.3
+    },
+    "risk_level": "medium",
+    "confidence": 0.82,
+    "notes": "由 DeepAnalyzeAgent 从财务证据提取。"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "financial_analysis",
+    "claim_text": "AAPL 的毛利率约为 46.8%。",
+    "evidence_ids": [
+      "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+    ],
+    "numeric_values": {
+      "gross_margin_pct": 46.8
+    },
+    "risk_level": "low",
+    "confidence": 0.8,
+    "notes": "由 DeepAnalyzeAgent 从财务证据提取。"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "financial_analysis",
+    "claim_text": "AAPL 的经营现金流约为 38.1B。",
+    "evidence_ids": [
+      "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+    ],
+    "numeric_values": {
+      "operating_cash_flow_billion": 38.1
+    },
+    "risk_level": "medium",
+    "confidence": 0.78,
+    "notes": "由 DeepAnalyzeAgent 从财务证据提取。"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "financial_statements",
+    "claim_text": "AAPL 三表视图显示，估算净利润约为 31.1B，自由现金流约为 31.2B。",
+    "evidence_ids": [
+      "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+      "AAPL_2025Q4_financials_89c98db3__metric_1_chunk_6e61579bac",
+      "AAPL_2025Q4_financials_89c98db3__metric_2_chunk_508f5ea25a",
+      "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+      "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d"
+    ],
+    "numeric_values": {
+      "net_income_billion": 31.0698,
+      "free_cash_flow_billion": 31.2
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由三表视图计算生成。"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "peer_compare",
+    "claim_text": "AAPL 已完成本地同行对比：毛利率排名 3/3；收入增速排名 3/3。",
+    "evidence_ids": [
+      "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+      "AAPL_2025Q4_financials_89c98db3__metric_1_chunk_6e61579bac",
+      "AAPL_2025Q4_financials_89c98db3__metric_2_chunk_508f5ea25a",
+      "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+      "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d"
+    ],
+    "numeric_values": {
+      "peer_count": 2.0,
+      "gross_margin_rank": 3.0,
+      "revenue_growth_rank": 3.0
+    },
+    "risk_level": "low",
+    "confidence": 0.78,
+    "notes": "由同行比较工具生成。"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "valuation",
+    "claim_text": "规则估值模型基于 P/E、P/S 与 DCF 估算综合股权价值约 507.4B，DCF 折现率假设为 10.0%。",
+    "evidence_ids": [
+      "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+      "AAPL_2025Q4_financials_89c98db3__metric_1_chunk_6e61579bac",
+      "AAPL_2025Q4_financials_89c98db3__metric_2_chunk_508f5ea25a",
+      "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+      "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d"
+    ],
+    "numeric_values": {
+      "blended_equity_value_billion": 507.38,
+      "dcf_value_billion": 611.35
+    },
+    "risk_level": "medium",
+    "confidence": 0.7,
+    "notes": "由规则估值模型生成，依赖财务摘要、同行上下文与可选市场数据。"
+  },
+  {
+    "claim_id": "cl_0009",
+    "section_name": "valuation_sensitivity",
+    "claim_text": "估值敏感性显示：FCF 增速下调 2pct 时 DCF 约为 563.8B，上调 2pct 时约为 662.3B，折现率上调 1pct 时约为 536.5B。",
+    "evidence_ids": [
+      "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+      "AAPL_2025Q4_financials_89c98db3__metric_1_chunk_6e61579bac",
+      "AAPL_2025Q4_financials_89c98db3__metric_2_chunk_508f5ea25a",
+      "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+      "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d"
+    ],
+    "numeric_values": {
+      "dcf_growth_down_billion": 563.75,
+      "dcf_growth_up_billion": 662.29,
+      "dcf_discount_up_billion": 536.48
+    },
+    "risk_level": "medium",
+    "confidence": 0.7,
+    "notes": "由估值模型敏感性表生成。"
+  },
+  {
+    "claim_id": "cl_0010",
+    "section_name": "conclusion",
+    "claim_text": "基于增长、利润率、ROE 与同行比较，模型给出的初步结论为“中性观察”。",
+    "evidence_ids": [
+      "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+      "AAPL_2025Q4_financials_89c98db3__metric_1_chunk_6e61579bac",
+      "AAPL_2025Q4_financials_89c98db3__metric_2_chunk_508f5ea25a",
+      "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+      "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "由估值模型生成，不构成投资建议。"
+  },
+  {
+    "claim_id": "cl_0011",
+    "section_name": "business_overview",
+    "claim_text": "AAPL 的证据覆盖包括 6 条记录，横跨 2 类来源。",
+    "evidence_ids": [
+      "AAPL_2025Q4_company_profile_779e1263__paragraph_1_chunk_a09c7d241c",
+      "AAPL_2025Q4_financials_89c98db3__metric_1_chunk_6e61579bac",
+      "AAPL_2025Q4_financials_89c98db3__metric_2_chunk_508f5ea25a",
+      "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+      "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d",
+      "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+    ],
+    "numeric_values": {
+      "evidence_count": 6.0,
+      "unique_sources": 2.0
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由证据覆盖统计生成。"
+  }
+]

@@ -21,6 +21,8 @@ G:\cord\DeepReport_plus
 - 当前 durable memory 已有默认关闭的基础工程能力和可复现 ablation runner；但它仍不是默认开启能力，必须通过质量/延迟门禁后才能进入更宽 smoke 或默认配置。
 - 本轮新增本地 Ollama/qwen3 配置并完成 1 个 AAPL 样本的真实 ablation：`eval_outputs/memory_ablation_ollama_qwen3_20260515/memory_ablation_comparison.json`，结论为 `promote_memory`，但样本数仍太小，不能直接改成默认开启。
 - 本轮真实复跑暴露并修复了 `build_trend_features` 对缺失 `symbol/period/sample_id` 的脆弱路径，避免动态任务拿到非标准 evidence records 时中断整份报告。
+- 本轮回答并固定报告时效性边界：当前 Ollama/qwen3 ablation 报告只基于 `local_real_data` / `local_evidence` 提供的本地证据，不代表联网最新信息；模型本身不负责抓取实时数据。
+- 本轮扩大到 AAPL/GOOGL/MSFT 三公司样本复跑，并修复 planner 乱序/反向依赖导致的 evidence 断链问题；修复后产物为 `eval_outputs/memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515/memory_ablation_comparison.json`，结论为 `promote_memory`。
 - 已完成 P1 仓库真实能力复核：`scripts/`、`configs/`、`src/agents/`、`src/evaluation/` 中的当前主线能力已经按真实文件重新登记；README 和 AGENTS 用 UTF-8 读取为正常中文，本轮不做编码修复。
 - P2 Memory 正式工程化已完成第二阶段：`src/agents/durable_memory.py` 提供基础存取层，`scripts/run_memory_ablation.py` 提供 enabled/disabled 对照与质量/延迟 guard；开启后只注入“历史上下文提示”，不替代 evidence/citation/verifier 质量门禁。
 
@@ -81,6 +83,15 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
   `contest_checklist_pass_rate_mean` 从 `0.7889` 到 `0.9514`；
   `numeric_accuracy` 保持 `1.0`；
   `latency_delta_sec=0.929`。
+- 本轮三公司复跑产物：
+  `eval_outputs/memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515/memory_ablation_comparison.json`。
+- 三公司复跑结论为：
+  `decision=promote_memory`；
+  `verification_pass_rate` 两组均为 `0.6667`；
+  `evidence_coverage_mean` 两组均为 `1.0`；
+  `contest_checklist_pass_rate_mean` 从 `0.8677` 到 `0.8951`；
+  `numeric_accuracy` 保持 `1.0`；
+  `latency_delta_sec=-5.0106`。
 
 ## 当前代码与历史产物差异
 
@@ -93,6 +104,7 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 - `src/agents/gap_router.py`：gap resolution trace 相关能力。
 - `src/evaluation/`：多类评估、诊断、numeric/citation/multimodal audit 基础。
 - `eval_outputs/`：已提交的 qwen3 canary 和 memory ablation 结果文件。
+- `data/eval_v1/memory_ablation_3company_cases.jsonl`：AAPL/GOOGL/MSFT 三公司 memory ablation 小样本集。
 - `scripts/run_multi_agent_demo.py`：当前多 Agent demo 入口，支持 `--execution-mode`、`--fast`、`--retrieval-ranking-mode`、`--engines`。
 - `scripts/run_multi_agent_eval.py`：调用 `src.evaluation.multi_agent_harness` 的动态多 Agent 评估入口。
 - `scripts/run_memory_ablation.py`：基于现有 multi-agent evaluation config 派生 memory enabled/disabled 对照评估，并生成质量/延迟门禁结论。
@@ -108,7 +120,7 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 
 ### 需要补回或正式工程化
 
-- 更完整的 memory 选择策略、过期策略，以及在真实 qwen3/本地模型样本上的质量/延迟 guard 复跑。
+- 更完整的 memory 选择策略、过期策略，以及真实数据源接入后的时效性标注。
 - SkillRegistry 静态 MVP、schema、测试和 Planner/Router prompt 注入。
 - 当前评估产物与未来可复现脚本之间的追溯关系。
 
@@ -151,7 +163,8 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 
 - 文档中曾经把 memory / SkillRegistry 描述得过于接近“已完整工程化”，但当前仓库代码只能确认 conversation memory 和评估产物。
 - qwen3 canary 与历史 memory ablation 产物已提交；当前仓库现在已有可复跑的 memory ablation runner，并已完成 1 个本地 qwen3 样本复跑，但样本数太小，仍需扩大到 3-5 个样本确认稳定性。
-- Durable memory 现在已有默认关闭的基础存取层和 enabled/disabled 质量/延迟 guard；当前小样本结论支持进入更宽 smoke，但不支持直接默认开启。
+- Durable memory 现在已有默认关闭的基础存取层和 enabled/disabled 质量/延迟 guard；三公司复跑支持进入 Planner/Router memory 选择策略，但仍不建议直接默认开启全部历史上下文。
+- 当前报告时效性取决于证据源，不取决于本地模型记忆；若只启用 `local_real_data` / `local_evidence`，报告只能覆盖本地数据和索引证据，不能宣称联网最新。
 - SkillRegistry 仍需正式实现和注入策略，不能只靠文档描述。
 - `AGENTS.md` 和部分 `README.md` 在当前 Windows 输出里有 mojibake，后续如果作为 onboarding 文档，需要单独修复编码/内容。
 
@@ -173,7 +186,7 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 
 ### P2：Memory 正式工程化
 
-状态：第二阶段已完成，并已完成 1 个本地 qwen3 样本复跑；下一步扩大样本后，再把稳定收益接入 Planner/Router 策略。
+状态：第二阶段已完成，并已完成 1 个样本和 3 公司样本两轮本地 qwen3 复跑；下一步把稳定收益接入 Planner/Router memory 选择策略。
 
 1. 已完成：基于 `conversation_memory.py` 增加 `DurableMemoryStore`，写入 working / episodic / domain memory。
 2. 已完成：增加 `memory_enabled`、memory root、上下文长度和保留条数配置；默认关闭，显式开启才影响 prompt。
@@ -182,8 +195,9 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 5. 已完成：新增可复现的 memory enabled/disabled ablation runner：`scripts/run_memory_ablation.py`。
 6. 已完成：runner 输出质量/延迟 guard，比较 verifier、evidence coverage/alignment、chart consistency、contest checklist、numeric audit 和平均耗时。
 7. 已完成：用本地 Ollama `qwen3:8b` 跑通 1 个 AAPL 样本的 memory ablation，产物位于 `eval_outputs/memory_ablation_ollama_qwen3_20260515/`。
-8. 待完成：扩大到 3-5 个真实样本复跑，确认收益不是单样本偶然结果。
+8. 已完成：扩大到 AAPL/GOOGL/MSFT 三公司样本复跑；修复 planner 乱序/反向依赖后，memory enabled 通过质量/延迟门禁。
 9. 待完成：将稳定通过门禁的 memory brief 选择策略进一步接入 Planner/Router，而不是直接默认开启全部历史上下文。
+10. 待完成：给报告导出增加数据时效性/证据截止日期标注，避免用户误以为本地模型具备实时联网信息。
 
 ### P3：SkillRegistry 正式接入
 
@@ -247,6 +261,18 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   memory disabled：`verification_pass_rate=0.0`、`contest_checklist_pass_rate_mean=0.7889`、`numeric_accuracy=1.0`、`avg_duration_sec=136.575`；
   memory enabled：`verification_pass_rate=1.0`、`contest_checklist_pass_rate_mean=0.9514`、`numeric_accuracy=1.0`、`avg_duration_sec=137.504`；
   `latency_delta_sec=0.929`。
+- 本轮三公司样本文件：
+  `data/eval_v1/memory_ablation_3company_cases.jsonl`：包含 AAPL、GOOGL、MSFT 各 1 个 2025Q4 fundamental case。
+- 本轮三公司 ablation 初跑：
+  `python scripts/run_memory_ablation.py --config configs/evaluation_memory_ablation_ollama.yaml --eval-case-path data/eval_v1/memory_ablation_3company_cases.jsonl --run-id memory_ablation_ollama_qwen3_3company_20260515 --max-samples 3 --latency-tolerance-sec 45`：输出 `decision=hold_memory`；随后定位为 planner 输出乱序/反向依赖导致 AAPL disabled 未把 research evidence 传入 analyze，并已清理该诊断残留产物。
+- 本轮动态任务依赖修复验证命令：
+  `python -m pytest tests/test_multi_agent_workflow.py::test_prepare_dynamic_tasks_orders_evidence_flow_even_when_planner_outputs_tasks_out_of_order tests/test_multi_agent_workflow.py::test_prepare_dynamic_tasks_drops_reverse_dependencies_that_would_cycle_graph tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph tests/test_multi_agent_harness.py tests/test_memory_ablation_runner.py -q`：`10 passed`。
+- 本轮三公司 ablation 修复后复跑：
+  `python scripts/run_memory_ablation.py --config configs/evaluation_memory_ablation_ollama.yaml --eval-case-path data/eval_v1/memory_ablation_3company_cases.jsonl --run-id memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515 --max-samples 3 --latency-tolerance-sec 45`：`decision=promote_memory`。
+- 本轮三公司 ablation 修复后指标：
+  memory disabled：`verification_pass_rate=0.6667`、`evidence_coverage_mean=1.0`、`contest_checklist_pass_rate_mean=0.8677`、`numeric_accuracy=1.0`、`avg_duration_sec=123.8033`；
+  memory enabled：`verification_pass_rate=0.6667`、`evidence_coverage_mean=1.0`、`contest_checklist_pass_rate_mean=0.8951`、`numeric_accuracy=1.0`、`avg_duration_sec=118.7927`；
+  `latency_delta_sec=-5.0106`。
 
 以后每次完成计划，都要在这里记录：
 

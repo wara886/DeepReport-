@@ -655,6 +655,83 @@ def test_deep_analyze_generates_company_depth_sections():
     assert "valuation_sensitivity" in sections
 
 
+def test_prepare_dynamic_tasks_orders_evidence_flow_even_when_planner_outputs_tasks_out_of_order():
+    plan = {
+        "tasks": [
+            {
+                "task_id": "task_browser",
+                "task_type": "browser",
+                "description": "Normalize evidence.",
+                "dependencies": [],
+            },
+            {
+                "task_id": "task_analyze",
+                "task_type": "deep_analyze",
+                "description": "Analyze evidence.",
+                "dependencies": ["task_browser"],
+            },
+            {
+                "task_id": "task_research",
+                "task_type": "deep_researcher",
+                "description": "Research evidence.",
+                "dependencies": [],
+            },
+        ]
+    }
+
+    tasks = prepare_dynamic_tasks(
+        plan=plan,
+        research_topic="总结AAPL 2025Q4",
+        symbol="AAPL",
+        period="2025Q4",
+        raw_data_root="data/raw/real_data",
+        search_engines=["local_real_data"],
+    )
+    by_id = {task.task_id: task for task in tasks}
+
+    assert "task_research" in by_id["task_browser"].dependencies
+    assert "task_browser" in by_id["task_analyze"].dependencies
+
+
+def test_prepare_dynamic_tasks_drops_reverse_dependencies_that_would_cycle_graph():
+    plan = {
+        "tasks": [
+            {
+                "task_id": "task_browser",
+                "task_type": "browser",
+                "description": "Normalize evidence.",
+                "dependencies": ["task_analyze"],
+            },
+            {
+                "task_id": "task_analyze",
+                "task_type": "deep_analyze",
+                "description": "Analyze evidence.",
+                "dependencies": ["task_browser"],
+            },
+            {
+                "task_id": "task_research",
+                "task_type": "deep_researcher",
+                "description": "Research evidence.",
+                "dependencies": [],
+            },
+        ]
+    }
+
+    tasks = prepare_dynamic_tasks(
+        plan=plan,
+        research_topic="总结AAPL 2025Q4",
+        symbol="AAPL",
+        period="2025Q4",
+        raw_data_root="data/raw/real_data",
+        search_engines=["local_real_data"],
+    )
+    by_id = {task.task_id: task for task in tasks}
+
+    assert "task_analyze" not in by_id["task_browser"].dependencies
+    assert "task_research" in by_id["task_browser"].dependencies
+    assert "task_browser" in by_id["task_analyze"].dependencies
+
+
 def test_rule_verifier_fails_missing_evidence_id():
     verifier = Verifier()
     claims = [

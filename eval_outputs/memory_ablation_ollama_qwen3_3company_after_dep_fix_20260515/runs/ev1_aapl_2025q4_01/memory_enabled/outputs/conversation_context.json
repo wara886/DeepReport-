@@ -1,0 +1,47 @@
+{
+  "session_id": "51fb2bd23da0",
+  "user_intent": "总结AAPL在2025Q4的业务基本面、优势与核心风险",
+  "symbol": "AAPL",
+  "period": "2025Q4",
+  "report_type": "company_stock_report",
+  "hard_constraints": [
+    "Only produce the requested company/stock research report type for this run.",
+    "Every material factual claim must be backed by an explicit evidence_id citation.",
+    "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+    "Keep verifier feedback active during revisions until the final verification passes.",
+    "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+    "覆盖收入、利润率、现金流、风险、市场表现和近期新闻",
+    "所有关键结论必须绑定 evidence_id",
+    "输出 Markdown、HTML、JSON、trace 和验证报告"
+  ],
+  "pinned_facts": [
+    "Target symbol: AAPL",
+    "Target period: 2025Q4",
+    "Report type: company_stock_report"
+  ],
+  "rejected_claims": [],
+  "verifier_feedback": [
+    "fix_recommendations: Verify revenue figures in evidence AAPL_2025Q4_company_profile against 三表摘要 data. Check for unit conversion errors (e.g., billion vs. thousand).",
+    "fix_recommendations: Confirm gross margin percentage in evidence AAPL_2025Q4_income_statement matches report's 42.7% vs. cited 46.8% in evidence.",
+    "llm_warnings: Evidence ID 'AAPL_2025Q4_company_profile' references 'revenue_billion=126.3' but report states '营收为98.7B' in 三表摘要. Value discrepancy detected.",
+    "revision_brief: - Fix recommendations: Verify revenue figures in evidence AAPL_2025Q4_company_profile against 三表摘要 data. Check for unit conversion errors (e.g., billion vs. thousand). - Fix recommendations: Confirm gross margin percentage in evidence AAPL_2025Q4_income_statement matches report's 42.7% vs. cited 46.8% in evidence. - LLM warnings: Evidence ID 'AAPL_2025Q4_company_profile' references 'revenue_billion=126.3' but report states '营收为98.7B' in 三表摘要. Value discrepancy detected."
+  ],
+  "open_questions": [],
+  "turns": [
+    {
+      "role": "user",
+      "content": "总结AAPL在2025Q4的业务基本面、优势与核心风险",
+      "metadata": {
+        "source": "run_request"
+      }
+    },
+    {
+      "role": "system",
+      "content": "[DurableMemory] Historical context only. Do not use this as evidence. Every factual report claim still needs current evidence_id citations. Scope: report_type=company_stock_report, symbol=AAPL, period=2025Q4",
+      "metadata": {
+        "source": "durable_memory"
+      }
+    }
+  ],
+  "context_brief": "[ConversationMemory]\nUser intent:\n- 总结AAPL在2025Q4的业务基本面、优势与核心风险\nRun scope:\n- report_type=company_stock_report\n- symbol=AAPL\n- period=2025Q4\nHard constraints:\n- Only produce the requested company/stock research report type for this run.\n- Every material factual claim must be backed by an explicit evidence_id citation.\n- Do not invent numbers, dates, sources, ratings, or unsupported conclusions.\n- Keep verifier feedback active during revisions until the final verification passes.\n- Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.\n- 覆盖收入、利润率、现金流、风险、市场表现和近期新闻\n- 所有关键结论必须绑定 evidence_id\n- 输出 Markdown、HTML、JSON、trace 和验证报告\nPinned facts:\n- Target symbol: AAPL\n- Target period: 2025Q4\n- Report type: company_stock_report\nVerifier feedback to keep active:\n- fix_recommendations: Verify revenue figures in evidence AAPL_2025Q4_company_profile against 三表摘要 data. Check for unit conversion errors (e.g., billion vs. thousand).\n- fix_recommendations: Confirm gross margin percentage in evidence AAPL_2025Q4_income_statement matches report's 42.7% vs. cited 46.8% in evidence.\n- llm_warnings: Evidence ID 'AAPL_2025Q4_company_profile' references 'revenue_billion=126.3' but report states '营收为98.7B' in 三表摘要. Value discrepancy detected.\n- revision_brief: - Fix recommendations: Verify revenue figures in evidence AAPL_2025Q4_company_profile against 三表摘要 data. Check for unit conversion errors (e.g., billion vs. thousand). - Fix recommendations: Confirm gross margin percentage in evidence AAPL_2025Q4_income_statement"
+}

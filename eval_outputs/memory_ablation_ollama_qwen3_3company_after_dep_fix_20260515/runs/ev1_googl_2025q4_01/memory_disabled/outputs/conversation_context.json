@@ -1,0 +1,43 @@
+{
+  "session_id": "37062672b7a9",
+  "user_intent": "总结GOOGL在2025Q4的业务基本面、优势与核心风险",
+  "symbol": "GOOGL",
+  "period": "2025Q4",
+  "report_type": "company_stock_report",
+  "hard_constraints": [
+    "Only produce the requested company/stock research report type for this run.",
+    "Every material factual claim must be backed by an explicit evidence_id citation.",
+    "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+    "Keep verifier feedback active during revisions until the final verification passes.",
+    "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+    "覆盖收入、利润率、现金流、风险、市场表现和近期新闻",
+    "所有关键结论必须绑定 evidence_id",
+    "输出 Markdown、HTML、JSON、trace 和验证报告"
+  ],
+  "pinned_facts": [
+    "Target symbol: GOOGL",
+    "Target period: 2025Q4",
+    "Report type: company_stock_report"
+  ],
+  "rejected_claims": [],
+  "verifier_feedback": [
+    "fix_recommendations: Update claim_001 to reference correct time period for evidence_004",
+    "fix_recommendations: Add missing chart content for 'key metrics chart' in evidence_003",
+    "fix_recommendations: Complete '3 statements summary' in evidence_002 with balance sheet and cash flow data",
+    "llm_warnings: Claim_001 cites evidence_004 which contains 2025Q4 data but claim references 2023 revenue",
+    "llm_warnings: Claim_005 references 'key metrics chart' but no chart content provided in evidence",
+    "llm_warnings: Claim_007 mentions '3 statements summary' but evidence_002 only contains income statement",
+    "revision_brief: - Fix recommendations: Update claim_001 to reference correct time period for evidence_004 - Fix recommendations: Add missing chart content for 'key metrics chart' in evidence_003 - Fix recommendations: Complete '3 statements summary' in evidence_002 with balance sheet and cash flow data - LLM warnings: Claim_001 cites evidence_004 which contains 2025Q4 data but claim references 2023 revenue - LLM warnings: Claim_005 references 'key metrics chart' but no chart content provided in"
+  ],
+  "open_questions": [],
+  "turns": [
+    {
+      "role": "user",
+      "content": "总结GOOGL在2025Q4的业务基本面、优势与核心风险",
+      "metadata": {
+        "source": "run_request"
+      }
+    }
+  ],
+  "context_brief": "[ConversationMemory]\nUser intent:\n- 总结GOOGL在2025Q4的业务基本面、优势与核心风险\nRun scope:\n- report_type=company_stock_report\n- symbol=GOOGL\n- period=2025Q4\nHard constraints:\n- Only produce the requested company/stock research report type for this run.\n- Every material factual claim must be backed by an explicit evidence_id citation.\n- Do not invent numbers, dates, sources, ratings, or unsupported conclusions.\n- Keep verifier feedback active during revisions until the final verification passes.\n- Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.\n- 覆盖收入、利润率、现金流、风险、市场表现和近期新闻\n- 所有关键结论必须绑定 evidence_id\n- 输出 Markdown、HTML、JSON、trace 和验证报告\nPinned facts:\n- Target symbol: GOOGL\n- Target period: 2025Q4\n- Report type: company_stock_report\nVerifier feedback to keep active:\n- fix_recommendations: Update claim_001 to reference correct time period for evidence_004\n- fix_recommendations: Add missing chart content for 'key metrics chart' in evidence_003\n- fix_recommendations: Complete '3 statements summary' in evidence_002 with balance sheet and cash flow data\n- llm_warnings: Claim_001 cites evidence_004 which contains 2025Q4 data but claim references 2023 revenue\n- llm_warnings: Claim_005 references 'key metrics chart' but no chart content provided in evidence\n- llm_warnings: Claim_007 mentions '3 statements summary' but evidence_002 only contains income statement\n- revision_brief: - Fix recommendations: Update claim_001 to reference correct time period for evidence_004 - Fix recommendations: Add missing chart content for 'key metrics chart' in evidence_003 - Fix recommendations: Complete '3 statements summary' in evidence_002 with balance s"
+}

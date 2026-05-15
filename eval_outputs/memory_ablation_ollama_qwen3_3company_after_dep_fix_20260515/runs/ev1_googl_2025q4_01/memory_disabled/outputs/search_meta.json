@@ -1,0 +1,42 @@
+{
+  "engines": [
+    "local_real_data",
+    "local_evidence"
+  ],
+  "engine_meta": {
+    "local_real_data": {
+      "mode": "local_real_data",
+      "raw_data_root": "data/raw/real_data",
+      "symbol": "GOOGL",
+      "period": "2025Q4",
+      "record_count": 16,
+      "returned_hit_count": 6,
+      "failure_reason": "",
+      "chunking_enabled": true,
+      "query_original": "GOOGL 2025Q4 提取收入、利润率、现金流等核心财务数据并关联证据ID",
+      "query_adapted": "GOOGL 2025Q4 提取收入、利润率、现金流等核心财务数据并关联证据ID Alphabet Inc. Internet Content & Information Communication Services revenue sales profit net income net_margin_pct cash flow operating cash flow free cash flow financials margin",
+      "adapted_query": "GOOGL 2025Q4 提取收入、利润率、现金流等核心财务数据并关联证据ID Alphabet Inc. Internet Content & Information Communication Services revenue sales profit net income net_margin_pct cash flow operating cash flow free cash flow financials margin",
+      "query_terms_added": [
+        "Alphabet Inc.",
+        "Internet Content & Information",
+        "Communication Services",
+        "revenue",
+        "sales",
+        "profit",
+        "net income",
+        "net_margin_pct",
+        "cash flow",
+        "operating cash flow",
+        "free cash flow",
+        "financials",
+        "margin"
+      ],
+      "query_expansion_version": "finance_query_expansion_v1"
+    },
+    "local_evidence": {
+      "error": "Repetition level histogram size mismatch"
+    }
+  },
+  "total_hits_before_dedupe": 6,
+  "returned_hits": 6
+}

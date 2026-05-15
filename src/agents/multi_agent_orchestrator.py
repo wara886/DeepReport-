@@ -1040,18 +1040,26 @@ def ensure_minimum_task_graph(
 
 
 def apply_implicit_dependencies(tasks: List[AgentTask]) -> List[AgentTask]:
-    by_type: Dict[str, List[str]] = {}
+    ids_by_type: Dict[str, List[str]] = {}
+    for task in tasks:
+        ids_by_type.setdefault(task.task_type, []).append(task.task_id)
+    type_by_id = {task.task_id: task.task_type for task in tasks}
+
     output: List[AgentTask] = []
     for task in tasks:
-        deps = list(task.dependencies)
+        deps = [
+            dep
+            for dep in task.dependencies
+            if _task_type_order(type_by_id.get(dep, "")) <= _task_type_order(task.task_type)
+        ]
         if task.task_type == "browser":
-            deps.extend(by_type.get("deep_researcher", []))
+            deps.extend(ids_by_type.get("deep_researcher", []))
         elif task.task_type == "deep_analyze":
-            deps.extend(by_type.get("browser", []) or by_type.get("deep_researcher", []))
+            deps.extend(ids_by_type.get("browser", []) or ids_by_type.get("deep_researcher", []))
         elif task.task_type == "final_answer":
-            deps.extend(by_type.get("deep_analyze", []))
+            deps.extend(ids_by_type.get("deep_analyze", []))
         elif task.task_type == "verifier":
-            deps.extend(by_type.get("final_answer", []))
+            deps.extend(ids_by_type.get("final_answer", []))
 
         deduped = []
         for dep in deps:
@@ -1068,7 +1076,6 @@ def apply_implicit_dependencies(tasks: List[AgentTask]) -> List[AgentTask]:
                 metadata=dict(task.metadata),
             )
         )
-        by_type.setdefault(task.task_type, []).append(task.task_id)
     return output
 
 

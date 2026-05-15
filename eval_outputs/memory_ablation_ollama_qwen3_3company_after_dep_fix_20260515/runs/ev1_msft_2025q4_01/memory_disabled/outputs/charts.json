@@ -1,0 +1,140 @@
+[
+  {
+    "chart_id": "key_metrics_bar",
+    "chart_type": "bar",
+    "title": "关键指标",
+    "output_path": "eval_outputs\\memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515\\runs\\ev1_msft_2025q4_01\\memory_disabled\\outputs\\charts\\key_metrics_bar.png",
+    "source_fields": "claims.numeric_values",
+    "input_table_ids": [
+      "msft_2025q4_balance_sheet_msft_2025q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "msft_2025q4_cash_flow_statement_msft_2025q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "msft_2025q4_income_statement_msft_2025q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db"
+    ],
+    "input_claim_ids": [
+      "cl_0003",
+      "cl_0004",
+      "cl_0005",
+      "cl_0006",
+      "cl_0007",
+      "cl_0008",
+      "cl_0010"
+    ],
+    "source_evidence_ids": [
+      "MSFT_2025Q4_company_profile_8e3534c5__paragraph_1_chunk_10ec37197d",
+      "MSFT_2025Q4_financials_c3c35c42__metric_1_chunk_d7e38cf736",
+      "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224",
+      "MSFT_2025Q4_financials_c3c35c42__metric_3_chunk_b7f5ee956e",
+      "MSFT_2025Q4_financials_c3c35c42__metric_4_chunk_339e60d87d",
+      "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+      "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db"
+    ],
+    "chart_js": {
+      "type": "bar",
+      "labels": [
+        "cl_0003:revenue_billion",
+        "cl_0004:gross_margin_pct",
+        "cl_0005:operating_cash_flow_",
+        "cl_0006:peer_count",
+        "cl_0006:gross_margin_rank",
+        "cl_0006:revenue_growth_rank",
+        "cl_0007:blended_equity_value",
+        "cl_0007:dcf_value_billion"
+      ],
+      "data": [
+        72.1,
+        69.2,
+        33.6,
+        2.0,
+        2.0,
+        2.0,
+        470.42,
+        642.24
+      ],
+      "label": "指标值"
+    }
+  },
+  {
+    "chart_id": "claim_confidence_bar",
+    "chart_type": "bar",
+    "title": "结论置信度",
+    "output_path": "eval_outputs\\memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515\\runs\\ev1_msft_2025q4_01\\memory_disabled\\outputs\\charts\\claim_confidence_bar.png",
+    "source_fields": "claims.confidence",
+    "input_claim_ids": [
+      "cl_0001",
+      "cl_0002",
+      "cl_0003",
+      "cl_0004",
+      "cl_0005",
+      "cl_0006",
+      "cl_0007",
+      "cl_0008",
+      "cl_0009",
+      "cl_0010"
+    ],
+    "source_evidence_ids": [
+      "MSFT_2025Q4_company_profile_8e3534c5__paragraph_1_chunk_10ec37197d",
+      "MSFT_2025Q4_financials_c3c35c42__metric_1_chunk_d7e38cf736",
+      "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224",
+      "MSFT_2025Q4_financials_c3c35c42__metric_3_chunk_b7f5ee956e",
+      "MSFT_2025Q4_financials_c3c35c42__metric_4_chunk_339e60d87d",
+      "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+      "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db"
+    ],
+    "chart_js": {
+      "type": "bar",
+      "labels": [
+        "cl_0001",
+        "cl_0002",
+        "cl_0003",
+        "cl_0004",
+        "cl_0005",
+        "cl_0006",
+        "cl_0007",
+        "cl_0008",
+        "cl_0009",
+        "cl_0010"
+      ],
+      "data": [
+        0.78,
+        0.66,
+        0.82,
+        0.8,
+        0.78,
+        0.78,
+        0.7,
+        0.7,
+        0.68,
+        0.76
+      ],
+      "label": "置信度"
+    }
+  },
+  {
+    "chart_id": "evidence_source_mix",
+    "chart_type": "table",
+    "title": "证据来源结构",
+    "output_path": "eval_outputs\\memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515\\runs\\ev1_msft_2025q4_01\\memory_disabled\\outputs\\charts\\evidence_source_mix.png",
+    "source_fields": "evidence_records.source_type",
+    "source_evidence_ids": [
+      "MSFT_2025Q4_company_profile_8e3534c5__paragraph_1_chunk_10ec37197d",
+      "MSFT_2025Q4_financials_c3c35c42__metric_1_chunk_d7e38cf736",
+      "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224",
+      "MSFT_2025Q4_financials_c3c35c42__metric_3_chunk_b7f5ee956e",
+      "MSFT_2025Q4_financials_c3c35c42__metric_4_chunk_339e60d87d",
+      "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+      "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db"
+    ],
+    "chart_js": {
+      "type": "doughnut",
+      "labels": [
+        "financials",
+        "company_profile"
+      ],
+      "data": [
+        6.0,
+        1.0
+      ],
+      "label": "证据数量"
+    }
+  }
+]

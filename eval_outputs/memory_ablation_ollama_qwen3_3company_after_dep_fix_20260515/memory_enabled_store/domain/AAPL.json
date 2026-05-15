@@ -1,0 +1,11 @@
+{
+  "symbol": "AAPL",
+  "updated_at": "2026-05-15T15:31:40.161632+00:00",
+  "items": [
+    {
+      "run_id": "561ba2b0e5982f46",
+      "created_at": "2026-05-15T15:31:40.161632+00:00",
+      "text": "AAPL 2025Q4 verification_passed; chart_count=3, citation_count=6, claim_count=11, overall_score=1.0, verification_passed=True"
+    }
+  ]
+}

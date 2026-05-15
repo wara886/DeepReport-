@@ -1,0 +1,64 @@
+{
+  "metrics": [
+    {
+      "metric_name": "revenue",
+      "value": 72.1,
+      "unit": "USD_billion",
+      "period": "2025Q4",
+      "source_table_id": "msft_2025q4_financial_metrics_msft_2025q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "source_evidence_id": "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "calculation_formula": "reported revenue",
+      "confidence": 0.95,
+      "symbol": "MSFT"
+    },
+    {
+      "metric_name": "gross_margin",
+      "value": 69.2,
+      "unit": "pct",
+      "period": "2025Q4",
+      "source_table_id": "msft_2025q4_financial_metrics_msft_2025q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "source_evidence_id": "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "calculation_formula": "reported gross margin",
+      "confidence": 0.95,
+      "symbol": "MSFT"
+    },
+    {
+      "metric_name": "net_income",
+      "value": 26.2444,
+      "unit": "USD_billion",
+      "period": "2025Q4",
+      "source_table_id": "msft_2025q4_financial_metrics_msft_2025q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "source_evidence_id": "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "calculation_formula": "revenue_billion * net_margin_pct / 100",
+      "confidence": 0.8,
+      "symbol": "MSFT"
+    },
+    {
+      "metric_name": "free_cash_flow",
+      "value": 28.4,
+      "unit": "USD_billion",
+      "period": "2025Q4",
+      "source_table_id": "msft_2025q4_financial_metrics_msft_2025q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "source_evidence_id": "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "calculation_formula": "reported free cash flow",
+      "confidence": 0.95,
+      "symbol": "MSFT"
+    }
+  ],
+  "metric_count": 4,
+  "coverage": {
+    "required_metrics": [
+      "revenue",
+      "net_income",
+      "gross_margin",
+      "free_cash_flow"
+    ],
+    "present_metrics": [
+      "free_cash_flow",
+      "gross_margin",
+      "net_income",
+      "revenue"
+    ],
+    "has_core_metric_lineage": true
+  }
+}

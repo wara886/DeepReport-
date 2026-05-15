@@ -1,0 +1,165 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "strategy_business",
+    "claim_text": "MSFT（MSFT）主营业务位于未知板块板块、未知行业行业；业务描述为：Builds cloud, productivity, enterprise, and developer platforms.。",
+    "evidence_ids": [
+      "MSFT_2025Q4_company_profile_8e3534c5__paragraph_1_chunk_10ec37197d"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.78,
+    "notes": "由 company_profile 证据生成主营业务与行业定位。"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "ownership_governance",
+    "claim_text": "MSFT 的股权结构与公司治理信息：当前本地 company_profile 尚未披露股权结构、董事会或管理层明细，需后续接入年报/DEF14A/公告表格补全。",
+    "evidence_ids": [
+      "MSFT_2025Q4_company_profile_8e3534c5__paragraph_1_chunk_10ec37197d"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "治理信息由 company_profile 字段生成；缺失时显式标记数据缺口。"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "financial_analysis",
+    "claim_text": "MSFT 在可用证据中披露的营收约为 72.1B。",
+    "evidence_ids": [
+      "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db"
+    ],
+    "numeric_values": {
+      "revenue_billion": 72.1
+    },
+    "risk_level": "medium",
+    "confidence": 0.82,
+    "notes": "由 DeepAnalyzeAgent 从财务证据提取。"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "financial_analysis",
+    "claim_text": "MSFT 的毛利率约为 69.2%。",
+    "evidence_ids": [
+      "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db"
+    ],
+    "numeric_values": {
+      "gross_margin_pct": 69.2
+    },
+    "risk_level": "low",
+    "confidence": 0.8,
+    "notes": "由 DeepAnalyzeAgent 从财务证据提取。"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "financial_analysis",
+    "claim_text": "MSFT 的经营现金流约为 33.6B。",
+    "evidence_ids": [
+      "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db"
+    ],
+    "numeric_values": {
+      "operating_cash_flow_billion": 33.6
+    },
+    "risk_level": "medium",
+    "confidence": 0.78,
+    "notes": "由 DeepAnalyzeAgent 从财务证据提取。"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "peer_compare",
+    "claim_text": "MSFT 已完成本地同行对比：毛利率排名 2/3；收入增速排名 2/3。",
+    "evidence_ids": [
+      "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "MSFT_2025Q4_financials_c3c35c42__metric_6_chunk_43339b900d",
+      "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+      "MSFT_2025Q4_financials_c3c35c42__metric_1_chunk_d7e38cf736",
+      "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224"
+    ],
+    "numeric_values": {
+      "peer_count": 2.0,
+      "gross_margin_rank": 2.0,
+      "revenue_growth_rank": 2.0
+    },
+    "risk_level": "low",
+    "confidence": 0.78,
+    "notes": "由同行比较工具生成。"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "valuation",
+    "claim_text": "规则估值模型基于 P/E、P/S 与 DCF 估算综合股权价值约 470.4B，DCF 折现率假设为 10.0%。",
+    "evidence_ids": [
+      "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "MSFT_2025Q4_financials_c3c35c42__metric_6_chunk_43339b900d",
+      "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+      "MSFT_2025Q4_financials_c3c35c42__metric_1_chunk_d7e38cf736",
+      "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224"
+    ],
+    "numeric_values": {
+      "blended_equity_value_billion": 470.42,
+      "dcf_value_billion": 642.24
+    },
+    "risk_level": "medium",
+    "confidence": 0.7,
+    "notes": "由规则估值模型生成，依赖财务摘要、同行上下文与可选市场数据。"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "valuation_sensitivity",
+    "claim_text": "估值敏感性显示：FCF 增速下调 2pct 时 DCF 约为 593.3B，上调 2pct 时约为 694.5B，折现率上调 1pct 时约为 562.5B。",
+    "evidence_ids": [
+      "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "MSFT_2025Q4_financials_c3c35c42__metric_6_chunk_43339b900d",
+      "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+      "MSFT_2025Q4_financials_c3c35c42__metric_1_chunk_d7e38cf736",
+      "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224"
+    ],
+    "numeric_values": {
+      "dcf_growth_down_billion": 593.33,
+      "dcf_growth_up_billion": 694.49,
+      "dcf_discount_up_billion": 562.51
+    },
+    "risk_level": "medium",
+    "confidence": 0.7,
+    "notes": "由估值模型敏感性表生成。"
+  },
+  {
+    "claim_id": "cl_0009",
+    "section_name": "conclusion",
+    "claim_text": "基于增长、利润率、ROE 与同行比较，模型给出的初步结论为“中性观察”。",
+    "evidence_ids": [
+      "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "MSFT_2025Q4_financials_c3c35c42__metric_6_chunk_43339b900d",
+      "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+      "MSFT_2025Q4_financials_c3c35c42__metric_1_chunk_d7e38cf736",
+      "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "由估值模型生成，不构成投资建议。"
+  },
+  {
+    "claim_id": "cl_0010",
+    "section_name": "business_overview",
+    "claim_text": "MSFT 的证据覆盖包括 8 条记录，横跨 4 类来源。",
+    "evidence_ids": [
+      "MSFT_2025Q4_company_profile_8e3534c5__paragraph_1_chunk_10ec37197d",
+      "MSFT_2025Q4_filing_f496595f__paragraph_1_chunk_e1cdadf443",
+      "MSFT_2025Q4_financials_c3c35c42__metric_1_chunk_d7e38cf736",
+      "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224",
+      "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+      "MSFT_2025Q4_financials_c3c35c42__metric_6_chunk_43339b900d",
+      "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+      "MSFT_2025Q4_news_f10e9b7d__paragraph_1_chunk_821f06782c"
+    ],
+    "numeric_values": {
+      "evidence_count": 8.0,
+      "unique_sources": 4.0
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由证据覆盖统计生成。"
+  }
+]

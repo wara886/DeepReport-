@@ -1,0 +1,209 @@
+{
+  "passed": true,
+  "error_count": 0,
+  "warning_count": 0,
+  "errors": [],
+  "warnings": [],
+  "claim_count": 10,
+  "grounded_claim_count": 6,
+  "expected_symbol": "GOOGL",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 3,
+    "chart_text_consistency": {
+      "chart_count": 3,
+      "passed_chart_count": 3,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "title": "关键指标",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "title": "结论置信度",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "title": "证据来源结构",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 3,
+      "results": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "passed": true,
+          "errors": []
+        }
+      ]
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 1,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [],
+    "checks": {
+      "has_relative_valuation": true,
+      "has_dcf_model": true,
+      "has_sensitivity": true
+    }
+  },
+  "llm_used": true,
+  "entity_resolution": {
+    "requested_symbol": "GOOGL",
+    "research_topic": "总结GOOGL在2025Q4的业务基本面、优势与核心风险",
+    "resolved_symbol": "GOOGL",
+    "resolution_source": "symbol",
+    "topic_resolution": {
+      "input": "总结GOOGL在2025Q4的业务基本面、优势与核心风险",
+      "resolved": true,
+      "symbol": "GOOGL",
+      "company_name": "Alphabet Inc.",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data\\raw\\real_data\\GOOGL\\2025Q4\\company_profile.json",
+      "ambiguous": false
+    },
+    "symbol_resolution": {
+      "input": "GOOGL",
+      "resolved": true,
+      "symbol": "GOOGL",
+      "company_name": "Alphabet Inc.",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data\\raw\\real_data\\GOOGL\\2025Q4\\company_profile.json",
+      "ambiguous": false
+    },
+    "conflict": false
+  },
+  "context_pack_meta": {
+    "claims": {
+      "input_count": 10,
+      "packed_count": 5,
+      "dropped_count": 5,
+      "packed_ids": [
+        "cl_0001",
+        "cl_0002",
+        "cl_0006",
+        "cl_0003",
+        "cl_0005"
+      ],
+      "dropped_ids": [
+        "cl_0010",
+        "cl_0004",
+        "cl_0008",
+        "cl_0007",
+        "cl_0009"
+      ],
+      "used_chars": 2285,
+      "total_chars": 2600
+    },
+    "evidence": {
+      "input_count": 6,
+      "packed_count": 3,
+      "dropped_count": 3,
+      "packed_ids": [
+        "GOOGL_2025Q4_financials_ff624d06__metric_1_chunk_dba80beb6f",
+        "GOOGL_2025Q4_financials_ff624d06__metric_2_chunk_5203b9d1ce",
+        "GOOGL_2025Q4_financials_ff624d06__metric_3_chunk_73935a4f85"
+      ],
+      "dropped_ids": [
+        "GOOGL_2025Q4_financials_ff624d06__metric_4_chunk_fe136e3855",
+        "GOOGL_2025Q4_financials_ff624d06__metric_5_chunk_b949e5b174",
+        "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9"
+      ],
+      "used_chars": 4811,
+      "total_chars": 5200,
+      "prioritized_evidence_count": 6,
+      "prioritized_dropped_ids": [
+        "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+        "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+        "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+        "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+        "GOOGL_2025Q4_financials_ff624d06__metric_4_chunk_fe136e3855",
+        "GOOGL_2025Q4_financials_ff624d06__metric_5_chunk_b949e5b174",
+        "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+        "GOOGL_2025Q4_financials_ff624d06__metric_4_chunk_fe136e3855",
+        "GOOGL_2025Q4_financials_ff624d06__metric_5_chunk_b949e5b174",
+        "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+        "GOOGL_2025Q4_financials_ff624d06__metric_4_chunk_fe136e3855",
+        "GOOGL_2025Q4_financials_ff624d06__metric_5_chunk_b949e5b174",
+        "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+        "GOOGL_2025Q4_financials_ff624d06__metric_4_chunk_fe136e3855",
+        "GOOGL_2025Q4_financials_ff624d06__metric_5_chunk_b949e5b174",
+        "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+        "GOOGL_2025Q4_financials_ff624d06__metric_4_chunk_fe136e3855",
+        "GOOGL_2025Q4_financials_ff624d06__metric_5_chunk_b949e5b174",
+        "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+        "GOOGL_2025Q4_financials_ff624d06__metric_4_chunk_fe136e3855"
+      ]
+    }
+  },
+  "llm_passed": true,
+  "llm_errors": [],
+  "llm_warnings": [
+    "Claim_001 cites evidence_004 which contains 2025Q4 data but claim references 2023 revenue",
+    "Claim_005 references 'key metrics chart' but no chart content provided in evidence",
+    "Claim_007 mentions '3 statements summary' but evidence_002 only contains income statement"
+  ],
+  "fix_recommendations": [
+    "Update claim_001 to reference correct time period for evidence_004",
+    "Add missing chart content for 'key metrics chart' in evidence_003",
+    "Complete '3 statements summary' in evidence_002 with balance sheet and cash flow data"
+  ],
+  "rework_required": false,
+  "evidence_gaps": [
+    {
+      "gap_id": "gap_0002_multimodal_conflict",
+      "gap_type": "multimodal_conflict",
+      "description": "Claim_005 references 'key metrics chart' but no chart content provided in evidence",
+      "claim_id": "",
+      "required_source_type": [
+        "tables.json",
+        "charts.json",
+        "claims.json"
+      ],
+      "required_fields": [
+        "input_table_ids",
+        "input_claim_ids",
+        "source_evidence_ids",
+        "source_fields"
+      ],
+      "suggested_queries": [],
+      "blocking": true,
+      "status": "open"
+    }
+  ],
+  "revision_brief": "- Fix recommendations: Update claim_001 to reference correct time period for evidence_004\n- Fix recommendations: Add missing chart content for 'key metrics chart' in evidence_003\n- Fix recommendations: Complete '3 statements summary' in evidence_002 with balance sheet and cash flow data\n- LLM warnings: Claim_001 cites evidence_004 which contains 2025Q4 data but claim references 2023 revenue\n- LLM warnings: Claim_005 references 'key metrics chart' but no chart content provided in evidence\n- LLM warnings: Claim_007 mentions '3 statements summary' but evidence_002 only contains income statement"
+}

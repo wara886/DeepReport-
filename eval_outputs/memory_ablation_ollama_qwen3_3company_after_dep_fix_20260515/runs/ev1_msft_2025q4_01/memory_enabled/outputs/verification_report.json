@@ -1,0 +1,221 @@
+{
+  "passed": false,
+  "error_count": 0,
+  "warning_count": 0,
+  "errors": [],
+  "warnings": [],
+  "claim_count": 10,
+  "grounded_claim_count": 6,
+  "expected_symbol": "MSFT",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 3,
+    "chart_text_consistency": {
+      "chart_count": 3,
+      "passed_chart_count": 3,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "title": "关键指标",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "title": "结论置信度",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "title": "证据来源结构",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 3,
+      "results": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "passed": true,
+          "errors": []
+        }
+      ]
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 1,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [],
+    "checks": {
+      "has_relative_valuation": true,
+      "has_dcf_model": true,
+      "has_sensitivity": true
+    }
+  },
+  "llm_used": true,
+  "entity_resolution": {
+    "requested_symbol": "MSFT",
+    "research_topic": "总结MSFT在2025Q4的业务基本面、优势与核心风险",
+    "resolved_symbol": "MSFT",
+    "resolution_source": "symbol",
+    "topic_resolution": {
+      "input": "总结MSFT在2025Q4的业务基本面、优势与核心风险",
+      "resolved": true,
+      "symbol": "MSFT",
+      "company_name": "Microsoft Corporation",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data\\raw\\real_data\\MSFT\\2025Q4\\company_profile.json",
+      "ambiguous": false
+    },
+    "symbol_resolution": {
+      "input": "MSFT",
+      "resolved": true,
+      "symbol": "MSFT",
+      "company_name": "Microsoft Corporation",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data\\raw\\real_data\\MSFT\\2025Q4\\company_profile.json",
+      "ambiguous": false
+    },
+    "conflict": false
+  },
+  "context_pack_meta": {
+    "claims": {
+      "input_count": 10,
+      "packed_count": 5,
+      "dropped_count": 5,
+      "packed_ids": [
+        "cl_0003",
+        "cl_0004",
+        "cl_0006",
+        "cl_0005",
+        "cl_0001"
+      ],
+      "dropped_ids": [
+        "cl_0010",
+        "cl_0008",
+        "cl_0007",
+        "cl_0009",
+        "cl_0002"
+      ],
+      "used_chars": 1917,
+      "total_chars": 2600
+    },
+    "evidence": {
+      "input_count": 10,
+      "packed_count": 3,
+      "dropped_count": 7,
+      "packed_ids": [
+        "MSFT_2025Q4_company_profile_8e3534c5__paragraph_1_chunk_10ec37197d",
+        "MSFT_2025Q4_filing_f496595f__paragraph_1_chunk_e1cdadf443",
+        "MSFT_2025Q4_financials_c3c35c42__metric_1_chunk_d7e38cf736"
+      ],
+      "dropped_ids": [
+        "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224",
+        "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+        "MSFT_2025Q4_financials_c3c35c42__metric_6_chunk_43339b900d",
+        "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+        "MSFT_2025Q4_news_f10e9b7d__paragraph_1_chunk_821f06782c",
+        "MSFT_2025Q4_financials_c3c35c42__metric_3_chunk_b7f5ee956e",
+        "MSFT_2025Q4_financials_c3c35c42__metric_4_chunk_339e60d87d"
+      ],
+      "used_chars": 4707,
+      "total_chars": 5200,
+      "prioritized_evidence_count": 8,
+      "prioritized_dropped_ids": [
+        "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+        "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+        "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+        "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+        "MSFT_2025Q4_financials_c3c35c42__metric_6_chunk_43339b900d",
+        "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+        "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224",
+        "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+        "MSFT_2025Q4_financials_c3c35c42__metric_6_chunk_43339b900d",
+        "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+        "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224",
+        "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+        "MSFT_2025Q4_financials_c3c35c42__metric_6_chunk_43339b900d",
+        "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+        "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224",
+        "MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db",
+        "MSFT_2025Q4_financials_c3c35c42__metric_6_chunk_43339b900d",
+        "MSFT_2025Q4_financials_c3c35c42__metric_5_chunk_a35cfa33c6",
+        "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224",
+        "MSFT_2025Q4_financials_c3c35c42__metric_2_chunk_0658443224"
+      ]
+    }
+  },
+  "llm_passed": false,
+  "llm_errors": [
+    "财务数据矛盾：三表摘要显示营收850亿，但财务分析部分显示营收72.1B（单位不一致）",
+    "估值模型参数异常：DCF模型使用10%折现率但未说明计算基础",
+    "同行对比数据缺失：未提供具体行业基准数据支撑毛利率/收入增速排名",
+    "风险因素不完整：未提及地缘政治风险、AI监管政策等关键风险",
+    "投资建议缺乏依据：未说明长期持有与短期观望的具体决策逻辑"
+  ],
+  "llm_warnings": [
+    "未披露股权结构和公司治理信息",
+    "未提供关键假设参数（如增长率、终端价值）的计算依据",
+    "未校验财务数据与市场数据的时间一致性"
+  ],
+  "fix_recommendations": [
+    "统一财务数据单位并补充单位说明",
+    "提供估值模型具体参数和计算过程",
+    "补充同行对比的具体行业基准数据",
+    "增加对AI监管政策等新兴风险的分析",
+    "明确投资建议的决策逻辑和时间框架"
+  ],
+  "rework_required": true,
+  "evidence_gaps": [
+    {
+      "gap_id": "gap_0002_valuation_formula_error",
+      "gap_type": "valuation_formula_error",
+      "description": "估值模型参数异常：DCF模型使用10%折现率但未说明计算基础",
+      "claim_id": "",
+      "required_source_type": [
+        "valuation_model.json",
+        "valuation_assumptions.json",
+        "valuation_sensitivity.json"
+      ],
+      "required_fields": [
+        "denominator_value",
+        "multiple",
+        "enterprise_value_billion",
+        "equity_value_billion"
+      ],
+      "suggested_queries": [],
+      "blocking": true,
+      "status": "open"
+    }
+  ],
+  "revision_brief": "- Fix recommendations: 统一财务数据单位并补充单位说明\n- Fix recommendations: 提供估值模型具体参数和计算过程\n- Fix recommendations: 补充同行对比的具体行业基准数据\n- Fix recommendations: 增加对AI监管政策等新兴风险的分析\n- Fix recommendations: 明确投资建议的决策逻辑和时间框架\n- LLM warnings: 未披露股权结构和公司治理信息\n- LLM warnings: 未提供关键假设参数（如增长率、终端价值）的计算依据\n- LLM warnings: 未校验财务数据与市场数据的时间一致性"
+}

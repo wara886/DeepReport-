@@ -1,0 +1,64 @@
+{
+  "research_topic": "总结MSFT在2025Q4的业务基本面、优势与核心风险",
+  "symbol": "MSFT",
+  "period": "2025Q4",
+  "model": "qwen3:8b",
+  "execution_mode": "dynamic",
+  "performance_profile": "fast",
+  "agent_count": 6,
+  "planned_task_count": 7,
+  "completed_task_count": 7,
+  "trace_count": 10,
+  "evidence_count": 10,
+  "claim_count": 10,
+  "citation_count": 10,
+  "chart_count": 3,
+  "multimodal_consistency_passed": true,
+  "mcp_tool_count": 9,
+  "search_engines": [
+    "local_real_data",
+    "local_evidence"
+  ],
+  "retrieval_ranking_mode": "hybrid_rerank",
+  "revision_rounds": 1,
+  "verification_passed": false,
+  "evidence_gap_count": 1,
+  "company_report_overall_score": 0.875,
+  "entity_resolution": {
+    "requested_symbol": "MSFT",
+    "research_topic": "总结MSFT在2025Q4的业务基本面、优势与核心风险",
+    "resolved_symbol": "MSFT",
+    "resolution_source": "symbol",
+    "topic_resolution": {
+      "input": "总结MSFT在2025Q4的业务基本面、优势与核心风险",
+      "resolved": true,
+      "symbol": "MSFT",
+      "company_name": "Microsoft Corporation",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data\\raw\\real_data\\MSFT\\2025Q4\\company_profile.json",
+      "ambiguous": false
+    },
+    "symbol_resolution": {
+      "input": "MSFT",
+      "resolved": true,
+      "symbol": "MSFT",
+      "company_name": "Microsoft Corporation",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data\\raw\\real_data\\MSFT\\2025Q4\\company_profile.json",
+      "ambiguous": false
+    },
+    "conflict": false
+  },
+  "conversation_brief_chars": 1291,
+  "durable_memory_enabled": true,
+  "total_duration_sec": 133.555,
+  "durable_memory": {
+    "run_id": "d89947ce8055b789",
+    "working_snapshot": "eval_outputs\\memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515\\memory_enabled_store\\working\\d89947ce8055b789\\snapshot.json",
+    "episodic_snapshot": "eval_outputs\\memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515\\memory_enabled_store\\episodic\\MSFT\\2025Q4\\d89947ce8055b789.json",
+    "domain_memory": "eval_outputs\\memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515\\memory_enabled_store\\domain\\MSFT.json",
+    "domain_item_count": "1"
+  }
+}

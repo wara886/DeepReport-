@@ -1,0 +1,84 @@
+{
+  "symbol": "AAPL",
+  "period": "2025Q4",
+  "currency": "USD",
+  "unit": "billion",
+  "relative_valuation": {
+    "symbol": "AAPL",
+    "period": "2025Q4",
+    "currency": "USD",
+    "unit": "billion",
+    "multiples": {
+      "pe": {
+        "numerator": "equity_value_billion",
+        "denominator": "net_income_billion",
+        "denominator_value": 31.0698,
+        "multiple": 12.2,
+        "equity_value_billion": 379.05,
+        "target_price": null
+      },
+      "ps": {
+        "numerator": "equity_value_billion",
+        "denominator": "revenue_billion",
+        "denominator_value": 126.3,
+        "multiple": 4.21,
+        "equity_value_billion": 531.72,
+        "target_price": null
+      }
+    },
+    "scenario_values": {
+      "bear": 341.15,
+      "base": 455.39,
+      "bull": 584.9
+    }
+  },
+  "dcf_model": {
+    "symbol": "AAPL",
+    "period": "2025Q4",
+    "currency": "USD",
+    "unit": "billion",
+    "assumptions": {
+      "base_free_cash_flow_billion": 31.2,
+      "fcf_growth": 0.112,
+      "discount_rate": 0.1,
+      "terminal_growth": 0.025,
+      "forecast_years": 5,
+      "net_debt_billion": 0.0,
+      "shares_outstanding_billion": null
+    },
+    "forecast": [
+      {
+        "year": 1,
+        "free_cash_flow_billion": 34.6944,
+        "present_value_billion": 31.540364
+      },
+      {
+        "year": 2,
+        "free_cash_flow_billion": 38.580173,
+        "present_value_billion": 31.88444
+      },
+      {
+        "year": 3,
+        "free_cash_flow_billion": 42.901152,
+        "present_value_billion": 32.232271
+      },
+      {
+        "year": 4,
+        "free_cash_flow_billion": 47.706081,
+        "present_value_billion": 32.583895
+      },
+      {
+        "year": 5,
+        "free_cash_flow_billion": 53.049162,
+        "present_value_billion": 32.939356
+      }
+    ],
+    "terminal_value_billion": 725.005214,
+    "pv_terminal_value_billion": 450.171197,
+    "enterprise_value_billion": 611.351523,
+    "equity_value_billion": 611.351523,
+    "target_price": null
+  },
+  "blended_equity_value_billion": 507.38,
+  "target_price": null
+}

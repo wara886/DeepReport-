@@ -1,0 +1,7 @@
+[
+  {
+    "round": 1,
+    "revision_request": "- Errors: Missing required header in report: ## Risk Assessment\n- Fix recommendations: 核对MSFT_2025Q4_financials_c3c35c42__paragraph_1_chunk_45da3df5db与三表摘要的营收数据时间范围\n- Fix recommendations: 补充图表部分的关键指标数值及对应证据ID\n- Fix recommendations: 接入年报数据完善股权结构和管理层信息\n- Fix recommendations: 增加AI算力成本具体数据及对利润率影响的量化分析\n- LLM warnings: 股权结构等公司治理信息缺失，需后续接入年报/DEF14A/公告表格\n- LLM warnings: AI算力成本上升对利润率影响的分析缺乏具体数据支撑\n- LLM errors: 财务分析中披露的营收72.1B与三表摘要的52.3B存在矛盾，需核实数据来源一致性",
+    "passed_after_round": true
+  }
+]

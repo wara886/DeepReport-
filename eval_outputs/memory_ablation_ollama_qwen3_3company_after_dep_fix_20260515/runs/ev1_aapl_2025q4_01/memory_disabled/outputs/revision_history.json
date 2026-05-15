@@ -1,0 +1,7 @@
+[
+  {
+    "round": 1,
+    "revision_request": "- Errors: Missing required header in report: ## Risk Assessment\n- Fix recommendations: 建议将报告标题时间戳统一为2025Q4以匹配证据数据\n- Fix recommendations: 补充完整图表路径字段内容以确保可视化完整性\n- Fix recommendations: 在股权结构章节增加'待补充'标注以符合数据完整性要求\n- LLM warnings: 报告标题时间戳(2023)与证据ID时间戳(2025Q4)存在矛盾\n- LLM warnings: 图表路径字段显示不完整(可能影响可视化呈现)",
+    "passed_after_round": false
+  }
+]

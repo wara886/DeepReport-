@@ -1,0 +1,64 @@
+{
+  "metrics": [
+    {
+      "metric_name": "revenue",
+      "value": 96.4,
+      "unit": "USD_billion",
+      "period": "2025Q4",
+      "source_table_id": "googl_2025q4_financial_metrics_googl_2025q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+      "source_evidence_id": "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+      "calculation_formula": "reported revenue",
+      "confidence": 0.95,
+      "symbol": "GOOGL"
+    },
+    {
+      "metric_name": "gross_margin",
+      "value": 58.7,
+      "unit": "pct",
+      "period": "2025Q4",
+      "source_table_id": "googl_2025q4_financial_metrics_googl_2025q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+      "source_evidence_id": "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+      "calculation_formula": "reported gross margin",
+      "confidence": 0.95,
+      "symbol": "GOOGL"
+    },
+    {
+      "metric_name": "net_income",
+      "value": 27.8596,
+      "unit": "USD_billion",
+      "period": "2025Q4",
+      "source_table_id": "googl_2025q4_financial_metrics_googl_2025q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+      "source_evidence_id": "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+      "calculation_formula": "revenue_billion * net_margin_pct / 100",
+      "confidence": 0.8,
+      "symbol": "GOOGL"
+    },
+    {
+      "metric_name": "free_cash_flow",
+      "value": 22.7,
+      "unit": "USD_billion",
+      "period": "2025Q4",
+      "source_table_id": "googl_2025q4_financial_metrics_googl_2025q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+      "source_evidence_id": "GOOGL_2025Q4_financials_ff624d06__paragraph_1_chunk_bbb8c97ad9",
+      "calculation_formula": "reported free cash flow",
+      "confidence": 0.95,
+      "symbol": "GOOGL"
+    }
+  ],
+  "metric_count": 4,
+  "coverage": {
+    "required_metrics": [
+      "revenue",
+      "net_income",
+      "gross_margin",
+      "free_cash_flow"
+    ],
+    "present_metrics": [
+      "free_cash_flow",
+      "gross_margin",
+      "net_income",
+      "revenue"
+    ],
+    "has_core_metric_lineage": true
+  }
+}

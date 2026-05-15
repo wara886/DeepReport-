@@ -1,0 +1,9 @@
+{
+  "base_free_cash_flow_billion": 22.7,
+  "fcf_growth": 0.125,
+  "discount_rate": 0.1,
+  "terminal_growth": 0.025,
+  "forecast_years": 5,
+  "net_debt_billion": 0.0,
+  "shares_outstanding_billion": null
+}
