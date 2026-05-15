@@ -1,137 +1,226 @@
-# DeepReport++ Project Status and Execution Plan
+# DeepReport++ 项目状态与下一步计划
 
-Updated: 2026-05-15
+更新日期：2026-05-15
 
-This is the single source of truth for the current DeepReport++ task status, codebase map, cleanup state, validation record, and next execution plan. Future work must update this document after each completed plan.
+本文档是当前 DeepReport++ 项目的唯一主状态文档。以后项目说明、阶段总结、下一步计划和验证记录默认使用中文，并优先更新本文档。
 
-## Latest Update
+当前有效工作目录是：
 
-- Remote `origin/main` is aligned at `ff44ec4 Stabilize report gates and memory ablation`.
-- The active project root is the repository root. The old nested `DeepReport_plus/` tree is a migration remnant and is no longer a source of truth.
-- The previous root-vs-`DeepReport_plus` autostash conflict has been resolved by keeping root `HEAD/main` files and removing the migrated nested project files.
-- `docs/current_status.md` has been folded into this document and removed.
-- Historical review, experiment, and Stage 12 recap documents are removed from the active docs set. Current reference/contract docs remain in `docs/`.
-- Cleanup validation passed on the targeted report-format tests and the wider config/schema/generation smoke tests.
-
-## Completed
-
-### Core pipeline
-
-- Stage -1 through Stage 10 scaffolding exists at the repository root.
-- The claim-first path is available through `src/app/main.py`, `src/app/pipeline.py`, and `src/agents/orchestrator.py`.
-- Markdown, HTML, JSON, chart, citation, verification, and report export components are present.
-- Generation backends are abstracted under `src/generation` with mock, local-small, and remote-oriented implementations.
-
-### Multi-agent workflow
-
-- The current multi-agent path is orchestrated by `src/agents/multi_agent_orchestrator.py`.
-- The visible agent chain is:
-  `PlanningAgent -> DeepResearcherAgent -> BrowserAgent -> DeepAnalyzeAgent -> FinalAnswerAgent -> VerifierAgent`.
-- Tooling and data connectors are represented through `src/tools`, `src/search`, `src/data`, `src/retrieval`, and `src/models`.
-- `FinalAnswerAgent` now performs deterministic report heading normalization and inserts missing company-report sections when supported claims exist.
-
-### Evaluation and quality gates
-
-- Local qwen3 canary output:
-  `eval_outputs/codex_phase5b_qwen3_after_format_fix/eval_summary.json`.
-- Latest qwen3 canary passed with:
-  `task_completion_rate=1.0`, `required_sections_coverage=1.0`, `verification_pass_rate=1.0`, `citation_support_rate=1.0`, `numeric_audit_pass_rate=0.9373`, `valuation_sanity_pass_rate=1.0`.
-- Full memory ablation output:
-  `eval_outputs/codex_phase5c_memory_ablation_after_format_fix/memory_ablation_comparison.json`.
-- Full memory ablation decision:
-  `memory_has_measurable_benefit`.
-- Memory-enabled run:
-  `verification_pass_rate=1.0`, `task_completion_rate=1.0`, `numeric_audit_pass_rate=0.9217`, `citation_support_rate=1.0`.
-- Memory-disabled run:
-  `verification_pass_rate=0.5`, `task_completion_rate=0.5`, `numeric_audit_pass_rate=0.8889`, `citation_support_rate=1.0`.
-
-## Repository Code Map
-
-- `configs/`: runtime configuration, model backend settings, data source settings, evaluation settings.
-- `scripts/`: local smoke scripts, evaluation runners, UI/server launchers, cloud upload/download helpers.
-- `src/app/`: CLI and pipeline entrypoints.
-- `src/agents/`: rule-based and model-backed agents, multi-agent orchestration, final answer generation, verification, memory/context helpers.
-- `src/data/`: fetchers, normalization, manifests, company identity and source quality helpers.
-- `src/features/`: financial ratios, statements, trend analysis, peer comparison, risk signals, valuation, metric lineage.
-- `src/retrieval/`: evidence store, BM25, optional Chroma/local RAG, retrieval facade, FAISS placeholder.
-- `src/generation/`: backend abstraction and writer/rewriter model access.
-- `src/evaluation/`: eval harnesses, numeric/citation/multimodal audits, scorecards, diagnostic reports.
-- `src/report/`: citation artifacts, chart generation, chart consistency, compliance disclosure, HTML polish.
-- `src/templates/`: report outlines, Markdown/HTML templates, exporter.
-- `src/schemas/`: Evidence, Claim, Chart, Report, Task, multimodal, and table contracts.
-- `tests/`: unit, integration, smoke, and regression tests for the active root project.
-- `eval_outputs/`: committed canary and ablation artifacts used as current quality evidence.
-
-## Active Documentation
-
-Keep these as active reference or contract documents:
-
-- `docs/project_status_deepreport_multiagent.md`: current status and next plan.
-- `docs/deepreport_repo_audit.md`: upstream DeepReport audit.
-- `docs/deepreport_skeleton_mapping.md`: DeepReport-to-DeepReport++ skeleton mapping.
-- `docs/deepreport_reference_architecture.md`: reference architecture summary.
-- `docs/real_data_contract.md`: real-data contract.
-- `docs/cloud_training.md` and `docs/cloud_readiness.md`: cloud training/readiness references.
-- `docs/company_agent_architecture.md`, `docs/company_stock_report_depth_plan.md`, `docs/financial_multi_agent_detailed_guide.md`: still-useful product and architecture notes.
-
-Removed from the active docs set:
-
-- `docs/current_status.md`, because its current facts are now folded into this document.
-- Review backfill, grounding-rule experiment, Stage 12 judgement, writer-backend recap, acceptance-report, and regression-guide documents, because they are historical notes and should not compete with this document.
-- Root `CODEX_RUNBOOK.md` and `Open_DeepReportpp_Stage12_Local_Plan.md`, because their useful current facts are represented here or in the active source-of-truth docs.
-
-## Current Risks
-
-- Memory has measurable quality benefit, but it adds latency. Planner/Router promotion must keep latency visible and guarded.
-- SkillRegistry is tested as a static MVP, but it is not yet dynamically injected into Planner/Router prompts.
-- NumericAudit is above the current canary target but still has edge cases around derived/model/peer metrics.
-- Competition packaging and Tianchi-style delivery are not yet revalidated after the latest memory and formatting fixes.
-- `AGENTS.md` and parts of `README.md` currently display mojibake in this Windows environment; they should be repaired in a future documentation pass if they remain active onboarding documents.
-
-## Next Plan
-
-1. Promote durable memory into Planner/Router context selection behind explicit quality and latency guards.
-2. Inject selected SkillRegistry summaries into Planner/Router while tracking unsupported fallback counts.
-3. Rerun the same local qwen3 canary and memory ablation after the Planner/Router integration.
-4. Rerun competition packaging with `configs/model_backends_local.yaml` or the current local equivalent.
-5. Inspect generated company, industry, macro reports and package artifacts before marking delivery complete.
-
-## Validation
-
-Latest validation after this cleanup:
-
-```powershell
-git ls-files -u
-python -m pytest tests/test_priority1_metric_fixes.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections -q
-python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_generation_backends.py -q
+```text
+G:\cord\DeepReport_plus
 ```
 
-Result:
+不要再把父目录 `G:\cord`、旧 zip 解压目录、旧嵌套目录或历史归档内容当作当前主线项目。
 
-- `git ls-files -u`: no output, so no unmerged paths remain.
-- Targeted tests: `8 passed`.
-- Wider smoke tests: `12 passed`.
-- Pytest emitted cache write warnings for `G:\cord\.pytest_cache`, caused by local Windows permissions; tests passed.
+## 最新更新
 
-Required validation after any future plan:
+- 当前仓库是从 GitHub `origin/main` 干净 clone 到 `G:\cord\DeepReport_plus` 的项目。
+- 当前 HEAD：`4b8f0c7 Document project status and clean migrated leftovers`。
+- 主状态文档已改为中文，并把后续维护规则固定为中文。
+- 本次重新校准了 memory / SkillRegistry 的表述：当前仓库中可以确认存在的是 `conversation_memory.py`、多 Agent 基础链路和评估产物；尚未发现 `durable_memory.py`、`SkillRegistry`、`run_memory_ablation.py` 等完整工程化实现文件。
+- 当前 memory ablation 是“已提交的评估产物”，不是“当前仓库内已经完整闭环的 durable memory 工程能力”。
+- 已完成 P1 仓库真实能力复核：`scripts/`、`configs/`、`src/agents/`、`src/evaluation/` 中的当前主线能力已经按真实文件重新登记；README 和 AGENTS 用 UTF-8 读取为正常中文，本轮不做编码修复。
+
+## 当前结论
+
+DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 报告生成工程。项目已经具备基础报告流水线、多 Agent 骨架、报告格式修复、图表 lineage 校验和一批已提交评估产物。
+
+但从当前仓库代码看，下一步不应直接宣称 memory / SkillRegistry 已接入 Planner/Router，而应先补齐这两类能力的正式工程实现、测试和可复现实验脚本。
+
+## 已完成
+
+### 工程骨架与基础流水线
+
+- Stage -1 到 Stage 10 的主工程骨架已位于仓库根目录。
+- claim-first 基础链路已经存在：
+  `src/app/main.py -> src/app/pipeline.py -> src/agents/orchestrator.py`。
+- 报告导出、模板、图表、引用、验证、schema、data、features、retrieval、generation、training、evaluation 等模块目录已建立。
+- generation backend 已抽象到 `src/generation`，包含 mock / local-small / remote 风格实现。
+
+### 多 Agent 基础链路
+
+- 当前多 Agent 入口在 `src/agents/multi_agent_orchestrator.py`。
+- 当前可见链路为：
+  `PlanningAgent -> DeepResearcherAgent -> BrowserAgent -> DeepAnalyzeAgent -> FinalAnswerAgent -> VerifierAgent`。
+- `src/agents/conversation_memory.py` 已提供 run-level conversation memory 和上下文压缩能力。
+- `src/agents/planning_agent.py`、`src/agents/gap_router.py`、`src/evaluation/multi_agent_harness.py` 为后续 Planner/Router 策略接入提供基础。
+
+### 报告质量修复
+
+- `FinalAnswerAgent` 已做报告标题规范化。
+- 当本地模型漏写或改写公司研报章节标题时，`FinalAnswerAgent` 可根据 claims 做确定性章节补齐。
+- 图表 lineage 已支持 claim-text 派生图表的合理通过路径。
+- 相关测试包括：
+  `tests/test_priority1_metric_fixes.py`、
+  `tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections`。
+
+### 已提交评估产物
+
+- 本地 qwen3 canary 产物：
+  `eval_outputs/codex_phase5b_qwen3_after_format_fix/eval_summary.json`。
+- 该 canary 记录显示：
+  `task_completion_rate=1.0`、
+  `required_sections_coverage=1.0`、
+  `verification_pass_rate=1.0`、
+  `citation_support_rate=1.0`、
+  `numeric_audit_pass_rate=0.9373`、
+  `valuation_sanity_pass_rate=1.0`。
+- memory ablation 产物：
+  `eval_outputs/codex_phase5c_memory_ablation_after_format_fix/memory_ablation_comparison.json`。
+- 该产物记录的结论为：
+  `memory_has_measurable_benefit`。
+
+## 当前代码与历史产物差异
+
+### 当前代码中可以确认存在
+
+- `src/agents/conversation_memory.py`：会话级 memory / context brief。
+- `src/agents/multi_agent_orchestrator.py`：多 Agent 编排入口。
+- `src/agents/planning_agent.py`：规划 Agent。
+- `src/agents/gap_router.py`：gap resolution trace 相关能力。
+- `src/evaluation/`：多类评估、诊断、numeric/citation/multimodal audit 基础。
+- `eval_outputs/`：已提交的 qwen3 canary 和 memory ablation 结果文件。
+- `scripts/run_multi_agent_demo.py`：当前多 Agent demo 入口，支持 `--execution-mode`、`--fast`、`--retrieval-ranking-mode`、`--engines`。
+- `scripts/run_multi_agent_eval.py`：调用 `src.evaluation.multi_agent_harness` 的动态多 Agent 评估入口。
+- `configs/model_backends.yaml`、`configs/data_sources.yaml`、`configs/evaluation_multi_agent_react_smoke.yaml`、`configs/evaluation_stage12a.yaml`：当前可见的模型、数据源和评估配置。
+
+### 当前仓库尚未发现完整实现
+
+- 未发现 `src/agents/durable_memory.py` 或等价 durable memory 存取层。
+- 未发现 `SkillRegistry` 或 `src/skills/` 相关正式实现。
+- 未发现 `scripts/run_memory_ablation.py`。
+- 未发现 `configs/model_backends_local.yaml`。
+
+### 需要补回或正式工程化
+
+- durable memory 文件化存取、读写策略、摘要选择和过期/限长规则。
+- Planner/Router 读取 memory brief 的明确开关和质量/延迟 guard。
+- SkillRegistry 静态 MVP、schema、测试和 Planner/Router prompt 注入。
+- 可复现的 memory enabled/disabled ablation runner。
+- 当前评估产物与未来可复现脚本之间的追溯关系。
+
+## 仓库代码结构
+
+- `configs/`：运行配置、模型后端配置、数据源配置、评估配置。
+- `scripts/`：本地 smoke、评估、UI/server、云端上传下载脚本。
+- `src/app/`：CLI 与 pipeline 入口。
+- `src/agents/`：基础 Agent、多 Agent 编排、规划、研究、分析、最终报告、验证、会话上下文。
+- `src/data/`：fetcher、标准化、manifest、公司识别、数据源质量。
+- `src/features/`：财务指标、三表、趋势、同行对比、风险、估值、metric lineage。
+- `src/retrieval/`：evidence store、BM25、Chroma/local RAG、检索 facade、FAISS 占位。
+- `src/generation/`：生成后端抽象、writer/rewriter 模型访问。
+- `src/evaluation/`：评估 harness、numeric/citation/multimodal audit、scorecard、诊断报告。
+- `src/report/`：引用、图表、图文一致性、合规披露、HTML 报告增强。
+- `src/templates/`：公司研报大纲、Markdown/HTML 模板、导出器。
+- `src/schemas/`：Evidence、Claim、Chart、Report、Task、multimodal、table 数据契约。
+- `tests/`：当前 root 项目的单元、集成、smoke 和回归测试。
+- `eval_outputs/`：当前已提交的 canary 与 ablation 评估产物。
+
+## 有效文档
+
+当前保留为有效参考或契约的文档：
+
+- `docs/project_status_deepreport_multiagent.md`：当前状态与下一步计划，也就是本文档。
+- `docs/deepreport_repo_audit.md`：上游 DeepReport 审计。
+- `docs/deepreport_skeleton_mapping.md`：DeepReport 到 DeepReport++ 的骨架映射。
+- `docs/deepreport_reference_architecture.md`：参考架构说明。
+- `docs/real_data_contract.md`：真实数据契约。
+- `docs/cloud_training.md`、`docs/cloud_readiness.md`：云端训练与准备说明。
+- `docs/company_agent_architecture.md`、`docs/company_stock_report_depth_plan.md`、`docs/financial_multi_agent_detailed_guide.md`：仍有参考价值的产品与架构说明。
+
+不再作为当前计划依据：
+
+- 旧 `docs/current_status.md`，其有效信息已经合并到本文档。
+- 旧 review backfill、grounding-rule experiment、Stage 12 judgement、writer backend recap、acceptance report、regression guide 等历史复盘文档。
+- 旧 `CODEX_RUNBOOK.md` 和 `Open_DeepReportpp_Stage12_Local_Plan.md`。
+
+## 当前风险
+
+- 文档中曾经把 memory / SkillRegistry 描述得过于接近“已完整工程化”，但当前仓库代码只能确认 conversation memory 和评估产物。
+- qwen3 canary 与 memory ablation 产物已提交，但缺少当前仓库内可直接复跑的 memory ablation runner。
+- Memory 评估产物显示有质量收益，但正式接入 Planner/Router 前必须加入 latency 和质量 guard。
+- SkillRegistry 仍需正式实现和注入策略，不能只靠文档描述。
+- `AGENTS.md` 和部分 `README.md` 在当前 Windows 输出里有 mojibake，后续如果作为 onboarding 文档，需要单独修复编码/内容。
+
+## 下一步计划
+
+### P0：中文状态文档修正
+
+- 已在本轮执行：本文档改为中文。
+- 已在本轮执行：校准 memory / SkillRegistry 的真实状态。
+- 后续所有任务完成后，都必须更新本文档的“最新更新、已完成、当前风险、下一步计划、验证记录”。
+
+### P1：仓库真实能力复核
+
+状态：已在本轮完成。
+
+- 已复核 `src/agents`、`src/evaluation`、`scripts`、`configs` 的当前真实文件。
+- 已明确区分“当前代码中存在”“仅有评估产物”“当前仓库尚未发现完整实现”“下一步要补回或正式工程化”。
+- README 和 AGENTS 用 UTF-8 读取为正常中文；本轮不做内容改写，后续若发现与实际主线不一致再单独处理。
+
+### P2：Memory 正式工程化
+
+状态：下一轮优先执行。
+
+1. 基于 `conversation_memory.py` 实现 durable memory 存取层。
+2. 增加配置开关，例如 `memory_enabled`、memory 路径、上下文长度限制、latency guard。
+3. 接入 `MultiAgentOrchestrator` 的 Planner/Router 上下文选择。
+4. 增加 memory write/load 单元测试和多 Agent smoke 测试。
+5. 补回或实现可复现的 memory enabled/disabled ablation runner。
+
+### P3：SkillRegistry 正式接入
+
+1. 实现静态 SkillRegistry MVP。
+2. 定义 skill schema、metadata、摘要字段和测试。
+3. 让 Planner/Router 可选择性读取 skill 摘要。
+4. 在评估指标中跟踪 unsupported fallback、verification pass、numeric/citation audit。
+
+### P4：重新跑本地验证与交付链路
+
+1. 跑 targeted tests。
+2. 跑多 Agent smoke。
+3. 根据当前可用配置决定是否重跑 qwen3 canary。
+4. 重新验证 competition packaging 或三类研报交付链路。
+
+## 验证记录
+
+本轮文档中文化后需要执行：
 
 ```powershell
-git ls-files -u
 git status --short
+git diff -- docs/project_status_deepreport_multiagent.md
 python -m pytest tests/test_priority1_metric_fixes.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections -q
 python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_generation_backends.py -q
 ```
 
-Record the exact command results in this section after every completed plan.
+本轮验证结果：
 
-## Dynamic Update Rule
+- `git status --short`：显示 `docs/project_status_deepreport_multiagent.md` 已修改。
+- `git diff -- docs/project_status_deepreport_multiagent.md`：确认主状态文档已全量中文化，并校准了 memory / SkillRegistry 当前真实状态。
+- `python -m pytest tests/test_priority1_metric_fixes.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections -q`：`8 passed`。
+- `python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_generation_backends.py -q`：`12 passed`。
+- P1 复核命令：
+  `rg --files scripts configs src/agents src/evaluation`、
+  `rg "class |def |if __name__|argparse|click" scripts src/agents src/evaluation -n`、
+  `Get-Content -Encoding UTF8 README.md`、
+  `Get-Content -Encoding UTF8 AGENTS.md`。
+- P1 复核结论：当前主线能力、评估产物和缺失模块已登记到本文档；README/AGENTS 当前 UTF-8 读取正常。
 
-After each completed plan, update this file before committing:
+以后每次完成计划，都要在这里记录：
 
-- `Latest Update`: what changed in this turn and which commit/run/artifact proves it.
-- `Completed`: newly closed capabilities or cleanup tasks.
-- `Current Risks`: new blockers, regressions, or remaining uncertainty.
-- `Next Plan`: the next ordered execution steps.
-- `Validation`: exact commands run and pass/fail results.
+- 实际执行的命令。
+- 通过/失败结果。
+- 失败时的原因和下一步处理。
+- 是否有测试缓存、权限、网络、模型不可用等非业务性警告。
 
-Do not reintroduce competing status documents. If a new design or audit document is needed, link it from this file and keep this file as the entry point.
+## 动态更新规则
+
+每次完成一个计划后，提交前必须更新本文档：
+
+- `最新更新`：本轮做了什么，commit、run id 或产物在哪里。
+- `已完成`：新增关闭的能力、修复或清理项。
+- `当前风险`：新的阻塞、回归、未确认事实。
+- `下一步计划`：下一轮按优先级排列的执行步骤。
+- `验证记录`：实际运行过的命令和结果。
+
+不要再新增与本文档竞争的状态文档。若必须新增设计文档或审计文档，应从本文档链接过去，并保持本文档作为入口。
