@@ -4,7 +4,7 @@ import sys
 
 from src.agents import AgentStatus, AgentTask, BrowserAgent, DeepAnalyzeAgent, FinalAnswerAgent, VerifierAgent
 from src.agents.browser_agent import enrich_records_with_reader, read_pdf_content, read_url_content
-from src.agents.final_answer_agent import normalize_report_headings
+from src.agents.final_answer_agent import insert_missing_sections_from_claims, normalize_report_headings
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator, prepare_dynamic_tasks
 from src.agents.verifier import Verifier
 from src.schemas.claim import ClaimItem
@@ -428,6 +428,33 @@ def test_final_answer_heading_normalization_demotes_section_h1():
     assert "## 执行摘要" in normalized
     assert "## 财务分析" in normalized
     assert "## 风险评估" in normalized
+
+
+def test_final_answer_inserts_missing_claim_sections():
+    markdown = "# Report\n\n## Executive Summary\n\nText\n"
+    claims = [
+        {
+            "claim_id": "cl_fin_stmt",
+            "section_name": "financial_statements",
+            "claim_text": "Revenue was 43.7B.",
+            "evidence_ids": ["ev_fin"],
+            "confidence": 0.8,
+        },
+        {
+            "claim_id": "cl_sens",
+            "section_name": "valuation_sensitivity",
+            "claim_text": "Sensitivity analysis was generated.",
+            "evidence_ids": ["ev_val"],
+            "confidence": 0.7,
+        },
+    ]
+
+    output = insert_missing_sections_from_claims(markdown, claims)
+
+    assert "Revenue was 43.7B." in output
+    assert "Sensitivity analysis was generated." in output
+    assert "ev_fin" in output
+    assert "ev_val" in output
 
 
 def test_browser_reader_enriches_web_search_record(monkeypatch, tmp_path):

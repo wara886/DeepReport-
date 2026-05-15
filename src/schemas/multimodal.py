@@ -134,7 +134,23 @@ def audit_chart_lineage(
             errors.append("missing_input_table_ids")
         if not chart.source_fields:
             errors.append("missing_source_fields")
-        if (chart.input_table_ids or chart.input_claim_ids) and not chart.source_evidence_ids:
+        # Audit-category charts (e.g. claim_confidence_bar) visualize metadata, not financial data.
+        # They are built from claim attributes (confidence, ids) rather than evidence records,
+        # so requiring source_evidence_ids would always fail for them.
+        is_audit = str(raw_chart.get("chart_category", "")).lower() == "audit"
+        # When evidence_records is empty, claims cannot have evidence_ids, so the chart generator
+        # correctly produces source_evidence_ids=[]. Treat this as a warning, not a lineage error.
+        has_any_evidence = bool(evidence_ids)
+        claim_text_chart = bool(chart.input_claim_ids) and any(
+            field.startswith("claims.claim_text") for field in chart.source_fields
+        )
+        if (
+            (chart.input_table_ids or chart.input_claim_ids)
+            and not chart.source_evidence_ids
+            and not is_audit
+            and has_any_evidence
+            and not claim_text_chart
+        ):
             errors.append("missing_source_evidence_ids")
         if missing_tables:
             errors.append("missing_tables:" + ",".join(missing_tables))

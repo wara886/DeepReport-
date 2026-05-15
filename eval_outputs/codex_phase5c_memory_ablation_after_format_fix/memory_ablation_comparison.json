@@ -1,0 +1,110 @@
+{
+  "variant_summaries": {
+    "memory_enabled": {
+      "run_id": "codex_phase5c_memory_ablation_after_format_fix_memory_enabled",
+      "baseline_id": "baseline_5_adjudicator_source_conflict",
+      "case_count": 2,
+      "created_at_unix": 1778841141,
+      "metrics": {
+        "case_count": 2,
+        "task_completion_rate": 1.0,
+        "required_sections_coverage": 1.0,
+        "artifact_generation_pass_rate": 1.0,
+        "verification_pass_rate": 1.0,
+        "claim_count_mean": 12.0,
+        "evidence_count_mean": 8.0,
+        "citation_count_mean": 5.5,
+        "gap_detection_count_mean": 1.5,
+        "gap_resolution_rate_mean": 0.0,
+        "message_count_mean": 31.0,
+        "task_blocked_count_mean": 0.0,
+        "task_resolution_rate_mean": 1.0,
+        "total_latency_sec_sum": 324.3887,
+        "total_latency_sec_mean": 162.1943,
+        "router_decision_count_sum": 3,
+        "dynamic_dispatch_count_sum": 3,
+        "fallback_decision_count_sum": 0,
+        "budget_exceeded_count_sum": 0,
+        "repeated_dispatch_count_sum": 0,
+        "unsupported_gap_fallback_count_sum": 0,
+        "router_stop_reasons": {},
+        "conflict_resolution_count_sum": 0,
+        "adjudication_decision_distribution": {},
+        "citation_support_rate": 1.0,
+        "numeric_audit_pass_rate": 0.9217,
+        "valuation_sanity_pass_rate": 1.0
+      },
+      "outputs": {
+        "eval_summary": "G:\\cord\\DeepReport_plus\\eval_outputs\\codex_phase5c_memory_ablation_after_format_fix_memory_enabled\\eval_summary.json",
+        "per_case_metrics": "G:\\cord\\DeepReport_plus\\eval_outputs\\codex_phase5c_memory_ablation_after_format_fix_memory_enabled\\per_case_metrics.jsonl",
+        "baseline_comparison": "G:\\cord\\DeepReport_plus\\eval_outputs\\codex_phase5c_memory_ablation_after_format_fix_memory_enabled\\baseline_comparison.json",
+        "failure_cases": "G:\\cord\\DeepReport_plus\\eval_outputs\\codex_phase5c_memory_ablation_after_format_fix_memory_enabled\\failure_cases.jsonl"
+      }
+    },
+    "memory_disabled": {
+      "run_id": "codex_phase5c_memory_ablation_after_format_fix_memory_disabled",
+      "baseline_id": "baseline_5_adjudicator_source_conflict",
+      "case_count": 2,
+      "created_at_unix": 1778841403,
+      "metrics": {
+        "case_count": 2,
+        "task_completion_rate": 0.5,
+        "required_sections_coverage": 0.5,
+        "artifact_generation_pass_rate": 0.5,
+        "verification_pass_rate": 0.5,
+        "claim_count_mean": 6.0,
+        "evidence_count_mean": 3.5,
+        "citation_count_mean": 2.5,
+        "gap_detection_count_mean": 0.0,
+        "gap_resolution_rate_mean": 0.5,
+        "message_count_mean": 15.5,
+        "task_blocked_count_mean": 0.0,
+        "task_resolution_rate_mean": 0.5,
+        "total_latency_sec_sum": 261.4043,
+        "total_latency_sec_mean": 130.7022,
+        "router_decision_count_sum": 2,
+        "dynamic_dispatch_count_sum": 2,
+        "fallback_decision_count_sum": 0,
+        "budget_exceeded_count_sum": 0,
+        "repeated_dispatch_count_sum": 0,
+        "unsupported_gap_fallback_count_sum": 0,
+        "router_stop_reasons": {},
+        "conflict_resolution_count_sum": 0,
+        "adjudication_decision_distribution": {},
+        "citation_support_rate": 1.0,
+        "numeric_audit_pass_rate": 0.8889,
+        "valuation_sanity_pass_rate": 1.0
+      },
+      "outputs": {
+        "eval_summary": "G:\\cord\\DeepReport_plus\\eval_outputs\\codex_phase5c_memory_ablation_after_format_fix_memory_disabled\\eval_summary.json",
+        "per_case_metrics": "G:\\cord\\DeepReport_plus\\eval_outputs\\codex_phase5c_memory_ablation_after_format_fix_memory_disabled\\per_case_metrics.jsonl",
+        "baseline_comparison": "G:\\cord\\DeepReport_plus\\eval_outputs\\codex_phase5c_memory_ablation_after_format_fix_memory_disabled\\baseline_comparison.json",
+        "failure_cases": "G:\\cord\\DeepReport_plus\\eval_outputs\\codex_phase5c_memory_ablation_after_format_fix_memory_disabled\\failure_cases.jsonl"
+      }
+    }
+  },
+  "metric_deltas_memory_enabled_minus_disabled": {
+    "verification_pass_rate": 0.5,
+    "task_completion_rate": 0.5,
+    "unsupported_gap_fallback_count_sum": 0.0,
+    "numeric_audit_pass_rate": 0.0328,
+    "citation_support_rate": 0.0,
+    "valuation_sanity_pass_rate": 0.0,
+    "total_latency_sec_mean": 31.4921,
+    "dynamic_dispatch_count_sum": 1.0,
+    "fallback_decision_count_sum": 0.0,
+    "repeated_dispatch_count_sum": 0.0
+  },
+  "benefit_flags": {
+    "reduced_unsupported_fallback": false,
+    "reduced_repeated_dispatch": false,
+    "improved_numeric_audit": true,
+    "improved_citation_support": false,
+    "improved_verification": true
+  },
+  "decision": "memory_has_measurable_benefit",
+  "outputs": {
+    "comparison_json": "G:\\cord\\DeepReport_plus\\eval_outputs\\codex_phase5c_memory_ablation_after_format_fix\\memory_ablation_comparison.json",
+    "comparison_md": "G:\\cord\\DeepReport_plus\\eval_outputs\\codex_phase5c_memory_ablation_after_format_fix\\memory_ablation_comparison.md"
+  }
+}
