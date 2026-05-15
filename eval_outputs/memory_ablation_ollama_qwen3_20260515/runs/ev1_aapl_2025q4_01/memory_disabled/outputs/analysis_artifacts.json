@@ -1,0 +1,947 @@
+{
+  "ratio_rows": [
+    {
+      "sample_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "source_type": "financials",
+      "revenue_billion": 126.3,
+      "revenue_growth_pct": 11.2,
+      "gross_margin_pct": 46.8,
+      "net_margin_pct": 24.6,
+      "roe_pct": 132.4,
+      "roa_pct": 29.7,
+      "operating_cash_flow_billion": 38.1,
+      "free_cash_flow_billion": 31.2
+    },
+    {
+      "sample_id": "AAPL_2025Q4_company_profile_779e1263__paragraph_1_chunk_a09c7d241c",
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "source_type": "company_profile",
+      "revenue_billion": NaN,
+      "revenue_growth_pct": NaN,
+      "gross_margin_pct": NaN,
+      "net_margin_pct": NaN,
+      "roe_pct": NaN,
+      "roa_pct": NaN,
+      "operating_cash_flow_billion": NaN,
+      "free_cash_flow_billion": NaN
+    },
+    {
+      "sample_id": "AAPL_2025Q4_financials_89c98db3__metric_2_chunk_508f5ea25a",
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "source_type": "financials",
+      "revenue_billion": NaN,
+      "revenue_growth_pct": NaN,
+      "gross_margin_pct": NaN,
+      "net_margin_pct": NaN,
+      "roe_pct": NaN,
+      "roa_pct": NaN,
+      "operating_cash_flow_billion": NaN,
+      "free_cash_flow_billion": NaN
+    },
+    {
+      "sample_id": "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "source_type": "financials",
+      "revenue_billion": NaN,
+      "revenue_growth_pct": NaN,
+      "gross_margin_pct": NaN,
+      "net_margin_pct": NaN,
+      "roe_pct": NaN,
+      "roa_pct": NaN,
+      "operating_cash_flow_billion": NaN,
+      "free_cash_flow_billion": NaN
+    },
+    {
+      "sample_id": "AAPL_2025Q4_financials_89c98db3__metric_5_chunk_32b20a3f57",
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "source_type": "financials",
+      "revenue_billion": NaN,
+      "revenue_growth_pct": NaN,
+      "gross_margin_pct": NaN,
+      "net_margin_pct": NaN,
+      "roe_pct": NaN,
+      "roa_pct": NaN,
+      "operating_cash_flow_billion": NaN,
+      "free_cash_flow_billion": NaN
+    },
+    {
+      "sample_id": "AAPL_2025Q4_financials_89c98db3__metric_6_chunk_ed6370830a",
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "source_type": "financials",
+      "revenue_billion": NaN,
+      "revenue_growth_pct": NaN,
+      "gross_margin_pct": NaN,
+      "net_margin_pct": NaN,
+      "roe_pct": NaN,
+      "roa_pct": NaN,
+      "operating_cash_flow_billion": NaN,
+      "free_cash_flow_billion": NaN
+    },
+    {
+      "sample_id": "AAPL_2025Q4_financials_89c98db3__metric_1_chunk_6e61579bac",
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "source_type": "financials",
+      "revenue_billion": NaN,
+      "revenue_growth_pct": NaN,
+      "gross_margin_pct": NaN,
+      "net_margin_pct": NaN,
+      "roe_pct": NaN,
+      "roa_pct": NaN,
+      "operating_cash_flow_billion": NaN,
+      "free_cash_flow_billion": NaN
+    },
+    {
+      "sample_id": "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d",
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "source_type": "financials",
+      "revenue_billion": NaN,
+      "revenue_growth_pct": NaN,
+      "gross_margin_pct": NaN,
+      "net_margin_pct": NaN,
+      "roe_pct": NaN,
+      "roa_pct": NaN,
+      "operating_cash_flow_billion": NaN,
+      "free_cash_flow_billion": NaN
+    }
+  ],
+  "trend_rows": [
+    {
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "evidence_count": 8,
+      "unique_sources": 2,
+      "latest_publish_time": "2026-01-31",
+      "sample_ids": "AAPL_2025Q4_company_profile_779e1263__paragraph_1_chunk_a09c7d241c|AAPL_2025Q4_financials_89c98db3__metric_1_chunk_6e61579bac|AAPL_2025Q4_financials_89c98db3__metric_2_chunk_508f5ea25a|AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169|AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d|AAPL_2025Q4_financials_89c98db3__metric_5_chunk_32b20a3f57|AAPL_2025Q4_financials_89c98db3__metric_6_chunk_ed6370830a|AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+    }
+  ],
+  "statement_view": {
+    "rows": [
+      {
+        "symbol": "AAPL",
+        "period": "2025Q4",
+        "statement": "income_statement",
+        "line_item": "revenue",
+        "value_billion": 126.3,
+        "unit": "USD_billion",
+        "estimated": false,
+        "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+      },
+      {
+        "symbol": "AAPL",
+        "period": "2025Q4",
+        "statement": "income_statement",
+        "line_item": "gross_profit",
+        "value_billion": 59.1084,
+        "unit": "USD_billion",
+        "estimated": true,
+        "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+      },
+      {
+        "symbol": "AAPL",
+        "period": "2025Q4",
+        "statement": "income_statement",
+        "line_item": "net_income",
+        "value_billion": 31.0698,
+        "unit": "USD_billion",
+        "estimated": true,
+        "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+      },
+      {
+        "symbol": "AAPL",
+        "period": "2025Q4",
+        "statement": "cash_flow_statement",
+        "line_item": "operating_cash_flow",
+        "value_billion": 38.1,
+        "unit": "USD_billion",
+        "estimated": false,
+        "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+      },
+      {
+        "symbol": "AAPL",
+        "period": "2025Q4",
+        "statement": "cash_flow_statement",
+        "line_item": "capital_expenditure",
+        "value_billion": 6.9,
+        "unit": "USD_billion",
+        "estimated": true,
+        "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+      },
+      {
+        "symbol": "AAPL",
+        "period": "2025Q4",
+        "statement": "cash_flow_statement",
+        "line_item": "free_cash_flow",
+        "value_billion": 31.2,
+        "unit": "USD_billion",
+        "estimated": false,
+        "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+      },
+      {
+        "symbol": "AAPL",
+        "period": "2025Q4",
+        "statement": "balance_sheet",
+        "line_item": "total_assets",
+        "value_billion": 104.6121,
+        "unit": "USD_billion",
+        "estimated": true,
+        "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+      },
+      {
+        "symbol": "AAPL",
+        "period": "2025Q4",
+        "statement": "balance_sheet",
+        "line_item": "total_liabilities",
+        "value_billion": 81.1455,
+        "unit": "USD_billion",
+        "estimated": true,
+        "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+      },
+      {
+        "symbol": "AAPL",
+        "period": "2025Q4",
+        "statement": "balance_sheet",
+        "line_item": "shareholder_equity",
+        "value_billion": 23.4666,
+        "unit": "USD_billion",
+        "estimated": true,
+        "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+      }
+    ],
+    "coverage": {
+      "statements": {
+        "income_statement": 3,
+        "cash_flow_statement": 3,
+        "balance_sheet": 3
+      },
+      "has_three_statement_view": true,
+      "line_item_count": 9
+    },
+    "source_record_count": 7
+  },
+  "financial_metrics": {
+    "metrics": [
+      {
+        "metric_name": "revenue",
+        "value": 126.3,
+        "unit": "USD_billion",
+        "period": "2025Q4",
+        "source_table_id": "aapl_2025q4_financial_metrics_aapl_2025q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "source_evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "calculation_formula": "reported revenue",
+        "confidence": 0.95,
+        "symbol": "AAPL"
+      },
+      {
+        "metric_name": "gross_margin",
+        "value": 46.8,
+        "unit": "pct",
+        "period": "2025Q4",
+        "source_table_id": "aapl_2025q4_financial_metrics_aapl_2025q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "source_evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "calculation_formula": "reported gross margin",
+        "confidence": 0.95,
+        "symbol": "AAPL"
+      },
+      {
+        "metric_name": "net_income",
+        "value": 31.0698,
+        "unit": "USD_billion",
+        "period": "2025Q4",
+        "source_table_id": "aapl_2025q4_financial_metrics_aapl_2025q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "source_evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "calculation_formula": "revenue_billion * net_margin_pct / 100",
+        "confidence": 0.8,
+        "symbol": "AAPL"
+      },
+      {
+        "metric_name": "free_cash_flow",
+        "value": 31.2,
+        "unit": "USD_billion",
+        "period": "2025Q4",
+        "source_table_id": "aapl_2025q4_financial_metrics_aapl_2025q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "source_evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "calculation_formula": "reported free cash flow",
+        "confidence": 0.95,
+        "symbol": "AAPL"
+      }
+    ],
+    "metric_count": 4,
+    "coverage": {
+      "required_metrics": [
+        "revenue",
+        "net_income",
+        "gross_margin",
+        "free_cash_flow"
+      ],
+      "present_metrics": [
+        "free_cash_flow",
+        "gross_margin",
+        "net_income",
+        "revenue"
+      ],
+      "has_core_metric_lineage": true
+    }
+  },
+  "tables": [
+    {
+      "table_id": "aapl_2025q4_income_statement_aapl_2025q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+      "table_type": "income_statement",
+      "rows": [
+        {
+          "symbol": "AAPL",
+          "period": "2025Q4",
+          "statement": "income_statement",
+          "line_item": "revenue",
+          "value_billion": 126.3,
+          "unit": "USD_billion",
+          "estimated": false,
+          "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+        },
+        {
+          "symbol": "AAPL",
+          "period": "2025Q4",
+          "statement": "income_statement",
+          "line_item": "gross_profit",
+          "value_billion": 59.1084,
+          "unit": "USD_billion",
+          "estimated": true,
+          "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+        },
+        {
+          "symbol": "AAPL",
+          "period": "2025Q4",
+          "statement": "income_statement",
+          "line_item": "net_income",
+          "value_billion": 31.0698,
+          "unit": "USD_billion",
+          "estimated": true,
+          "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+        }
+      ],
+      "columns": [
+        "estimated",
+        "evidence_id",
+        "line_item",
+        "period",
+        "statement",
+        "symbol",
+        "unit",
+        "value_billion"
+      ],
+      "source_evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+      "period": "2025Q4",
+      "currency": "USD",
+      "unit": "billion",
+      "extraction_method": "financial_summary_normalization",
+      "confidence": 0.8,
+      "metadata": {
+        "estimated_rows": [
+          "gross_profit",
+          "net_income"
+        ]
+      }
+    },
+    {
+      "table_id": "aapl_2025q4_cash_flow_statement_aapl_2025q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+      "table_type": "cash_flow_statement",
+      "rows": [
+        {
+          "symbol": "AAPL",
+          "period": "2025Q4",
+          "statement": "cash_flow_statement",
+          "line_item": "operating_cash_flow",
+          "value_billion": 38.1,
+          "unit": "USD_billion",
+          "estimated": false,
+          "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+        },
+        {
+          "symbol": "AAPL",
+          "period": "2025Q4",
+          "statement": "cash_flow_statement",
+          "line_item": "capital_expenditure",
+          "value_billion": 6.9,
+          "unit": "USD_billion",
+          "estimated": true,
+          "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+        },
+        {
+          "symbol": "AAPL",
+          "period": "2025Q4",
+          "statement": "cash_flow_statement",
+          "line_item": "free_cash_flow",
+          "value_billion": 31.2,
+          "unit": "USD_billion",
+          "estimated": false,
+          "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+        }
+      ],
+      "columns": [
+        "estimated",
+        "evidence_id",
+        "line_item",
+        "period",
+        "statement",
+        "symbol",
+        "unit",
+        "value_billion"
+      ],
+      "source_evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+      "period": "2025Q4",
+      "currency": "USD",
+      "unit": "billion",
+      "extraction_method": "financial_summary_normalization",
+      "confidence": 0.8,
+      "metadata": {
+        "estimated_rows": [
+          "capital_expenditure"
+        ]
+      }
+    },
+    {
+      "table_id": "aapl_2025q4_balance_sheet_aapl_2025q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+      "table_type": "balance_sheet",
+      "rows": [
+        {
+          "symbol": "AAPL",
+          "period": "2025Q4",
+          "statement": "balance_sheet",
+          "line_item": "total_assets",
+          "value_billion": 104.6121,
+          "unit": "USD_billion",
+          "estimated": true,
+          "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+        },
+        {
+          "symbol": "AAPL",
+          "period": "2025Q4",
+          "statement": "balance_sheet",
+          "line_item": "total_liabilities",
+          "value_billion": 81.1455,
+          "unit": "USD_billion",
+          "estimated": true,
+          "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+        },
+        {
+          "symbol": "AAPL",
+          "period": "2025Q4",
+          "statement": "balance_sheet",
+          "line_item": "shareholder_equity",
+          "value_billion": 23.4666,
+          "unit": "USD_billion",
+          "estimated": true,
+          "evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+        }
+      ],
+      "columns": [
+        "estimated",
+        "evidence_id",
+        "line_item",
+        "period",
+        "statement",
+        "symbol",
+        "unit",
+        "value_billion"
+      ],
+      "source_evidence_id": "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+      "period": "2025Q4",
+      "currency": "USD",
+      "unit": "billion",
+      "extraction_method": "financial_summary_normalization",
+      "confidence": 0.8,
+      "metadata": {
+        "estimated_rows": [
+          "total_assets",
+          "total_liabilities",
+          "shareholder_equity"
+        ]
+      }
+    }
+  ],
+  "peer_context": {
+    "target_symbol": "AAPL",
+    "target_sector": "Technology",
+    "target_industry": "Consumer Electronics",
+    "peer_rows": [
+      {
+        "symbol": "AAPL",
+        "company_name": "Apple Inc.",
+        "sector": "Technology",
+        "industry": "Consumer Electronics",
+        "is_target": true,
+        "revenue_billion": 126.3,
+        "revenue_growth_pct": 11.2,
+        "gross_margin_pct": 46.8,
+        "net_margin_pct": 24.6,
+        "roe_pct": 132.4,
+        "free_cash_flow_billion": 31.2,
+        "net_income_billion": 31.0698
+      },
+      {
+        "symbol": "MSFT",
+        "company_name": "Microsoft Corporation",
+        "sector": "Technology",
+        "industry": "Software Infrastructure",
+        "is_target": false,
+        "revenue_billion": 72.1,
+        "revenue_growth_pct": 14.8,
+        "gross_margin_pct": 69.2,
+        "net_margin_pct": 36.4,
+        "roe_pct": 41.7,
+        "free_cash_flow_billion": 28.4,
+        "net_income_billion": 26.2444
+      },
+      {
+        "symbol": "NVDA",
+        "company_name": "NVIDIA Corporation",
+        "sector": "Technology",
+        "industry": "Semiconductors",
+        "is_target": false,
+        "revenue_billion": 41.8,
+        "revenue_growth_pct": 38.6,
+        "gross_margin_pct": 74.1,
+        "net_margin_pct": 52.4,
+        "roe_pct": 96.2,
+        "free_cash_flow_billion": 17.3,
+        "net_income_billion": 21.9032
+      }
+    ],
+    "peer_count": 2,
+    "ranking": {
+      "revenue_growth_pct": {
+        "rank": 3,
+        "peer_count": 3,
+        "value": 11.2
+      },
+      "gross_margin_pct": {
+        "rank": 3,
+        "peer_count": 3,
+        "value": 46.8
+      },
+      "net_margin_pct": {
+        "rank": 3,
+        "peer_count": 3,
+        "value": 24.6
+      },
+      "roe_pct": {
+        "rank": 1,
+        "peer_count": 3,
+        "value": 132.4
+      }
+    }
+  },
+  "valuation": {
+    "symbol": "AAPL",
+    "period": "2025Q4",
+    "valuation_available": true,
+    "currency": "USD_billion",
+    "methods": {
+      "pe": {
+        "multiple": 12.2,
+        "value_billion": 379.05
+      },
+      "ps": {
+        "multiple": 4.21,
+        "value_billion": 531.72
+      },
+      "dcf": {
+        "discount_rate": 0.1,
+        "terminal_growth": 0.025,
+        "fcf_growth": 0.112,
+        "value_billion": 611.35
+      }
+    },
+    "blended_equity_value_billion": 507.38,
+    "sensitivity": {
+      "fcf_growth_minus_2pct": 563.75,
+      "fcf_growth_plus_2pct": 662.29,
+      "discount_rate_plus_1pct": 536.48
+    },
+    "market_context": {},
+    "market_gap": {
+      "available": false
+    },
+    "peer_context": {
+      "target_symbol": "AAPL",
+      "target_sector": "Technology",
+      "target_industry": "Consumer Electronics",
+      "peer_rows": [
+        {
+          "symbol": "AAPL",
+          "company_name": "Apple Inc.",
+          "sector": "Technology",
+          "industry": "Consumer Electronics",
+          "is_target": true,
+          "revenue_billion": 126.3,
+          "revenue_growth_pct": 11.2,
+          "gross_margin_pct": 46.8,
+          "net_margin_pct": 24.6,
+          "roe_pct": 132.4,
+          "free_cash_flow_billion": 31.2,
+          "net_income_billion": 31.0698
+        },
+        {
+          "symbol": "MSFT",
+          "company_name": "Microsoft Corporation",
+          "sector": "Technology",
+          "industry": "Software Infrastructure",
+          "is_target": false,
+          "revenue_billion": 72.1,
+          "revenue_growth_pct": 14.8,
+          "gross_margin_pct": 69.2,
+          "net_margin_pct": 36.4,
+          "roe_pct": 41.7,
+          "free_cash_flow_billion": 28.4,
+          "net_income_billion": 26.2444
+        },
+        {
+          "symbol": "NVDA",
+          "company_name": "NVIDIA Corporation",
+          "sector": "Technology",
+          "industry": "Semiconductors",
+          "is_target": false,
+          "revenue_billion": 41.8,
+          "revenue_growth_pct": 38.6,
+          "gross_margin_pct": 74.1,
+          "net_margin_pct": 52.4,
+          "roe_pct": 96.2,
+          "free_cash_flow_billion": 17.3,
+          "net_income_billion": 21.9032
+        }
+      ],
+      "peer_count": 2,
+      "ranking": {
+        "revenue_growth_pct": {
+          "rank": 3,
+          "peer_count": 3,
+          "value": 11.2
+        },
+        "gross_margin_pct": {
+          "rank": 3,
+          "peer_count": 3,
+          "value": 46.8
+        },
+        "net_margin_pct": {
+          "rank": 3,
+          "peer_count": 3,
+          "value": 24.6
+        },
+        "roe_pct": {
+          "rank": 1,
+          "peer_count": 3,
+          "value": 132.4
+        }
+      }
+    },
+    "relative_valuation": {
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "currency": "USD",
+      "unit": "billion",
+      "multiples": {
+        "pe": {
+          "numerator": "equity_value_billion",
+          "denominator": "net_income_billion",
+          "denominator_value": 31.0698,
+          "multiple": 12.2,
+          "equity_value_billion": 379.05,
+          "target_price": null
+        },
+        "ps": {
+          "numerator": "equity_value_billion",
+          "denominator": "revenue_billion",
+          "denominator_value": 126.3,
+          "multiple": 4.21,
+          "equity_value_billion": 531.72,
+          "target_price": null
+        }
+      },
+      "scenario_values": {
+        "bear": 341.15,
+        "base": 455.39,
+        "bull": 584.9
+      }
+    },
+    "dcf_model": {
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "currency": "USD",
+      "unit": "billion",
+      "assumptions": {
+        "base_free_cash_flow_billion": 31.2,
+        "fcf_growth": 0.112,
+        "discount_rate": 0.1,
+        "terminal_growth": 0.025,
+        "forecast_years": 5,
+        "net_debt_billion": 0.0,
+        "shares_outstanding_billion": null
+      },
+      "forecast": [
+        {
+          "year": 1,
+          "free_cash_flow_billion": 34.6944,
+          "present_value_billion": 31.540364
+        },
+        {
+          "year": 2,
+          "free_cash_flow_billion": 38.580173,
+          "present_value_billion": 31.88444
+        },
+        {
+          "year": 3,
+          "free_cash_flow_billion": 42.901152,
+          "present_value_billion": 32.232271
+        },
+        {
+          "year": 4,
+          "free_cash_flow_billion": 47.706081,
+          "present_value_billion": 32.583895
+        },
+        {
+          "year": 5,
+          "free_cash_flow_billion": 53.049162,
+          "present_value_billion": 32.939356
+        }
+      ],
+      "terminal_value_billion": 725.005214,
+      "pv_terminal_value_billion": 450.171197,
+      "enterprise_value_billion": 611.351523,
+      "equity_value_billion": 611.351523,
+      "target_price": null
+    },
+    "valuation_model": {
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "currency": "USD",
+      "unit": "billion",
+      "relative_valuation": {
+        "symbol": "AAPL",
+        "period": "2025Q4",
+        "currency": "USD",
+        "unit": "billion",
+        "multiples": {
+          "pe": {
+            "numerator": "equity_value_billion",
+            "denominator": "net_income_billion",
+            "denominator_value": 31.0698,
+            "multiple": 12.2,
+            "equity_value_billion": 379.05,
+            "target_price": null
+          },
+          "ps": {
+            "numerator": "equity_value_billion",
+            "denominator": "revenue_billion",
+            "denominator_value": 126.3,
+            "multiple": 4.21,
+            "equity_value_billion": 531.72,
+            "target_price": null
+          }
+        },
+        "scenario_values": {
+          "bear": 341.15,
+          "base": 455.39,
+          "bull": 584.9
+        }
+      },
+      "dcf_model": {
+        "symbol": "AAPL",
+        "period": "2025Q4",
+        "currency": "USD",
+        "unit": "billion",
+        "assumptions": {
+          "base_free_cash_flow_billion": 31.2,
+          "fcf_growth": 0.112,
+          "discount_rate": 0.1,
+          "terminal_growth": 0.025,
+          "forecast_years": 5,
+          "net_debt_billion": 0.0,
+          "shares_outstanding_billion": null
+        },
+        "forecast": [
+          {
+            "year": 1,
+            "free_cash_flow_billion": 34.6944,
+            "present_value_billion": 31.540364
+          },
+          {
+            "year": 2,
+            "free_cash_flow_billion": 38.580173,
+            "present_value_billion": 31.88444
+          },
+          {
+            "year": 3,
+            "free_cash_flow_billion": 42.901152,
+            "present_value_billion": 32.232271
+          },
+          {
+            "year": 4,
+            "free_cash_flow_billion": 47.706081,
+            "present_value_billion": 32.583895
+          },
+          {
+            "year": 5,
+            "free_cash_flow_billion": 53.049162,
+            "present_value_billion": 32.939356
+          }
+        ],
+        "terminal_value_billion": 725.005214,
+        "pv_terminal_value_billion": 450.171197,
+        "enterprise_value_billion": 611.351523,
+        "equity_value_billion": 611.351523,
+        "target_price": null
+      },
+      "blended_equity_value_billion": 507.38,
+      "target_price": null
+    },
+    "valuation_assumptions": {
+      "base_free_cash_flow_billion": 31.2,
+      "fcf_growth": 0.112,
+      "discount_rate": 0.1,
+      "terminal_growth": 0.025,
+      "forecast_years": 5,
+      "net_debt_billion": 0.0,
+      "shares_outstanding_billion": null
+    },
+    "valuation_sensitivity": {
+      "scenario_values": {
+        "bear": {
+          "equity_value_billion": 495.28,
+          "target_price": null
+        },
+        "base": {
+          "equity_value_billion": 611.35,
+          "target_price": null
+        },
+        "bull": {
+          "equity_value_billion": 769.37,
+          "target_price": null
+        }
+      },
+      "directional_check": true
+    },
+    "recommendation": "中性观察",
+    "assumptions": [
+      "估值为规则模型生成的第一版相对估值/DCF 区间，不构成投资建议。",
+      "缺少完整股本与实时市值时，输出为企业/股权价值规模估计。"
+    ]
+  },
+  "valuation_model": {
+    "symbol": "AAPL",
+    "period": "2025Q4",
+    "currency": "USD",
+    "unit": "billion",
+    "relative_valuation": {
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "currency": "USD",
+      "unit": "billion",
+      "multiples": {
+        "pe": {
+          "numerator": "equity_value_billion",
+          "denominator": "net_income_billion",
+          "denominator_value": 31.0698,
+          "multiple": 12.2,
+          "equity_value_billion": 379.05,
+          "target_price": null
+        },
+        "ps": {
+          "numerator": "equity_value_billion",
+          "denominator": "revenue_billion",
+          "denominator_value": 126.3,
+          "multiple": 4.21,
+          "equity_value_billion": 531.72,
+          "target_price": null
+        }
+      },
+      "scenario_values": {
+        "bear": 341.15,
+        "base": 455.39,
+        "bull": 584.9
+      }
+    },
+    "dcf_model": {
+      "symbol": "AAPL",
+      "period": "2025Q4",
+      "currency": "USD",
+      "unit": "billion",
+      "assumptions": {
+        "base_free_cash_flow_billion": 31.2,
+        "fcf_growth": 0.112,
+        "discount_rate": 0.1,
+        "terminal_growth": 0.025,
+        "forecast_years": 5,
+        "net_debt_billion": 0.0,
+        "shares_outstanding_billion": null
+      },
+      "forecast": [
+        {
+          "year": 1,
+          "free_cash_flow_billion": 34.6944,
+          "present_value_billion": 31.540364
+        },
+        {
+          "year": 2,
+          "free_cash_flow_billion": 38.580173,
+          "present_value_billion": 31.88444
+        },
+        {
+          "year": 3,
+          "free_cash_flow_billion": 42.901152,
+          "present_value_billion": 32.232271
+        },
+        {
+          "year": 4,
+          "free_cash_flow_billion": 47.706081,
+          "present_value_billion": 32.583895
+        },
+        {
+          "year": 5,
+          "free_cash_flow_billion": 53.049162,
+          "present_value_billion": 32.939356
+        }
+      ],
+      "terminal_value_billion": 725.005214,
+      "pv_terminal_value_billion": 450.171197,
+      "enterprise_value_billion": 611.351523,
+      "equity_value_billion": 611.351523,
+      "target_price": null
+    },
+    "blended_equity_value_billion": 507.38,
+    "target_price": null
+  },
+  "valuation_assumptions": {
+    "base_free_cash_flow_billion": 31.2,
+    "fcf_growth": 0.112,
+    "discount_rate": 0.1,
+    "terminal_growth": 0.025,
+    "forecast_years": 5,
+    "net_debt_billion": 0.0,
+    "shares_outstanding_billion": null
+  },
+  "valuation_sensitivity": {
+    "scenario_values": {
+      "bear": {
+        "equity_value_billion": 495.28,
+        "target_price": null
+      },
+      "base": {
+        "equity_value_billion": 611.35,
+        "target_price": null
+      },
+      "bull": {
+        "equity_value_billion": 769.37,
+        "target_price": null
+      }
+    },
+    "directional_check": true
+  }
+}

@@ -1,0 +1,37 @@
+agent_model:
+  provider: ollama
+  mode: openai_compatible_chat
+  model_name: qwen3:8b
+  model_name_env: OLLAMA_MODEL
+  base_url: http://127.0.0.1:11434/v1
+  base_url_env: OLLAMA_BASE_URL
+  api_key: ollama
+  api_key_env: OLLAMA_API_KEY
+  max_tokens: 4096
+  max_tokens_env: OLLAMA_MAX_TOKENS
+  temperature: 0.2
+  temperature_env: OLLAMA_TEMPERATURE
+  timeout: 180
+  retry: 0
+  extra_body:
+    think: false
+
+writer_backend:
+  mode: template_only
+  common:
+    timeout: 10
+    retry: 1
+    max_tokens: 512
+    temperature: 0.2
+  backends:
+    mock:
+      model_name: mock-writer
+    remote:
+      model_name: ""
+      model_name_env: WRITER_REMOTE_MODEL
+      base_url: ""
+      base_url_env: WRITER_REMOTE_BASE_URL
+      api_key: ""
+      api_key_env: WRITER_REMOTE_API_KEY
+    local_small:
+      model_name: tiny-local

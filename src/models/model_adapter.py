@@ -48,6 +48,7 @@ class ModelAdapter:
         retry: int = 1,
         max_tokens: int = 4096,
         temperature: float = 0.2,
+        extra_body: Dict[str, Any] | None = None,
     ):
         self.provider = provider
         self.model_name = model_name
@@ -57,6 +58,7 @@ class ModelAdapter:
         self.retry = int(max(0, retry))
         self.max_tokens = int(max_tokens)
         self.temperature = float(temperature)
+        self.extra_body = dict(extra_body or {})
 
     @classmethod
     def from_config(
@@ -84,6 +86,7 @@ class ModelAdapter:
             retry=int(section_config.get("retry", 1)),
             max_tokens=int(resolve_config_value(section_config, "max_tokens", 4096)),
             temperature=float(resolve_config_value(section_config, "temperature", 0.2)),
+            extra_body=dict(section_config.get("extra_body", {}) or {}),
         )
 
     @property
@@ -163,6 +166,8 @@ class ModelAdapter:
             payload["tools"] = tools
         if tool_choice:
             payload["tool_choice"] = tool_choice
+        if self.extra_body:
+            payload.update(self.extra_body)
         if extra_body:
             payload.update(extra_body)
 

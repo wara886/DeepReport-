@@ -1,0 +1,181 @@
+{
+  "passed": true,
+  "error_count": 0,
+  "warning_count": 0,
+  "errors": [],
+  "warnings": [],
+  "claim_count": 11,
+  "grounded_claim_count": 7,
+  "expected_symbol": "AAPL",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 3,
+    "chart_text_consistency": {
+      "chart_count": 3,
+      "passed_chart_count": 3,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "title": "关键指标",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "title": "结论置信度",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "title": "证据来源结构",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 3,
+      "results": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "passed": true,
+          "errors": []
+        }
+      ]
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 1,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [],
+    "checks": {
+      "has_relative_valuation": true,
+      "has_dcf_model": true,
+      "has_sensitivity": true
+    }
+  },
+  "llm_used": true,
+  "entity_resolution": {
+    "requested_symbol": "AAPL",
+    "research_topic": "总结AAPL在2025Q4的业务基本面、优势与核心风险",
+    "resolved_symbol": "AAPL",
+    "resolution_source": "topic",
+    "topic_resolution": {
+      "input": "总结AAPL在2025Q4的业务基本面、优势与核心风险",
+      "resolved": true,
+      "symbol": "AAPL",
+      "company_name": "Apple Inc.",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data\\raw\\real_data\\AAPL\\2025Q4\\company_profile.json",
+      "ambiguous": false
+    },
+    "symbol_resolution": {
+      "input": "AAPL",
+      "resolved": true,
+      "symbol": "AAPL",
+      "company_name": "Apple Inc.",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data\\raw\\real_data\\AAPL\\2025Q4\\company_profile.json",
+      "ambiguous": false
+    },
+    "conflict": false
+  },
+  "context_pack_meta": {
+    "claims": {
+      "input_count": 11,
+      "packed_count": 6,
+      "dropped_count": 5,
+      "packed_ids": [
+        "cl_0003",
+        "cl_0004",
+        "cl_0007",
+        "cl_0005",
+        "cl_0001",
+        "cl_0011"
+      ],
+      "dropped_ids": [
+        "cl_0006",
+        "cl_0009",
+        "cl_0008",
+        "cl_0010",
+        "cl_0002"
+      ],
+      "used_chars": 2551,
+      "total_chars": 2600
+    },
+    "evidence": {
+      "input_count": 6,
+      "packed_count": 3,
+      "dropped_count": 3,
+      "packed_ids": [
+        "AAPL_2025Q4_company_profile_779e1263__paragraph_1_chunk_a09c7d241c",
+        "AAPL_2025Q4_financials_89c98db3__metric_1_chunk_6e61579bac",
+        "AAPL_2025Q4_financials_89c98db3__metric_2_chunk_508f5ea25a"
+      ],
+      "dropped_ids": [
+        "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+        "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d",
+        "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70"
+      ],
+      "used_chars": 4778,
+      "total_chars": 5200,
+      "prioritized_evidence_count": 6,
+      "prioritized_dropped_ids": [
+        "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d",
+        "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+        "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d",
+        "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+        "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d",
+        "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+        "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d",
+        "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+        "AAPL_2025Q4_financials_89c98db3__paragraph_1_chunk_00a11c5f70",
+        "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d",
+        "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+        "AAPL_2025Q4_financials_89c98db3__metric_3_chunk_4f83764169",
+        "AAPL_2025Q4_financials_89c98db3__metric_4_chunk_0e21ab2b3d"
+      ]
+    }
+  },
+  "llm_passed": true,
+  "llm_errors": [],
+  "llm_warnings": [],
+  "fix_recommendations": [],
+  "rework_required": false,
+  "evidence_gaps": [],
+  "revision_brief": ""
+}

@@ -1,0 +1,57 @@
+{
+  "session_id": "51fb2bd23da0",
+  "user_intent": "总结AAPL在2025Q4的业务基本面、优势与核心风险",
+  "symbol": "AAPL",
+  "period": "2025Q4",
+  "report_type": "company_stock_report",
+  "hard_constraints": [
+    "Only produce the requested company/stock research report type for this run.",
+    "Every material factual claim must be backed by an explicit evidence_id citation.",
+    "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+    "Keep verifier feedback active during revisions until the final verification passes.",
+    "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+    "覆盖收入、利润率、现金流、风险、市场表现和近期新闻",
+    "所有关键结论必须绑定 evidence_id",
+    "输出 Markdown、HTML、JSON、trace 和验证报告"
+  ],
+  "pinned_facts": [
+    "Target symbol: AAPL",
+    "Target period: 2025Q4",
+    "Report type: company_stock_report"
+  ],
+  "rejected_claims": [],
+  "verifier_feedback": [
+    "llm_errors: Claim_1: Revenue $128B vs evidence_1's $126.3B (1.3% discrepancy)",
+    "llm_errors: Claim_2: iPhone 58% revenue vs evidence_3's 58% (matches but evidence_3 shows $742B vs claim's $742B)",
+    "llm_errors: Claim_3: Gross margin 42.7% vs evidence_4's 46.8% (4.1% discrepancy)",
+    "llm_errors: Claim_4: Net margin 19.1% vs evidence_1's 24.6% (5.5% discrepancy)",
+    "llm_errors: Claim_5: Operating cash flow $285B vs evidence_5's $38.1B (7.5x discrepancy)",
+    "llm_errors: Claim_6: Free cash flow $220B vs evidence_5's $31.2B (7.0x discrepancy)",
+    "llm_errors: Claim_7: Gross margin 42.7% vs evidence_6's 46.8% (4.1% discrepancy)",
+    "llm_errors: Claim_8: Net debt/EBITDA 3.2x vs evidence_11's 3.2x (matches but evidence_11 missing data)",
+    "llm_errors: Claim_9: Free cash flow $31.2B vs evidence_5's $31.2B (matches but units mismatch)",
+    "llm_warnings: Evidence_1 contains conflicting metrics (revenue $126.3B vs claim's $128B)",
+    "llm_warnings: Evidence_5 shows $38.1B operating cash flow vs claim's $285B",
+    "llm_warnings: Evidence_11 references missing data for net debt/EBITDA",
+    "llm_warnings: Evidence_12 shows $31.2B free cash flow vs claim's $220B",
+    "revision_brief: - Fix recommendations: Verify revenue figures in evidence_1 for unit consistency - Fix recommendations: Cross-check operating cash flow figures between evidence_5 and claim_5 - Fix recommendations: Confirm evidence_11 contains complete net debt/EBITDA data - Fix recommendations: Standardize units for all financial metrics across evidence and claims - LLM warnings: Evidence_1 contains conflicting metrics (revenue $126.3B vs claim's $128B) - LLM warnings: Evidence_5 shows $38.1B op"
+  ],
+  "open_questions": [],
+  "turns": [
+    {
+      "role": "user",
+      "content": "总结AAPL在2025Q4的业务基本面、优势与核心风险",
+      "metadata": {
+        "source": "run_request"
+      }
+    },
+    {
+      "role": "system",
+      "content": "[DurableMemory] Historical context only. Do not use this as evidence. Every factual report claim still needs current evidence_id citations. Scope: report_type=company_stock_report, symbol=AAPL, period=2025Q4",
+      "metadata": {
+        "source": "durable_memory"
+      }
+    }
+  ],
+  "context_brief": "[ConversationMemory]\nUser intent:\n- 总结AAPL在2025Q4的业务基本面、优势与核心风险\nRun scope:\n- report_type=company_stock_report\n- symbol=AAPL\n- period=2025Q4\nHard constraints:\n- Only produce the requested company/stock research report type for this run.\n- Every material factual claim must be backed by an explicit evidence_id citation.\n- Do not invent numbers, dates, sources, ratings, or unsupported conclusions.\n- Keep verifier feedback active during revisions until the final verification passes.\n- Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.\n- 覆盖收入、利润率、现金流、风险、市场表现和近期新闻\n- 所有关键结论必须绑定 evidence_id\n- 输出 Markdown、HTML、JSON、trace 和验证报告\nPinned facts:\n- Target symbol: AAPL\n- Target period: 2025Q4\n- Report type: company_stock_report\nVerifier feedback to keep active:\n- llm_errors: Claim_1: Revenue $128B vs evidence_1's $126.3B (1.3% discrepancy)\n- llm_errors: Claim_2: iPhone 58% revenue vs evidence_3's 58% (matches but evidence_3 shows $742B vs claim's $742B)\n- llm_errors: Claim_3: Gross margin 42.7% vs evidence_4's 46.8% (4.1% discrepancy)\n- llm_errors: Claim_4: Net margin 19.1% vs evidence_1's 24.6% (5.5% discrepancy)\n- llm_errors: Claim_5: Operating cash flow $285B vs evidence_5's $38.1B (7.5x discrepancy)\n- llm_errors: Claim_6: Free cash flow $220B vs evidence_5's $31.2B (7.0x discrepancy)\n- llm_errors: Claim_7: Gross margin 42.7% vs evidence_6's 46.8% (4.1% discrepancy)\n- llm_errors: Claim_8: Net debt/EBITDA 3.2x vs evidence_11's 3.2x (matches but evidence_11 missing data)\n- llm_errors: Claim_9: Free cash flow $31.2B vs evidence_5's $31.2B (matches but units mismatch)\n- llm_warnings: Evidence_1 contains conflicting metrics (revenue $126.3B vs claim's $128B)"
+}

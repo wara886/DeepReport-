@@ -19,6 +19,8 @@ G:\cord\DeepReport_plus
 - 主状态文档已改为中文，并把后续维护规则固定为中文。
 - 本次继续补齐 P2：新增 `scripts/run_memory_ablation.py`，可从现有 multi-agent evaluation config 派生 `memory_enabled` / `memory_disabled` 两个 variant，输出 `memory_ablation_comparison.json` 和 `memory_ablation_comparison.md`。
 - 当前 durable memory 已有默认关闭的基础工程能力和可复现 ablation runner；但它仍不是默认开启能力，必须通过质量/延迟门禁后才能进入更宽 smoke 或默认配置。
+- 本轮新增本地 Ollama/qwen3 配置并完成 1 个 AAPL 样本的真实 ablation：`eval_outputs/memory_ablation_ollama_qwen3_20260515/memory_ablation_comparison.json`，结论为 `promote_memory`，但样本数仍太小，不能直接改成默认开启。
+- 本轮真实复跑暴露并修复了 `build_trend_features` 对缺失 `symbol/period/sample_id` 的脆弱路径，避免动态任务拿到非标准 evidence records 时中断整份报告。
 - 已完成 P1 仓库真实能力复核：`scripts/`、`configs/`、`src/agents/`、`src/evaluation/` 中的当前主线能力已经按真实文件重新登记；README 和 AGENTS 用 UTF-8 读取为正常中文，本轮不做编码修复。
 - P2 Memory 正式工程化已完成第二阶段：`src/agents/durable_memory.py` 提供基础存取层，`scripts/run_memory_ablation.py` 提供 enabled/disabled 对照与质量/延迟 guard；开启后只注入“历史上下文提示”，不替代 evidence/citation/verifier 质量门禁。
 
@@ -71,6 +73,14 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
   `eval_outputs/codex_phase5c_memory_ablation_after_format_fix/memory_ablation_comparison.json`。
 - 该产物记录的结论为：
   `memory_has_measurable_benefit`。
+- 本轮本地 Ollama/qwen3 复跑产物：
+  `eval_outputs/memory_ablation_ollama_qwen3_20260515/memory_ablation_comparison.json`。
+- 本轮复跑结论为：
+  `decision=promote_memory`；
+  `verification_pass_rate` 从 `0.0` 到 `1.0`；
+  `contest_checklist_pass_rate_mean` 从 `0.7889` 到 `0.9514`；
+  `numeric_accuracy` 保持 `1.0`；
+  `latency_delta_sec=0.929`。
 
 ## 当前代码与历史产物差异
 
@@ -87,12 +97,14 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 - `scripts/run_multi_agent_eval.py`：调用 `src.evaluation.multi_agent_harness` 的动态多 Agent 评估入口。
 - `scripts/run_memory_ablation.py`：基于现有 multi-agent evaluation config 派生 memory enabled/disabled 对照评估，并生成质量/延迟门禁结论。
 - `configs/model_backends.yaml`、`configs/data_sources.yaml`、`configs/evaluation_multi_agent_react_smoke.yaml`、`configs/evaluation_stage12a.yaml`：当前可见的模型、数据源和评估配置。
+- `configs/model_backends_local_ollama.yaml`：本地 Ollama/qwen3 OpenAI-compatible 模型配置，默认使用 `qwen3:8b`。
+- `configs/evaluation_memory_ablation_ollama.yaml`：本地 qwen3 memory ablation 小样本评估配置。
 - `configs/app.yaml`：已包含 `memory.durable` 开关、根目录、上下文长度和保留条数配置。
 
 ### 当前仓库尚未发现完整实现
 
 - 未发现 `SkillRegistry` 或 `src/skills/` 相关正式实现。
-- 未发现 `configs/model_backends_local.yaml`。
+- 尚未把本地 qwen3 memory 配置推广为默认模型配置。
 
 ### 需要补回或正式工程化
 
@@ -138,8 +150,8 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 ## 当前风险
 
 - 文档中曾经把 memory / SkillRegistry 描述得过于接近“已完整工程化”，但当前仓库代码只能确认 conversation memory 和评估产物。
-- qwen3 canary 与历史 memory ablation 产物已提交；当前仓库现在已有可复跑的 memory ablation runner，但尚未在本轮重新跑真实 qwen3 样本。
-- Durable memory 现在已有默认关闭的基础存取层和 enabled/disabled 质量/延迟 guard；下一步仍需在真实模型样本上验证收益是否稳定，并决定是否扩大 smoke 范围。
+- qwen3 canary 与历史 memory ablation 产物已提交；当前仓库现在已有可复跑的 memory ablation runner，并已完成 1 个本地 qwen3 样本复跑，但样本数太小，仍需扩大到 3-5 个样本确认稳定性。
+- Durable memory 现在已有默认关闭的基础存取层和 enabled/disabled 质量/延迟 guard；当前小样本结论支持进入更宽 smoke，但不支持直接默认开启。
 - SkillRegistry 仍需正式实现和注入策略，不能只靠文档描述。
 - `AGENTS.md` 和部分 `README.md` 在当前 Windows 输出里有 mojibake，后续如果作为 onboarding 文档，需要单独修复编码/内容。
 
@@ -161,7 +173,7 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 
 ### P2：Memory 正式工程化
 
-状态：第二阶段已完成，下一步用真实模型样本复跑 ablation，并把稳定收益再接入 Planner/Router 策略。
+状态：第二阶段已完成，并已完成 1 个本地 qwen3 样本复跑；下一步扩大样本后，再把稳定收益接入 Planner/Router 策略。
 
 1. 已完成：基于 `conversation_memory.py` 增加 `DurableMemoryStore`，写入 working / episodic / domain memory。
 2. 已完成：增加 `memory_enabled`、memory root、上下文长度和保留条数配置；默认关闭，显式开启才影响 prompt。
@@ -169,8 +181,9 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 4. 已完成：增加 durable memory 单测和多 Agent enabled/disabled smoke 测试。
 5. 已完成：新增可复现的 memory enabled/disabled ablation runner：`scripts/run_memory_ablation.py`。
 6. 已完成：runner 输出质量/延迟 guard，比较 verifier、evidence coverage/alignment、chart consistency、contest checklist、numeric audit 和平均耗时。
-7. 待完成：用真实 qwen3/本地模型样本复跑 ablation，确认收益不是 fake model 或历史产物带来的偶然结果。
-8. 待完成：将稳定通过门禁的 memory brief 选择策略进一步接入 Planner/Router，而不是直接默认开启全部历史上下文。
+7. 已完成：用本地 Ollama `qwen3:8b` 跑通 1 个 AAPL 样本的 memory ablation，产物位于 `eval_outputs/memory_ablation_ollama_qwen3_20260515/`。
+8. 待完成：扩大到 3-5 个真实样本复跑，确认收益不是单样本偶然结果。
+9. 待完成：将稳定通过门禁的 memory brief 选择策略进一步接入 Planner/Router，而不是直接默认开启全部历史上下文。
 
 ### P3：SkillRegistry 正式接入
 
@@ -224,7 +237,16 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   `python -m pytest tests/test_durable_memory.py tests/test_priority1_metric_fixes.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_can_persist_durable_memory_without_quality_regression -q`：`12 passed`。
 - P2 第二阶段扩展 smoke 命令：
   `python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_generation_backends.py -q`：`13 passed`。
-- P2 第二阶段验证结论：`scripts/run_memory_ablation.py` 已能生成 memory enabled/disabled 双 variant 配置，并在结果汇总中按 verifier、evidence、chart、contest checklist、numeric audit 和 latency 输出 `promote_memory` / `hold_memory` / `reject_memory` 决策；本轮尚未重跑真实 qwen3 ablation。
+- P2 第二阶段验证结论：`scripts/run_memory_ablation.py` 已能生成 memory enabled/disabled 双 variant 配置，并在结果汇总中按 verifier、evidence、chart、contest checklist、numeric audit 和 latency 输出 `promote_memory` / `hold_memory` / `reject_memory` 决策。
+- 本轮本地 qwen3 连通性验证：
+  `ollama list`：确认存在 `qwen3:8b`；
+  `python` 通过 `ModelAdapter.from_config('configs/model_backends_local_ollama.yaml')` 调用本地 OpenAI-compatible endpoint 成功。
+- 本轮真实 ablation 命令：
+  `python scripts/run_memory_ablation.py --config configs/evaluation_memory_ablation_ollama.yaml --run-id memory_ablation_ollama_qwen3_20260515 --max-samples 1 --latency-tolerance-sec 45`：首次暴露 `build_trend_features` 缺字段 `KeyError: 'symbol'`；修复后复跑成功，输出 `decision=promote_memory`。
+- 本轮真实 ablation 指标：
+  memory disabled：`verification_pass_rate=0.0`、`contest_checklist_pass_rate_mean=0.7889`、`numeric_accuracy=1.0`、`avg_duration_sec=136.575`；
+  memory enabled：`verification_pass_rate=1.0`、`contest_checklist_pass_rate_mean=0.9514`、`numeric_accuracy=1.0`、`avg_duration_sec=137.504`；
+  `latency_delta_sec=0.929`。
 
 以后每次完成计划，都要在这里记录：
 

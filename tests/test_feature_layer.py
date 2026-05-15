@@ -60,6 +60,13 @@ def test_trend_and_peer_features_shape():
     assert set(peer.columns) >= {"symbol", "peer_rank", "avg_trust_weight"}
 
 
+def test_trend_features_tolerate_records_without_manifest_columns():
+    trend = build_trend_features(pd.DataFrame([{"evidence_id": "ev_1", "content": "unstructured note"}]))
+
+    assert trend.iloc[0]["evidence_count"] == 1
+    assert trend.iloc[0]["sample_ids"] == "ev_1"
+
+
 def test_risk_signals_contains_level():
     risk = build_risk_signals(_sample_manifest_df())
     assert set(risk["risk_level"]).issubset({"low", "medium", "high"})

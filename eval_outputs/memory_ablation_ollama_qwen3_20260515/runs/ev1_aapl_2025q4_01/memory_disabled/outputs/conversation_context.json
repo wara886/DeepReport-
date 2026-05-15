@@ -1,0 +1,48 @@
+{
+  "session_id": "51fb2bd23da0",
+  "user_intent": "总结AAPL在2025Q4的业务基本面、优势与核心风险",
+  "symbol": "AAPL",
+  "period": "2025Q4",
+  "report_type": "company_stock_report",
+  "hard_constraints": [
+    "Only produce the requested company/stock research report type for this run.",
+    "Every material factual claim must be backed by an explicit evidence_id citation.",
+    "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+    "Keep verifier feedback active during revisions until the final verification passes.",
+    "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+    "覆盖收入、利润率、现金流、风险、市场表现和近期新闻",
+    "所有关键结论必须绑定 evidence_id",
+    "输出 Markdown、HTML、JSON、trace 和验证报告"
+  ],
+  "pinned_facts": [
+    "Target symbol: AAPL",
+    "Target period: 2025Q4",
+    "Report type: company_stock_report"
+  ],
+  "rejected_claims": [
+    "Revise unsupported numbers, missing citations, and section coverage before finalizing."
+  ],
+  "verifier_feedback": [
+    "errors: Missing required header in report: ## Executive Summary",
+    "fix_recommendations: Update financial statement dates to match available data",
+    "fix_recommendations: Add note about missing equity structure details in company profile",
+    "fix_recommendations: Verify consistency between valuation sensitivity analysis and referenced evidence",
+    "llm_warnings: Evidence ID 11 (Investment Conclusion) references 2025 Q4 data but current financial statements only show 2023 data",
+    "llm_warnings: Equity structure section lacks detailed data - needs additional information",
+    "revision_brief: - Errors: Missing required header in report: ## Executive Summary - Fix recommendations: Update financial statement dates to match available data - Fix recommendations: Add note about missing equity structure details in company profile - Fix recommendations: Verify consistency between valuation sensitivity analysis and referenced evidence - LLM warnings: Evidence ID 11 (Investment Conclusion) references 2025 Q4 data but current financial statements only show 2023 data - LLM warni",
+    "errors: Missing required header in report: ## Risk Assessment",
+    "fix_recommendations: Revise unsupported numbers, missing citations, and section coverage before finalizing.",
+    "revision_brief: - Errors: Missing required header in report: ## Risk Assessment - Fix recommendations: Revise unsupported numbers, missing citations, and section coverage before finalizing."
+  ],
+  "open_questions": [],
+  "turns": [
+    {
+      "role": "user",
+      "content": "总结AAPL在2025Q4的业务基本面、优势与核心风险",
+      "metadata": {
+        "source": "run_request"
+      }
+    }
+  ],
+  "context_brief": "[ConversationMemory]\nUser intent:\n- 总结AAPL在2025Q4的业务基本面、优势与核心风险\nRun scope:\n- report_type=company_stock_report\n- symbol=AAPL\n- period=2025Q4\nHard constraints:\n- Only produce the requested company/stock research report type for this run.\n- Every material factual claim must be backed by an explicit evidence_id citation.\n- Do not invent numbers, dates, sources, ratings, or unsupported conclusions.\n- Keep verifier feedback active during revisions until the final verification passes.\n- Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.\n- 覆盖收入、利润率、现金流、风险、市场表现和近期新闻\n- 所有关键结论必须绑定 evidence_id\n- 输出 Markdown、HTML、JSON、trace 和验证报告\nPinned facts:\n- Target symbol: AAPL\n- Target period: 2025Q4\n- Report type: company_stock_report\nVerifier feedback to keep active:\n- errors: Missing required header in report: ## Executive Summary\n- fix_recommendations: Update financial statement dates to match available data\n- fix_recommendations: Add note about missing equity structure details in company profile\n- fix_recommendations: Verify consistency between valuation sensitivity analysis and referenced evidence\n- llm_warnings: Evidence ID 11 (Investment Conclusion) references 2025 Q4 data but current financial statements only show 2023 data\n- llm_warnings: Equity structure section lacks detailed data - needs additional information\n- revision_brief: - Errors: Missing required header in report: ## Executive Summary - Fix recommendations: Update financial statement dates to match available data - Fix recommendations: Add note about missing equity structure details in company profile - Fix recommendations: Verif\n- errors: Missing required header in report: ## Risk Assessment\n- fix_recommendations: Revise unsupported numbers, missing citations, and section coverage before finalizing.\n- revision_brief: - Errors: Missing required header in report: ## Risk Assessment - Fix recommendations: Revise unsupported numbers, missing citations, and section coverage before finalizing.\nRejected or unsafe claims:\n- Revise unsupported numbers, missing citations, and section coverage before finalizing."
+}

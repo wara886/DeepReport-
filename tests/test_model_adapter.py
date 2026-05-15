@@ -29,6 +29,8 @@ agent_model:
   temperature_env: DEEPSEEK_TEMPERATURE
   timeout: 9
   retry: 0
+  extra_body:
+    think: false
 """.strip(),
         encoding="utf-8",
     )
@@ -55,6 +57,7 @@ agent_model:
     assert adapter.max_tokens == 1234
     assert adapter.temperature == 0.1
     assert adapter.timeout == 9
+    assert adapter.extra_body == {"think": False}
 
 
 def test_model_adapter_missing_key_returns_clear_error():
