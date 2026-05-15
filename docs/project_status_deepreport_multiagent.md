@@ -20,6 +20,7 @@ G:\cord\DeepReport_plus
 - 本次重新校准了 memory / SkillRegistry 的表述：当前仓库中可以确认存在的是 `conversation_memory.py`、多 Agent 基础链路和评估产物；尚未发现 `durable_memory.py`、`SkillRegistry`、`run_memory_ablation.py` 等完整工程化实现文件。
 - 当前 memory ablation 是“已提交的评估产物”，不是“当前仓库内已经完整闭环的 durable memory 工程能力”。
 - 已完成 P1 仓库真实能力复核：`scripts/`、`configs/`、`src/agents/`、`src/evaluation/` 中的当前主线能力已经按真实文件重新登记；README 和 AGENTS 用 UTF-8 读取为正常中文，本轮不做编码修复。
+- P2 Memory 正式工程化已完成第一阶段：新增 `src/agents/durable_memory.py`，通过 `configs/app.yaml` 默认关闭，通过 CLI/Orchestrator 显式开启；开启后只注入“历史上下文提示”，不替代 evidence/citation/verifier 质量门禁。
 
 ## 当前结论
 
@@ -43,6 +44,7 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 - 当前可见链路为：
   `PlanningAgent -> DeepResearcherAgent -> BrowserAgent -> DeepAnalyzeAgent -> FinalAnswerAgent -> VerifierAgent`。
 - `src/agents/conversation_memory.py` 已提供 run-level conversation memory 和上下文压缩能力。
+- `src/agents/durable_memory.py` 已提供文件化 durable memory 存取层，默认关闭，开启后写入 working / episodic / domain 三类 memory 产物。
 - `src/agents/planning_agent.py`、`src/agents/gap_router.py`、`src/evaluation/multi_agent_harness.py` 为后续 Planner/Router 策略接入提供基础。
 
 ### 报告质量修复
@@ -75,6 +77,7 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 ### 当前代码中可以确认存在
 
 - `src/agents/conversation_memory.py`：会话级 memory / context brief。
+- `src/agents/durable_memory.py`：文件化 durable memory store，负责历史 run snapshot、episodic memory、domain memory 和 bounded context brief。
 - `src/agents/multi_agent_orchestrator.py`：多 Agent 编排入口。
 - `src/agents/planning_agent.py`：规划 Agent。
 - `src/agents/gap_router.py`：gap resolution trace 相关能力。
@@ -83,18 +86,17 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 - `scripts/run_multi_agent_demo.py`：当前多 Agent demo 入口，支持 `--execution-mode`、`--fast`、`--retrieval-ranking-mode`、`--engines`。
 - `scripts/run_multi_agent_eval.py`：调用 `src.evaluation.multi_agent_harness` 的动态多 Agent 评估入口。
 - `configs/model_backends.yaml`、`configs/data_sources.yaml`、`configs/evaluation_multi_agent_react_smoke.yaml`、`configs/evaluation_stage12a.yaml`：当前可见的模型、数据源和评估配置。
+- `configs/app.yaml`：已包含 `memory.durable` 开关、根目录、上下文长度和保留条数配置。
 
 ### 当前仓库尚未发现完整实现
 
-- 未发现 `src/agents/durable_memory.py` 或等价 durable memory 存取层。
 - 未发现 `SkillRegistry` 或 `src/skills/` 相关正式实现。
 - 未发现 `scripts/run_memory_ablation.py`。
 - 未发现 `configs/model_backends_local.yaml`。
 
 ### 需要补回或正式工程化
 
-- durable memory 文件化存取、读写策略、摘要选择和过期/限长规则。
-- Planner/Router 读取 memory brief 的明确开关和质量/延迟 guard。
+- 更完整的 memory 选择策略、过期策略和质量/延迟 guard。
 - SkillRegistry 静态 MVP、schema、测试和 Planner/Router prompt 注入。
 - 可复现的 memory enabled/disabled ablation runner。
 - 当前评估产物与未来可复现脚本之间的追溯关系。
@@ -138,7 +140,7 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 
 - 文档中曾经把 memory / SkillRegistry 描述得过于接近“已完整工程化”，但当前仓库代码只能确认 conversation memory 和评估产物。
 - qwen3 canary 与 memory ablation 产物已提交，但缺少当前仓库内可直接复跑的 memory ablation runner。
-- Memory 评估产物显示有质量收益，但正式接入 Planner/Router 前必须加入 latency 和质量 guard。
+- Durable memory 现在已有默认关闭的基础存取层；下一步仍需补充 enabled/disabled ablation runner、latency guard 和更细粒度的质量对照。
 - SkillRegistry 仍需正式实现和注入策略，不能只靠文档描述。
 - `AGENTS.md` 和部分 `README.md` 在当前 Windows 输出里有 mojibake，后续如果作为 onboarding 文档，需要单独修复编码/内容。
 
@@ -160,13 +162,14 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 
 ### P2：Memory 正式工程化
 
-状态：下一轮优先执行。
+状态：第一阶段已完成，下一步继续补 ablation runner 和质量/延迟 guard。
 
-1. 基于 `conversation_memory.py` 实现 durable memory 存取层。
-2. 增加配置开关，例如 `memory_enabled`、memory 路径、上下文长度限制、latency guard。
-3. 接入 `MultiAgentOrchestrator` 的 Planner/Router 上下文选择。
-4. 增加 memory write/load 单元测试和多 Agent smoke 测试。
-5. 补回或实现可复现的 memory enabled/disabled ablation runner。
+1. 已完成：基于 `conversation_memory.py` 增加 `DurableMemoryStore`，写入 working / episodic / domain memory。
+2. 已完成：增加 `memory_enabled`、memory root、上下文长度和保留条数配置；默认关闭，显式开启才影响 prompt。
+3. 已完成：接入 `MultiAgentOrchestrator` 的 planning context brief；brief 明确标注不能作为证据，报告事实仍必须走 evidence/citation/verifier。
+4. 已完成：增加 durable memory 单测和多 Agent enabled/disabled smoke 测试。
+5. 待完成：补回或实现可复现的 memory enabled/disabled ablation runner。
+6. 待完成：增加 latency guard、质量 guard 和 eval summary 中的 memory 对照指标。
 
 ### P3：SkillRegistry 正式接入
 
@@ -205,6 +208,15 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   `Get-Content -Encoding UTF8 README.md`、
   `Get-Content -Encoding UTF8 AGENTS.md`。
 - P1 复核结论：当前主线能力、评估产物和缺失模块已登记到本文档；README/AGENTS 当前 UTF-8 读取正常。
+- P2 第一阶段验证命令：
+  `python -m pytest tests/test_durable_memory.py -q`：`2 passed`。
+- P2 多 Agent 质量保护验证命令：
+  `python -m pytest tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_can_persist_durable_memory_without_quality_regression -q`：`2 passed`。
+- P2 验证结论：默认关闭 memory 时现有动态链路不写 durable memory；显式开启 memory 时报告仍通过 verifier，citation/chart 输出保持有效，并写入 durable memory artifacts。
+- P2 最终门禁命令：
+  `python -m pytest tests/test_durable_memory.py tests/test_priority1_metric_fixes.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_can_persist_durable_memory_without_quality_regression -q`：`12 passed`。
+- P2 扩展 smoke 命令：
+  `python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_generation_backends.py -q`：`13 passed`。
 
 以后每次完成计划，都要在这里记录：
 

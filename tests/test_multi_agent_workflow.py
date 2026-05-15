@@ -351,6 +351,38 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert scorecard["scores"]["numeric_lineage_score"] > 0
     assert "valuation_reproducibility_score" in scorecard["scores"]
     assert summary["company_report_overall_score"] == scorecard["overall_score"]
+    assert summary["durable_memory_enabled"] is False
+    assert not result["durable_memory"]
+
+
+def test_multi_agent_orchestrator_can_persist_durable_memory_without_quality_regression(tmp_path):
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        model=FakeJsonModel(),
+        memory_enabled=True,
+        memory_root=str(tmp_path / "memory"),
+    )
+
+    result = orchestrator.run(
+        research_topic="Analyze AAPL 2025Q4",
+        symbol="AAPL",
+        period="2025Q4",
+        execution_mode="dynamic",
+    )
+
+    summary = json.loads((tmp_path / "outputs" / "run_summary.json").read_text(encoding="utf-8"))
+    trace = [
+        json.loads(line)
+        for line in (tmp_path / "outputs" / "task_trace.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert summary["verification_passed"] is True
+    assert summary["citation_count"] >= 1
+    assert summary["durable_memory_enabled"] is True
+    assert summary["durable_memory"]["working_snapshot"] == result["durable_memory"]
+    assert (tmp_path / "memory" / "domain" / "AAPL.json").exists()
+    assert "DurableMemory" in next(item for item in trace if item["agent"] == "PlanningAgent")["task"]["parameters"]["conversation_brief"]
 
 
 def test_multi_agent_orchestrator_fast_mode_uses_smaller_context(tmp_path):

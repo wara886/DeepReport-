@@ -17,6 +17,7 @@ from src.agents.conversation_memory import (
 )
 from src.agents.deep_analyze_agent import DeepAnalyzeAgent
 from src.agents.deep_researcher_agent import DeepResearcherAgent
+from src.agents.durable_memory import DurableMemoryConfig, DurableMemoryStore
 from src.agents.final_answer_agent import FinalAnswerAgent
 from src.agents.gap_router import build_gap_resolution_trace
 from src.agents.planning_agent import PlanningAgent
@@ -38,6 +39,7 @@ from src.report import (
 )
 from src.search import SearchManager
 from src.tools import build_core_tool_registry
+from src.utils.config import load_config
 from src.utils import MCPManager
 
 
@@ -99,11 +101,27 @@ class MultiAgentOrchestrator:
         raw_data_root: str = "data/raw/real_data",
         model: ModelAdapter | None = None,
         search_manager: SearchManager | None = None,
+        app_config_path: str = "configs/app.yaml",
+        memory_enabled: bool | None = None,
+        memory_root: str | None = None,
+        memory_max_context_chars: int | None = None,
     ):
         self.output_dir = Path(output_dir)
         self.report_dir = Path(report_dir)
         self.config_path = config_path
         self.raw_data_root = raw_data_root
+        self.app_config_path = app_config_path
+        self.memory_config = _load_durable_memory_config(
+            app_config_path=app_config_path,
+            memory_enabled=memory_enabled,
+            memory_root=memory_root,
+            memory_max_context_chars=memory_max_context_chars,
+        )
+        self.durable_memory = DurableMemoryStore(
+            root=self.memory_config.root,
+            max_domain_items=self.memory_config.max_domain_items,
+            max_episodic_items=self.memory_config.max_episodic_items,
+        )
         self.model = model or ModelAdapter.from_config(config_path=config_path)
         self.tool_registry = build_core_tool_registry()
         self.mcp_manager = MCPManager.from_tool_registry(self.tool_registry, namespace="finance")
@@ -186,6 +204,18 @@ class MultiAgentOrchestrator:
             period=period,
         )
         conversation_brief = conversation.context_brief()
+        durable_memory_brief = self._durable_memory_brief(
+            symbol=symbol,
+            period=period,
+            report_type=conversation.report_type,
+        )
+        if durable_memory_brief:
+            conversation.add_turn("system", durable_memory_brief, {"source": "durable_memory"})
+            conversation_brief = _join_context_briefs(
+                conversation.context_brief(),
+                durable_memory_brief,
+                max_chars=self.memory_config.max_context_chars,
+            )
 
         planning_result = self._execute(
             "planning",
@@ -392,6 +422,7 @@ class MultiAgentOrchestrator:
             gap_resolution_trace=gap_resolution_trace,
         )
         scorecard_path = self._write_json("company_report_scorecard.json", scorecard)
+        durable_memory_artifacts: Dict[str, str] = {}
         conversation.add_verifier_feedback(verification_report)
         conversation_brief = conversation.context_brief()
         conversation_path = self._write_json("conversation_context.json", conversation.to_dict())
@@ -425,8 +456,21 @@ class MultiAgentOrchestrator:
             "company_report_overall_score": scorecard["overall_score"],
             "entity_resolution": entity_resolution,
             "conversation_brief_chars": len(conversation_brief),
+            "durable_memory_enabled": self.memory_config.enabled,
             "total_duration_sec": round(time.perf_counter() - run_started_at, 3),
         }
+        if self.memory_config.enabled:
+            durable_memory_artifacts = self.durable_memory.persist_run(
+                state={
+                    "symbol": symbol,
+                    "period": period,
+                    "conversation_context": conversation.to_dict(),
+                    "verification_report": verification_report,
+                    "company_report_scorecard": scorecard,
+                },
+                run_summary=summary,
+            )
+            summary["durable_memory"] = durable_memory_artifacts
         summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
         return {
@@ -451,6 +495,7 @@ class MultiAgentOrchestrator:
             "report_json": str(report_json_path),
             "verification_report": str(verification_path),
             "conversation_context": str(conversation_path),
+            "durable_memory": durable_memory_artifacts.get("working_snapshot", ""),
             "gap_resolution_trace": str(self.output_dir / "gap_resolution_trace.jsonl"),
             "company_report_scorecard": str(scorecard_path),
             "run_summary": str(summary_path),
@@ -488,6 +533,18 @@ class MultiAgentOrchestrator:
             period=period,
         )
         conversation_brief = conversation.context_brief()
+        durable_memory_brief = self._durable_memory_brief(
+            symbol=symbol,
+            period=period,
+            report_type=conversation.report_type,
+        )
+        if durable_memory_brief:
+            conversation.add_turn("system", durable_memory_brief, {"source": "durable_memory"})
+            conversation_brief = _join_context_briefs(
+                conversation.context_brief(),
+                durable_memory_brief,
+                max_chars=self.memory_config.max_context_chars,
+            )
 
         planning_result = self._execute(
             "planning",
@@ -528,6 +585,8 @@ class MultiAgentOrchestrator:
             "gap_resolution_trace": [],
             "conversation_context": conversation.to_dict(),
             "conversation_brief": conversation_brief,
+            "durable_memory_brief": durable_memory_brief,
+            "durable_memory_enabled": self.memory_config.enabled,
             "performance_profile": "fast" if fast else "default",
             "search_engines": search_engines or [],
             "retrieval_ranking_mode": retrieval_ranking_mode,
@@ -602,6 +661,7 @@ class MultiAgentOrchestrator:
             verification_report=state.get("verification_report", {}) if isinstance(state.get("verification_report"), dict) else {},
             gap_resolution_trace=list(state.get("gap_resolution_trace", [])) if isinstance(state.get("gap_resolution_trace"), list) else [],
         )
+        state["company_report_scorecard"] = scorecard
         scorecard_path = self._write_json("company_report_scorecard.json", scorecard)
         conversation_path = self._write_json("conversation_context.json", state.get("conversation_context", {}))
         mcp_manifest_path = self.mcp_manager.export_manifest(self.output_dir / "mcp_manifest.json")
@@ -658,8 +718,16 @@ class MultiAgentOrchestrator:
             "company_report_overall_score": scorecard["overall_score"],
             "entity_resolution": entity_resolution,
             "conversation_brief_chars": len(str(state.get("conversation_brief", ""))),
+            "durable_memory_enabled": self.memory_config.enabled,
             "total_duration_sec": round(time.perf_counter() - run_started_at, 3),
         }
+        durable_memory_artifacts: Dict[str, str] = {}
+        if self.memory_config.enabled:
+            durable_memory_artifacts = self.durable_memory.persist_run(
+                state=state,
+                run_summary=summary,
+            )
+            summary["durable_memory"] = durable_memory_artifacts
         summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
         return {
@@ -684,6 +752,7 @@ class MultiAgentOrchestrator:
             "gap_resolution_trace": str(self.output_dir / "gap_resolution_trace.jsonl"),
             "company_report_scorecard": str(scorecard_path),
             "conversation_context": str(conversation_path),
+            "durable_memory": durable_memory_artifacts.get("working_snapshot", ""),
             "report_md": str(report_md_path),
             "report_html": str(report_html_path),
             "report_json": str(report_json_path),
@@ -739,6 +808,16 @@ class MultiAgentOrchestrator:
         if result.status != AgentStatus.COMPLETED:
             raise RuntimeError(f"{agent.name} failed: {result.error}")
         return result
+
+    def _durable_memory_brief(self, symbol: str, period: str, report_type: str = "company_stock_report") -> str:
+        if not self.memory_config.enabled:
+            return ""
+        return self.durable_memory.build_context_brief(
+            symbol=symbol,
+            period=period,
+            report_type=report_type,
+            max_chars=self.memory_config.max_context_chars,
+        )
 
     def _run_verifier_rework_loop(self, state: Dict[str, Any]) -> None:
         profile = FAST_PROFILE if state.get("performance_profile") == "fast" else DEFAULT_PROFILE
@@ -1264,3 +1343,38 @@ def _resolve_run_symbol(research_topic: str, symbol: str, raw_data_root: str) ->
 
     identity = _resolve_run_identity(research_topic=research_topic, symbol=symbol, raw_data_root=raw_data_root)
     return str(identity.get("resolved_symbol") or "AAPL").upper()
+
+
+def _load_durable_memory_config(
+    app_config_path: str,
+    memory_enabled: bool | None = None,
+    memory_root: str | None = None,
+    memory_max_context_chars: int | None = None,
+) -> DurableMemoryConfig:
+    payload: Dict[str, Any] = {}
+    try:
+        payload = load_config(app_config_path)
+    except FileNotFoundError:
+        payload = {}
+    memory = payload.get("memory", {}) if isinstance(payload.get("memory"), dict) else {}
+    durable = memory.get("durable", {}) if isinstance(memory.get("durable"), dict) else {}
+    return DurableMemoryConfig(
+        enabled=bool(durable.get("enabled", False) if memory_enabled is None else memory_enabled),
+        root=str(durable.get("root", "memory") if memory_root is None else memory_root),
+        max_context_chars=int(
+            durable.get("max_context_chars", 1600)
+            if memory_max_context_chars is None
+            else memory_max_context_chars
+        ),
+        max_domain_items=int(durable.get("max_domain_items", 12) or 12),
+        max_episodic_items=int(durable.get("max_episodic_items", 6) or 6),
+    )
+
+
+def _join_context_briefs(primary: str, secondary: str, max_chars: int) -> str:
+    if not secondary:
+        return primary
+    text = f"{primary}\n\n{secondary}" if primary else secondary
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 18].rstrip() + "\n...[compressed]"

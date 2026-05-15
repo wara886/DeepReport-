@@ -11,3 +11,10 @@ paths:
   output_root: data/outputs
   report_root: data/reports
 
+memory:
+  durable:
+    enabled: false
+    root: memory
+    max_context_chars: 1600
+    max_domain_items: 12
+    max_episodic_items: 6

@@ -124,6 +124,8 @@ def _run_case_variant(
         raw_data_root=raw_data_root,
         model=model,
         search_manager=search_manager,
+        memory_enabled=bool(variant.get("memory_enabled", False)),
+        memory_root=str(variant.get("memory_root", case_root / "memory")),
     )
     orchestrator.run(
         research_topic=case.query,

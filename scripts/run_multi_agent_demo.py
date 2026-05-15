@@ -20,11 +20,14 @@ def main() -> int:
     parser.add_argument("--symbol", default="AAPL")
     parser.add_argument("--period", default="2025Q4")
     parser.add_argument("--config-path", default="configs/model_backends.yaml")
+    parser.add_argument("--app-config-path", default="configs/app.yaml")
     parser.add_argument("--raw-data-root", default="data/raw/real_data")
     parser.add_argument("--output-dir", default="data/outputs/multi_agent")
     parser.add_argument("--report-dir", default="data/reports/multi_agent")
     parser.add_argument("--execution-mode", default="dynamic", choices=["dynamic", "static"])
     parser.add_argument("--fast", action="store_true", help="Reduce search/context size and skip optional LLM extraction.")
+    parser.add_argument("--memory-enabled", action="store_true", help="Inject durable memory context and persist run memory artifacts.")
+    parser.add_argument("--memory-root", default="", help="Override durable memory root. Defaults to configs/app.yaml.")
     parser.add_argument(
         "--retrieval-ranking-mode",
         default="hybrid_rerank",
@@ -43,6 +46,9 @@ def main() -> int:
         report_dir=args.report_dir,
         config_path=args.config_path,
         raw_data_root=args.raw_data_root,
+        app_config_path=args.app_config_path,
+        memory_enabled=True if args.memory_enabled else None,
+        memory_root=args.memory_root or None,
     )
     result = orchestrator.run(
         research_topic=args.topic,

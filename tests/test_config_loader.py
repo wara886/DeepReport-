@@ -7,3 +7,11 @@ def test_load_local_debug_yaml():
     assert config["generation"]["backend"] == "mock"
     assert config["project"]["name"] == "open-deepreport-plus"
 
+
+def test_app_yaml_contains_durable_memory_defaults():
+    config = load_config("configs/app.yaml")
+    durable = config["memory"]["durable"]
+    assert durable["enabled"] is False
+    assert durable["root"] == "memory"
+    assert durable["max_context_chars"] > 0
+
