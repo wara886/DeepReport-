@@ -1,111 +1,137 @@
-# DeepReport++ 金融多智能体项目状态
+# DeepReport++ Project Status and Execution Plan
 
-更新日期：2026-05-15
+Updated: 2026-05-15
 
-## 当前结论
+This is the single source of truth for the current DeepReport++ task status, codebase map, cleanup state, validation record, and next execution plan. Future work must update this document after each completed plan.
 
-DeepReport++ 当前主线是金融多智能体研报系统的质量闭环、durable memory 证明、SkillRegistry 接入，以及天池三类研报交付准备。
+## Latest Update
 
-当前事实来源以这些文件和产物为准：
+- Remote `origin/main` is aligned at `ff44ec4 Stabilize report gates and memory ablation`.
+- The active project root is the repository root. The old nested `DeepReport_plus/` tree is a migration remnant and is no longer a source of truth.
+- The previous root-vs-`DeepReport_plus` autostash conflict has been resolved by keeping root `HEAD/main` files and removing the migrated nested project files.
+- `docs/current_status.md` has been folded into this document and removed.
+- Historical review, experiment, and Stage 12 recap documents are removed from the active docs set. Current reference/contract docs remain in `docs/`.
+- Cleanup validation passed on the targeted report-format tests and the wider config/schema/generation smoke tests.
 
-- `docs/current_status.md`
-- `docs/fixed.md`
-- `docs/financial_deepreport_multiagent_upgrade_spec.md`
-- `eval_outputs/codex_phase5b_qwen3_after_format_fix/eval_summary.json`
-- `eval_outputs/codex_phase5c_memory_smoke_after_fix/eval_summary.json`
+## Completed
 
-旧 Stage12 文档、重复总结和历史审计类文档已归档到 `docs/archive/2026-05-15/`，不再作为当前计划依据。
+### Core pipeline
 
-## 最新评估事实
+- Stage -1 through Stage 10 scaffolding exists at the repository root.
+- The claim-first path is available through `src/app/main.py`, `src/app/pipeline.py`, and `src/agents/orchestrator.py`.
+- Markdown, HTML, JSON, chart, citation, verification, and report export components are present.
+- Generation backends are abstracted under `src/generation` with mock, local-small, and remote-oriented implementations.
 
-### Phase 5B 本地 qwen3 canary
+### Multi-agent workflow
 
-产物：`eval_outputs/codex_phase5b_qwen3_after_format_fix/eval_summary.json`
+- The current multi-agent path is orchestrated by `src/agents/multi_agent_orchestrator.py`.
+- The visible agent chain is:
+  `PlanningAgent -> DeepResearcherAgent -> BrowserAgent -> DeepAnalyzeAgent -> FinalAnswerAgent -> VerifierAgent`.
+- Tooling and data connectors are represented through `src/tools`, `src/search`, `src/data`, `src/retrieval`, and `src/models`.
+- `FinalAnswerAgent` now performs deterministic report heading normalization and inserts missing company-report sections when supported claims exist.
 
-- 本地模型：Ollama `qwen3:8b`
-- case：JPM 与 600519.SS valuation-gap cases
-- `task_completion_rate=1.0`
-- `required_sections_coverage=1.0`
-- `verification_pass_rate=1.0`
-- `citation_support_rate=1.0`
-- `numeric_audit_pass_rate=0.9373`
-- `valuation_sanity_pass_rate=1.0`
-- `unsupported_gap_fallback_count_sum=0`
-- `failure_cases.jsonl` 为空
+### Evaluation and quality gates
 
-说明：重跑命令触发外层 shell timeout，但 `eval_summary.json`、`per_case_metrics.jsonl` 和空 failure file 已完整落盘，按产物判断该轮完成且通过。
+- Local qwen3 canary output:
+  `eval_outputs/codex_phase5b_qwen3_after_format_fix/eval_summary.json`.
+- Latest qwen3 canary passed with:
+  `task_completion_rate=1.0`, `required_sections_coverage=1.0`, `verification_pass_rate=1.0`, `citation_support_rate=1.0`, `numeric_audit_pass_rate=0.9373`, `valuation_sanity_pass_rate=1.0`.
+- Full memory ablation output:
+  `eval_outputs/codex_phase5c_memory_ablation_after_format_fix/memory_ablation_comparison.json`.
+- Full memory ablation decision:
+  `memory_has_measurable_benefit`.
+- Memory-enabled run:
+  `verification_pass_rate=1.0`, `task_completion_rate=1.0`, `numeric_audit_pass_rate=0.9217`, `citation_support_rate=1.0`.
+- Memory-disabled run:
+  `verification_pass_rate=0.5`, `task_completion_rate=0.5`, `numeric_audit_pass_rate=0.8889`, `citation_support_rate=1.0`.
 
-### 本轮修复
+## Repository Code Map
 
-- `FinalAnswerAgent` 增加确定性章节补齐：当 claim 存在但本地模型漏写或改写章节标题时，自动插入对应公司研报章节，并再次做 heading normalization。
-- 图表 lineage 放宽 claim-text 派生图表：能追到 `input_claim_ids` 即可通过 multimodal lineage；证据缺口仍由 citation/evidence audit 负责。
-- NumericAudit 已支持合法 0 值 count 类指标，例如 `core_peer_count=0`。
-- 关键单元测试已通过：Phase 5B audits、memory loader、memory ablation、SkillRegistry、Priority1 metric fixes、最终报告章节补齐。
+- `configs/`: runtime configuration, model backend settings, data source settings, evaluation settings.
+- `scripts/`: local smoke scripts, evaluation runners, UI/server launchers, cloud upload/download helpers.
+- `src/app/`: CLI and pipeline entrypoints.
+- `src/agents/`: rule-based and model-backed agents, multi-agent orchestration, final answer generation, verification, memory/context helpers.
+- `src/data/`: fetchers, normalization, manifests, company identity and source quality helpers.
+- `src/features/`: financial ratios, statements, trend analysis, peer comparison, risk signals, valuation, metric lineage.
+- `src/retrieval/`: evidence store, BM25, optional Chroma/local RAG, retrieval facade, FAISS placeholder.
+- `src/generation/`: backend abstraction and writer/rewriter model access.
+- `src/evaluation/`: eval harnesses, numeric/citation/multimodal audits, scorecards, diagnostic reports.
+- `src/report/`: citation artifacts, chart generation, chart consistency, compliance disclosure, HTML polish.
+- `src/templates/`: report outlines, Markdown/HTML templates, exporter.
+- `src/schemas/`: Evidence, Claim, Chart, Report, Task, multimodal, and table contracts.
+- `tests/`: unit, integration, smoke, and regression tests for the active root project.
+- `eval_outputs/`: committed canary and ablation artifacts used as current quality evidence.
 
-### Phase 5C memory ablation smoke
+## Active Documentation
 
-产物：`eval_outputs/codex_phase5c_memory_ablation_after_format_fix_smoke/memory_ablation_comparison.json`
+Keep these as active reference or contract documents:
 
-- 范围：1-case 本地 qwen3 enabled/disabled smoke。
-- 两个 variant 都完成产物落盘，但 `verification_pass_rate=0.0`，不能标记为 memory promotion 完成。
-- memory enabled 相比 disabled 的信号：`numeric_audit_pass_rate` 从 `0.5714` 提升到 `0.8889`，`citation_support_rate=1.0`，且 `unsupported_gap_fallback_count_sum=0`。
-- 风险：memory enabled 延迟更高，且 LLM verifier 仍给出估值引用、重复章节、期间不一致等错误。
-- 当前判断：memory 有质量信号，但还需要完整 2-case ablation 与 verifier 稳定性修复后再接入 Planner/Router 策略。
+- `docs/project_status_deepreport_multiagent.md`: current status and next plan.
+- `docs/deepreport_repo_audit.md`: upstream DeepReport audit.
+- `docs/deepreport_skeleton_mapping.md`: DeepReport-to-DeepReport++ skeleton mapping.
+- `docs/deepreport_reference_architecture.md`: reference architecture summary.
+- `docs/real_data_contract.md`: real-data contract.
+- `docs/cloud_training.md` and `docs/cloud_readiness.md`: cloud training/readiness references.
+- `docs/company_agent_architecture.md`, `docs/company_stock_report_depth_plan.md`, `docs/financial_multi_agent_detailed_guide.md`: still-useful product and architecture notes.
 
-### Phase 5C full memory ablation
+Removed from the active docs set:
 
-产物：`eval_outputs/codex_phase5c_memory_ablation_after_format_fix/memory_ablation_comparison.json`
+- `docs/current_status.md`, because its current facts are now folded into this document.
+- Review backfill, grounding-rule experiment, Stage 12 judgement, writer-backend recap, acceptance-report, and regression-guide documents, because they are historical notes and should not compete with this document.
+- Root `CODEX_RUNBOOK.md` and `Open_DeepReportpp_Stage12_Local_Plan.md`, because their useful current facts are represented here or in the active source-of-truth docs.
 
-- 范围：2-case 本地 qwen3 enabled/disabled ablation。
-- 结论：`decision=memory_has_measurable_benefit`。
-- memory enabled：`verification_pass_rate=1.0`、`task_completion_rate=1.0`、`numeric_audit_pass_rate=0.9217`、`citation_support_rate=1.0`、`unsupported_gap_fallback_count_sum=0`。
-- memory disabled：`verification_pass_rate=0.5`、`task_completion_rate=0.5`、`numeric_audit_pass_rate=0.8889`、`citation_support_rate=1.0`、`unsupported_gap_fallback_count_sum=0`。
-- delta：verification +0.5、task completion +0.5、numeric audit +0.0328；代价是平均延迟约 +31.5 秒。
-- 当前判断：memory 可以进入下一轮 Planner/Router context selection，但必须保留 latency 和 quality guard。
+## Current Risks
 
-## 已具备能力
+- Memory has measurable quality benefit, but it adds latency. Planner/Router promotion must keep latency visible and guarded.
+- SkillRegistry is tested as a static MVP, but it is not yet dynamically injected into Planner/Router prompts.
+- NumericAudit is above the current canary target but still has edge cases around derived/model/peer metrics.
+- Competition packaging and Tianchi-style delivery are not yet revalidated after the latest memory and formatting fixes.
+- `AGENTS.md` and parts of `README.md` currently display mojibake in this Windows environment; they should be repaired in a future documentation pass if they remain active onboarding documents.
 
-- RequestUnderstandingAgent、PlanningAgent、DeepResearcherAgent、BrowserAgent、DeepAnalyzeAgent、RiskAgent、PeerComparisonAgent、ValuationAgent、AdjudicatorAgent、FinalAnswerAgent、VerifierAgent、IndustryResearchAgent、MacroResearchAgent 已具备最小链路能力。
-- DynamicRouter、BudgetGuard、TaskBoard、AgentMessage、Blackboard 已输出可审计 artifacts。
-- durable memory 已写入 `memory/working/<run_id>/`、`memory/episodic/`、`memory/domain/`。
-- `scripts/run_memory_ablation.py` 已可做 memory enabled/disabled 对照。
-- SkillRegistry MVP 已包含四个 roadmap skills：`valuation_method_selection`、`numeric_consistency_audit`、`citation_support_audit`、`gap_routing`。
+## Next Plan
 
-## 当前风险
+1. Promote durable memory into Planner/Router context selection behind explicit quality and latency guards.
+2. Inject selected SkillRegistry summaries into Planner/Router while tracking unsupported fallback counts.
+3. Rerun the same local qwen3 canary and memory ablation after the Planner/Router integration.
+4. Rerun competition packaging with `configs/model_backends_local.yaml` or the current local equivalent.
+5. Inspect generated company, industry, macro reports and package artifacts before marking delivery complete.
 
-1. Memory 已有写入、读取和 ablation runner；完整 2-case ablation 已证明质量收益，但延迟更高，接入 Planner/Router 时需要 guard。
-2. SkillRegistry 仍是静态 MVP，尚未动态注入 Planner/Router。
-3. 天池三类报告能生成不等于质量交付完成；仍需重跑 `scripts/run_competition.py` 并检查 company/industry/macro docx、`results.zip` 和质量门禁。
-4. qwen3 本地 canary 已通过，但端到端比赛 run 仍可能受检索质量、公开来源稀疏和模型耗时影响。
+## Validation
 
-## 下一步执行顺序
-
-### P0：Memory 证明
-
-1. 将 memory brief 选择性接入 Planner/Router context selection。
-2. 保留 verification、numeric audit、unsupported fallback、latency guard。
-3. 接入后重跑同一组 ablation，确认收益没有退化。
-
-### P1：SkillRegistry 接入
-
-1. 保持静态 registry 测试通过。
-2. 让 Planner/Router 选择性读取 skill 摘要。
-3. 增加 eval-visible 指标，确认没有增加 unsupported fallback。
-
-### P2：天池交付闭环
-
-1. 使用 `configs/model_backends_local.yaml` 重跑三类报告。
-2. 检查三份 `.docx`、`results.zip`、run summary、verification、multimodal consistency。
-3. 若公司报告或图文一致性失败，先修质量，不标记交付完成。
-
-## 常用命令
+Latest validation after this cleanup:
 
 ```powershell
-python -m pytest tests/test_phase5b_audits.py tests/test_memory_loader.py tests/test_memory_ablation.py tests/test_skill_registry.py tests/test_priority1_metric_fixes.py -q
-
-python scripts/run_eval_baseline.py --baseline baseline_5_adjudicator_source_conflict --cases eval/cases/phase5a_valuation_gap_cases.jsonl --run-id codex_phase5b_qwen3_after_format_fix --execution-mode dynamic_multiagent --fast
-
-python scripts/run_memory_ablation.py --run-id codex_phase5c_memory_ablation_after_format_fix
-
-python scripts/run_competition.py --config configs/model_backends_local.yaml --output-dir eval_outputs/competition_local_open_model --fast
+git ls-files -u
+python -m pytest tests/test_priority1_metric_fixes.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections -q
+python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_generation_backends.py -q
 ```
+
+Result:
+
+- `git ls-files -u`: no output, so no unmerged paths remain.
+- Targeted tests: `8 passed`.
+- Wider smoke tests: `12 passed`.
+- Pytest emitted cache write warnings for `G:\cord\.pytest_cache`, caused by local Windows permissions; tests passed.
+
+Required validation after any future plan:
+
+```powershell
+git ls-files -u
+git status --short
+python -m pytest tests/test_priority1_metric_fixes.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections -q
+python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_generation_backends.py -q
+```
+
+Record the exact command results in this section after every completed plan.
+
+## Dynamic Update Rule
+
+After each completed plan, update this file before committing:
+
+- `Latest Update`: what changed in this turn and which commit/run/artifact proves it.
+- `Completed`: newly closed capabilities or cleanup tasks.
+- `Current Risks`: new blockers, regressions, or remaining uncertainty.
+- `Next Plan`: the next ordered execution steps.
+- `Validation`: exact commands run and pass/fail results.
+
+Do not reintroduce competing status documents. If a new design or audit document is needed, link it from this file and keep this file as the entry point.
