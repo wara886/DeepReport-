@@ -15,18 +15,18 @@ G:\cord\DeepReport_plus
 ## 最新更新
 
 - 当前仓库是从 GitHub `origin/main` 干净 clone 到 `G:\cord\DeepReport_plus` 的项目。
-- 当前 HEAD：`4b8f0c7 Document project status and clean migrated leftovers`。
+- 本轮开始基线：`7ddf800 Add guarded durable memory foundation`。
 - 主状态文档已改为中文，并把后续维护规则固定为中文。
-- 本次重新校准了 memory / SkillRegistry 的表述：当前仓库中可以确认存在的是 `conversation_memory.py`、多 Agent 基础链路和评估产物；尚未发现 `durable_memory.py`、`SkillRegistry`、`run_memory_ablation.py` 等完整工程化实现文件。
-- 当前 memory ablation 是“已提交的评估产物”，不是“当前仓库内已经完整闭环的 durable memory 工程能力”。
+- 本次继续补齐 P2：新增 `scripts/run_memory_ablation.py`，可从现有 multi-agent evaluation config 派生 `memory_enabled` / `memory_disabled` 两个 variant，输出 `memory_ablation_comparison.json` 和 `memory_ablation_comparison.md`。
+- 当前 durable memory 已有默认关闭的基础工程能力和可复现 ablation runner；但它仍不是默认开启能力，必须通过质量/延迟门禁后才能进入更宽 smoke 或默认配置。
 - 已完成 P1 仓库真实能力复核：`scripts/`、`configs/`、`src/agents/`、`src/evaluation/` 中的当前主线能力已经按真实文件重新登记；README 和 AGENTS 用 UTF-8 读取为正常中文，本轮不做编码修复。
-- P2 Memory 正式工程化已完成第一阶段：新增 `src/agents/durable_memory.py`，通过 `configs/app.yaml` 默认关闭，通过 CLI/Orchestrator 显式开启；开启后只注入“历史上下文提示”，不替代 evidence/citation/verifier 质量门禁。
+- P2 Memory 正式工程化已完成第二阶段：`src/agents/durable_memory.py` 提供基础存取层，`scripts/run_memory_ablation.py` 提供 enabled/disabled 对照与质量/延迟 guard；开启后只注入“历史上下文提示”，不替代 evidence/citation/verifier 质量门禁。
 
 ## 当前结论
 
 DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 报告生成工程。项目已经具备基础报告流水线、多 Agent 骨架、报告格式修复、图表 lineage 校验和一批已提交评估产物。
 
-但从当前仓库代码看，下一步不应直接宣称 memory / SkillRegistry 已接入 Planner/Router，而应先补齐这两类能力的正式工程实现、测试和可复现实验脚本。
+但从当前仓库代码看，下一步仍不应直接宣称 memory / SkillRegistry 已全面接入 Planner/Router。Memory 已进入“默认关闭、可复现实验、受门禁控制”的工程阶段；SkillRegistry 仍需要正式实现、测试和注入策略。
 
 ## 已完成
 
@@ -85,20 +85,19 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 - `eval_outputs/`：已提交的 qwen3 canary 和 memory ablation 结果文件。
 - `scripts/run_multi_agent_demo.py`：当前多 Agent demo 入口，支持 `--execution-mode`、`--fast`、`--retrieval-ranking-mode`、`--engines`。
 - `scripts/run_multi_agent_eval.py`：调用 `src.evaluation.multi_agent_harness` 的动态多 Agent 评估入口。
+- `scripts/run_memory_ablation.py`：基于现有 multi-agent evaluation config 派生 memory enabled/disabled 对照评估，并生成质量/延迟门禁结论。
 - `configs/model_backends.yaml`、`configs/data_sources.yaml`、`configs/evaluation_multi_agent_react_smoke.yaml`、`configs/evaluation_stage12a.yaml`：当前可见的模型、数据源和评估配置。
 - `configs/app.yaml`：已包含 `memory.durable` 开关、根目录、上下文长度和保留条数配置。
 
 ### 当前仓库尚未发现完整实现
 
 - 未发现 `SkillRegistry` 或 `src/skills/` 相关正式实现。
-- 未发现 `scripts/run_memory_ablation.py`。
 - 未发现 `configs/model_backends_local.yaml`。
 
 ### 需要补回或正式工程化
 
-- 更完整的 memory 选择策略、过期策略和质量/延迟 guard。
+- 更完整的 memory 选择策略、过期策略，以及在真实 qwen3/本地模型样本上的质量/延迟 guard 复跑。
 - SkillRegistry 静态 MVP、schema、测试和 Planner/Router prompt 注入。
-- 可复现的 memory enabled/disabled ablation runner。
 - 当前评估产物与未来可复现脚本之间的追溯关系。
 
 ## 仓库代码结构
@@ -139,8 +138,8 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 ## 当前风险
 
 - 文档中曾经把 memory / SkillRegistry 描述得过于接近“已完整工程化”，但当前仓库代码只能确认 conversation memory 和评估产物。
-- qwen3 canary 与 memory ablation 产物已提交，但缺少当前仓库内可直接复跑的 memory ablation runner。
-- Durable memory 现在已有默认关闭的基础存取层；下一步仍需补充 enabled/disabled ablation runner、latency guard 和更细粒度的质量对照。
+- qwen3 canary 与历史 memory ablation 产物已提交；当前仓库现在已有可复跑的 memory ablation runner，但尚未在本轮重新跑真实 qwen3 样本。
+- Durable memory 现在已有默认关闭的基础存取层和 enabled/disabled 质量/延迟 guard；下一步仍需在真实模型样本上验证收益是否稳定，并决定是否扩大 smoke 范围。
 - SkillRegistry 仍需正式实现和注入策略，不能只靠文档描述。
 - `AGENTS.md` 和部分 `README.md` 在当前 Windows 输出里有 mojibake，后续如果作为 onboarding 文档，需要单独修复编码/内容。
 
@@ -162,14 +161,16 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 
 ### P2：Memory 正式工程化
 
-状态：第一阶段已完成，下一步继续补 ablation runner 和质量/延迟 guard。
+状态：第二阶段已完成，下一步用真实模型样本复跑 ablation，并把稳定收益再接入 Planner/Router 策略。
 
 1. 已完成：基于 `conversation_memory.py` 增加 `DurableMemoryStore`，写入 working / episodic / domain memory。
 2. 已完成：增加 `memory_enabled`、memory root、上下文长度和保留条数配置；默认关闭，显式开启才影响 prompt。
 3. 已完成：接入 `MultiAgentOrchestrator` 的 planning context brief；brief 明确标注不能作为证据，报告事实仍必须走 evidence/citation/verifier。
 4. 已完成：增加 durable memory 单测和多 Agent enabled/disabled smoke 测试。
-5. 待完成：补回或实现可复现的 memory enabled/disabled ablation runner。
-6. 待完成：增加 latency guard、质量 guard 和 eval summary 中的 memory 对照指标。
+5. 已完成：新增可复现的 memory enabled/disabled ablation runner：`scripts/run_memory_ablation.py`。
+6. 已完成：runner 输出质量/延迟 guard，比较 verifier、evidence coverage/alignment、chart consistency、contest checklist、numeric audit 和平均耗时。
+7. 待完成：用真实 qwen3/本地模型样本复跑 ablation，确认收益不是 fake model 或历史产物带来的偶然结果。
+8. 待完成：将稳定通过门禁的 memory brief 选择策略进一步接入 Planner/Router，而不是直接默认开启全部历史上下文。
 
 ### P3：SkillRegistry 正式接入
 
@@ -217,6 +218,13 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   `python -m pytest tests/test_durable_memory.py tests/test_priority1_metric_fixes.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_can_persist_durable_memory_without_quality_regression -q`：`12 passed`。
 - P2 扩展 smoke 命令：
   `python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_generation_backends.py -q`：`13 passed`。
+- P2 第二阶段 memory ablation runner 验证命令：
+  `python -m pytest tests/test_memory_ablation_runner.py tests/test_multi_agent_harness.py -q`：`7 passed`。
+- P2 第二阶段质量保护回归命令：
+  `python -m pytest tests/test_durable_memory.py tests/test_priority1_metric_fixes.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_can_persist_durable_memory_without_quality_regression -q`：`12 passed`。
+- P2 第二阶段扩展 smoke 命令：
+  `python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_generation_backends.py -q`：`13 passed`。
+- P2 第二阶段验证结论：`scripts/run_memory_ablation.py` 已能生成 memory enabled/disabled 双 variant 配置，并在结果汇总中按 verifier、evidence、chart、contest checklist、numeric audit 和 latency 输出 `promote_memory` / `hold_memory` / `reject_memory` 决策；本轮尚未重跑真实 qwen3 ablation。
 
 以后每次完成计划，都要在这里记录：
 

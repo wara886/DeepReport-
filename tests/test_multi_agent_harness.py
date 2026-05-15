@@ -91,8 +91,12 @@ evaluation:
     assert (out / "evaluation_summary.json").exists()
     assert (out / "per_case_numeric_audit_v1.jsonl").exists()
     assert "Regression Topics" in (out / "summary.md").read_text(encoding="utf-8")
-    assert json.loads(rows[0])["variant_id"] == "dynamic_fast"
-    assert "contest_checklist" in json.loads(rows[0])
+    row = json.loads(rows[0])
+    assert row["variant_id"] == "dynamic_fast"
+    assert row["memory_enabled"] is False
+    assert row["durable_memory_enabled"] is False
+    assert row["durable_memory_available"] is False
+    assert "contest_checklist" in row
 
 
 def test_retrieval_ablation_summarizes_mode_deltas():

@@ -142,6 +142,9 @@ def _run_case_variant(
     verification = _read_dict(outputs / "verification_report.json")
     search_meta = _read_dict(outputs / "search_meta.json")
     run_summary = _read_dict(outputs / "run_summary.json")
+    durable_memory_artifacts = run_summary.get("durable_memory", {})
+    if not isinstance(durable_memory_artifacts, dict):
+        durable_memory_artifacts = {}
     chart_consistency = _read_dict(outputs / "chart_consistency.json")
     markdown = (reports / "report.md").read_text(encoding="utf-8") if (reports / "report.md").exists() else ""
     evidence_ids = {str(item.get("evidence_id") or item.get("sample_id") or "") for item in evidence_records if isinstance(item, dict)}
@@ -184,6 +187,10 @@ def _run_case_variant(
         "query": case.query,
         "task_type": case.task_type,
         "variant_id": variant_id,
+        "memory_enabled": bool(variant.get("memory_enabled", False)),
+        "durable_memory_enabled": bool(run_summary.get("durable_memory_enabled", False)),
+        "durable_memory_available": bool(durable_memory_artifacts.get("working_snapshot")),
+        "durable_memory_artifact": str(durable_memory_artifacts.get("working_snapshot", "")),
         "writer_mode": "multi_agent",
         "writer_backend": "final_answer_agent",
         "ranking_mode": str(variant.get("retrieval_ranking_mode", "hybrid_rerank")),
