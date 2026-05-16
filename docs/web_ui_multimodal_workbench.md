@@ -104,3 +104,30 @@ python scripts/evaluate_report_quality.py --run-dir eval_outputs/web_link_test_A
 下一步：
 
 - Commit 5：新增 LLM/Codex 主观质量复核，输出 `llm_quality_review.json/md`。
+
+## 2026-05-16 Commit 5：LLM/Codex 主观质量复核
+
+改动：
+
+- 新增 `src/evaluation/llm_report_review.py`，提供可 import 的主观复核能力。
+- 新增 `scripts/review_report_with_llm.py`，读取 report markdown、objective quality report、verification、claims/evidence/citations 摘要，并按赛题评分标准 prompt 请求模型输出 JSON。
+- 输出 `llm_quality_review.json` 和 `llm_quality_review.md`。
+- 主观门禁要求：`total_score >= 0.80`、fatal issue 为 0；若模型指出“内容空洞 / 大量暂无结论 / 期间错配 / 明显乱码”，直接 fail。
+- 无 API key 或模型调用失败时，`llm_review_pass=false`，不能伪装成通过。
+
+验证命令：
+
+```powershell
+python -m py_compile src/evaluation/llm_report_review.py scripts/review_report_with_llm.py
+$env:PYTHONPATH='.'; pytest -q tests/test_llm_report_review.py tests/test_report_quality.py tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py
+python scripts/review_report_with_llm.py --run-dir eval_outputs/web_link_test_AMD_2025Q4
+```
+
+质量结果：
+
+- 22 passed。
+- 当前 AMD 样本主观复核输出 `llm_review_pass=false`，本机模型调用状态为 `error`，已明确阻断交付门禁。
+
+下一步：
+
+- Commit 6：把 verifier、objective eval、LLM review 汇总成 `delivery_gate.json`，并接入 Chat 生成链路与 Web UI。

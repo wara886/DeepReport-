@@ -477,3 +477,13 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_report_quality.py tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py`；`python scripts/evaluate_report_quality.py --run-dir eval_outputs/web_link_test_AMD_2025Q4`。
 - 质量结果：19 passed；AMD 样本 `total_score=0.892` 但 `objective_pass=false`，硬门禁已能拦截不可交付报告。
 - 未完成项：LLM/Codex review、delivery gate 接入和双样本内容修复仍待后续 commit。
+
+# 2026-05-16 Commit 5：LLM/Codex review 状态更新
+
+- 新增 `src/evaluation/llm_report_review.py` 和 `scripts/review_report_with_llm.py`。
+- 主观复核读取 report markdown、objective quality report、verification、claims/evidence/citations 摘要，并按赛题维度判断专业研报形态、投资洞察、事实/期间一致性、公司报告要求、图表作用和语言质量。
+- 主观门禁规则已实现：总分 >= 0.80、fatal issue 为 0；若出现“内容空洞 / 大量暂无结论 / 期间错配 / 明显乱码”，直接 fail。
+- 无 API key 或模型调用失败时 `llm_review_pass=false`，不能假装通过。
+- 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_llm_report_review.py tests/test_report_quality.py tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py`；`python scripts/review_report_with_llm.py --run-dir eval_outputs/web_link_test_AMD_2025Q4`。
+- 质量结果：22 passed；AMD 样本当前 `llm_review_pass=false`，本机模型调用状态为 `error`，交付门禁应阻断。
+- 未完成项：delivery gate 接入和双样本内容修复仍待后续 commit。
