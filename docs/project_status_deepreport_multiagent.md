@@ -1,5 +1,15 @@
 # DeepReport++ 项目状态与下一步计划
 
+> 维护规则（2026-05-16 更新）：每次开工必须先读本文档和 `docs/web_ui_multimodal_workbench.md`；每完成一个功能必须记录改动、验证命令、质量结果、遗留问题和下一步，并单独提交一次 git。Chat memory 只用于用户偏好和任务上下文，不替代 evidence/citation/verifier。报告只有同时通过 verifier、本地 objective quality eval、LLM/Codex 主观 review，才标记为可交付。
+
+## 2026-05-16 Chat-first 与质量门禁任务
+
+- 当前最高优先级：把 Web UI 改为 ChatGPT-like 首屏，让用户只输入“生成某公司最新财报研报”即可触发解析、memory、实时数据、多 Agent 生成、质量评测和报告链接返回。
+- 当前质量短板：600519.SS 与 AMD 样本仍存在空章节、估值/同行缺失、period/source 混入、数值格式不专业、报告质量 gate 偏宽等问题。
+- 本轮执行顺序：编码与文档基线 -> Chat-first UI -> 自然语言解析与 memory 默认应用 -> 本地 objective quality eval -> LLM/Codex review -> Chat 链路接入 delivery gate -> 双样本质量修复 -> 重跑记录。
+
+<!-- 以下为历史状态记录；新工作记录以本文档顶部和 docs/web_ui_multimodal_workbench.md 为准。 -->
+
 更新日期：2026-05-16
 
 本文档是当前 DeepReport++ 项目的唯一主状态文档。以后项目说明、阶段总结、下一步计划和验证记录默认使用中文，并优先更新本文档。

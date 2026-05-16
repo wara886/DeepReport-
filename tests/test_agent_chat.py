@@ -77,3 +77,15 @@ def test_agent_chat_service_falls_back_without_api_key_and_marks_memory_boundary
     assert response["memory_used"]["enabled"] is True
     assert "never substitutes" in response["memory_used"]["boundary"]
     assert response["tool_trace"]
+
+
+def test_agent_chat_routes_chinese_report_and_review_terms(tmp_path):
+    service = AgentChatService(
+        config_path=str(_model_config(tmp_path)),
+        memory_root=tmp_path / "memory",
+        output_root=tmp_path / "outputs",
+        report_root=tmp_path / "reports",
+    )
+
+    assert service._route("请生成贵州茅台最新财报研报", allow_report_run=True)["mode"] == "report_run"
+    assert service._route("复盘一下报告引用和评测问题", allow_report_run=True)["mode"] == "rag"
