@@ -170,7 +170,7 @@ def test_rule_claims_backfill_amd_peer_valuation_risk_and_conclusion():
     sections = {claim.section_name for claim in claims}
     text = "\n".join(claim.claim_text for claim in claims)
 
-    assert {"business_overview", "peer_compare", "valuation", "valuation_sensitivity", "risks", "conclusion"}.issubset(sections)
+    assert {"strategy_business", "ownership_governance", "peer_compare", "valuation", "valuation_sensitivity", "risks", "conclusion"}.issubset(sections)
     assert "NVIDIA" in text and "Intel" in text and "Broadcom" in text
     assert "估值不可用原因" in text
 

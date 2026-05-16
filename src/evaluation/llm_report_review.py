@@ -75,7 +75,7 @@ def review_report_with_llm_from_paths(
     prompt = _build_review_prompt(artifacts)
     try:
         if hasattr(adapter, "generate_json"):
-            parsed = adapter.generate_json(prompt=prompt, system_prompt=_system_prompt(), max_tokens=1600, temperature=0.0)
+            parsed = adapter.generate_json(prompt=prompt, system_prompt=_system_prompt())
         else:
             parsed = adapter.generate(prompt=prompt, system_prompt=_system_prompt())
     except Exception as exc:  # pragma: no cover - defensive fallback

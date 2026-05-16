@@ -185,3 +185,40 @@ $env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_multi_ag
 下一步：
 
 - Commit 8：重新跑“贵州茅台最新财报研报”和“AMD 最新财报研报”，生成网页链接和三层质量结果。
+
+## 2026-05-16 Commit 8：双样本重跑与记录
+
+改动：
+
+- 修复 Chat 英文生成意图：`generate ... company report` 现在能进入 `report_run`。
+- 修复 objective eval 科学计数法误报：不再把 evidence_id/hash 中的 `2e0` 片段当成科学计数法。
+- 重跑 Chat-first 双样本，并写出 `quality_report.json/md`、`llm_quality_review.json/md`、`delivery_gate.json`。
+- 结果汇总写入 `eval_outputs/chat_first_delivery_summary.json`。
+
+验证命令：
+
+```powershell
+$env:PYTHONPATH='.'; pytest -q tests/test_chat_task_parser.py tests/test_agent_chat.py tests/test_data_enrichment.py tests/test_report_quality.py tests/test_llm_report_review.py tests/test_delivery_gate.py tests/test_web_ui.py
+```
+
+质量结果：
+
+- 33 passed。
+- A 股样本：`600519.SS 2026Q1`，report: `http://127.0.0.1:8790/eval_outputs/chat_first_delivery_600519SS_latest/company/reports/report.html`
+  - verifier: `true`
+  - company_report_overall_score: `0.9375`
+  - objective_pass: `true`，objective_total_score: `1.0`
+  - llm_review_pass: `false`，llm_total_score: `1.0` 但存在 fatal issue
+  - delivery_pass: `false`
+  - 主要问题：LLM/Codex 认为内容仍偏空洞，估值/敏感性/同行对比仍偏框架化。
+- 美股样本：`AMD 2026Q1`，report: `http://127.0.0.1:8790/eval_outputs/chat_first_delivery_AMD_latest/company/reports/report.html`
+  - verifier: `true`
+  - company_report_overall_score: `0.8542`
+  - objective_pass: `false`，objective_total_score: `0.8907`
+  - llm_review_pass: `false`，llm_total_score: `0.45`
+  - delivery_pass: `false`
+  - 主要问题：三表摘要不完整，缺资产负债表/现金流完整摘要，内容仍偏框架化，投资洞察不足。
+
+下一步：
+
+- 下一轮应集中修复“内容空洞”而不是继续堆 UI：把三表表格行强制写入正文、补估值可计算路径、对 AMD 增加 SEC 10-Q/10-K 业务分部与现金流证据，对 600519 增加同行白酒对比和可复核估值。

@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 
 REPORT_TERMS = ("研报", "财报", "报告", "research report", "company report")
-GENERATION_TERMS = ("生成", "写", "撰写", "出一份", "做一份", "最新", "run", "create", "write")
+GENERATION_TERMS = ("生成", "写", "撰写", "出一份", "做一份", "最新", "run", "create", "write", "generate")
 LATEST_TERMS = ("最新财报", "最新", "最近", "latest")
 
 

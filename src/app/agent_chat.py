@@ -358,7 +358,7 @@ class AgentChatService:
     def _route(self, text: str, allow_report_run: bool) -> Dict[str, str]:
         lowered = text.lower()
         report_terms = ["研报", "财报", "报告", "run report", "research report", "company report"]
-        generation_terms = ["生成", "写", "撰写", "出一份", "最新"]
+        generation_terms = ["生成", "写", "撰写", "出一份", "最新", "generate", "create", "run", "write"]
         rag_terms = ["根据报告", "引用", "证据", "检索", "知识库", "复盘", "评测", "rag", "source", "citation"]
         tool_terms = ["天气", "时间", "search_web", "工具", "tool"]
         if allow_report_run and any(term in lowered for term in report_terms) and any(term in lowered for term in generation_terms):

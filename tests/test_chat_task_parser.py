@@ -22,6 +22,14 @@ def test_parse_amd_latest_report_request():
     assert parsed.period == "2026Q1"
 
 
+def test_parse_english_generate_latest_report_request():
+    parsed = parse_chat_task("generate 600519 latest company report", today=date(2026, 5, 16))
+
+    assert parsed.should_run is True
+    assert parsed.symbol == "600519.SS"
+    assert parsed.period == "2026Q1"
+
+
 def test_parse_report_question_without_generation_needs_confirmation():
     parsed = parse_chat_task("AMD 研报怎么样", current_symbol="AAPL", current_period="2025Q4", today=date(2026, 5, 16))
 

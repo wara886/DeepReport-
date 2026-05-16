@@ -507,3 +507,16 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections tests/test_report_quality.py tests/test_delivery_gate.py`；`python -m py_compile src/agents/deep_analyze_agent.py`。
 - 质量结果：13 passed。
 - 未完成项：双样本重跑和记录仍待 Commit 8。
+
+# 2026-05-16 Commit 8：Chat-first 双样本重跑状态更新
+
+- 修复 Chat 英文生成意图：`generate ... company report` 可进入 `report_run`。
+- 修复 objective eval 科学计数法误报：不再把 evidence_id/hash 中的短片段误判为科学计数法。
+- 已通过 Chat-first 链路重跑：
+  - A 股：`600519.SS 2026Q1`，链接：`http://127.0.0.1:8790/eval_outputs/chat_first_delivery_600519SS_latest/company/reports/report.html`
+  - 美股：`AMD 2026Q1`，链接：`http://127.0.0.1:8790/eval_outputs/chat_first_delivery_AMD_latest/company/reports/report.html`
+- A 股结果：verifier=true，company_report_overall_score=0.9375，objective_pass=true，objective_total_score=1.0，llm_review_pass=false，delivery_pass=false。
+- 美股结果：verifier=true，company_report_overall_score=0.8542，objective_pass=false，objective_total_score=0.8907，llm_review_pass=false，delivery_pass=false。
+- 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_chat_task_parser.py tests/test_agent_chat.py tests/test_data_enrichment.py tests/test_report_quality.py tests/test_llm_report_review.py tests/test_delivery_gate.py tests/test_web_ui.py`。
+- 质量结果：33 passed。
+- 当前结论：Chat-first + memory + 多 Agent + 双层质量门禁已经打通；两份样本都未达到“可交付”，原因已由 `delivery_gate.json` 明确记录。下一轮应优先修复内容空洞、三表正文写入、估值可计算路径和同行对比。

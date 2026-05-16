@@ -20,7 +20,7 @@ GROUP_WEIGHTS = {
 }
 
 EMPTY_MARKERS = ("暂无可验证结论", "暂无结论", "无法判断", "待补充", "N/A")
-SCI_NOTATION_RE = re.compile(r"(?<![A-Za-z])[-+]?\d+(?:\.\d+)?[eE][-+]?\d+")
+SCI_NOTATION_RE = re.compile(r"(?<![A-Za-z0-9_])[-+]?\d+(?:\.\d+)?[eE][+-]\d+(?![A-Za-z0-9_])")
 
 
 @dataclass

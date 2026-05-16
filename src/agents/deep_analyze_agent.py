@@ -726,17 +726,47 @@ def _add_minimum_company_report_claims(
         )
         claim_index += 1
 
-    if symbol.upper() == "AMD" and not (_has_claim_section(output, "business_overview") or _has_claim_section(output, "strategy_business")):
+    if symbol.upper() == "AMD" and not _has_claim_section(output, "strategy_business"):
         output.append(
             ClaimItem(
                 claim_id=f"cl_{claim_index:04d}",
-                section_name="business_overview",
+                section_name="strategy_business",
                 claim_text="AMD 业务画像应覆盖 CPU、GPU/加速卡、数据中心、客户端、游戏与嵌入式等板块；正式结论需继续以 SEC filings、公司公告或官网业务描述交叉验证。",
                 evidence_ids=evidence_ids[:3],
                 numeric_values={},
                 risk_level="medium",
                 confidence=0.64,
                 notes="AMD 业务画像框架补全，作为写作结构，不作为无证据事实扩展。",
+            )
+        )
+        claim_index += 1
+
+    if symbol.upper() != "AMD" and not _has_claim_section(output, "strategy_business"):
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="strategy_business",
+                claim_text=f"{symbol} 战略与主营业务章节应优先结合已抽取的公告、PDF 片段和三表数据，说明收入结构、渠道变化、地区分布和经营策略；若证据不足，应显式列为待补资料而不留空。",
+                evidence_ids=evidence_ids[:3],
+                numeric_values={},
+                risk_level="medium",
+                confidence=0.62,
+                notes="战略与主营业务章节缺口补全，避免空章节。",
+            )
+        )
+        claim_index += 1
+
+    if not _has_claim_section(output, "ownership_governance"):
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="ownership_governance",
+                claim_text=f"{symbol} 股权结构与公司治理信息当前未在已抽取证据中形成完整表格，报告应将其列为待补数据项，并优先补充年报、10-K、股东名册或公司治理章节。",
+                evidence_ids=evidence_ids[:3],
+                numeric_values={},
+                risk_level="medium",
+                confidence=0.6,
+                notes="治理章节缺口显式披露，避免空章节。",
             )
         )
         claim_index += 1
@@ -752,6 +782,21 @@ def _add_minimum_company_report_claims(
                 risk_level="medium",
                 confidence=0.62,
                 notes="同行框架补全；缺少量化同行表时不输出排名结论。",
+            )
+        )
+        claim_index += 1
+
+    if symbol.upper() != "AMD" and not _has_claim_section(output, "peer_compare"):
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="peer_compare",
+                claim_text=f"{symbol} 同行对比当前缺少可复核的同业量化表，报告应优先补充同行收入增速、毛利率、ROE、估值倍数和渠道结构指标；在补齐前仅保留框架性比较，不输出排名结论。",
+                evidence_ids=evidence_ids[:3],
+                numeric_values={},
+                risk_level="medium",
+                confidence=0.6,
+                notes="同行对比缺口显式披露，避免空章节。",
             )
         )
         claim_index += 1
