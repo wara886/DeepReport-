@@ -1,0 +1,64 @@
+{
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "deep_researcher",
+      "selected_skills": [
+        "evidence_discovery",
+        "report_assembly"
+      ],
+      "memory_context_policy": {},
+      "skill_brief_chars": 898
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "deep_analyze",
+      "selected_skills": [
+        "financial_statement_analysis",
+        "evidence_discovery"
+      ],
+      "memory_context_policy": {},
+      "skill_brief_chars": 898
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "deep_analyze",
+      "selected_skills": [
+        "financial_statement_analysis",
+        "evidence_discovery"
+      ],
+      "memory_context_policy": {},
+      "skill_brief_chars": 898
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "final_answer",
+      "selected_skills": [
+        "report_assembly",
+        "evidence_discovery"
+      ],
+      "memory_context_policy": {},
+      "skill_brief_chars": 898
+    },
+    {
+      "task_id": "task_005",
+      "task_type": "verifier",
+      "selected_skills": [
+        "verification_rework",
+        "report_assembly"
+      ],
+      "memory_context_policy": {},
+      "skill_brief_chars": 898
+    },
+    {
+      "task_id": "task_006_browser",
+      "task_type": "browser",
+      "selected_skills": [
+        "evidence_discovery",
+        "report_assembly"
+      ],
+      "memory_context_policy": {},
+      "skill_brief_chars": 898
+    }
+  ]
+}

@@ -81,6 +81,9 @@ def test_competition_fast_mode_defaults_to_lightweight_retrieval():
     assert _search_engines_for_run("", fast=True, realtime_data=True) == [
         "local_real_data",
         "sec_edgar",
+        "cninfo_announcements",
+        "exchange_announcements",
+        "eastmoney_financials",
         "yahoo_finance",
         "eastmoney",
         "independent_macro",

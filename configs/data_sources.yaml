@@ -101,6 +101,33 @@ independent_sources:
         NVDA: "0001045810"
         TSLA: "0001318605"
         AMD: "0000002488"
+    cninfo:
+      mode: remote_optional
+      announcement_query_url: http://www.cninfo.com.cn/new/hisAnnouncement/query
+      stock_list_url: http://www.cninfo.com.cn/new/data/szse_stock.json
+      static_base_url: http://static.cninfo.com.cn/
+      timeout: 15
+      page_size: 10
+      categories:
+        - category_ndbg_szsh
+        - category_bndbg_szsh
+        - category_yjdbg_szsh
+        - category_sjdbg_szsh
+    exchange_announcements:
+      mode: remote_optional
+      sse_query_url: https://query.sse.com.cn/security/stock/queryCompanyBulletin.do
+      szse_announcement_url: https://www.szse.cn/api/disc/announcement/annList
+      timeout: 15
+      page_size: 10
+    eastmoney_financials:
+      mode: remote_optional
+      base_url: https://datacenter-web.eastmoney.com/api/data/v1/get
+      timeout: 15
+      page_size: 20
+      reports:
+        income: RPT_DMSK_FN_INCOME
+        balance: RPT_DMSK_FN_BALANCE
+        cashflow: RPT_DMSK_FN_CASHFLOW
   industry:
     authority_domains:
       - sec.gov
@@ -111,3 +138,6 @@ independent_sources:
       - bls.gov
       - bea.gov
       - fred.stlouisfed.org
+      - cninfo.com.cn
+      - sse.com.cn
+      - szse.cn

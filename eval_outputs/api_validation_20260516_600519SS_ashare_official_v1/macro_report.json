@@ -1,0 +1,66 @@
+{
+  "title": "宏观研究报告",
+  "symbol": "600519.SS",
+  "period": "2025Q4",
+  "evidence_count": 9,
+  "independent_evidence_count": 3,
+  "claim_count": 2,
+  "macro_evidence_ids": [
+    "bls_cuur0000sa0_2026_M04",
+    "bls_lns14000000_2026_M04",
+    "fed_policy_20260516"
+  ],
+  "market_evidence_ids": [],
+  "verification_passed": true,
+  "multimodal_consistency_passed": true,
+  "freshness_summary": "fresh=1, stale=2, unknown=6",
+  "source_boundary": "已纳入可获取的 FRED/BLS/BEA/Federal Reserve/SEC 等独立 evidence；每个宏观事实以 evidence_id、source_timestamp 与 data_cutoff 为准。",
+  "independent_source_meta": {
+    "enabled": true,
+    "mode": "remote",
+    "sources": {
+      "macro": {
+        "mode": "independent_macro",
+        "period": "2025Q4",
+        "source_meta": {
+          "fred": {
+            "mode": "fred",
+            "record_count": 0,
+            "failure_reason": "missing_api_key",
+            "api_key_env": "FRED_API_KEY"
+          },
+          "bls": {
+            "mode": "bls",
+            "record_count": 2,
+            "failure_reason": ""
+          },
+          "bea": {
+            "mode": "bea",
+            "record_count": 0,
+            "failure_reason": "missing_api_key",
+            "api_key_env": "BEA_API_KEY"
+          }
+        },
+        "record_count": 2,
+        "failure_reason": "missing_api_key"
+      },
+      "sec_companyfacts": {
+        "mode": "sec_companyfacts",
+        "symbol": "600519.SS",
+        "record_count": 0,
+        "failure_reason": "missing_cik"
+      },
+      "federal_reserve": {
+        "mode": "federal_reserve",
+        "record_count": 1,
+        "failure_reason": ""
+      }
+    },
+    "record_count": 3,
+    "sector": "",
+    "industry": ""
+  },
+  "limitations": [
+    "已接入部分独立宏观/政策/SEC evidence，但尚未覆盖全部全球宏观数据库或付费行业数据。"
+  ]
+}

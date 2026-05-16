@@ -1,0 +1,37 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "financial_analysis",
+    "claim_text": "600519.SS 东方财富财务表显示，2026-03-31 00:00:00 营业收入约为 5.47029e+10，净利润约为 2.72425e+10。",
+    "evidence_ids": [
+      "600519_2025Q4_eastmoney_financials_income_1fd3a55f5e"
+    ],
+    "numeric_values": {
+      "revenue": 54702912385.23,
+      "net_income": 27242512886.45
+    },
+    "risk_level": "medium",
+    "confidence": 0.8,
+    "notes": "由东方财富结构化利润表记录生成，仍建议用巨潮/交易所公告 PDF 交叉验证。"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "business_overview",
+    "claim_text": "600519.SS 的证据覆盖包括 6 条记录，横跨 4 类来源。",
+    "evidence_ids": [
+      "600519.SS_2025Q4_yahoo_finance_df36f6f3cb",
+      "600519_2025Q4_cninfo_4f7e837a05",
+      "600519_2025Q4_cninfo_ba21bf4403",
+      "600519_2025Q4_eastmoney_financials_income_1fd3a55f5e",
+      "600519_2025Q4_sse_announcement_31b32e0e85",
+      "600519_2025Q4_sse_announcement_dd6d78b4e1"
+    ],
+    "numeric_values": {
+      "evidence_count": 6.0,
+      "unique_sources": 4.0
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由证据覆盖统计生成。"
+  }
+]

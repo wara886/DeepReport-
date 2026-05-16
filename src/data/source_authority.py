@@ -7,7 +7,17 @@ from typing import Any, Dict, Iterable, Tuple
 from urllib.parse import urlparse
 
 
-PRIMARY_SOURCE_TYPES = {"filing", "financials", "company_profile", "company_page", "earnings_release", "sec_companyfacts"}
+PRIMARY_SOURCE_TYPES = {
+    "filing",
+    "financials",
+    "company_profile",
+    "company_page",
+    "earnings_release",
+    "sec_companyfacts",
+    "cninfo_announcement",
+    "exchange_announcement",
+    "eastmoney_financials",
+}
 MARKET_SOURCE_TYPES = {"market", "market_api", "market_data"}
 NEWS_SOURCE_TYPES = {"news", "web_search"}
 MACRO_SOURCE_TYPES = {"macro_api", "macro_statistic", "policy_release", "federal_reserve", "fred_series", "bls_series", "bea_series"}
@@ -240,6 +250,18 @@ def infer_document_type(source_type: str, url: str, title: str = "") -> str:
         return "10-Q"
     if "8-k" in text or "8k" in text:
         return "8-K"
+    if "年度报告" in text or "annual" in text or "ndbg" in text:
+        return "annual_report"
+    if "半年度报告" in text or "interim" in text or "bndbg" in text:
+        return "interim_report"
+    if "季度报告" in text or "quarter" in text or "yjdbg" in text or "sjdbg" in text:
+        return "quarterly_report"
+    if "cninfo" in text or "巨潮" in text:
+        return "cninfo_announcement"
+    if "sse.com.cn" in text or "szse.cn" in text or "交易所" in text:
+        return "exchange_announcement"
+    if "eastmoney" in text or "东方财富" in text:
+        return "financial_statement_table"
     if "earnings" in text or "results" in text:
         return "earnings_release"
     if "presentation" in text:

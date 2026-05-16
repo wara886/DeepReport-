@@ -1,0 +1,124 @@
+{
+  "overview": "生成用于分析600519.SS 2025Q4财务表现并输出带引用研究报告的多智能体任务图。任务覆盖数据收集、财务分析、风险评估、报告组装和验证。",
+  "research_topic": "分析 600519.SS 2025Q4 财务表现，并生成带引用的研究报告",
+  "requirements": [
+    "覆盖收入、利润率、现金流、风险、市场表现和近期新闻",
+    "所有关键结论必须绑定 evidence_id",
+    "输出 Markdown、HTML、JSON、trace 和验证报告"
+  ],
+  "output_format": "markdown, html, json with citations",
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "deep_researcher",
+      "description": "搜索并收集600519.SS在2025Q4的财务数据（收入、利润、现金流）、近期新闻、市场表现数据（股价、市盈率等）以及相关风险信息。返回带证据ID的原始记录。",
+      "parameters": {
+        "symbol": "600519.SS",
+        "period": "2025Q4",
+        "sources": [
+          "公司财报",
+          "新闻",
+          "市场数据"
+        ],
+        "evidence_format": "citation-ready"
+      },
+      "dependencies": [],
+      "priority": 4,
+      "expected_output": "包含财务数据、新闻摘要、市场数据列表的证据记录集合，每个记录有唯一evidence_id。"
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "deep_analyze",
+      "description": "基于证据记录，计算并分析600519.SS 2025Q4的收入、利润率（毛利率、净利率）、现金流（经营现金流）及同比/环比变化。输出带evidence_id引用的结构化结论。",
+      "parameters": {
+        "analysis_type": "financial_analysis",
+        "metrics": [
+          "收入",
+          "毛利率",
+          "净利率",
+          "经营现金流"
+        ],
+        "comparison": [
+          "同比",
+          "环比"
+        ]
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 4,
+      "expected_output": "包含数值结论、趋势描述和evidence_id引用的分析报告段落。"
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "deep_analyze",
+      "description": "基于证据记录，分析600519.SS在2025Q4的市场表现（股价走势、市盈率）、风险因素（政策、竞争、流动性）及近期新闻事件。输出带evidence_id引用的分析结论。",
+      "parameters": {
+        "analysis_type": "risk_and_market",
+        "aspects": [
+          "市场表现",
+          "风险",
+          "近期新闻"
+        ]
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 4,
+      "expected_output": "包含市场数据、风险描述、新闻要点及evidence_id引用的分析文本。"
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "final_answer",
+      "description": "整合task_002和task_003的分析结论，生成完整的中国研究报告，覆盖收入、利润率、现金流、风险、市场表现和近期新闻。输出Markdown、HTML、JSON三种格式，并嵌入图表引用和证据ID。同时生成trace文件记录生成过程。",
+      "parameters": {
+        "output_formats": [
+          "markdown",
+          "html",
+          "json"
+        ],
+        "include_trace": true,
+        "citations_required": true
+      },
+      "dependencies": [
+        "task_002",
+        "task_003"
+      ],
+      "priority": 5,
+      "expected_output": "三个文件：report.md, report.html, report.json；以及trace.json。"
+    },
+    {
+      "task_id": "task_005",
+      "task_type": "verifier",
+      "description": "验证final_answer生成的报告：确保每个关键结论都有evidence_id引用；检查数据一致性；确认报告包含所有要求的内容（收入、利润率、现金流、风险、市场表现、新闻）。输出验证报告（verification_report.md/html/json）。",
+      "parameters": {
+        "validation_rules": [
+          "每个结论必须有证据ID",
+          "覆盖所有要求主题",
+          "无虚构数据"
+        ]
+      },
+      "dependencies": [
+        "task_004"
+      ],
+      "priority": 5,
+      "expected_output": "验证通过标志及验证报告文件。"
+    }
+  ],
+  "data_sources": [
+    "公司2025Q4季度报告/年度报告",
+    "交易所公告",
+    "金融新闻网站（如东方财富、新浪财经）",
+    "市场数据API（如Yahoo Finance）",
+    "行业研究报告"
+  ],
+  "citations_required": true,
+  "final_outputs": [
+    "report.md",
+    "report.html",
+    "report.json",
+    "trace.json",
+    "verification_report.md"
+  ],
+  "fallback_used": false
+}

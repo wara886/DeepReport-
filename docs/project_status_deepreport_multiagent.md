@@ -32,6 +32,8 @@
 - 本轮 API 实跑两家公司研报：`600519.SS` 输出 `eval_outputs/api_validation_20260516_600519SS_deepseek_broadened_v2/`，`competition_passed=true`、`company_report_score=0.625`；`AMD` 输出 `eval_outputs/api_validation_20260516_AMD_deepseek_broadened_v2/`，`competition_passed=true`、`company_report_score=0.6667`，且 Company 报告已引用 SEC companyfacts。
 - 本轮新增 Agent Chat 工作台 v1：`src/app/agent_chat.py` 提供 Chat Router、短期滑动窗口、长期语义/TF 混合记忆、用户偏好规则抽取和本地 JSON 持久化；`src/app/web_ui.py` 新增 `/api/chat`、研究助手面板、三层记忆开关、Chat 启动研报开关和“思考/动作/观察/验证”时间线。
 - Agent Chat 的边界已固定：memory 只作为上下文、偏好和路由提示，不替代 `evidence_id`、citation、numeric audit 或 verifier；Chat 启动研报时仍进入现有 `MultiAgentOrchestrator` 多 Agent 主链。
+- 本轮补齐 A 股正式数据源 v1：`SearchManager` 新增 `cninfo_announcements`、`exchange_announcements`、`eastmoney_financials` 三个引擎；`configs/data_sources.yaml` 新增巨潮、上交所/深交所、东方财富财务表配置；source authority 将巨潮/交易所公告和东方财富财务表标为 primary，可支撑核心财务 claim。
+- 本轮修复实时检索 source diversity：避免 topK 被同一类巨潮公告占满，并修复东方财富三张财务表共用 URL 被去重折叠的问题；东方财富财务表现在按 `period` 选择目标报告期，例如 `2025Q4` 优先选择 `2025-12-31`。
 - 本轮开始基线：`7ddf800 Add guarded durable memory foundation`。
 - 主状态文档已改为中文，并把后续维护规则固定为中文。
 - 本次继续补齐 P2：新增 `scripts/run_memory_ablation.py`，可从现有 multi-agent evaluation config 派生 `memory_enabled` / `memory_disabled` 两个 variant，输出 `memory_ablation_comparison.json` 和 `memory_ablation_comparison.md`。
@@ -204,7 +206,7 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 - SkillRegistry 当前已配置化并接入 harness 指标，但仍不是在线学习或自动发现技能；后续需要用更宽 case set 观察是否实际改善 unsupported fallback、verification pass、numeric/citation audit。
 - competition/docx 交付链路已补回，Industry/Macro 也已有专用本地 Agent 与独立 evidence v1；但远程实时源需要显式 `--realtime-data`、API key 和网络，仍不能宣称已覆盖完整行业数据库或全球宏观数据库。
 - `baseline_deepseek_workflow` 是质量桥接模式，不是 strict/realtime 的替代品；它适合生成 rich draft 并做审计分层，但最终比赛打包和回归测试仍以 evidence、citation、numeric audit、verifier 结果为准。
-- A 股仍缺正式财报/公告/交易所/巨潮/东方财富财务报表抽取链路；当前 `600519.SS` 虽能通过 DeepSeek API + Yahoo/BLS/Fed/Eastmoney 尝试打包，但 Company 主报告深度仍明显弱于有 SEC companyfacts 的美股样本。
+- A 股正式数据源已完成 v1 接入：巨潮公告、上交所/深交所公告索引、东方财富利润表/资产负债表/现金流量表可进入 evidence；但 PDF 正文/表格深抽取、公告附件缓存、A 股行业/股权/管理层专项结构化仍是后续缺口。
 - FRED 与 BEA 当前仍因缺少 API key 记录为 `missing_api_key`；BLS/Federal Reserve 可用，但不能等价为完整宏观数据库覆盖。
 - `AGENTS.md` 和部分 `README.md` 在当前 Windows 输出里有 mojibake，后续如果作为 onboarding 文档，需要单独修复编码/内容。
 
@@ -398,6 +400,12 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   `python -m pytest tests/test_agent_chat.py tests/test_web_ui.py tests/test_config_loader.py tests/test_conversation_memory.py tests/test_durable_memory.py tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_can_persist_durable_memory_without_quality_regression tests/test_memory_ablation_runner.py tests/test_multi_agent_harness.py -q`：`23 passed`。
 - 2026-05-16 Agent Chat 最终全量回归：
   `python -m pytest -q -rA`：通过；2 个 skip 仍为可选历史 eval/report fixture 缺失，非本轮功能失败。
+- 2026-05-16 A 股正式数据源 targeted tests：
+  `python -m pytest tests/test_search_and_research_agent.py tests/test_source_authority_policy.py tests/test_competition_runner.py tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph -q`：`25 passed`。
+- 2026-05-16 A 股正式数据源 live smoke：
+  巨潮 `cninfo_announcements` 拉到 `贵州茅台2025年年度报告` 和 `2026年第一季度报告`；上交所 `exchange_announcements` 拉到对应官方 PDF；东方财富 `eastmoney_financials` 拉到 `2025-12-31` 利润表、资产负债表、现金流量表。
+- 2026-05-16 A 股正式数据源 competition smoke：
+  `python scripts/run_competition.py --config configs/model_backends.yaml --symbol 600519.SS --period 2025Q4 --fast --disable-memory --realtime-data --baseline-deepseek-workflow --output-dir eval_outputs/api_validation_20260516_600519SS_ashare_official_v3`：`competition_passed=true`，`company_report_score=0.7083`，Company evidence 包含巨潮公告、上交所公告、东方财富财务表和 Yahoo market snapshot，baseline DeepSeek `verified_claim_count=3`。
 
 以后每次完成计划，都要在这里记录：
 

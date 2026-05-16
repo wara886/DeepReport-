@@ -1,6 +1,17 @@
 from src.agents import AgentStatus, AgentTask, DeepResearcherAgent
 from src.search import SearchManager
-from src.search.search_manager import adapt_financial_query, local_real_data_search, metaso_search, serper_search, sogou_search, tavily_search, yahoo_finance_search
+from src.search.search_manager import (
+    adapt_financial_query,
+    cninfo_announcement_search,
+    eastmoney_financials_search,
+    exchange_announcement_search,
+    local_real_data_search,
+    metaso_search,
+    serper_search,
+    sogou_search,
+    tavily_search,
+    yahoo_finance_search,
+)
 
 
 def _engine_a(query, topk=5, **kwargs):
@@ -288,3 +299,203 @@ def test_yahoo_finance_search_returns_market_api_evidence(monkeypatch):
     assert payload["meta"]["mode"] == "yahoo_finance"
     assert payload["hits"][0]["source_type"] == "market_api"
     assert payload["hits"][0]["source_url"] == "https://finance.yahoo.com/quote/AAPL"
+
+
+def test_search_manager_registers_a_share_official_engines():
+    engines = SearchManager.with_local_sources().engine_names()
+
+    assert "cninfo_announcements" in engines
+    assert "exchange_announcements" in engines
+    assert "eastmoney_financials" in engines
+
+
+def test_search_manager_keeps_distinct_eastmoney_statement_tables():
+    manager = SearchManager()
+    manager.register_engine(
+        "fixture",
+        lambda query, topk=5, **kwargs: {
+            "hits": [
+                {
+                    "evidence_id": "income",
+                    "source_type": "eastmoney_financials",
+                    "title": "income",
+                    "content": "income table",
+                    "source_url": "https://data.eastmoney.com/bbsj/600519.html",
+                    "score": 6.8,
+                },
+                {
+                    "evidence_id": "balance",
+                    "source_type": "eastmoney_financials",
+                    "title": "balance",
+                    "content": "balance table",
+                    "source_url": "https://data.eastmoney.com/bbsj/600519.html",
+                    "score": 6.8,
+                },
+            ],
+            "meta": {},
+        },
+    )
+
+    payload = manager.search("600519 财务表", topk=5)
+
+    assert {hit["result_id"] for hit in payload["hits"]} == {"income", "balance"}
+
+
+def test_cninfo_announcement_search_normalizes_official_reports(monkeypatch, tmp_path):
+    config_path = tmp_path / "data_sources.yaml"
+    config_path.write_text(
+        """
+independent_sources:
+  company:
+    cninfo:
+      announcement_query_url: http://www.cninfo.com.cn/new/hisAnnouncement/query
+      stock_list_url: http://www.cninfo.com.cn/new/data/szse_stock.json
+      static_base_url: http://static.cninfo.com.cn/
+      timeout: 5
+      page_size: 5
+      categories:
+        - category_ndbg_szsh
+""".strip(),
+        encoding="utf-8",
+    )
+
+    class FakeResponse:
+        def __init__(self, body):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return self.body
+
+    def fake_urlopen(req, timeout):
+        if "szse_stock.json" in req.full_url:
+            return FakeResponse(b'{"stockList":[{"code":"600519","orgId":"gssh0600519"}]}')
+        assert b"category_ndbg_szsh" in req.data
+        return FakeResponse(
+            '{"announcements":[{"secCode":"600519","secName":"贵州茅台","announcementTitle":"2025年年度报告","adjunctUrl":"finalpage/2026-04-01/abc.pdf","announcementTime":"2026-04-01"}]}'.encode(
+                "utf-8"
+            )
+        )
+
+    monkeypatch.setattr("src.search.search_manager.request.urlopen", fake_urlopen)
+
+    payload = cninfo_announcement_search(
+        query="600519 年报",
+        symbol="600519.SS",
+        period="2025Q4",
+        enable_remote=True,
+        data_source_config_path=str(config_path),
+    )
+
+    assert payload["meta"]["failure_reason"] == ""
+    assert payload["hits"][0]["source_type"] == "cninfo_announcement"
+    assert payload["hits"][0]["source_url"].endswith("abc.pdf")
+    assert payload["hits"][0]["source_authority"] == "official"
+
+
+def test_exchange_announcement_search_normalizes_sse_response(monkeypatch, tmp_path):
+    config_path = tmp_path / "data_sources.yaml"
+    config_path.write_text(
+        """
+independent_sources:
+  company:
+    exchange_announcements:
+      sse_query_url: https://query.sse.com.cn/security/stock/queryCompanyBulletin.do
+      szse_announcement_url: https://www.szse.cn/api/disc/announcement/annList
+      timeout: 5
+      page_size: 5
+""".strip(),
+        encoding="utf-8",
+    )
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return '{"result":[{"TITLE":"贵州茅台2025年年度报告","URL":"/disclosure/listedinfo/announcement/c/new.pdf","SSEDATE":"2026-04-01"}]}'.encode(
+                "utf-8"
+            )
+
+    def fake_urlopen(req, timeout):
+        assert "productId=600519" in req.full_url
+        return FakeResponse()
+
+    monkeypatch.setattr("src.search.search_manager.request.urlopen", fake_urlopen)
+
+    payload = exchange_announcement_search(
+        query="600519 年报",
+        symbol="600519.SS",
+        period="2025Q4",
+        enable_remote=True,
+        data_source_config_path=str(config_path),
+    )
+
+    assert payload["meta"]["exchange"] == "sse"
+    assert payload["hits"][0]["source_type"] == "exchange_announcement"
+    assert payload["hits"][0]["source_authority"] == "official"
+
+
+def test_eastmoney_financials_search_normalizes_statement_tables(monkeypatch, tmp_path):
+    config_path = tmp_path / "data_sources.yaml"
+    config_path.write_text(
+        """
+independent_sources:
+  company:
+    eastmoney_financials:
+      base_url: https://datacenter-web.eastmoney.com/api/data/v1/get
+      timeout: 5
+      page_size: 5
+      reports:
+        income: RPT_DMSK_FN_INCOME
+        balance: RPT_DMSK_FN_BALANCE
+        cashflow: RPT_DMSK_FN_CASHFLOW
+""".strip(),
+        encoding="utf-8",
+    )
+
+    class FakeResponse:
+        def __init__(self, body):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return self.body
+
+    def fake_urlopen(req, timeout):
+        if "RPT_DMSK_FN_INCOME" in req.full_url:
+            return FakeResponse(
+                b'{"result":{"data":[{"SECURITY_CODE":"600519","REPORT_DATE":"2026-03-31","OPERATE_INCOME":54000000000},{"SECURITY_CODE":"600519","REPORT_DATE":"2025-12-31","OPERATE_INCOME":180000000000,"NETPROFIT":85000000000}]}}'
+            )
+        if "RPT_DMSK_FN_BALANCE" in req.full_url:
+            return FakeResponse(b'{"result":{"data":[{"SECURITY_CODE":"600519","REPORT_DATE":"2025-12-31","TOTAL_ASSETS":300000000000}]}}')
+        return FakeResponse(b'{"result":{"data":[{"SECURITY_CODE":"600519","REPORT_DATE":"2025-12-31","NETCASH_OPERATE":90000000000}]}}')
+
+    monkeypatch.setattr("src.search.search_manager.request.urlopen", fake_urlopen)
+
+    payload = eastmoney_financials_search(
+        query="600519 财务表",
+        symbol="600519.SS",
+        period="2025Q4",
+        enable_remote=True,
+        data_source_config_path=str(config_path),
+    )
+
+    assert payload["meta"]["record_count"] == 3
+    assert {hit["metadata"]["table_type"] for hit in payload["hits"]} == {"income", "balance", "cashflow"}
+    assert all(hit["source_type"] == "eastmoney_financials" for hit in payload["hits"])
+    income = next(hit for hit in payload["hits"] if hit["metadata"]["table_type"] == "income")
+    assert "2025-12-31" in income["content"]

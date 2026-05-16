@@ -488,7 +488,17 @@ def _search_engines_for_run(value: str, fast: bool, realtime_data: bool = False)
     if value.strip():
         return [item.strip() for item in value.split(",") if item.strip()]
     if realtime_data:
-        return ["local_real_data", "sec_edgar", "yahoo_finance", "eastmoney", "independent_macro", "local_evidence"]
+        return [
+            "local_real_data",
+            "sec_edgar",
+            "cninfo_announcements",
+            "exchange_announcements",
+            "eastmoney_financials",
+            "yahoo_finance",
+            "eastmoney",
+            "independent_macro",
+            "local_evidence",
+        ]
     if fast:
         return ["local_real_data"]
     return None

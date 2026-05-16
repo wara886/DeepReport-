@@ -1,0 +1,137 @@
+{
+  "ratio_rows": [
+    {
+      "sample_id": "600519_2025Q4_cninfo_4f7e837a05",
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "source_type": "cninfo_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519_2025Q4_cninfo_ba21bf4403",
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "source_type": "cninfo_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519_2025Q4_sse_announcement_dd6d78b4e1",
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "source_type": "exchange_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519_2025Q4_sse_announcement_31b32e0e85",
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "source_type": "exchange_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519_2025Q4_eastmoney_financials_income_1fd3a55f5e",
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "source_type": "eastmoney_financials",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519.SS_2025Q4_yahoo_finance_df36f6f3cb",
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "source_type": "market_api",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    }
+  ],
+  "trend_rows": [
+    {
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "evidence_count": 6,
+      "unique_sources": 4,
+      "latest_publish_time": "2026-05-15",
+      "sample_ids": "600519.SS_2025Q4_yahoo_finance_df36f6f3cb|600519_2025Q4_cninfo_4f7e837a05|600519_2025Q4_cninfo_ba21bf4403|600519_2025Q4_eastmoney_financials_income_1fd3a55f5e|600519_2025Q4_sse_announcement_31b32e0e85|600519_2025Q4_sse_announcement_dd6d78b4e1"
+    }
+  ],
+  "statement_view": {
+    "rows": [],
+    "coverage": {
+      "statements": {},
+      "has_three_statement_view": false,
+      "line_item_count": 0
+    },
+    "source_record_count": 0
+  },
+  "financial_metrics": {
+    "metrics": [],
+    "metric_count": 0,
+    "coverage": {
+      "required_metrics": [
+        "revenue",
+        "net_income",
+        "gross_margin",
+        "free_cash_flow"
+      ],
+      "present_metrics": [],
+      "has_core_metric_lineage": false
+    }
+  },
+  "tables": [],
+  "peer_context": {
+    "target_symbol": "600519.SS",
+    "peer_rows": [],
+    "peer_count": 0,
+    "ranking": {}
+  },
+  "valuation": {
+    "symbol": "600519.SS",
+    "period": "2025Q4",
+    "valuation_available": false,
+    "error": "target financials not found"
+  },
+  "valuation_model": {},
+  "valuation_assumptions": {},
+  "valuation_sensitivity": {}
+}

@@ -1,0 +1,99 @@
+[
+  {
+    "citation_id": "ref_001",
+    "evidence_id": "600519_2025Q4_eastmoney_financials_income_1fd3a55f5e",
+    "title": "600519 Eastmoney income financial table",
+    "source_url": "https://data.eastmoney.com/bbsj/600519.html",
+    "source_type": "eastmoney_financials",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "2026-04-25 00:00:00",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0001",
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "Eastmoney income financial table: report_date 2026-03-31 00:00:00; total operating revenue 54702912385.23; parent net profit 27242512886.45."
+  },
+  {
+    "citation_id": "ref_002",
+    "evidence_id": "600519.SS_2025Q4_yahoo_finance_df36f6f3cb",
+    "title": "600519.SS Yahoo Finance market snapshot",
+    "source_url": "https://finance.yahoo.com/quote/600519.SS",
+    "source_type": "market_api",
+    "source_authority": "market_data",
+    "authority_score": 0.78,
+    "publish_time": "2026-05-15",
+    "trust_level": "medium",
+    "claim_ids": [
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "600519.SS Yahoo Finance market snapshot: latest close 1332.949951171875 CNY, previous close 1467.5, 1mo price change -9.17%, latest volume 5818365.0."
+  },
+  {
+    "citation_id": "ref_003",
+    "evidence_id": "600519_2025Q4_cninfo_4f7e837a05",
+    "title": "贵州茅台2026年第一季度报告",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF",
+    "source_type": "cninfo_announcement",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "1777046400000",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "CNINFO official announcement for 贵州茅台 (600519): 贵州茅台2026年第一季度报告. PDF/source: http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF"
+  },
+  {
+    "citation_id": "ref_004",
+    "evidence_id": "600519_2025Q4_cninfo_ba21bf4403",
+    "title": "贵州茅台2025年年度报告",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF",
+    "source_type": "cninfo_announcement",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "1776355200000",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "CNINFO official announcement for 贵州茅台 (600519): 贵州茅台2025年年度报告. PDF/source: http://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF"
+  },
+  {
+    "citation_id": "ref_005",
+    "evidence_id": "600519_2025Q4_sse_announcement_31b32e0e85",
+    "title": "贵州茅台2025年年度报告",
+    "source_url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-04-17/600519_20260417_9QS4.pdf",
+    "source_type": "exchange_announcement",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "2026-04-17",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "SSE official announcement for 600519: 贵州茅台2025年年度报告."
+  },
+  {
+    "citation_id": "ref_006",
+    "evidence_id": "600519_2025Q4_sse_announcement_dd6d78b4e1",
+    "title": "贵州茅台2026年第一季度报告",
+    "source_url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-04-25/600519_20260425_G9JL.pdf",
+    "source_type": "exchange_announcement",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "2026-04-25",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "SSE official announcement for 600519: 贵州茅台2026年第一季度报告."
+  }
+]

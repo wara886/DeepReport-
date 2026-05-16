@@ -1,0 +1,180 @@
+{
+  "passed": true,
+  "error_count": 0,
+  "warning_count": 1,
+  "errors": [],
+  "warnings": [
+    "Target symbol 600519.SS is not explicitly mentioned in report claims or markdown."
+  ],
+  "claim_count": 3,
+  "grounded_claim_count": 3,
+  "expected_symbol": "600519.SS",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 3,
+    "chart_text_consistency": {
+      "chart_count": 3,
+      "passed_chart_count": 3,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "title": "关键指标",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "title": "结论置信度",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "title": "证据来源结构",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 3,
+      "results": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "passed": true,
+          "errors": []
+        }
+      ]
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 1,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "valuation_not_available"
+    ],
+    "checks": {}
+  },
+  "llm_used": true,
+  "entity_resolution": {
+    "requested_symbol": "600519.SS",
+    "research_topic": "分析 600519.SS 2025Q4 财务表现，并生成带引用的研究报告",
+    "resolved_symbol": "600519.SS",
+    "resolution_source": "fallback",
+    "topic_resolution": {
+      "input": "分析 600519.SS 2025Q4 财务表现，并生成带引用的研究报告",
+      "resolved": false,
+      "symbol": "",
+      "company_name": "",
+      "match_type": "none",
+      "confidence": 0.0,
+      "candidate_symbols": [
+        "AAPL",
+        "AMD",
+        "GOOGL",
+        "MSFT",
+        "NVDA",
+        "TSLA"
+      ],
+      "reason": "no_match"
+    },
+    "symbol_resolution": {
+      "input": "600519.SS",
+      "resolved": false,
+      "symbol": "",
+      "company_name": "",
+      "match_type": "none",
+      "confidence": 0.0,
+      "candidate_symbols": [
+        "AAPL",
+        "AMD",
+        "GOOGL",
+        "MSFT",
+        "NVDA",
+        "TSLA"
+      ],
+      "reason": "no_match"
+    },
+    "conflict": false
+  },
+  "context_pack_meta": {
+    "claims": {
+      "input_count": 3,
+      "packed_count": 3,
+      "dropped_count": 0,
+      "packed_ids": [
+        "cl_0001",
+        "cl_0002",
+        "cl_0003"
+      ],
+      "dropped_ids": [],
+      "used_chars": 1306,
+      "total_chars": 2600
+    },
+    "evidence": {
+      "input_count": 6,
+      "packed_count": 1,
+      "dropped_count": 5,
+      "packed_ids": [
+        "600519.SS_2025Q4_yahoo_finance_df36f6f3cb"
+      ],
+      "dropped_ids": [
+        "600519_2025Q4_cninfo_4f7e837a05",
+        "600519_2025Q4_cninfo_ba21bf4403",
+        "600519_2025Q4_eastmoney_financials_income_7126b31814",
+        "600519_2025Q4_sse_announcement_31b32e0e85",
+        "600519_2025Q4_sse_announcement_dd6d78b4e1"
+      ],
+      "used_chars": 3061,
+      "total_chars": 5200,
+      "prioritized_evidence_count": 6,
+      "prioritized_dropped_ids": [
+        "600519_2025Q4_cninfo_4f7e837a05",
+        "600519_2025Q4_cninfo_ba21bf4403",
+        "600519_2025Q4_sse_announcement_dd6d78b4e1",
+        "600519_2025Q4_sse_announcement_31b32e0e85",
+        "600519_2025Q4_eastmoney_financials_income_7126b31814",
+        "600519_2025Q4_cninfo_4f7e837a05",
+        "600519_2025Q4_cninfo_ba21bf4403",
+        "600519_2025Q4_eastmoney_financials_income_7126b31814",
+        "600519_2025Q4_sse_announcement_31b32e0e85",
+        "600519_2025Q4_sse_announcement_dd6d78b4e1"
+      ]
+    }
+  },
+  "llm_passed": true,
+  "llm_errors": [],
+  "llm_warnings": [
+    "Target symbol 600519.SS is not explicitly mentioned in report claims or markdown."
+  ],
+  "fix_recommendations": [
+    "Add explicit mention of target symbol 600519.SS in the executive summary or business overview section of the report."
+  ],
+  "rework_required": false,
+  "evidence_gaps": [],
+  "revision_brief": "- Warnings: Target symbol 600519.SS is not explicitly mentioned in report claims or markdown.\n- Fix recommendations: Add explicit mention of target symbol 600519.SS in the executive summary or business overview section of the report.\n- LLM warnings: Target symbol 600519.SS is not explicitly mentioned in report claims or markdown."
+}

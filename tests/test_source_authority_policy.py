@@ -19,6 +19,29 @@ def test_source_authority_policy_marks_official_filings_as_primary():
     assert can_support_claim({"source_type": "filing", "source_url": "https://www.sec.gov/aapl"}, "revenue")
 
 
+def test_source_authority_policy_marks_a_share_disclosures_as_primary():
+    for record in [
+        {
+            "source_type": "cninfo_announcement",
+            "source_url": "http://static.cninfo.com.cn/finalpage/2026-04-01/report.pdf",
+            "title": "贵州茅台2025年年度报告",
+        },
+        {
+            "source_type": "exchange_announcement",
+            "source_url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/report.pdf",
+            "title": "贵州茅台2025年年度报告",
+        },
+        {
+            "source_type": "eastmoney_financials",
+            "source_url": "https://data.eastmoney.com/bbsj/600519.html",
+            "title": "600519 Eastmoney income financial table",
+        },
+    ]:
+        grade = grade_source_authority(record)
+        assert grade["authority_level"] == "primary"
+        assert "revenue" in grade["allowed_claim_types"]
+
+
 def test_source_authority_policy_limits_market_data_to_market_claims():
     grade = grade_source_authority(
         {

@@ -80,6 +80,9 @@ class SearchManager:
         manager.register_engine("sec_edgar", sec_edgar_search)
         manager.register_engine("yahoo_finance", yahoo_finance_search)
         manager.register_engine("eastmoney", eastmoney_search)
+        manager.register_engine("cninfo_announcements", cninfo_announcement_search)
+        manager.register_engine("exchange_announcements", exchange_announcement_search)
+        manager.register_engine("eastmoney_financials", eastmoney_financials_search)
         manager.register_engine("serper", serper_search)
         manager.register_engine("tavily", tavily_search)
         manager.register_engine("metaso", metaso_search)
@@ -277,6 +280,7 @@ def tavily_search(
                 },
             }
         )
+    hits = [apply_source_quality(hit) for hit in hits]
     return {
         "hits": hits[:topk],
         "meta": {
@@ -365,6 +369,7 @@ def serper_search(
                 },
             }
         )
+    hits = [apply_source_quality(hit) for hit in hits]
     return {
         "hits": hits[:topk],
         "meta": {
@@ -436,6 +441,7 @@ def metaso_search(
                 },
             }
         )
+    hits = [apply_source_quality(hit) for hit in hits]
     return {
         "hits": hits[:topk],
         "meta": {"mode": "metaso", "result_count": len(hits)},
@@ -636,6 +642,231 @@ def eastmoney_search(
     return {"hits": [hit][:topk], "meta": {"mode": "eastmoney", "symbol": resolved_symbol or code, "record_count": 1, "failure_reason": ""}}
 
 
+def cninfo_announcement_search(
+    query: str,
+    topk: int = 5,
+    symbol: str | None = None,
+    period: str | None = None,
+    raw_data_root: str = "data/raw/real_data",
+    data_source_config_path: str = "configs/data_sources.yaml",
+    enable_remote: bool = False,
+    **_: Any,
+) -> Dict[str, Any]:
+    if not enable_remote:
+        return {
+            "hits": [],
+            "meta": {"mode": "cninfo_announcements", "query": query, "record_count": 0, "failure_reason": "remote_sources_disabled"},
+        }
+    config = load_config(data_source_config_path)
+    cninfo_cfg = dict(config.get("independent_sources", {}).get("company", {}).get("cninfo", {}))
+    resolved_symbol = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or _extract_symbol_from_query(query) or _extract_cn_symbol(query))
+    code = _cn_stock_code(resolved_symbol)
+    if not code:
+        return {"hits": [], "meta": {"mode": "cninfo_announcements", "query": query, "record_count": 0, "failure_reason": "unsupported_symbol"}}
+    query_url = str(cninfo_cfg.get("announcement_query_url") or "http://www.cninfo.com.cn/new/hisAnnouncement/query")
+    static_base = str(cninfo_cfg.get("static_base_url") or "http://static.cninfo.com.cn/")
+    page_size = int(cninfo_cfg.get("page_size", max(topk, 10)) or max(topk, 10))
+    timeout = float(cninfo_cfg.get("timeout", 15) or 15)
+    org_id = _cninfo_org_id(code=code, config=cninfo_cfg, timeout=timeout)
+    column = "sse" if _is_sh_symbol(resolved_symbol or code) else "szse"
+    start_date, end_date = _announcement_date_range(period)
+    categories = ";".join(str(item) for item in cninfo_cfg.get("categories", []) if str(item).strip()) or "category_ndbg_szsh;category_bndbg_szsh;category_yjdbg_szsh;category_sjdbg_szsh"
+    form = {
+        "stock": f"{code},{org_id}" if org_id else code,
+        "searchkey": "",
+        "plate": "",
+        "category": categories,
+        "trade": "",
+        "column": column,
+        "pageNum": "1",
+        "pageSize": str(max(page_size, topk)),
+        "tabName": "fulltext",
+        "sortName": "",
+        "sortType": "",
+        "limit": "",
+        "showTitle": "",
+        "seDate": f"{start_date}~{end_date}" if start_date and end_date else "",
+        "isHLtitle": "true",
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 DeepReportPlus/0.1",
+        "Accept": "application/json,text/plain,*/*",
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": "http://www.cninfo.com.cn/new/commonUrl/pageOfSearch",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    }
+    try:
+        parsed = _post_form_json(query_url, form, headers=headers, timeout=timeout, engine="cninfo")
+    except Exception as exc:
+        return {"hits": [], "meta": {"mode": "cninfo_announcements", "symbol": resolved_symbol or code, "record_count": 0, "failure_reason": "fetch_error", "error": str(exc)}}
+    announcements = parsed.get("announcements")
+    if not isinstance(announcements, list):
+        announcements = []
+    hits: List[Dict[str, Any]] = []
+    for item in announcements:
+        if not isinstance(item, dict):
+            continue
+        title = _strip_html(str(item.get("announcementTitle") or item.get("title") or ""))
+        adjunct = str(item.get("adjunctUrl") or "")
+        source_url = parse.urljoin(static_base, adjunct) if adjunct else ""
+        sec_code = str(item.get("secCode") or code)
+        sec_name = str(item.get("secName") or item.get("securityName") or sec_code)
+        publish_time = str(item.get("announcementTime") or item.get("announcementDate") or "")
+        content = f"CNINFO official announcement for {sec_name} ({sec_code}): {title}. PDF/source: {source_url}"
+        digest = hashlib.sha1(f"{sec_code}|{title}|{source_url}".encode("utf-8")).hexdigest()[:10]
+        hits.append(
+            {
+                "evidence_id": f"{sec_code}_{period or 'latest'}_cninfo_{digest}",
+                "sample_id": f"{sec_code}_{period or 'latest'}_cninfo_{digest}",
+                "symbol": resolved_symbol or sec_code,
+                "period": str(period or ""),
+                "source_type": "cninfo_announcement",
+                "title": title or f"{sec_name} CNINFO announcement",
+                "content": content,
+                "source_url": source_url or f"http://www.cninfo.com.cn/new/disclosure/stock?stockCode={sec_code}",
+                "publish_time": publish_time,
+                "trust_level": "high",
+                "score": 7.2,
+                "metadata": {"provider": "CNINFO", "sec_code": sec_code, "sec_name": sec_name, "raw": item},
+            }
+        )
+    hits = [apply_source_quality(hit) for hit in hits]
+    return {
+        "hits": hits[:topk],
+        "meta": {
+            "mode": "cninfo_announcements",
+            "symbol": resolved_symbol or code,
+            "record_count": len(hits),
+            "failure_reason": "" if hits else "no_announcements",
+            "query": query,
+        },
+    }
+
+
+def exchange_announcement_search(
+    query: str,
+    topk: int = 5,
+    symbol: str | None = None,
+    period: str | None = None,
+    raw_data_root: str = "data/raw/real_data",
+    data_source_config_path: str = "configs/data_sources.yaml",
+    enable_remote: bool = False,
+    **_: Any,
+) -> Dict[str, Any]:
+    if not enable_remote:
+        return {
+            "hits": [],
+            "meta": {"mode": "exchange_announcements", "query": query, "record_count": 0, "failure_reason": "remote_sources_disabled"},
+        }
+    config = load_config(data_source_config_path)
+    exchange_cfg = dict(config.get("independent_sources", {}).get("company", {}).get("exchange_announcements", {}))
+    resolved_symbol = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or _extract_symbol_from_query(query) or _extract_cn_symbol(query))
+    code = _cn_stock_code(resolved_symbol)
+    if not code:
+        return {"hits": [], "meta": {"mode": "exchange_announcements", "query": query, "record_count": 0, "failure_reason": "unsupported_symbol"}}
+    if _is_sh_symbol(resolved_symbol or code):
+        return _sse_announcement_search(code=code, period=period or "", topk=topk, query=query, config=exchange_cfg)
+    return _szse_announcement_search(code=code, period=period or "", topk=topk, query=query, config=exchange_cfg)
+
+
+def eastmoney_financials_search(
+    query: str,
+    topk: int = 5,
+    symbol: str | None = None,
+    period: str | None = None,
+    raw_data_root: str = "data/raw/real_data",
+    data_source_config_path: str = "configs/data_sources.yaml",
+    enable_remote: bool = False,
+    **_: Any,
+) -> Dict[str, Any]:
+    if not enable_remote:
+        return {
+            "hits": [],
+            "meta": {"mode": "eastmoney_financials", "query": query, "record_count": 0, "failure_reason": "remote_sources_disabled"},
+        }
+    config = load_config(data_source_config_path)
+    em_cfg = dict(config.get("independent_sources", {}).get("company", {}).get("eastmoney_financials", {}))
+    resolved_symbol = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or _extract_symbol_from_query(query) or _extract_cn_symbol(query))
+    code = _cn_stock_code(resolved_symbol)
+    if not code:
+        return {"hits": [], "meta": {"mode": "eastmoney_financials", "query": query, "record_count": 0, "failure_reason": "unsupported_symbol"}}
+    base_url = str(em_cfg.get("base_url") or "https://datacenter-web.eastmoney.com/api/data/v1/get")
+    timeout = float(em_cfg.get("timeout", 15) or 15)
+    reports = em_cfg.get("reports", {}) if isinstance(em_cfg.get("reports"), dict) else {}
+    report_map = {
+        "income": str(reports.get("income") or "RPT_DMSK_FN_INCOME"),
+        "balance": str(reports.get("balance") or "RPT_DMSK_FN_BALANCE"),
+        "cashflow": str(reports.get("cashflow") or "RPT_DMSK_FN_CASHFLOW"),
+    }
+    hits: List[Dict[str, Any]] = []
+    metas: Dict[str, Any] = {}
+    for table_type, report_name in report_map.items():
+        params = {
+            "sortColumns": "REPORT_DATE",
+            "sortTypes": "-1",
+            "pageSize": str(em_cfg.get("page_size", 20) or 20),
+            "pageNumber": "1",
+            "reportName": report_name,
+            "columns": "ALL",
+            "filter": f'(SECURITY_CODE="{code}")',
+        }
+        url = f"{base_url}?{parse.urlencode(params)}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 DeepReportPlus/0.1",
+            "Accept": "application/json,text/plain,*/*",
+            "Referer": "https://data.eastmoney.com/",
+        }
+        try:
+            parsed = _get_json(url, headers=headers, timeout=timeout, engine="eastmoney_financials")
+        except Exception as exc:
+            metas[table_type] = {"failure_reason": "fetch_error", "error": str(exc)}
+            continue
+        rows = _coerce_search_items(parsed, keys=["data", "result", "items", "records"])
+        if rows and isinstance(rows[0].get("SECURITY_CODE"), (str, int, float)):
+            records = rows
+        elif rows and isinstance(rows[0].get("data"), list):
+            records = rows[0]["data"]
+        else:
+            result = parsed.get("result") if isinstance(parsed.get("result"), dict) else {}
+            data = result.get("data") if isinstance(result, dict) else []
+            records = data if isinstance(data, list) else []
+        metas[table_type] = {"record_count": len(records), "report_name": report_name}
+        if not records:
+            continue
+        row = _select_financial_row_for_period(records, period) or (records[0] if isinstance(records[0], dict) else {})
+        title = f"{code} Eastmoney {table_type} financial table"
+        summary = _summarize_eastmoney_financial_row(table_type, row)
+        digest = hashlib.sha1(f"{code}|{table_type}|{json.dumps(row, ensure_ascii=False, sort_keys=True, default=str)}".encode("utf-8")).hexdigest()[:10]
+        hits.append(
+            {
+                "evidence_id": f"{code}_{period or 'latest'}_eastmoney_financials_{table_type}_{digest}",
+                "sample_id": f"{code}_{period or 'latest'}_eastmoney_financials_{table_type}_{digest}",
+                "symbol": resolved_symbol or code,
+                "period": str(period or row.get("REPORT_DATE") or ""),
+                "source_type": "eastmoney_financials",
+                "title": title,
+                "content": summary,
+                "source_url": f"https://data.eastmoney.com/bbsj/{code}.html",
+                "publish_time": str(row.get("NOTICE_DATE") or row.get("REPORT_DATE") or ""),
+                "trust_level": "high",
+                "score": 6.8,
+                "metadata": {"provider": "Eastmoney", "table_type": table_type, "report_name": report_name, "raw": row},
+            }
+        )
+    hits = [apply_source_quality(hit) for hit in hits]
+    return {
+        "hits": hits[:topk],
+        "meta": {
+            "mode": "eastmoney_financials",
+            "symbol": resolved_symbol or code,
+            "record_count": len(hits),
+            "failure_reason": "" if hits else "no_financial_table_rows",
+            "tables": metas,
+            "query": query,
+        },
+    }
+
+
 def independent_macro_search(
     query: str,
     topk: int = 5,
@@ -704,6 +935,249 @@ def _eastmoney_scaled(value: Any, scale: float = 100.0) -> float | None:
     return round(number / scale, 4)
 
 
+def _cn_stock_code(symbol: str | None) -> str:
+    text = str(symbol or "").strip().upper()
+    if not text:
+        return ""
+    if "." in text:
+        text = text.split(".")[0]
+    if text.startswith(("SH", "SZ")):
+        text = text[2:]
+    return text[-6:] if len(text) >= 6 and text[-6:].isdigit() else ""
+
+
+def _extract_cn_symbol(query: str) -> str:
+    match = re_search_cn_symbol(query)
+    return match or ""
+
+
+def re_search_cn_symbol(text: str) -> str:
+    import re
+
+    match = re.search(r"(?<!\d)([036]\d{5})(?:\.(?:SS|SH|SZ))?(?!\d)", str(text or ""), flags=re.IGNORECASE)
+    if not match:
+        return ""
+    code = match.group(1)
+    suffix = ".SS" if code.startswith("6") else ".SZ"
+    return f"{code}{suffix}"
+
+
+def _is_sh_symbol(symbol: str) -> bool:
+    text = str(symbol or "").upper()
+    code = _cn_stock_code(text)
+    return text.endswith(".SS") or text.startswith("SH") or code.startswith("6")
+
+
+def _announcement_date_range(period: str | None) -> tuple[str, str]:
+    text = str(period or "").strip().upper()
+    year = ""
+    for token in text.replace("-", " ").replace("Q", " Q").split():
+        if token.isdigit() and len(token) == 4:
+            year = token
+            break
+    if not year and len(text) >= 4 and text[:4].isdigit():
+        year = text[:4]
+    if not year:
+        return "", ""
+    next_year = str(int(year) + 1)
+    if "Q1" in text:
+        return f"{year}-03-01", f"{year}-06-30"
+    if "Q2" in text or "H1" in text:
+        return f"{year}-06-01", f"{year}-10-31"
+    if "Q3" in text:
+        return f"{year}-09-01", f"{year}-12-31"
+    return f"{year}-01-01", f"{next_year}-12-31"
+
+
+def _target_report_date(period: str | None) -> str:
+    text = str(period or "").strip().upper()
+    year = text[:4] if len(text) >= 4 and text[:4].isdigit() else ""
+    if not year:
+        return ""
+    if "Q1" in text:
+        return f"{year}-03-31"
+    if "Q2" in text or "H1" in text:
+        return f"{year}-06-30"
+    if "Q3" in text:
+        return f"{year}-09-30"
+    if "Q4" in text or "FY" in text or "ANNUAL" in text:
+        return f"{year}-12-31"
+    return ""
+
+
+def _select_financial_row_for_period(records: List[Any], period: str | None) -> Dict[str, Any]:
+    target = _target_report_date(period)
+    candidates = [item for item in records if isinstance(item, dict)]
+    if not candidates:
+        return {}
+    if not target:
+        return candidates[0]
+    for row in candidates:
+        report_date = str(row.get("REPORT_DATE") or row.get("REPORTDATE") or "")
+        if report_date.startswith(target):
+            return row
+    year = target[:4]
+    if target.endswith("12-31"):
+        for row in candidates:
+            report_date = str(row.get("REPORT_DATE") or row.get("REPORTDATE") or "")
+            if report_date.startswith(f"{year}-12"):
+                return row
+    return candidates[0]
+
+
+def _cninfo_org_id(code: str, config: Dict[str, Any], timeout: float) -> str:
+    url = str(config.get("stock_list_url") or "")
+    if not url:
+        return ""
+    headers = {"User-Agent": "Mozilla/5.0 DeepReportPlus/0.1", "Accept": "application/json,text/plain,*/*"}
+    try:
+        payload = _get_json(url, headers=headers, timeout=timeout, engine="cninfo_stock_list")
+    except Exception:
+        return ""
+    stock_list = payload.get("stockList", []) if isinstance(payload, dict) else []
+    if not isinstance(stock_list, list):
+        return ""
+    for item in stock_list:
+        if isinstance(item, dict) and str(item.get("code") or "") == code:
+            return str(item.get("orgId") or "")
+    return ""
+
+
+def _sse_announcement_search(code: str, period: str, topk: int, query: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    base_url = str(config.get("sse_query_url") or "https://query.sse.com.cn/security/stock/queryCompanyBulletin.do")
+    timeout = float(config.get("timeout", 15) or 15)
+    start_date, end_date = _announcement_date_range(period)
+    params = {
+        "isPagination": "true",
+        "productId": code,
+        "securityType": "0101,120100,020100,020200,120200",
+        "reportType2": "DQBG",
+        "beginDate": start_date,
+        "endDate": end_date,
+        "pageHelp.pageSize": str(max(topk, int(config.get("page_size", 10) or 10))),
+        "pageHelp.pageNo": "1",
+        "pageHelp.beginPage": "1",
+        "pageHelp.cacheSize": "1",
+        "pageHelp.endPage": "1",
+    }
+    url = f"{base_url}?{parse.urlencode(params)}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 DeepReportPlus/0.1",
+        "Accept": "application/json,text/plain,*/*",
+        "Referer": "https://www.sse.com.cn/",
+    }
+    try:
+        parsed = _get_json(url, headers=headers, timeout=timeout, engine="sse_announcements")
+    except Exception as exc:
+        return {"hits": [], "meta": {"mode": "exchange_announcements", "exchange": "sse", "symbol": code, "record_count": 0, "failure_reason": "fetch_error", "error": str(exc), "query": query}}
+    rows = _coerce_search_items(parsed, keys=["result", "data", "items", "list"])
+    hits = []
+    for row in rows:
+        title = str(row.get("TITLE") or row.get("title") or row.get("bulletinTitle") or "")
+        url_path = str(row.get("URL") or row.get("url") or row.get("bulletinUrl") or "")
+        source_url = parse.urljoin("https://www.sse.com.cn/", url_path)
+        date = str(row.get("SSEDATE") or row.get("date") or row.get("BULLETIN_DATE") or "")
+        digest = hashlib.sha1(f"{code}|{title}|{source_url}".encode("utf-8")).hexdigest()[:10]
+        hits.append(
+            {
+                "evidence_id": f"{code}_{period or 'latest'}_sse_announcement_{digest}",
+                "sample_id": f"{code}_{period or 'latest'}_sse_announcement_{digest}",
+                "symbol": f"{code}.SS",
+                "period": period,
+                "source_type": "exchange_announcement",
+                "title": title or f"{code} SSE announcement",
+                "content": f"SSE official announcement for {code}: {title}.",
+                "source_url": source_url,
+                "publish_time": date,
+                "trust_level": "high",
+                "score": 7.0,
+                "metadata": {"provider": "SSE", "raw": row},
+            }
+        )
+    hits = [apply_source_quality(hit) for hit in hits]
+    return {"hits": hits[:topk], "meta": {"mode": "exchange_announcements", "exchange": "sse", "symbol": code, "record_count": len(hits), "failure_reason": "" if hits else "no_announcements", "query": query}}
+
+
+def _szse_announcement_search(code: str, period: str, topk: int, query: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    base_url = str(config.get("szse_announcement_url") or "https://www.szse.cn/api/disc/announcement/annList")
+    timeout = float(config.get("timeout", 15) or 15)
+    start_date, end_date = _announcement_date_range(period)
+    payload = {
+        "seDate": [start_date, end_date] if start_date and end_date else [],
+        "stock": [code],
+        "channelCode": ["listedNotice_disc"],
+        "pageSize": max(topk, int(config.get("page_size", 10) or 10)),
+        "pageNum": 1,
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 DeepReportPlus/0.1",
+        "Accept": "application/json,text/plain,*/*",
+        "Content-Type": "application/json",
+        "Referer": "https://www.szse.cn/disclosure/listed/notice/",
+    }
+    try:
+        parsed = _post_json_search(base_url, payload, headers=headers, timeout=timeout, engine="szse_announcements")
+    except Exception as exc:
+        return {"hits": [], "meta": {"mode": "exchange_announcements", "exchange": "szse", "symbol": code, "record_count": 0, "failure_reason": "fetch_error", "error": str(exc), "query": query}}
+    rows = _coerce_search_items(parsed, keys=["data", "items", "announcements", "list"])
+    hits = []
+    for row in rows:
+        title = str(row.get("title") or row.get("announcementTitle") or row.get("discTitle") or "")
+        url_path = str(row.get("attachPath") or row.get("url") or row.get("href") or "")
+        source_url = parse.urljoin("https://www.szse.cn/", url_path)
+        date = str(row.get("publishTime") or row.get("date") or row.get("publishDate") or "")
+        digest = hashlib.sha1(f"{code}|{title}|{source_url}".encode("utf-8")).hexdigest()[:10]
+        hits.append(
+            {
+                "evidence_id": f"{code}_{period or 'latest'}_szse_announcement_{digest}",
+                "sample_id": f"{code}_{period or 'latest'}_szse_announcement_{digest}",
+                "symbol": f"{code}.SZ",
+                "period": period,
+                "source_type": "exchange_announcement",
+                "title": title or f"{code} SZSE announcement",
+                "content": f"SZSE official announcement for {code}: {title}.",
+                "source_url": source_url,
+                "publish_time": date,
+                "trust_level": "high",
+                "score": 7.0,
+                "metadata": {"provider": "SZSE", "raw": row},
+            }
+        )
+    hits = [apply_source_quality(hit) for hit in hits]
+    return {"hits": hits[:topk], "meta": {"mode": "exchange_announcements", "exchange": "szse", "symbol": code, "record_count": len(hits), "failure_reason": "" if hits else "no_announcements", "query": query}}
+
+
+def _summarize_eastmoney_financial_row(table_type: str, row: Dict[str, Any]) -> str:
+    labels = {
+        "OPERATE_INCOME": "operating revenue",
+        "TOTAL_OPERATE_INCOME": "total operating revenue",
+        "NETPROFIT": "net profit",
+        "PARENT_NETPROFIT": "parent net profit",
+        "TOTAL_ASSETS": "total assets",
+        "TOTAL_LIABILITIES": "total liabilities",
+        "TOTAL_EQUITY": "total equity",
+        "MONETARYFUNDS": "cash and equivalents",
+        "NETCASH_OPERATE": "net operating cash flow",
+        "NETCASH_INVEST": "net investing cash flow",
+        "NETCASH_FINANCE": "net financing cash flow",
+    }
+    parts = [f"report_date {row.get('REPORT_DATE') or row.get('REPORTDATE') or 'unknown'}"]
+    for key, label in labels.items():
+        if key in row and row.get(key) not in {None, ""}:
+            parts.append(f"{label} {row.get(key)}")
+    if len(parts) == 1:
+        for key, value in list(row.items())[:8]:
+            if value not in {None, ""}:
+                parts.append(f"{key} {value}")
+    return f"Eastmoney {table_type} financial table: " + "; ".join(str(part) for part in parts) + "."
+
+
+def _strip_html(text: str) -> str:
+    import re
+
+    return re.sub(r"<[^>]+>", "", str(text or "")).replace("&nbsp;", " ").strip()
+
+
 def _normalize_hits(engine: str, hits: Any) -> List[SearchResult]:
     if not isinstance(hits, list):
         return []
@@ -747,11 +1221,32 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
     deduped: Dict[str, SearchResult] = {}
     for hit in hits:
         raw = hit.raw if isinstance(hit.raw, dict) else {}
-        key = str(raw.get("chunk_id") or hit.url or hit.result_id or f"{hit.engine}:{hit.title}:{hit.snippet[:80]}")
+        if str(raw.get("source_type") or "") == "eastmoney_financials":
+            key = str(hit.result_id)
+        else:
+            key = str(raw.get("chunk_id") or hit.url or hit.result_id or f"{hit.engine}:{hit.title}:{hit.snippet[:80]}")
         existing = deduped.get(key)
         if existing is None or hit.score > existing.score:
             deduped[key] = hit
-    return sorted(deduped.values(), key=lambda item: (item.score + item.authority_score * 0.05), reverse=True)[:topk]
+    ranked = sorted(deduped.values(), key=lambda item: (item.score + item.authority_score * 0.05), reverse=True)
+    selected: List[SearchResult] = []
+    source_counts: Dict[str, int] = {}
+    diversity_cap = 2
+    for hit in ranked:
+        source_key = hit.source_type or hit.engine
+        if source_counts.get(source_key, 0) >= diversity_cap:
+            continue
+        selected.append(hit)
+        source_counts[source_key] = source_counts.get(source_key, 0) + 1
+        if len(selected) >= topk:
+            return selected
+    for hit in ranked:
+        if hit in selected:
+            continue
+        selected.append(hit)
+        if len(selected) >= topk:
+            break
+    return selected
 
 
 def _safe_float(value: Any) -> float:
@@ -780,6 +1275,54 @@ def _post_json_search(
         raise RuntimeError(f"{engine} HTTP {exc.code}: {error_body}") from exc
     except error.URLError as exc:
         raise RuntimeError(f"{engine} URL error: {exc.reason}") from exc
+    parsed = json.loads(raw)
+    if not isinstance(parsed, dict):
+        raise RuntimeError(f"{engine} returned non-object JSON")
+    return parsed
+
+
+def _post_form_json(
+    base_url: str,
+    payload: Dict[str, Any],
+    headers: Dict[str, str],
+    timeout: float,
+    engine: str,
+) -> Dict[str, Any]:
+    body = parse.urlencode(payload).encode("utf-8")
+    req = request.Request(base_url, data=body, headers=headers, method="POST")
+    try:
+        with request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except (TimeoutError, socket.timeout) as exc:
+        raise RuntimeError(f"{engine} search timed out") from exc
+    except error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"{engine} HTTP {exc.code}: {error_body}") from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"{engine} URL error: {exc.reason}") from exc
+    parsed = json.loads(raw)
+    if not isinstance(parsed, dict):
+        raise RuntimeError(f"{engine} returned non-object JSON")
+    return parsed
+
+
+def _get_json(url: str, headers: Dict[str, str], timeout: float, engine: str) -> Dict[str, Any]:
+    req = request.Request(url, headers=headers, method="GET")
+    try:
+        with request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except (TimeoutError, socket.timeout) as exc:
+        raise RuntimeError(f"{engine} request timed out") from exc
+    except error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"{engine} HTTP {exc.code}: {error_body}") from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"{engine} URL error: {exc.reason}") from exc
+    if raw.strip().startswith(("jsonp", "jQuery")):
+        start = raw.find("(")
+        end = raw.rfind(")")
+        if start >= 0 and end > start:
+            raw = raw[start + 1 : end]
     parsed = json.loads(raw)
     if not isinstance(parsed, dict):
         raise RuntimeError(f"{engine} returned non-object JSON")

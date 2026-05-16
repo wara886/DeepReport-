@@ -1,0 +1,103 @@
+[
+  {
+    "citation_id": "ref_001",
+    "evidence_id": "600519_2025Q4_cninfo_4f7e837a05",
+    "title": "贵州茅台2026年第一季度报告",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF",
+    "source_type": "cninfo_announcement",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "1777046400000",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0001",
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "CNINFO official announcement for 贵州茅台 (600519): 贵州茅台2026年第一季度报告. PDF/source: http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF"
+  },
+  {
+    "citation_id": "ref_002",
+    "evidence_id": "600519_2025Q4_cninfo_ba21bf4403",
+    "title": "贵州茅台2025年年度报告",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF",
+    "source_type": "cninfo_announcement",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "1776355200000",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0001",
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "CNINFO official announcement for 贵州茅台 (600519): 贵州茅台2025年年度报告. PDF/source: http://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF"
+  },
+  {
+    "citation_id": "ref_003",
+    "evidence_id": "600519_2025Q4_cninfo_1f54dbfc0e",
+    "title": "贵州茅台2025年年度报告摘要",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2026-04-17/1225114731.PDF",
+    "source_type": "cninfo_announcement",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "1776355200000",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0001",
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "CNINFO official announcement for 贵州茅台 (600519): 贵州茅台2025年年度报告摘要. PDF/source: http://static.cninfo.com.cn/finalpage/2026-04-17/1225114731.PDF"
+  },
+  {
+    "citation_id": "ref_004",
+    "evidence_id": "600519_2025Q4_cninfo_95d71e935d",
+    "title": "贵州茅台2025年第三季度报告",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2025-10-30/1224764517.PDF",
+    "source_type": "cninfo_announcement",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "1761753600000",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0001",
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "CNINFO official announcement for 贵州茅台 (600519): 贵州茅台2025年第三季度报告. PDF/source: http://static.cninfo.com.cn/finalpage/2025-10-30/1224764517.PDF"
+  },
+  {
+    "citation_id": "ref_005",
+    "evidence_id": "600519_2025Q4_cninfo_d1a71be2ff",
+    "title": "贵州茅台2025年半年度报告",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2025-08-13/1224462930.PDF",
+    "source_type": "cninfo_announcement",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "1755014400000",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0001",
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "CNINFO official announcement for 贵州茅台 (600519): 贵州茅台2025年半年度报告. PDF/source: http://static.cninfo.com.cn/finalpage/2025-08-13/1224462930.PDF"
+  },
+  {
+    "citation_id": "ref_006",
+    "evidence_id": "600519_2025Q4_cninfo_ab4566bc68",
+    "title": "贵州茅台2025年年度报告（英文版）",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2026-04-17/1225114733.PDF",
+    "source_type": "cninfo_announcement",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "1776355200000",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "CNINFO official announcement for 贵州茅台 (600519): 贵州茅台2025年年度报告（英文版）. PDF/source: http://static.cninfo.com.cn/finalpage/2026-04-17/1225114733.PDF"
+  }
+]

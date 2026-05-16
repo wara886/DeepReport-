@@ -356,6 +356,99 @@ def build_rule_claims(
             )
             claim_index += 1
 
+    for record in records:
+        if str(record.get("source_type") or "") != "eastmoney_financials":
+            continue
+        metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+        raw = metadata.get("raw", {}) if isinstance(metadata.get("raw"), dict) else {}
+        table_type = str(metadata.get("table_type") or "")
+        evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
+        symbol = str(record.get("symbol") or "Company")
+        report_date = str(raw.get("REPORT_DATE") or raw.get("REPORTDATE") or record.get("period") or "未披露")
+        if table_type == "income":
+            revenue = _first_number(raw, ["OPERATE_INCOME", "TOTAL_OPERATE_INCOME", "营业总收入", "营业收入"])
+            net_income = _first_number(raw, ["NETPROFIT", "PARENT_NETPROFIT", "净利润", "归母净利润"])
+            parts = []
+            numeric_values: Dict[str, float] = {}
+            if revenue is not None:
+                parts.append(f"营业收入约为 {revenue:g}")
+                numeric_values["revenue"] = revenue
+            if net_income is not None:
+                parts.append(f"净利润约为 {net_income:g}")
+                numeric_values["net_income"] = net_income
+            if parts and evidence_id:
+                claims.append(
+                    ClaimItem(
+                        claim_id=f"cl_{claim_index:04d}",
+                        section_name="financial_analysis",
+                        claim_text=f"{symbol} 东方财富财务表显示，{report_date} " + "，".join(parts) + "。",
+                        evidence_ids=[evidence_id],
+                        numeric_values=numeric_values,
+                        risk_level="medium",
+                        confidence=0.8,
+                        notes="由东方财富结构化利润表记录生成，仍建议用巨潮/交易所公告 PDF 交叉验证。",
+                    )
+                )
+                claim_index += 1
+        if table_type == "balance":
+            assets = _first_number(raw, ["TOTAL_ASSETS", "资产总计", "总资产"])
+            liabilities = _first_number(raw, ["TOTAL_LIABILITIES", "负债合计", "总负债"])
+            equity = _first_number(raw, ["TOTAL_EQUITY", "所有者权益合计", "股东权益合计"])
+            parts = []
+            numeric_values = {}
+            if assets is not None:
+                parts.append(f"总资产约为 {assets:g}")
+                numeric_values["assets"] = assets
+            if liabilities is not None:
+                parts.append(f"总负债约为 {liabilities:g}")
+                numeric_values["liabilities"] = liabilities
+            if equity is not None:
+                parts.append(f"所有者权益约为 {equity:g}")
+                numeric_values["equity"] = equity
+            if parts and evidence_id:
+                claims.append(
+                    ClaimItem(
+                        claim_id=f"cl_{claim_index:04d}",
+                        section_name="financial_statements",
+                        claim_text=f"{symbol} 东方财富资产负债表显示，{report_date} " + "，".join(parts) + "。",
+                        evidence_ids=[evidence_id],
+                        numeric_values=numeric_values,
+                        risk_level="medium",
+                        confidence=0.78,
+                        notes="由东方财富结构化资产负债表记录生成，仍建议用巨潮/交易所公告 PDF 交叉验证。",
+                    )
+                )
+                claim_index += 1
+        if table_type == "cashflow":
+            ocf = _first_number(raw, ["NETCASH_OPERATE", "经营活动产生的现金流量净额"])
+            icf = _first_number(raw, ["NETCASH_INVEST", "投资活动产生的现金流量净额"])
+            fcf = _first_number(raw, ["NETCASH_FINANCE", "筹资活动产生的现金流量净额"])
+            parts = []
+            numeric_values = {}
+            if ocf is not None:
+                parts.append(f"经营现金流净额约为 {ocf:g}")
+                numeric_values["operating_cash_flow"] = ocf
+            if icf is not None:
+                parts.append(f"投资现金流净额约为 {icf:g}")
+                numeric_values["investing_cash_flow"] = icf
+            if fcf is not None:
+                parts.append(f"筹资现金流净额约为 {fcf:g}")
+                numeric_values["financing_cash_flow"] = fcf
+            if parts and evidence_id:
+                claims.append(
+                    ClaimItem(
+                        claim_id=f"cl_{claim_index:04d}",
+                        section_name="financial_statements",
+                        claim_text=f"{symbol} 东方财富现金流量表显示，{report_date} " + "，".join(parts) + "。",
+                        evidence_ids=[evidence_id],
+                        numeric_values=numeric_values,
+                        risk_level="medium",
+                        confidence=0.78,
+                        notes="由东方财富结构化现金流量表记录生成，仍建议用巨潮/交易所公告 PDF 交叉验证。",
+                    )
+                )
+                claim_index += 1
+
     for row in ratio_rows:
         evidence_id = str(row.get("sample_id", ""))
         symbol = str(row.get("symbol", "Company") or "Company")
@@ -987,6 +1080,18 @@ def _has_close_number(target: float, values: List[float]) -> bool:
         if abs(value - target) <= tolerance:
             return True
     return False
+
+
+def _first_number(row: Dict[str, Any], keys: List[str]) -> float | None:
+    for key in keys:
+        value = row.get(key)
+        if value in {None, ""}:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _is_derived_claim_allowed(claim: ClaimItem) -> bool:

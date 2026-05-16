@@ -1,0 +1,38 @@
+{
+  "session_id": "578c2ccf9353",
+  "user_intent": "分析 600519.SS 2025Q4 财务表现，并生成带引用的研究报告",
+  "symbol": "600519.SS",
+  "period": "2025Q4",
+  "report_type": "company_stock_report",
+  "hard_constraints": [
+    "Only produce the requested company/stock research report type for this run.",
+    "Every material factual claim must be backed by an explicit evidence_id citation.",
+    "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+    "Keep verifier feedback active during revisions until the final verification passes.",
+    "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+    "覆盖收入、利润率、现金流、风险、市场表现和近期新闻",
+    "所有关键结论必须绑定 evidence_id",
+    "输出 Markdown、HTML、JSON、trace 和验证报告"
+  ],
+  "pinned_facts": [
+    "Target symbol: 600519.SS",
+    "Target period: 2025Q4",
+    "Report type: company_stock_report"
+  ],
+  "rejected_claims": [],
+  "verifier_feedback": [
+    "warnings: Target symbol 600519.SS is not explicitly mentioned in report claims or markdown.",
+    "revision_brief: - Warnings: Target symbol 600519.SS is not explicitly mentioned in report claims or markdown."
+  ],
+  "open_questions": [],
+  "turns": [
+    {
+      "role": "user",
+      "content": "分析 600519.SS 2025Q4 财务表现，并生成带引用的研究报告",
+      "metadata": {
+        "source": "run_request"
+      }
+    }
+  ],
+  "context_brief": "[ConversationMemory]\nUser intent:\n- 分析 600519.SS 2025Q4 财务表现，并生成带引用的研究报告\nRun scope:\n- report_type=company_stock_report\n- symbol=600519.SS\n- period=2025Q4\nHard constraints:\n- Only produce the requested company/stock research report type for this run.\n- Every material factual claim must be backed by an explicit evidence_id citation.\n- Do not invent numbers, dates, sources, ratings, or unsupported conclusions.\n- Keep verifier feedback active during revisions until the final verification passes.\n- Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.\n- 覆盖收入、利润率、现金流、风险、市场表现和近期新闻\n- 所有关键结论必须绑定 evidence_id\n- 输出 Markdown、HTML、JSON、trace 和验证报告\nPinned facts:\n- Target symbol: 600519.SS\n- Target period: 2025Q4\n- Report type: company_stock_report\nVerifier feedback to keep active:\n- warnings: Target symbol 600519.SS is not explicitly mentioned in report claims or markdown.\n- revision_brief: - Warnings: Target symbol 600519.SS is not explicitly mentioned in report claims or markdown."
+}

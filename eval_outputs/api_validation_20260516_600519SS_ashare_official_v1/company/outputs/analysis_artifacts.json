@@ -1,0 +1,137 @@
+{
+  "ratio_rows": [
+    {
+      "sample_id": "600519_2025Q4_cninfo_4f7e837a05",
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "source_type": "cninfo_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519_2025Q4_cninfo_ba21bf4403",
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "source_type": "cninfo_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519_2025Q4_cninfo_ab4566bc68",
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "source_type": "cninfo_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519_2025Q4_cninfo_1f54dbfc0e",
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "source_type": "cninfo_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519_2025Q4_cninfo_95d71e935d",
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "source_type": "cninfo_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519_2025Q4_cninfo_d1a71be2ff",
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "source_type": "cninfo_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    }
+  ],
+  "trend_rows": [
+    {
+      "symbol": "600519.SS",
+      "period": "2025Q4",
+      "evidence_count": 6,
+      "unique_sources": 1,
+      "latest_publish_time": "1777046400000",
+      "sample_ids": "600519_2025Q4_cninfo_1f54dbfc0e|600519_2025Q4_cninfo_4f7e837a05|600519_2025Q4_cninfo_95d71e935d|600519_2025Q4_cninfo_ab4566bc68|600519_2025Q4_cninfo_ba21bf4403|600519_2025Q4_cninfo_d1a71be2ff"
+    }
+  ],
+  "statement_view": {
+    "rows": [],
+    "coverage": {
+      "statements": {},
+      "has_three_statement_view": false,
+      "line_item_count": 0
+    },
+    "source_record_count": 0
+  },
+  "financial_metrics": {
+    "metrics": [],
+    "metric_count": 0,
+    "coverage": {
+      "required_metrics": [
+        "revenue",
+        "net_income",
+        "gross_margin",
+        "free_cash_flow"
+      ],
+      "present_metrics": [],
+      "has_core_metric_lineage": false
+    }
+  },
+  "tables": [],
+  "peer_context": {
+    "target_symbol": "600519.SS",
+    "peer_rows": [],
+    "peer_count": 0,
+    "ranking": {}
+  },
+  "valuation": {
+    "symbol": "600519.SS",
+    "period": "2025Q4",
+    "valuation_available": false,
+    "error": "target financials not found"
+  },
+  "valuation_model": {},
+  "valuation_assumptions": {},
+  "valuation_sensitivity": {}
+}
