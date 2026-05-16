@@ -103,3 +103,59 @@ def test_verifier_accepts_core_financial_claim_with_primary_evidence():
     )
 
     assert result["passed"] is True
+
+
+def test_verifier_accepts_market_numeric_claim_with_market_data():
+    claim = ClaimItem(
+        claim_id="cl_price",
+        section_name="financial_analysis",
+        claim_text="AMD latest close was 424.10 USD. [market_1]",
+        evidence_ids=["market_1"],
+        numeric_values={"latest_close": 424.10},
+        confidence=0.8,
+    )
+    evidence = [
+        {
+            "evidence_id": "market_1",
+            "source_type": "market_api",
+            "source_url": "https://finance.yahoo.com/quote/AMD",
+            "content": "AMD latest close 424.10 USD.",
+            "metadata": {},
+        }
+    ]
+
+    result = Verifier().verify(
+        claims=[claim],
+        markdown="# Executive Summary\n\n## Financial Analysis\n\nAMD latest close was 424.10 USD. [market_1]\n\n## Risk Assessment\n",
+        evidence_records=evidence,
+    )
+
+    assert result["passed"] is True
+
+
+def test_verifier_accepts_macro_numeric_claim_with_official_statistics():
+    claim = ClaimItem(
+        claim_id="cl_cpi",
+        section_name="financial_analysis",
+        claim_text="CPI was 333.020 in 2026-M04. [bls_1]",
+        evidence_ids=["bls_1"],
+        numeric_values={"cpi": 333.020},
+        confidence=0.8,
+    )
+    evidence = [
+        {
+            "evidence_id": "bls_1",
+            "source_type": "bls_series",
+            "source_url": "https://www.bls.gov/developers/api_signature_v2.htm",
+            "content": "CPI latest BLS observation is 333.020 for 2026-M04.",
+            "metadata": {},
+        }
+    ]
+
+    result = Verifier().verify(
+        claims=[claim],
+        markdown="# Executive Summary\n\n## Financial Analysis\n\nCPI was 333.020 in 2026-M04. [bls_1]\n\n## Risk Assessment\n",
+        evidence_records=evidence,
+    )
+
+    assert result["passed"] is True

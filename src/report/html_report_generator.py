@@ -52,7 +52,8 @@ def render_professional_html_report(
     a {{ color: var(--accent); }}
     code {{ background: #eef2ef; padding: 2px 5px; border-radius: 4px; }}
     .charts-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }}
-    .chart-panel canvas {{ width: 100%; min-height: 260px; }}
+    .chart-frame {{ position: relative; height: 320px; max-height: 320px; overflow: hidden; }}
+    .chart-panel canvas {{ width: 100% !important; height: 320px !important; display: block; }}
     .chart-caption {{ color: var(--muted); font-size: 13px; margin-top: 8px; }}
     .references li {{ overflow-wrap: anywhere; }}
   </style>
@@ -141,7 +142,7 @@ def _render_chartjs_blocks(charts: List[Dict[str, Any]]) -> str:
         chart_id = _safe_id(str(chart.get("chart_id") or "chart"))
         title = escape(str(chart.get("title") or chart_id))
         blocks.append(
-            f'<div class="chart-panel"><h3>{title}</h3><canvas id="canvas_{chart_id}"></canvas>'
+            f'<div class="chart-panel"><h3>{title}</h3><div class="chart-frame"><canvas id="canvas_{chart_id}"></canvas></div>'
             f'<div class="chart-caption">{escape(str(chart.get("source_fields") or ""))}</div></div>'
         )
     blocks.append("</div></section>")

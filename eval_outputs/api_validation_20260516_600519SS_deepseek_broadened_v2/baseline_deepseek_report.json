@@ -1,0 +1,41 @@
+{
+  "title": "600519.SS baseline DeepSeek workflow report",
+  "symbol": "600519.SS",
+  "period": "2025Q4",
+  "audit": {
+    "verified": [
+      {
+        "claim_id": "cl_0001",
+        "claim_text": "美国CPI（CUUR0000SA0）2026年4月达到333.020，表明通胀压力持续，可能影响消费品企业的成本与定价环境。",
+        "evidence_ids": [
+          "bls_cuur0000sa0_2026_M04"
+        ]
+      },
+      {
+        "claim_id": "cl_0002",
+        "claim_text": "Company 的证据覆盖包括 1 条记录，横跨 1 类来源。",
+        "evidence_ids": [
+          "bls_cuur0000sa0_2026_M04"
+        ]
+      },
+      {
+        "claim_id": "cl_0003",
+        "claim_text": "600519.SS 的证据覆盖包括 1 条记录，横跨 1 类来源。",
+        "evidence_ids": [
+          "600519.SS_2025Q4_yahoo_finance_df36f6f3cb"
+        ]
+      }
+    ],
+    "pending_verification": [],
+    "unsupported": []
+  },
+  "meta": {
+    "mode": "baseline_deepseek_workflow",
+    "model_used": true,
+    "model_status": "completed",
+    "verified_claim_count": 3,
+    "pending_claim_count": 0,
+    "unsupported_claim_count": 0,
+    "model": "deepseek-v4-flash"
+  }
+}

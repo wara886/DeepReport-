@@ -11,6 +11,7 @@ import mimetypes
 from typing import Any, Dict, List, Tuple
 from urllib.parse import unquote, urlparse
 
+from src.app.agent_chat import AgentChatService
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 
 
@@ -24,9 +25,16 @@ def create_ui_handler(
     report_dir: str = DEFAULT_REPORT_DIR,
     config_path: str = "configs/model_backends.yaml",
     raw_data_root: str = "data/raw/real_data",
+    memory_root: str = "memory/chat",
 ) -> type[BaseHTTPRequestHandler]:
     output_root = Path(output_dir)
     report_root = Path(report_dir)
+    chat_service = AgentChatService(
+        config_path=config_path,
+        memory_root=memory_root,
+        output_root=output_root,
+        report_root=report_root,
+    )
 
     class FinancialAgentUIHandler(BaseHTTPRequestHandler):
         server_version = "DeepReportPlusUI/0.1"
@@ -44,6 +52,9 @@ def create_ui_handler(
 
         def do_POST(self) -> None:
             path = urlparse(self.path).path
+            if path == "/api/chat":
+                self._handle_chat()
+                return
             if path != "/api/run":
                 self._send_json({"error": f"not found: {path}"}, status=HTTPStatus.NOT_FOUND)
                 return
@@ -55,11 +66,13 @@ def create_ui_handler(
                 engines = _parse_engines(payload.get("engines") or DEFAULT_ENGINES)
                 fast = bool(payload.get("fast", True))
                 execution_mode = str(payload.get("execution_mode") or "dynamic")
+                memory_enabled = bool(payload.get("memory_enabled", False))
                 orchestrator = MultiAgentOrchestrator(
                     output_dir=str(output_root),
                     report_dir=str(report_root),
                     config_path=config_path,
                     raw_data_root=raw_data_root,
+                    memory_enabled=memory_enabled,
                 )
                 result = orchestrator.run(
                     research_topic=topic,
@@ -71,6 +84,42 @@ def create_ui_handler(
                 )
                 response = load_run_payload(output_root=output_root, report_root=report_root)
                 response["result"] = result
+                self._send_json(response)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+        def _handle_chat(self) -> None:
+            try:
+                payload = self._read_json()
+                symbol = str(payload.get("symbol") or "AAPL").strip().upper()
+                period = str(payload.get("period") or "2025Q4").strip()
+                memory_enabled = bool(payload.get("memory_enabled", False))
+                allow_report_run = bool(payload.get("allow_report_run", False))
+                orchestrator = None
+                if allow_report_run:
+                    orchestrator = MultiAgentOrchestrator(
+                        output_dir=str(output_root),
+                        report_dir=str(report_root),
+                        config_path=config_path,
+                        raw_data_root=raw_data_root,
+                        memory_enabled=memory_enabled,
+                    )
+                response = chat_service.handle_chat(
+                    message=str(payload.get("message") or ""),
+                    session_id=str(payload.get("session_id") or "default"),
+                    user_id=str(payload.get("user_id") or "local_user"),
+                    symbol=symbol,
+                    period=period,
+                    memory_enabled=memory_enabled,
+                    allow_report_run=allow_report_run,
+                    orchestrator=orchestrator,
+                    engines=_parse_engines(payload.get("engines") or DEFAULT_ENGINES),
+                    fast=bool(payload.get("fast", True)),
+                    execution_mode=str(payload.get("execution_mode") or "dynamic"),
+                )
+                if response.get("result"):
+                    latest = load_run_payload(output_root=output_root, report_root=report_root)
+                    response["latest"] = latest
                 self._send_json(response)
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -168,12 +217,14 @@ def run_ui_server(
     report_dir: str = DEFAULT_REPORT_DIR,
     config_path: str = "configs/model_backends.yaml",
     raw_data_root: str = "data/raw/real_data",
+    memory_root: str = "memory/chat",
 ) -> Tuple[ThreadingHTTPServer, str]:
     handler = create_ui_handler(
         output_dir=output_dir,
         report_dir=report_dir,
         config_path=config_path,
         raw_data_root=raw_data_root,
+        memory_root=memory_root,
     )
     server = ThreadingHTTPServer((host, port), handler)
     return server, f"http://{host}:{server.server_address[1]}"
@@ -295,6 +346,14 @@ def render_index_html() -> str:
     figcaption {{ color: var(--muted); margin-top: 8px; font-size: 13px; }}
     iframe {{ width: 100%; height: 720px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }}
     .links a {{ display: inline-block; margin: 0 8px 8px 0; color: var(--accent); font-weight: 650; }}
+    .chat-box {{ margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }}
+    .chat-log {{ display: grid; gap: 8px; max-height: 260px; overflow: auto; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfb; }}
+    .msg {{ padding: 8px 10px; border-radius: 8px; font-size: 13px; line-height: 1.45; background: #eef2ef; }}
+    .msg.user {{ margin-left: 28px; background: #e0f2f1; }}
+    .msg.assistant {{ margin-right: 28px; background: #fff; border: 1px solid var(--line); }}
+    .timeline {{ display: grid; gap: 10px; }}
+    .event {{ border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: #fff; }}
+    .event b {{ color: var(--accent-dark); display: block; margin-bottom: 4px; }}
     @media (max-width: 900px) {{ main {{ grid-template-columns: 1fr; }} aside {{ position: static; }} .grid {{ grid-template-columns: repeat(2, 1fr); }} }}
   </style>
 </head>
@@ -327,12 +386,26 @@ def render_index_html() -> str:
       <label for="mode">执行模式</label>
       <select id="mode"><option value="dynamic">dynamic</option><option value="static">static</option></select>
       <div class="check"><input id="fast" type="checkbox" checked><span>快速模式</span></div>
+      <div class="check"><input id="memoryEnabled" type="checkbox"><span>启用三层记忆</span></div>
       <div class="actions">
         <button id="runBtn">生成多智能体研究报告</button>
         <button class="secondary" id="refreshBtn" type="button">读取最近一次结果</button>
       </div>
       <div class="hint">建议先保持默认参数运行。生成完成后，在右侧查看报告、图表、引用、执行轨迹和原始 JSON。</div>
       <div id="status" class="status"></div>
+      <div class="chat-box">
+        <div class="side-title"><b>研究助手</b><span class="pill">Chat</span></div>
+        <label for="sessionId">会话</label>
+        <input id="sessionId" value="local-session">
+        <label for="chatInput">对话</label>
+        <textarea id="chatInput" placeholder="直接提问，或让助手根据当前标的启动研报任务"></textarea>
+        <div class="check"><input id="allowReportRun" type="checkbox"><span>允许 Chat 启动研报</span></div>
+        <div class="actions">
+          <button id="chatBtn" type="button">发送给研究助手</button>
+        </div>
+        <div id="chatLog" class="chat-log"></div>
+        <div class="hint">Memory 只作为上下文与偏好，不作为报告证据；事实仍需 citation 和 verifier。</div>
+      </div>
     </aside>
     <section class="panel">
       <div class="tabs">
@@ -341,6 +414,7 @@ def render_index_html() -> str:
         <button class="tab" data-tab="charts">图表</button>
         <button class="tab" data-tab="citations">引用</button>
         <button class="tab" data-tab="trace">轨迹</button>
+        <button class="tab" data-tab="timeline">时间线</button>
         <button class="tab" data-tab="raw">原始数据</button>
       </div>
       <div class="content" id="content"></div>
@@ -349,6 +423,8 @@ def render_index_html() -> str:
   <script>
     let latest = null;
     let activeTab = 'overview';
+    let chatMessages = [];
+    let chatTrace = [];
     const $ = id => document.getElementById(id);
 
     function setStatus(text, isError=false) {{
@@ -370,7 +446,8 @@ def render_index_html() -> str:
             period: $('period').value,
             engines: $('engines').value,
             execution_mode: $('mode').value,
-            fast: $('fast').checked
+            fast: $('fast').checked,
+            memory_enabled: $('memoryEnabled').checked
           }})
         }});
         latest = await res.json();
@@ -400,7 +477,55 @@ def render_index_html() -> str:
       if (activeTab === 'charts') c.innerHTML = renderCharts(latest);
       if (activeTab === 'citations') c.innerHTML = renderCitations(latest);
       if (activeTab === 'trace') c.innerHTML = renderTrace(latest);
+      if (activeTab === 'timeline') c.innerHTML = renderTimeline(latest);
       if (activeTab === 'raw') c.innerHTML = '<pre>' + escapeHtml(JSON.stringify(latest, null, 2)) + '</pre>';
+    }}
+
+    async function sendChat() {{
+      const text = $('chatInput').value.trim();
+      if (!text) return;
+      $('chatBtn').disabled = true;
+      chatMessages.push({{role:'user', content:text}});
+      renderChatLog();
+      setStatus('研究助手正在处理...');
+      try {{
+        const res = await fetch('/api/chat', {{
+          method: 'POST',
+          headers: {{'Content-Type': 'application/json'}},
+          body: JSON.stringify({{
+            message: text,
+            session_id: $('sessionId').value || 'local-session',
+            symbol: $('symbol').value,
+            period: $('period').value,
+            engines: $('engines').value,
+            execution_mode: $('mode').value,
+            fast: $('fast').checked,
+            memory_enabled: $('memoryEnabled').checked,
+            allow_report_run: $('allowReportRun').checked
+          }})
+        }});
+        const payload = await res.json();
+        if (!res.ok || payload.error) throw new Error(payload.error || 'Chat 失败');
+        chatMessages.push({{role:'assistant', content:payload.answer || ''}});
+        chatTrace = payload.tool_trace || [];
+        if (payload.latest) latest = payload.latest;
+        renderChatLog();
+        render();
+        setStatus('研究助手已回复');
+      }} catch (err) {{
+        chatMessages.push({{role:'assistant', content:err.message}});
+        renderChatLog();
+        setStatus(err.message, true);
+      }} finally {{
+        $('chatBtn').disabled = false;
+        $('chatInput').value = '';
+      }}
+    }}
+
+    function renderChatLog() {{
+      const log = $('chatLog');
+      log.innerHTML = chatMessages.length ? chatMessages.map(m => `<div class="msg ${{escapeAttr(m.role)}}"><b>${{escapeHtml(m.role)}}:</b> ${{escapeHtml(m.content)}}</div>`).join('') : '<div class="hint">暂无对话。</div>';
+      log.scrollTop = log.scrollHeight;
     }}
 
     function renderOverview(data) {{
@@ -428,7 +553,7 @@ def render_index_html() -> str:
     function metric(label, value) {{ return `<div class="metric"><b>${{escapeHtml(value ?? '-')}}</b><span>${{escapeHtml(label)}}</span></div>`; }}
 
     function renderReport(data) {{
-      if (data.report_html_url) return `<iframe src="${{data.report_html_url}}"></iframe><h2>Markdown 源文</h2><pre>${{escapeHtml(data.report_markdown || '')}}</pre>`;
+      if (data.report_html_url) return `<iframe src="${{data.report_html_url}}"></iframe>`;
       return `<pre>${{escapeHtml(data.report_markdown || '暂无报告。')}}</pre>`;
     }}
 
@@ -457,6 +582,14 @@ def render_index_html() -> str:
       `).join('')}}</tbody></table>`;
     }}
 
+    function renderTimeline(data) {{
+      const events = [];
+      (chatTrace || []).forEach(item => events.push({{stage:item.stage || 'chat', detail:item.detail || ''}}));
+      (data.trace || []).forEach(r => events.push({{stage:r.agent || 'agent', detail:`${{(r.task || {{}}).task_type || ''}} · ${{r.status || ''}} · ${{r.duration_sec || ''}}s`}}));
+      if (!events.length) return '<p>暂无思考/动作/观察/验证时间线。</p>';
+      return '<div class="timeline">' + events.map(e => `<div class="event"><b>${{escapeHtml(e.stage)}}</b><span>${{escapeHtml(e.detail)}}</span></div>`).join('') + '</div>';
+    }}
+
     function artifactLinks(urls) {{
       const names = {{summary:'运行摘要', search_meta:'搜索记录', citations:'引用表', charts:'图表索引', mcp_manifest:'MCP工具清单'}};
       return Object.entries(urls).filter(([k,v]) => v).map(([k,v]) => `<a href="${{v}}" target="_blank">${{escapeHtml(names[k] || k)}}</a>`).join('');
@@ -473,6 +606,8 @@ def render_index_html() -> str:
     }}));
     $('runBtn').addEventListener('click', runReport);
     $('refreshBtn').addEventListener('click', loadLatest);
+    $('chatBtn').addEventListener('click', sendChat);
+    renderChatLog();
     loadLatest();
   </script>
 </body>

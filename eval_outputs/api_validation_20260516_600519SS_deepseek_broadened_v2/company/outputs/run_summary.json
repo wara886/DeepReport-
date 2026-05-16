@@ -1,0 +1,78 @@
+{
+  "research_topic": "分析 600519.SS 2025Q4 财务表现，并生成带引用的研究报告",
+  "symbol": "600519.SS",
+  "period": "2025Q4",
+  "model": "deepseek-v4-flash",
+  "execution_mode": "dynamic",
+  "performance_profile": "fast",
+  "agent_count": 6,
+  "planned_task_count": 5,
+  "completed_task_count": 5,
+  "trace_count": 6,
+  "evidence_count": 2,
+  "claim_count": 3,
+  "citation_count": 2,
+  "chart_count": 3,
+  "multimodal_consistency_passed": true,
+  "mcp_tool_count": 9,
+  "search_engines": [
+    "local_real_data",
+    "sec_edgar",
+    "yahoo_finance",
+    "eastmoney",
+    "independent_macro",
+    "local_evidence"
+  ],
+  "retrieval_ranking_mode": "bm25",
+  "revision_rounds": 0,
+  "verification_passed": true,
+  "evidence_gap_count": 0,
+  "company_report_overall_score": 0.625,
+  "entity_resolution": {
+    "requested_symbol": "600519.SS",
+    "research_topic": "分析 600519.SS 2025Q4 财务表现，并生成带引用的研究报告",
+    "resolved_symbol": "600519.SS",
+    "resolution_source": "fallback",
+    "topic_resolution": {
+      "input": "分析 600519.SS 2025Q4 财务表现，并生成带引用的研究报告",
+      "resolved": false,
+      "symbol": "",
+      "company_name": "",
+      "match_type": "none",
+      "confidence": 0.0,
+      "candidate_symbols": [
+        "AAPL",
+        "AMD",
+        "GOOGL",
+        "MSFT",
+        "NVDA",
+        "TSLA"
+      ],
+      "reason": "no_match"
+    },
+    "symbol_resolution": {
+      "input": "600519.SS",
+      "resolved": false,
+      "symbol": "",
+      "company_name": "",
+      "match_type": "none",
+      "confidence": 0.0,
+      "candidate_symbols": [
+        "AAPL",
+        "AMD",
+        "GOOGL",
+        "MSFT",
+        "NVDA",
+        "TSLA"
+      ],
+      "reason": "no_match"
+    },
+    "conflict": false
+  },
+  "conversation_brief_chars": 1552,
+  "durable_memory_enabled": false,
+  "durable_memory_context_scope": "planner_router",
+  "skill_registry_enabled": true,
+  "skill_count": 6,
+  "total_duration_sec": 51.224
+}

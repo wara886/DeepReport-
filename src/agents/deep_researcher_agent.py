@@ -70,6 +70,8 @@ class DeepResearcherAgent(BaseAgent):
                 curated_dir=task.parameters.get("curated_dir", "data/curated"),
                 raw_data_root=task.parameters.get("raw_data_root", "data/raw/real_data"),
                 ranking_mode=task.parameters.get("ranking_mode", "bm25"),
+                data_source_config_path=task.parameters.get("data_source_config_path", "configs/data_sources.yaml"),
+                enable_remote=bool(task.parameters.get("enable_remote", False)),
             )
             return self.success(
                 task,

@@ -18,6 +18,7 @@ from src.agents.industry_research_agent import IndustryResearchAgent
 from src.agents.macro_research_agent import MacroResearchAgent
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.data.independent_sources import fetch_independent_evidence_bundle
+from src.models import ModelAdapter
 from src.report import export_markdown_to_docx
 
 
@@ -42,6 +43,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--data-source-config", default="configs/data_sources.yaml")
     parser.add_argument("--search-engines", default="", help="Comma-separated company-run search engines. Fast mode defaults to local_real_data.")
     parser.add_argument("--retrieval-ranking-mode", default="", help="Company-run retrieval mode. Fast mode defaults to bm25.")
+    parser.add_argument(
+        "--baseline-deepseek-workflow",
+        action="store_true",
+        help="Preserve a rich DeepSeek-style baseline draft and append agent audit buckets instead of replacing the strict path.",
+    )
+    parser.add_argument(
+        "--baseline-model-config",
+        default="configs/model_backends.yaml",
+        help="Model config for optional baseline DeepSeek synthesis.",
+    )
     args = parser.parse_args(argv)
 
     output_dir = Path(args.output_dir)
@@ -66,8 +77,10 @@ def main(argv: list[str] | None = None) -> int:
             period=args.period,
             execution_mode="dynamic",
             fast=args.fast,
-            search_engines=_search_engines_for_run(args.search_engines, fast=bool(args.fast)),
+            search_engines=_search_engines_for_run(args.search_engines, fast=bool(args.fast), realtime_data=bool(args.realtime_data)),
             retrieval_ranking_mode=_ranking_mode_for_run(args.retrieval_ranking_mode, fast=bool(args.fast)),
+            enable_remote_data=bool(args.realtime_data),
+            data_source_config_path=args.data_source_config,
         )
 
     company_summary = _read_json(company_outputs_dir / "run_summary.json")
@@ -87,6 +100,18 @@ def main(argv: list[str] | None = None) -> int:
         config_path=args.data_source_config,
     )
     independent_records = independent_payload["records"]
+    baseline_payload = {}
+    if args.baseline_deepseek_workflow:
+        baseline_payload = _build_baseline_deepseek_workflow(
+            symbol=args.symbol,
+            period=args.period,
+            strict_markdown=company_md,
+            evidence_records=evidence_records if isinstance(evidence_records, list) else [],
+            claims=claims if isinstance(claims, list) else [],
+            verification=verification,
+            model_config_path=args.baseline_model_config,
+        )
+        company_md = str(baseline_payload.get("markdown") or company_md)
     industry_payload = _run_industry_agent(
         symbol=args.symbol,
         period=args.period,
@@ -139,6 +164,12 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(macro_payload.get("report_json", {}), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    if baseline_payload:
+        (output_dir / "baseline_deepseek_report.md").write_text(str(baseline_payload.get("markdown", "")), encoding="utf-8")
+        (output_dir / "baseline_deepseek_report.json").write_text(
+            json.dumps(baseline_payload.get("report_json", {}), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     zip_path = output_dir / "results.zip"
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -161,6 +192,9 @@ def main(argv: list[str] | None = None) -> int:
         "macro_report_generated_by": macro_payload.get("agent_name", "MacroResearchAgent"),
         "industry_report_json": str(output_dir / "industry_report.json"),
         "macro_report_json": str(output_dir / "macro_report.json"),
+        "baseline_deepseek_workflow_enabled": bool(args.baseline_deepseek_workflow),
+        "baseline_deepseek_report_json": str(output_dir / "baseline_deepseek_report.json") if baseline_payload else "",
+        "baseline_deepseek_meta": baseline_payload.get("meta", {}) if baseline_payload else {},
         "independent_source_record_count": len(independent_records),
         "independent_source_meta": independent_payload["meta"],
         "limitations": [
@@ -283,9 +317,178 @@ def _fetch_independent_sources(
     return {"records": payload.get("records", []), "meta": payload.get("meta", {})}
 
 
-def _search_engines_for_run(value: str, fast: bool) -> list[str] | None:
+def _build_baseline_deepseek_workflow(
+    symbol: str,
+    period: str,
+    strict_markdown: str,
+    evidence_records: list[dict],
+    claims: list[dict],
+    verification: dict,
+    model_config_path: str,
+) -> dict:
+    audit = _claim_audit_buckets(claims=claims, evidence_records=evidence_records)
+    fallback_markdown = _render_baseline_audit_markdown(
+        symbol=symbol,
+        period=period,
+        strict_markdown=strict_markdown,
+        audit=audit,
+    )
+    meta = {
+        "mode": "baseline_deepseek_workflow",
+        "model_used": False,
+        "model_status": "not_attempted",
+        "verified_claim_count": len(audit["verified"]),
+        "pending_claim_count": len(audit["pending_verification"]),
+        "unsupported_claim_count": len(audit["unsupported"]),
+    }
+    markdown = fallback_markdown
+    try:
+        adapter = ModelAdapter.from_config(config_path=model_config_path)
+        prompt = _baseline_deepseek_prompt(
+            symbol=symbol,
+            period=period,
+            strict_markdown=strict_markdown,
+            audit=audit,
+            evidence_records=evidence_records,
+            verification=verification,
+        )
+        response = adapter.generate(
+            prompt=prompt,
+            system_prompt=(
+                "你是 baseline_deepseek_workflow 写作后端。生成一份内容较丰富但带证据审计分层的中文研报。"
+                "不要补造数字或来源；没有证据的内容必须放入待补证或不支持。"
+            ),
+        )
+        if response.success and response.content.strip():
+            markdown = _ensure_baseline_audit_section(response.content.strip(), audit=audit)
+            meta["model_used"] = True
+            meta["model_status"] = "completed"
+            meta["model"] = response.model
+        else:
+            meta["model_status"] = "missing_api_key" if "missing API key" in response.error else "error"
+            meta["model_error"] = response.error
+    except Exception as exc:
+        meta["model_status"] = "error"
+        meta["model_error"] = str(exc)
+    return {
+        "markdown": markdown,
+        "report_json": {
+            "title": f"{symbol} baseline DeepSeek workflow report",
+            "symbol": symbol,
+            "period": period,
+            "audit": audit,
+            "meta": meta,
+        },
+        "meta": meta,
+    }
+
+
+def _claim_audit_buckets(claims: list[dict], evidence_records: list[dict]) -> dict:
+    evidence_ids = {
+        str(item.get("evidence_id") or item.get("sample_id") or "")
+        for item in evidence_records
+        if isinstance(item, dict) and str(item.get("evidence_id") or item.get("sample_id") or "").strip()
+    }
+    buckets = {"verified": [], "pending_verification": [], "unsupported": []}
+    for index, claim in enumerate(claims, start=1):
+        if not isinstance(claim, dict):
+            continue
+        claim_text = str(claim.get("claim_text") or claim.get("text") or "").strip()
+        claim_id = str(claim.get("claim_id") or f"claim_{index:03d}")
+        ids = claim.get("evidence_ids", [])
+        ids = [str(item) for item in ids] if isinstance(ids, list) else []
+        row = {"claim_id": claim_id, "claim_text": claim_text, "evidence_ids": ids}
+        if ids and all(evidence_id in evidence_ids for evidence_id in ids):
+            buckets["verified"].append(row)
+        elif ids:
+            row["missing_evidence_ids"] = [evidence_id for evidence_id in ids if evidence_id not in evidence_ids]
+            buckets["unsupported"].append(row)
+        else:
+            buckets["pending_verification"].append(row)
+    return buckets
+
+
+def _render_baseline_audit_markdown(symbol: str, period: str, strict_markdown: str, audit: dict) -> str:
+    lines = [
+        f"# {symbol} baseline DeepSeek workflow 报告",
+        "",
+        "## 说明",
+        "",
+        f"- 本 baseline 模式用于保留 rich draft 写作风格，同时接受当前多智能体证据审计；期间：{period}。",
+        "- 已证实内容可进入正文主结论；待补证内容保留为研究线索；不支持内容不得作为最终投资结论。",
+        "",
+        "## Rich Draft",
+        "",
+        strict_markdown.strip() or "暂无 baseline draft。",
+        "",
+    ]
+    lines.extend(_audit_section_lines(audit))
+    return "\n".join(lines).strip() + "\n"
+
+
+def _ensure_baseline_audit_section(markdown: str, audit: dict) -> str:
+    if "## 证据审计分层" in markdown:
+        return markdown
+    return markdown.rstrip() + "\n\n" + "\n".join(_audit_section_lines(audit)) + "\n"
+
+
+def _audit_section_lines(audit: dict) -> list[str]:
+    labels = [
+        ("verified", "已证实"),
+        ("pending_verification", "待补证"),
+        ("unsupported", "不支持"),
+    ]
+    lines = ["## 证据审计分层", ""]
+    for key, label in labels:
+        rows = audit.get(key, [])
+        lines.append(f"### {label}")
+        if not rows:
+            lines.append("- 暂无。")
+        else:
+            for row in rows[:12]:
+                ids = ", ".join(row.get("evidence_ids", [])) if isinstance(row, dict) else ""
+                text = str(row.get("claim_text", "")) if isinstance(row, dict) else str(row)
+                suffix = f" [{ids}]" if ids else ""
+                lines.append(f"- {text}{suffix}")
+        lines.append("")
+    return lines
+
+
+def _baseline_deepseek_prompt(
+    symbol: str,
+    period: str,
+    strict_markdown: str,
+    audit: dict,
+    evidence_records: list[dict],
+    verification: dict,
+) -> str:
+    evidence_brief = [
+        {
+            "evidence_id": item.get("evidence_id") or item.get("sample_id"),
+            "source_type": item.get("source_type"),
+            "title": item.get("title"),
+            "content": str(item.get("content", ""))[:500],
+        }
+        for item in evidence_records[:16]
+        if isinstance(item, dict)
+    ]
+    return (
+        f"Symbol: {symbol}\n"
+        f"Period: {period}\n"
+        f"Strict multi-agent draft:\n{strict_markdown[:9000]}\n\n"
+        f"Evidence audit buckets:\n{json.dumps(audit, ensure_ascii=False)}\n\n"
+        f"Evidence brief:\n{json.dumps(evidence_brief, ensure_ascii=False)}\n\n"
+        f"Verifier report:\n{json.dumps(verification, ensure_ascii=False)}\n\n"
+        "请输出 Markdown。保持报告可读性和丰富度，但必须明确分为已证实、待补证、不支持；"
+        "所有事实性数字只允许来自 evidence brief 或 strict draft 中已有引用。"
+    )
+
+
+def _search_engines_for_run(value: str, fast: bool, realtime_data: bool = False) -> list[str] | None:
     if value.strip():
         return [item.strip() for item in value.split(",") if item.strip()]
+    if realtime_data:
+        return ["local_real_data", "sec_edgar", "yahoo_finance", "eastmoney", "independent_macro", "local_evidence"]
     if fast:
         return ["local_real_data"]
     return None

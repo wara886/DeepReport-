@@ -19,3 +19,9 @@ memory:
     max_domain_items: 12
     max_episodic_items: 6
     context_scope: planner_router
+  chat:
+    enabled: false
+    root: memory/chat
+    short_term_max_turns: 10
+    long_term_topk: 4
+    boundary: context_only_not_evidence

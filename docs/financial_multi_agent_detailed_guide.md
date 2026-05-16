@@ -389,6 +389,16 @@ python scripts/run_competition.py \
   --realtime-data
 ```
 
+如果需要复现云端记录里的“rich baseline draft + agent audit”桥接模式，使用：
+
+```bash
+python scripts/run_competition.py \
+  --skip-company-run \
+  --baseline-deepseek-workflow
+```
+
+该模式会额外输出 `baseline_deepseek_report.md` 和 `baseline_deepseek_report.json`。它用于保留 DeepSeek 风格的丰富初稿，同时把 claims 分成“已证实 / 待补证 / 不支持”；它不替代 strict/realtime 交付门禁，也不会把缺证据内容提升为可验证结论。
+
 最终本地 qwen3 交付路径：
 
 ```bash

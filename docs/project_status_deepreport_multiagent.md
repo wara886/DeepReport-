@@ -26,6 +26,12 @@
 - 本轮完成 P2/P3/P5 最后一轮优化：新增 `src/data/evidence_metadata.py`，为 evidence 统一补齐 `source_timestamp`、`data_cutoff`、`freshness_bucket`、`evidence_scope`；`src/evaluation/multi_agent_harness.py` 已输出 unsupported fallback、verification pass、numeric/citation audit、skill routing 指标。
 - 本轮新增独立数据源 v1：`src/data/independent_sources.py` 接入 FRED、BLS、BEA、Federal Reserve、SEC EDGAR companyfacts 的适配器；`configs/data_sources.yaml` 新增对应配置；`SearchManager` 新增 `independent_macro` 与 `sec_edgar` 引擎，默认不联网，显式 `enable_remote=True` 或 `--realtime-data` 才拉取远程数据。
 - 本轮新增 `scripts/run_realtime_data_smoke.py`，用于 DeepSeek API + 实时数据源 smoke；当前环境未设置 `DEEPSEEK_API_KEY`，脚本会记录 `missing_api_key` 并安全跳过模型调用。
+- 已从 `docs/cloud_readiness.md` 同步云端调试结论：新增 `scripts/run_competition.py --baseline-deepseek-workflow` 桥接模式，用 DeepSeek 风格 rich draft 保留可读性，再由当前 evidence audit 分层标注“已证实 / 待补证 / 不支持”，避免 strict/realtime 路线把缺证据内容误当成最终结论。
+- 已同步云端 UI 修复：HTML 报告 Chart.js 容器固定高度，避免图表撑开页面；Web UI 报告页优先只展示 HTML iframe，不再在下方重复追加 Markdown 源文。
+- 本轮 DeepSeek API 已通过本地 `.env` 连通；Company 主链 realtime 模式已拓宽为 `local_real_data + sec_edgar + yahoo_finance + eastmoney + independent_macro + local_evidence`，并把 `enable_remote` 传入 DeepResearcher/SearchManager，使 SEC companyfacts 能直接进入公司主报告。
+- 本轮 API 实跑两家公司研报：`600519.SS` 输出 `eval_outputs/api_validation_20260516_600519SS_deepseek_broadened_v2/`，`competition_passed=true`、`company_report_score=0.625`；`AMD` 输出 `eval_outputs/api_validation_20260516_AMD_deepseek_broadened_v2/`，`competition_passed=true`、`company_report_score=0.6667`，且 Company 报告已引用 SEC companyfacts。
+- 本轮新增 Agent Chat 工作台 v1：`src/app/agent_chat.py` 提供 Chat Router、短期滑动窗口、长期语义/TF 混合记忆、用户偏好规则抽取和本地 JSON 持久化；`src/app/web_ui.py` 新增 `/api/chat`、研究助手面板、三层记忆开关、Chat 启动研报开关和“思考/动作/观察/验证”时间线。
+- Agent Chat 的边界已固定：memory 只作为上下文、偏好和路由提示，不替代 `evidence_id`、citation、numeric audit 或 verifier；Chat 启动研报时仍进入现有 `MultiAgentOrchestrator` 多 Agent 主链。
 - 本轮开始基线：`7ddf800 Add guarded durable memory foundation`。
 - 主状态文档已改为中文，并把后续维护规则固定为中文。
 - 本次继续补齐 P2：新增 `scripts/run_memory_ablation.py`，可从现有 multi-agent evaluation config 派生 `memory_enabled` / `memory_disabled` 两个 variant，输出 `memory_ablation_comparison.json` 和 `memory_ablation_comparison.md`。
@@ -36,6 +42,7 @@
 - 本轮扩大到 AAPL/GOOGL/MSFT 三公司样本复跑，并修复 planner 乱序/反向依赖导致的 evidence 断链问题；修复后产物为 `eval_outputs/memory_ablation_ollama_qwen3_3company_after_dep_fix_20260515/memory_ablation_comparison.json`，结论为 `promote_memory`。
 - 已完成 P1 仓库真实能力复核：`scripts/`、`configs/`、`src/agents/`、`src/evaluation/` 中的当前主线能力已经按真实文件重新登记；README 和 AGENTS 用 UTF-8 读取为正常中文，本轮不做编码修复。
 - P2 Memory 正式工程化已完成第二阶段：`src/agents/durable_memory.py` 提供基础存取层，`scripts/run_memory_ablation.py` 提供 enabled/disabled 对照与质量/延迟 guard；开启后只注入“历史上下文提示”，不替代 evidence/citation/verifier 质量门禁。
+- Chat-facing 三层记忆已完成 v1 工程落点：短期记忆在进程内按 session 滑动窗口保存；长期记忆写入 `memory/chat/long_term/`，优先使用 BGE/Chroma 相关 embedding 能力，缺依赖时降级到 hash/TF 混合；用户偏好写入 `memory/chat/users/`，规则即时生效，后续可再加 LLM NER 异步增强。
 
 ## 当前结论
 
@@ -70,7 +77,9 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 
 - `src/report/docx_exporter.py` 可将 Markdown 报告导出为 DOCX；优先使用 `python-docx`，缺依赖时使用轻量 OOXML fallback。
 - `scripts/run_competition.py` 可运行本地 competition packaging smoke，生成公司/行业/宏观三份 DOCX 和 `results.zip`。
+- `scripts/run_competition.py --baseline-deepseek-workflow` 可生成 `baseline_deepseek_report.md/json`，用于把 rich baseline 写作与当前多智能体证据审计连接起来。该模式不会放宽 verifier 或 citation 门禁：缺证据内容只进入“待补证 / 不支持”分层，不能当作最终可验证结论。
 - Industry/Macro 报告现在由 `IndustryResearchAgent` / `MacroResearchAgent` 生成，并可合并独立 evidence records；默认仍可只基于公司主链 artifacts 离线打包，显式 `--realtime-data` 时会尝试拉取 SEC/宏观/政策证据，并额外输出 `industry_report.json` / `macro_report.json`。
+- Company 主链的 `--realtime-data` 现在也会把 SEC EDGAR、Yahoo Finance、Eastmoney 和独立宏观 evidence 纳入搜索候选；其中 SEC companyfacts 已能生成确定性营收、净利润、资产和现金类 claim。
 
 ### 报告质量修复
 
@@ -194,6 +203,9 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 - 当前报告时效性取决于证据源，不取决于本地模型记忆；若只启用 `local_real_data` / `local_evidence`，报告只能覆盖本地数据和索引证据，不能宣称联网最新。
 - SkillRegistry 当前已配置化并接入 harness 指标，但仍不是在线学习或自动发现技能；后续需要用更宽 case set 观察是否实际改善 unsupported fallback、verification pass、numeric/citation audit。
 - competition/docx 交付链路已补回，Industry/Macro 也已有专用本地 Agent 与独立 evidence v1；但远程实时源需要显式 `--realtime-data`、API key 和网络，仍不能宣称已覆盖完整行业数据库或全球宏观数据库。
+- `baseline_deepseek_workflow` 是质量桥接模式，不是 strict/realtime 的替代品；它适合生成 rich draft 并做审计分层，但最终比赛打包和回归测试仍以 evidence、citation、numeric audit、verifier 结果为准。
+- A 股仍缺正式财报/公告/交易所/巨潮/东方财富财务报表抽取链路；当前 `600519.SS` 虽能通过 DeepSeek API + Yahoo/BLS/Fed/Eastmoney 尝试打包，但 Company 主报告深度仍明显弱于有 SEC companyfacts 的美股样本。
+- FRED 与 BEA 当前仍因缺少 API key 记录为 `missing_api_key`；BLS/Federal Reserve 可用，但不能等价为完整宏观数据库覆盖。
 - `AGENTS.md` 和部分 `README.md` 在当前 Windows 输出里有 mojibake，后续如果作为 onboarding 文档，需要单独修复编码/内容。
 
 ## 下一步计划
@@ -366,6 +378,25 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 2026-05-16 上传前最终 targeted tests：
   `python -m pytest tests/test_competition_runner.py tests/test_multi_agent_workflow.py::test_enrich_task_parameters_replaces_model_placeholder_artifact_names tests/test_independent_sources.py tests/test_realtime_data_smoke.py tests/test_multi_agent_harness.py -q`：`12 passed`。
 - 2026-05-16 上传前最终全量回归：
+  `python -m pytest -q -rA`：通过；2 个 skip 仍为可选历史 eval/report fixture 缺失，非本轮功能失败。
+- 2026-05-16 云端记录同步语法验证：
+  `python -m py_compile scripts/run_competition.py src/report/html_report_generator.py src/app/web_ui.py`：通过。
+- 2026-05-16 云端记录同步 targeted tests：
+  `python -m pytest tests/test_html_report_generator.py tests/test_web_ui.py tests/test_competition_runner.py -q`：`6 passed`。
+- 2026-05-16 云端记录同步后全量回归：
+  `python -m pytest -q -rA`：通过；2 个 skip 仍为可选历史 eval/report fixture 缺失，非本轮功能失败。
+- 2026-05-16 DeepSeek API smoke：
+  `python scripts/run_deepseek_smoke.py --config-path configs/model_backends.yaml --prompt '用一句话回复：DeepSeek API smoke 已连通。'`：通过，返回 `DeepSeek API smoke 测试通过，后端服务正常。`
+- 2026-05-16 数据源拓宽语法与 targeted tests：
+  `python -m py_compile src/search/search_manager.py src/agents/deep_analyze_agent.py src/agents/verifier.py src/agents/deep_researcher_agent.py src/agents/multi_agent_orchestrator.py scripts/run_competition.py`：通过；
+  `python -m pytest tests/test_competition_runner.py tests/test_source_authority_policy.py tests/test_search_and_research_agent.py tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph -q`：`20 passed`。
+- 2026-05-16 DeepSeek API + broadened realtime A 股验证：
+  `python scripts/run_competition.py --config configs/model_backends.yaml --symbol 600519.SS --period 2025Q4 --fast --disable-memory --realtime-data --baseline-deepseek-workflow --output-dir eval_outputs/api_validation_20260516_600519SS_deepseek_broadened_v2`：`competition_passed=true`，`company_report_score=0.625`，baseline DeepSeek `model_used=true`。
+- 2026-05-16 DeepSeek API + broadened realtime 美股验证：
+  `python scripts/run_competition.py --config configs/model_backends.yaml --symbol AMD --period 2025Q4 --fast --disable-memory --realtime-data --baseline-deepseek-workflow --output-dir eval_outputs/api_validation_20260516_AMD_deepseek_broadened_v2`：`competition_passed=true`，`company_report_score=0.6667`，Company evidence 包含 Yahoo Finance、SEC companyfacts、BLS。
+- 2026-05-16 Agent Chat 与三层记忆 targeted tests：
+  `python -m pytest tests/test_agent_chat.py tests/test_web_ui.py tests/test_config_loader.py tests/test_conversation_memory.py tests/test_durable_memory.py tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_can_persist_durable_memory_without_quality_regression tests/test_memory_ablation_runner.py tests/test_multi_agent_harness.py -q`：`23 passed`。
+- 2026-05-16 Agent Chat 最终全量回归：
   `python -m pytest -q -rA`：通过；2 个 skip 仍为可选历史 eval/report fixture 缺失，非本轮功能失败。
 
 以后每次完成计划，都要在这里记录：

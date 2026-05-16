@@ -15,3 +15,7 @@ def test_app_yaml_contains_durable_memory_defaults():
     assert durable["root"] == "memory"
     assert durable["max_context_chars"] > 0
     assert durable["context_scope"] == "planner_router"
+    chat = config["memory"]["chat"]
+    assert chat["enabled"] is False
+    assert chat["root"] == "memory/chat"
+    assert chat["boundary"] == "context_only_not_evidence"

@@ -1,0 +1,104 @@
+{
+  "engines": [
+    "local_real_data",
+    "sec_edgar",
+    "yahoo_finance",
+    "eastmoney",
+    "independent_macro",
+    "local_evidence"
+  ],
+  "engine_meta": {
+    "local_real_data": {
+      "mode": "local_real_data",
+      "raw_data_root": "data/raw/real_data",
+      "symbol": "AMD",
+      "period": "2025Q4",
+      "record_count": 0,
+      "returned_hit_count": 0,
+      "failure_reason": "no_records_for_symbol_period",
+      "chunking_enabled": true,
+      "query_original": "AMD 2025Q4 Collect company filings, market data, financial statements, and recent news evidence.",
+      "query_adapted": "AMD 2025Q4 Collect company filings, market data, financial statements, and recent news evidence. Advanced Micro Devices, Inc. Semiconductors Technology",
+      "adapted_query": "AMD 2025Q4 Collect company filings, market data, financial statements, and recent news evidence. Advanced Micro Devices, Inc. Semiconductors Technology",
+      "query_terms_added": [
+        "Advanced Micro Devices, Inc.",
+        "Semiconductors",
+        "Technology"
+      ],
+      "query_expansion_version": "finance_query_expansion_v1"
+    },
+    "sec_edgar": {
+      "mode": "sec_companyfacts",
+      "symbol": "AMD",
+      "cik": "0000002488",
+      "record_count": 1,
+      "failure_reason": "",
+      "query": "AMD 2025Q4 Collect company filings, market data, financial statements, and recent news evidence."
+    },
+    "yahoo_finance": {
+      "mode": "yahoo_finance",
+      "symbol": "AMD",
+      "range": "1mo",
+      "interval": "1d",
+      "result_count": 1
+    },
+    "eastmoney": {
+      "mode": "eastmoney",
+      "symbol": "AMD",
+      "record_count": 0,
+      "failure_reason": "unsupported_symbol"
+    },
+    "independent_macro": {
+      "mode": "independent_macro",
+      "period": "2025Q4",
+      "source_meta": {
+        "fred": {
+          "mode": "fred",
+          "record_count": 0,
+          "failure_reason": "missing_api_key",
+          "api_key_env": "FRED_API_KEY"
+        },
+        "bls": {
+          "mode": "bls",
+          "record_count": 2,
+          "failure_reason": ""
+        },
+        "bea": {
+          "mode": "bea",
+          "record_count": 0,
+          "failure_reason": "missing_api_key",
+          "api_key_env": "BEA_API_KEY"
+        }
+      },
+      "record_count": 2,
+      "failure_reason": "missing_api_key",
+      "query": "AMD 2025Q4 Collect company filings, market data, financial statements, and recent news evidence."
+    },
+    "local_evidence": {
+      "mode": "bm25",
+      "checkpoint_path": "data/outputs/checkpoints/reranker_checkpoint.json",
+      "checkpoint_used": false,
+      "fallback_used": false,
+      "query": "AMD 2025Q4 Collect company filings, market data, financial statements, and recent news evidence. Advanced Micro Devices, Inc. Semiconductors Technology",
+      "source_record_count": 0,
+      "record_count": 0,
+      "bm25_hit_count": 0,
+      "vector_hit_count": 0,
+      "chunking_enabled": true,
+      "chunk_count": 0,
+      "returned_hit_count": 0,
+      "failure_reason": "no_records_for_symbol_period",
+      "query_original": "AMD 2025Q4 Collect company filings, market data, financial statements, and recent news evidence.",
+      "query_adapted": "AMD 2025Q4 Collect company filings, market data, financial statements, and recent news evidence. Advanced Micro Devices, Inc. Semiconductors Technology",
+      "adapted_query": "AMD 2025Q4 Collect company filings, market data, financial statements, and recent news evidence. Advanced Micro Devices, Inc. Semiconductors Technology",
+      "query_terms_added": [
+        "Advanced Micro Devices, Inc.",
+        "Semiconductors",
+        "Technology"
+      ],
+      "query_expansion_version": "finance_query_expansion_v1"
+    }
+  },
+  "total_hits_before_dedupe": 4,
+  "returned_hits": 3
+}

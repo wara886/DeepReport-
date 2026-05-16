@@ -149,6 +149,8 @@ class MultiAgentOrchestrator:
         fast: bool = False,
         search_engines: List[str] | None = None,
         retrieval_ranking_mode: str = "hybrid_rerank",
+        enable_remote_data: bool = False,
+        data_source_config_path: str = "configs/data_sources.yaml",
     ) -> Dict[str, str]:
         entity_resolution = _resolve_run_identity(research_topic=research_topic, symbol=symbol, raw_data_root=self.raw_data_root)
         symbol = str(entity_resolution.get("resolved_symbol") or symbol).upper()
@@ -161,6 +163,8 @@ class MultiAgentOrchestrator:
                 fast=fast,
                 search_engines=search_engines,
                 retrieval_ranking_mode=retrieval_ranking_mode,
+                enable_remote_data=enable_remote_data,
+                data_source_config_path=data_source_config_path,
                 entity_resolution=entity_resolution,
             )
         if execution_mode == "static":
@@ -171,6 +175,8 @@ class MultiAgentOrchestrator:
                 requirements=requirements,
                 search_engines=search_engines,
                 retrieval_ranking_mode=retrieval_ranking_mode,
+                enable_remote_data=enable_remote_data,
+                data_source_config_path=data_source_config_path,
                 entity_resolution=entity_resolution,
             )
         raise ValueError(f"Unsupported execution_mode: {execution_mode}")
@@ -184,6 +190,8 @@ class MultiAgentOrchestrator:
         fast: bool = False,
         search_engines: List[str] | None = None,
         retrieval_ranking_mode: str = "hybrid_rerank",
+        enable_remote_data: bool = False,
+        data_source_config_path: str = "configs/data_sources.yaml",
         entity_resolution: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
         self.trace = []
@@ -270,6 +278,8 @@ class MultiAgentOrchestrator:
                     "engines": search_engines or ["local_real_data", "tavily", "local_evidence"],
                     "raw_data_root": self.raw_data_root,
                     "ranking_mode": retrieval_ranking_mode,
+                    "data_source_config_path": data_source_config_path,
+                    "enable_remote": bool(enable_remote_data),
                     "skill_brief": self._skill_brief(research_query, "deep_researcher", max_items=2),
                 },
                 dependencies=["task_000_planning"],
@@ -541,6 +551,8 @@ class MultiAgentOrchestrator:
         fast: bool = False,
         search_engines: List[str] | None = None,
         retrieval_ranking_mode: str = "hybrid_rerank",
+        enable_remote_data: bool = False,
+        data_source_config_path: str = "configs/data_sources.yaml",
         entity_resolution: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
         self.trace = []
@@ -639,6 +651,8 @@ class MultiAgentOrchestrator:
             "performance_profile": "fast" if fast else "default",
             "search_engines": search_engines or [],
             "retrieval_ranking_mode": retrieval_ranking_mode,
+            "enable_remote_data": bool(enable_remote_data),
+            "data_source_config_path": data_source_config_path,
             "entity_resolution": entity_resolution,
         }
         tasks = prepare_dynamic_tasks(
@@ -650,6 +664,8 @@ class MultiAgentOrchestrator:
             profile=FAST_PROFILE if fast else DEFAULT_PROFILE,
             search_engines=search_engines,
             retrieval_ranking_mode=retrieval_ranking_mode,
+            enable_remote_data=enable_remote_data,
+            data_source_config_path=data_source_config_path,
             skill_registry=self.skill_registry,
             router_memory_brief=durable_memory_brief
             if _use_durable_memory_for_planner_router(self.memory_config.context_scope)
@@ -997,6 +1013,8 @@ def prepare_dynamic_tasks(
     profile: Dict[str, Any] | None = None,
     search_engines: List[str] | None = None,
     retrieval_ranking_mode: str = "hybrid_rerank",
+    enable_remote_data: bool = False,
+    data_source_config_path: str = "configs/data_sources.yaml",
     skill_registry: SkillRegistry | None = None,
     router_memory_brief: str = "",
     router_context_max_chars: int = 1600,
@@ -1058,6 +1076,8 @@ def prepare_dynamic_tasks(
             params.setdefault("engines", search_engines or ["local_real_data", "tavily", "local_evidence"])
             params.setdefault("raw_data_root", raw_data_root)
             params.setdefault("ranking_mode", retrieval_ranking_mode)
+            params.setdefault("data_source_config_path", data_source_config_path)
+            params.setdefault("enable_remote", bool(enable_remote_data))
         cleaned.append(
             AgentTask(
                 task_id=task.task_id,
@@ -1208,6 +1228,8 @@ def enrich_task_parameters(
         params.setdefault("engines", ["local_real_data", "tavily", "local_evidence"])
         params.setdefault("raw_data_root", raw_data_root)
         params.setdefault("ranking_mode", str(state.get("retrieval_ranking_mode", "hybrid_rerank")))
+        params.setdefault("data_source_config_path", str(state.get("data_source_config_path", "configs/data_sources.yaml")))
+        params.setdefault("enable_remote", bool(state.get("enable_remote_data", False)))
     elif task.task_type == "browser":
         if not isinstance(params.get("evidence_candidates"), list) or not params.get("evidence_candidates"):
             params["evidence_candidates"] = list(state.get("evidence_candidates", []))

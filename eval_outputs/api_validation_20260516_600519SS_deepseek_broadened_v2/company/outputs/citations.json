@@ -1,0 +1,35 @@
+[
+  {
+    "citation_id": "ref_001",
+    "evidence_id": "bls_cuur0000sa0_2026_M04",
+    "title": "BLS CUUR0000SA0: Consumer Price Index for All Urban Consumers",
+    "source_url": "https://www.bls.gov/developers/api_signature_v2.htm",
+    "source_type": "bls_series",
+    "source_authority": "official_statistics",
+    "authority_score": 0.95,
+    "publish_time": "2026-01-01",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0001",
+      "cl_0002"
+    ],
+    "used_in_report": true,
+    "content_preview": "Consumer Price Index for All Urban Consumers latest BLS observation is 333.020 for 2026-M04."
+  },
+  {
+    "citation_id": "ref_002",
+    "evidence_id": "600519.SS_2025Q4_yahoo_finance_df36f6f3cb",
+    "title": "600519.SS Yahoo Finance market snapshot",
+    "source_url": "https://finance.yahoo.com/quote/600519.SS",
+    "source_type": "market_api",
+    "source_authority": "market_data",
+    "authority_score": 0.78,
+    "publish_time": "2026-05-15",
+    "trust_level": "medium",
+    "claim_ids": [
+      "cl_0003"
+    ],
+    "used_in_report": true,
+    "content_preview": "600519.SS Yahoo Finance market snapshot: latest close 1332.949951171875 CNY, previous close 1467.5, 1mo price change -9.17%, latest volume 5818365.0."
+  }
+]

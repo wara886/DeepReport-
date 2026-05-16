@@ -128,7 +128,7 @@ class DeepAnalyzeAgent(BaseAgent):
                 )
                 llm_claims = llm_payload.get("claims", [])
                 if isinstance(llm_claims, list) and llm_claims:
-                    claims = _merge_claims(normalize_claims(llm_claims), claims)
+                    claims = _merge_claims(_filter_supported_llm_claims(normalize_claims(llm_claims), records), claims)
                     metadata["llm_used"] = True
             except Exception as exc:
                 metadata["llm_error"] = str(exc)
@@ -287,6 +287,74 @@ def build_rule_claims(
             )
         )
         claim_index += 1
+
+    for record in records:
+        if str(record.get("source_type") or "") != "sec_companyfacts":
+            continue
+        metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+        metrics = metadata.get("metrics", {}) if isinstance(metadata.get("metrics"), dict) else {}
+        evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
+        symbol = str(record.get("symbol") or "Company")
+        revenue = _sec_metric(metrics, "RevenueFromContractWithCustomerExcludingAssessedTax") or _sec_metric(metrics, "Revenues")
+        net_income = _sec_metric(metrics, "NetIncomeLoss")
+        assets = _sec_metric(metrics, "Assets")
+        cash = _sec_metric(metrics, "CashAndCashEquivalentsAtCarryingValue")
+        if revenue and evidence_id:
+            claims.append(
+                ClaimItem(
+                    claim_id=f"cl_{claim_index:04d}",
+                    section_name="financial_analysis",
+                    claim_text=(
+                        f"{symbol} SEC companyfacts 显示，最新可用收入指标约为 "
+                        f"{_format_sec_value(revenue)}，期间截止 {revenue.get('end', '未披露')}。"
+                    ),
+                    evidence_ids=[evidence_id],
+                    numeric_values={"revenue": float(revenue["value"])},
+                    risk_level="medium",
+                    confidence=0.86,
+                    notes="由 SEC EDGAR companyfacts 结构化事实生成。",
+                )
+            )
+            claim_index += 1
+        if net_income and evidence_id:
+            claims.append(
+                ClaimItem(
+                    claim_id=f"cl_{claim_index:04d}",
+                    section_name="financial_analysis",
+                    claim_text=(
+                        f"{symbol} SEC companyfacts 显示，最新可用净利润指标约为 "
+                        f"{_format_sec_value(net_income)}，期间截止 {net_income.get('end', '未披露')}。"
+                    ),
+                    evidence_ids=[evidence_id],
+                    numeric_values={"net_income": float(net_income["value"])},
+                    risk_level="medium",
+                    confidence=0.84,
+                    notes="由 SEC EDGAR companyfacts 结构化事实生成。",
+                )
+            )
+            claim_index += 1
+        balance_parts = []
+        numeric_values: Dict[str, float] = {}
+        if assets:
+            balance_parts.append(f"资产约为 {_format_sec_value(assets)}")
+            numeric_values["assets"] = float(assets["value"])
+        if cash:
+            balance_parts.append(f"现金及等价物约为 {_format_sec_value(cash)}")
+            numeric_values["cash_and_equivalents"] = float(cash["value"])
+        if balance_parts and evidence_id:
+            claims.append(
+                ClaimItem(
+                    claim_id=f"cl_{claim_index:04d}",
+                    section_name="financial_statements",
+                    claim_text=f"{symbol} SEC companyfacts 资产负债表指标显示，" + "，".join(balance_parts) + "。",
+                    evidence_ids=[evidence_id],
+                    numeric_values=numeric_values,
+                    risk_level="medium",
+                    confidence=0.82,
+                    notes="由 SEC EDGAR companyfacts 结构化事实生成。",
+                )
+            )
+            claim_index += 1
 
     for row in ratio_rows:
         evidence_id = str(row.get("sample_id", ""))
@@ -595,6 +663,98 @@ def normalize_claims(items: List[Dict[str, Any]]) -> List[ClaimItem]:
         if data["claim_text"]:
             claims.append(ClaimItem.from_dict(data))
     return claims
+
+
+def _filter_supported_llm_claims(claims: List[ClaimItem], records: List[Dict[str, Any]]) -> List[ClaimItem]:
+    evidence_numbers = _numbers_by_evidence_id(records)
+    filtered: List[ClaimItem] = []
+    for claim in claims:
+        supported_numbers = list(claim.numeric_values.values())
+        for evidence_id in claim.evidence_ids:
+            supported_numbers.extend(evidence_numbers.get(str(evidence_id), []))
+        unsupported = [
+            number
+            for number in _numbers_from_text(claim.claim_text)
+            if not _number_is_noise(number) and not _number_is_supported(number, supported_numbers)
+        ]
+        if unsupported:
+            continue
+        filtered.append(claim)
+    return filtered
+
+
+def _numbers_by_evidence_id(records: List[Dict[str, Any]]) -> Dict[str, List[float]]:
+    output: Dict[str, List[float]] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
+        if not evidence_id:
+            continue
+        numbers = _numbers_from_text(str(record.get("content", "")))
+        numbers.extend(_numbers_from_json(record.get("metadata", {})))
+        output[evidence_id] = numbers
+    return output
+
+
+def _numbers_from_text(text: str) -> List[float]:
+    values = []
+    for match in re.findall(r"[-+]?\d+(?:\.\d+)?", text):
+        try:
+            values.append(float(match))
+        except ValueError:
+            continue
+    return values
+
+
+def _numbers_from_json(value: Any) -> List[float]:
+    values: List[float] = []
+    if isinstance(value, dict):
+        for item in value.values():
+            values.extend(_numbers_from_json(item))
+    elif isinstance(value, list):
+        for item in value:
+            values.extend(_numbers_from_json(item))
+    elif isinstance(value, (int, float)):
+        values.append(float(value))
+    elif isinstance(value, str):
+        values.extend(_numbers_from_text(value))
+    return values
+
+
+def _number_is_noise(value: float) -> bool:
+    return value in {0.0, 1.0} or 1900 <= value <= 2100
+
+
+def _number_is_supported(value: float, supported_numbers: List[float]) -> bool:
+    for candidate in supported_numbers:
+        tolerance = max(0.05, abs(candidate) * 0.002)
+        if abs(value - candidate) <= tolerance:
+            return True
+    return False
+
+
+def _sec_metric(metrics: Dict[str, Any], name: str) -> Dict[str, Any]:
+    item = metrics.get(name)
+    if not isinstance(item, dict):
+        return {}
+    try:
+        value = float(item.get("value"))
+    except (TypeError, ValueError):
+        return {}
+    output = dict(item)
+    output["value"] = value
+    return output
+
+
+def _format_sec_value(metric: Dict[str, Any]) -> str:
+    value = float(metric.get("value", 0.0) or 0.0)
+    unit = str(metric.get("unit") or "")
+    if abs(value) >= 1_000_000_000:
+        return f"{value / 1_000_000_000:.2f}B {unit}".strip()
+    if abs(value) >= 1_000_000:
+        return f"{value / 1_000_000:.2f}M {unit}".strip()
+    return f"{value:.2f} {unit}".strip()
 
 
 def _build_analyze_prompt(

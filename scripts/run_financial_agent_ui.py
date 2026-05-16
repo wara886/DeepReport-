@@ -21,6 +21,7 @@ def main() -> int:
     parser.add_argument("--raw-data-root", default="data/raw/real_data")
     parser.add_argument("--output-dir", default="data/outputs/multi_agent")
     parser.add_argument("--report-dir", default="data/reports/multi_agent")
+    parser.add_argument("--memory-root", default="memory/chat")
     args = parser.parse_args()
 
     server, url = run_ui_server(
@@ -30,6 +31,7 @@ def main() -> int:
         report_dir=args.report_dir,
         config_path=args.config_path,
         raw_data_root=args.raw_data_root,
+        memory_root=args.memory_root,
     )
     print(f"DeepReport+ UI running at {url}")
     print("Open the URL in your browser, then click Run Multi-Agent Report.")

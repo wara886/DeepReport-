@@ -1,7 +1,13 @@
 import json
 import zipfile
 
-from scripts.run_competition import REQUIRED_DOCX, _ranking_mode_for_run, _search_engines_for_run, main
+from scripts.run_competition import (
+    REQUIRED_DOCX,
+    _build_baseline_deepseek_workflow,
+    _ranking_mode_for_run,
+    _search_engines_for_run,
+    main,
+)
 
 
 def test_competition_runner_packages_existing_company_artifacts(tmp_path, monkeypatch):
@@ -72,6 +78,38 @@ def test_competition_runner_packages_existing_company_artifacts(tmp_path, monkey
 
 def test_competition_fast_mode_defaults_to_lightweight_retrieval():
     assert _search_engines_for_run("", fast=True) == ["local_real_data"]
+    assert _search_engines_for_run("", fast=True, realtime_data=True) == [
+        "local_real_data",
+        "sec_edgar",
+        "yahoo_finance",
+        "eastmoney",
+        "independent_macro",
+        "local_evidence",
+    ]
     assert _ranking_mode_for_run("", fast=True) == "bm25"
     assert _search_engines_for_run("local_real_data,local_evidence", fast=True) == ["local_real_data", "local_evidence"]
     assert _ranking_mode_for_run("hybrid_rerank", fast=True) == "hybrid_rerank"
+
+
+def test_baseline_deepseek_workflow_preserves_audit_buckets(tmp_path):
+    payload = _build_baseline_deepseek_workflow(
+        symbol="AMD",
+        period="2025Q4",
+        strict_markdown="# AMD\n\n## 执行摘要\n\n- AMD revenue claim. [ev_1]",
+        evidence_records=[{"evidence_id": "ev_1", "content": "AMD revenue evidence."}],
+        claims=[
+            {"claim_id": "c1", "claim_text": "AMD revenue claim.", "evidence_ids": ["ev_1"]},
+            {"claim_id": "c2", "claim_text": "AMD market share claim.", "evidence_ids": []},
+            {"claim_id": "c3", "claim_text": "AMD unsupported claim.", "evidence_ids": ["missing"]},
+        ],
+        verification={"passed": False},
+        model_config_path=str(tmp_path / "missing_model_config.yaml"),
+    )
+
+    markdown = payload["markdown"]
+    audit = payload["report_json"]["audit"]
+    assert "## 证据审计分层" in markdown
+    assert audit["verified"][0]["claim_id"] == "c1"
+    assert audit["pending_verification"][0]["claim_id"] == "c2"
+    assert audit["unsupported"][0]["claim_id"] == "c3"
+    assert payload["meta"]["model_used"] is False

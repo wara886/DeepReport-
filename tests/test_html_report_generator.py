@@ -17,6 +17,7 @@ def test_professional_html_report_embeds_chartjs_payload():
     )
 
     assert "https://cdn.jsdelivr.net/npm/chart.js" in html
-    assert '<canvas id="canvas_c1"></canvas>' in html
+    assert '<div class="chart-frame"><canvas id="canvas_c1"></canvas></div>' in html
+    assert "height: 320px" in html
     assert "<h2>执行摘要</h2>" in html
     assert "参考来源 1 条" in html

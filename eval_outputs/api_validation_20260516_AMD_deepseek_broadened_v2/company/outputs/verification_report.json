@@ -1,0 +1,155 @@
+{
+  "passed": true,
+  "error_count": 0,
+  "warning_count": 0,
+  "errors": [],
+  "warnings": [],
+  "claim_count": 5,
+  "grounded_claim_count": 5,
+  "expected_symbol": "AMD",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 3,
+    "chart_text_consistency": {
+      "chart_count": 3,
+      "passed_chart_count": 3,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "title": "关键指标",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "title": "结论置信度",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "title": "证据来源结构",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 3,
+      "results": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "passed": true,
+          "errors": []
+        }
+      ]
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 1,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "valuation_not_available"
+    ],
+    "checks": {}
+  },
+  "llm_used": true,
+  "entity_resolution": {
+    "requested_symbol": "AMD",
+    "research_topic": "分析 AMD 2025Q4 财务表现，并生成带引用的研究报告",
+    "resolved_symbol": "AMD",
+    "resolution_source": "symbol",
+    "topic_resolution": {
+      "input": "分析 AMD 2025Q4 财务表现，并生成带引用的研究报告",
+      "resolved": true,
+      "symbol": "AMD",
+      "company_name": "Advanced Micro Devices, Inc.",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "",
+      "ambiguous": false
+    },
+    "symbol_resolution": {
+      "input": "AMD",
+      "resolved": true,
+      "symbol": "AMD",
+      "company_name": "Advanced Micro Devices, Inc.",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "",
+      "ambiguous": false
+    },
+    "conflict": false
+  },
+  "context_pack_meta": {
+    "claims": {
+      "input_count": 5,
+      "packed_count": 5,
+      "dropped_count": 0,
+      "packed_ids": [
+        "cl_0001",
+        "cl_0002",
+        "cl_0003",
+        "cl_0005",
+        "cl_0004"
+      ],
+      "dropped_ids": [],
+      "used_chars": 1646,
+      "total_chars": 2600
+    },
+    "evidence": {
+      "input_count": 3,
+      "packed_count": 2,
+      "dropped_count": 1,
+      "packed_ids": [
+        "bls_cuur0000sa0_2026_M04",
+        "AMD_2025Q4_yahoo_finance_2b270b09c4"
+      ],
+      "dropped_ids": [
+        "sec_companyfacts_amd_dd3c591fa4"
+      ],
+      "used_chars": 4915,
+      "total_chars": 5200,
+      "prioritized_evidence_count": 3,
+      "prioritized_dropped_ids": [
+        "sec_companyfacts_amd_dd3c591fa4",
+        "sec_companyfacts_amd_dd3c591fa4",
+        "sec_companyfacts_amd_dd3c591fa4",
+        "sec_companyfacts_amd_dd3c591fa4"
+      ]
+    }
+  },
+  "llm_passed": true,
+  "llm_errors": [],
+  "llm_warnings": [],
+  "fix_recommendations": [
+    "Consider clarifying 'Company' in claim cl_0004 to avoid ambiguity, as it refers to a macro indicator rather than AMD."
+  ],
+  "rework_required": false,
+  "evidence_gaps": [],
+  "revision_brief": "- Fix recommendations: Consider clarifying 'Company' in claim cl_0004 to avoid ambiguity, as it refers to a macro indicator rather than AMD."
+}

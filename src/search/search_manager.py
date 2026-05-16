@@ -8,7 +8,7 @@ import json
 import socket
 from pathlib import Path
 from typing import Any, Callable, Dict, List
-from urllib import error, request
+from urllib import error, parse, request
 
 import pandas as pd
 
@@ -79,6 +79,7 @@ class SearchManager:
         manager.register_engine("independent_macro", independent_macro_search)
         manager.register_engine("sec_edgar", sec_edgar_search)
         manager.register_engine("yahoo_finance", yahoo_finance_search)
+        manager.register_engine("eastmoney", eastmoney_search)
         manager.register_engine("serper", serper_search)
         manager.register_engine("tavily", tavily_search)
         manager.register_engine("metaso", metaso_search)
@@ -541,6 +542,100 @@ def yahoo_finance_search(
     }
 
 
+def eastmoney_search(
+    query: str,
+    topk: int = 5,
+    symbol: str | None = None,
+    period: str | None = None,
+    raw_data_root: str = "data/raw/real_data",
+    **_: Any,
+) -> Dict[str, Any]:
+    resolved_symbol = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or _extract_symbol_from_query(query) or "")
+    secid = _eastmoney_secid(resolved_symbol)
+    if not secid:
+        return {
+            "hits": [],
+            "meta": {"mode": "eastmoney", "symbol": resolved_symbol or "", "record_count": 0, "failure_reason": "unsupported_symbol"},
+        }
+    fields = "f57,f58,f43,f44,f45,f46,f47,f48,f60,f116,f117,f162,f167,f168,f170,f173"
+    url = f"https://push2.eastmoney.com/api/qt/stock/get?{parse.urlencode({'secid': secid, 'fields': fields})}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 DeepReportPlus/0.1",
+        "Accept": "application/json,text/plain,*/*",
+        "Referer": "https://quote.eastmoney.com/",
+    }
+    raw = ""
+    last_error = ""
+    for _attempt in range(2):
+        req = request.Request(url, headers=headers, method="GET")
+        try:
+            with request.urlopen(req, timeout=12) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+            break
+        except (TimeoutError, socket.timeout):
+            last_error = "Eastmoney quote timed out"
+        except error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            last_error = f"Eastmoney HTTP {exc.code}: {body[:300]}"
+        except error.URLError as exc:
+            last_error = f"Eastmoney URL error: {exc.reason}"
+        except Exception as exc:
+            last_error = f"Eastmoney request error: {exc}"
+    if not raw:
+        return {
+            "hits": [],
+            "meta": {"mode": "eastmoney", "symbol": resolved_symbol or "", "record_count": 0, "failure_reason": "fetch_error", "error": last_error or "Eastmoney quote failed"},
+        }
+    parsed = json.loads(raw)
+    data = parsed.get("data") if isinstance(parsed, dict) else {}
+    if not isinstance(data, dict) or not data:
+        return {
+            "hits": [],
+            "meta": {"mode": "eastmoney", "symbol": resolved_symbol or "", "record_count": 0, "failure_reason": "no_quote_data"},
+        }
+    code = str(data.get("f57") or resolved_symbol or "")
+    name = str(data.get("f58") or code)
+    price = _eastmoney_scaled(data.get("f43"))
+    prev_close = _eastmoney_scaled(data.get("f60"))
+    change_pct = _eastmoney_scaled(data.get("f170"))
+    volume = _safe_float(data.get("f47"))
+    market_cap = _eastmoney_scaled(data.get("f116"), scale=100000000.0)
+    pe_ttm = _eastmoney_scaled(data.get("f162"))
+    pb = _eastmoney_scaled(data.get("f167"))
+    ps = _eastmoney_scaled(data.get("f168"))
+    content = (
+        f"Eastmoney A-share quote for {name} ({code}): latest price {price}, previous close {prev_close}, "
+        f"change_pct {change_pct}%, volume {volume}, market_cap_billion_cny {market_cap}, "
+        f"pe_ttm {pe_ttm}, pb {pb}, ps {ps}."
+    )
+    digest = hashlib.sha1(f"{code}|{period}|{content}".encode("utf-8")).hexdigest()[:10]
+    hit = {
+        "evidence_id": f"{code}_{period or 'latest'}_eastmoney_{digest}",
+        "sample_id": f"{code}_{period or 'latest'}_eastmoney_{digest}",
+        "symbol": resolved_symbol or code,
+        "period": str(period or ""),
+        "source_type": "market_api",
+        "title": f"{name} Eastmoney A-share quote",
+        "content": content,
+        "source_url": f"https://quote.eastmoney.com/{code}.html",
+        "publish_time": "",
+        "trust_level": "medium",
+        "score": 5.8,
+        "metadata": {
+            "provider": "Eastmoney",
+            "secid": secid,
+            "code": code,
+            "company_name": name,
+            "market_cap_billion_cny": market_cap,
+            "pe_ttm": pe_ttm,
+            "pb": pb,
+            "ps": ps,
+            "raw": data,
+        },
+    }
+    return {"hits": [hit][:topk], "meta": {"mode": "eastmoney", "symbol": resolved_symbol or code, "record_count": 1, "failure_reason": ""}}
+
+
 def independent_macro_search(
     query: str,
     topk: int = 5,
@@ -584,6 +679,29 @@ def sec_edgar_search(
     payload["hits"] = payload.get("hits", [])[:topk]
     payload["meta"]["query"] = query
     return payload
+
+
+def _eastmoney_secid(symbol: str | None) -> str:
+    text = str(symbol or "").strip().upper()
+    if not text:
+        return ""
+    code = text.split(".")[0]
+    if text.endswith(".SS") or text.startswith("SH"):
+        return f"1.{code[-6:]}"
+    if text.endswith(".SZ") or text.startswith("SZ"):
+        return f"0.{code[-6:]}"
+    if len(code) == 6 and code.isdigit():
+        return f"{'1' if code.startswith('6') else '0'}.{code}"
+    return ""
+
+
+def _eastmoney_scaled(value: Any, scale: float = 100.0) -> float | None:
+    number = _safe_float(value)
+    if number is None:
+        return None
+    if number <= -1e8:
+        return None
+    return round(number / scale, 4)
 
 
 def _normalize_hits(engine: str, hits: Any) -> List[SearchResult]:

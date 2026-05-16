@@ -1,0 +1,206 @@
+[
+  {
+    "evidence_id": "600519.SS_2025Q4_yahoo_finance_df36f6f3cb",
+    "sample_id": "600519.SS_2025Q4_yahoo_finance_df36f6f3cb",
+    "symbol": "600519.SS",
+    "period": "2025Q4",
+    "source_type": "market_api",
+    "title": "600519.SS Yahoo Finance market snapshot",
+    "source_url": "https://finance.yahoo.com/quote/600519.SS",
+    "publish_time": "2026-05-15",
+    "content": "600519.SS Yahoo Finance market snapshot: latest close 1332.949951171875 CNY, previous close 1467.5, 1mo price change -9.17%, latest volume 5818365.0.",
+    "trust_level": "medium",
+    "score": 6.0,
+    "key_points": [
+      "600519",
+      "SS Yahoo Finance market snapshot: latest close 1332",
+      "949951171875 CNY, previous close 1467"
+    ],
+    "metadata": {
+      "provider": "yahoo_finance",
+      "snapshot": {
+        "symbol": "600519.SS",
+        "range": "1mo",
+        "interval": "1d",
+        "currency": "CNY",
+        "exchange_name": "SHH",
+        "instrument_type": "EQUITY",
+        "first_close": 1467.5,
+        "last_close": 1332.949951171875,
+        "previous_close": 1467.5,
+        "change_pct": -9.168657501064736,
+        "latest_volume": 5818365.0,
+        "latest_date": "2026-05-15",
+        "source_url": "https://finance.yahoo.com/quote/600519.SS",
+        "raw_meta": {
+          "currency": "CNY",
+          "symbol": "600519.SS",
+          "exchangeName": "SHH",
+          "fullExchangeName": "Shanghai",
+          "instrumentType": "EQUITY",
+          "firstTradeDate": 998875800,
+          "regularMarketTime": 1778828402,
+          "hasPrePostMarketData": false,
+          "gmtoffset": 28800,
+          "timezone": "CST",
+          "exchangeTimezoneName": "Asia/Shanghai",
+          "regularMarketPrice": 1332.95,
+          "fiftyTwoWeekHigh": 1600.0,
+          "fiftyTwoWeekLow": 1322.01,
+          "regularMarketDayHigh": 1339.28,
+          "regularMarketDayLow": 1327.11,
+          "regularMarketVolume": 5818365,
+          "longName": "Kweichow Moutai Co., Ltd.",
+          "shortName": "KWEICHOW MOUTAI",
+          "chartPreviousClose": 1467.5,
+          "priceHint": 2,
+          "currentTradingPeriod": {
+            "pre": {
+              "timezone": "CST",
+              "end": 1778808600,
+              "start": 1778808600,
+              "gmtoffset": 28800
+            },
+            "regular": {
+              "timezone": "CST",
+              "end": 1778828400,
+              "start": 1778808600,
+              "gmtoffset": 28800
+            },
+            "post": {
+              "timezone": "CST",
+              "end": 1778828400,
+              "start": 1778828400,
+              "gmtoffset": 28800
+            }
+          },
+          "dataGranularity": "1d",
+          "range": "1mo",
+          "validRanges": [
+            "1d",
+            "5d",
+            "1mo",
+            "3mo",
+            "6mo",
+            "1y",
+            "2y",
+            "5y",
+            "10y",
+            "ytd",
+            "max"
+          ]
+        }
+      },
+      "source_quality": {
+        "source_authority": "market_data",
+        "authority_level": "market_data",
+        "authority_score": 0.78,
+        "trust_level": "medium",
+        "source_document_type": "market_snapshot",
+        "allowed_claim_types": [
+          "market_cap",
+          "market_price",
+          "valuation_market_input",
+          "volume"
+        ],
+        "reason": "market data provider suitable for price, volume, and market valuation inputs"
+      },
+      "freshness": {
+        "source_timestamp": "2026-05-15",
+        "data_cutoff": "2025Q4",
+        "freshness_days": 1,
+        "freshness_bucket": "fresh"
+      },
+      "evidence_scope": "market"
+    },
+    "source_authority": "market_data",
+    "authority_level": "market_data",
+    "authority_score": 0.78,
+    "source_document_type": "market_snapshot",
+    "allowed_claim_types": [
+      "market_cap",
+      "market_price",
+      "valuation_market_input",
+      "volume"
+    ],
+    "source_timestamp": "2026-05-15",
+    "data_cutoff": "2025Q4",
+    "freshness_days": 1,
+    "freshness_bucket": "fresh",
+    "evidence_scope": "market"
+  },
+  {
+    "evidence_id": "bls_cuur0000sa0_2026_M04",
+    "sample_id": "bls_cuur0000sa0_2026_M04",
+    "symbol": "",
+    "period": "",
+    "source_type": "bls_series",
+    "title": "BLS CUUR0000SA0: Consumer Price Index for All Urban Consumers",
+    "source_url": "https://www.bls.gov/developers/api_signature_v2.htm",
+    "publish_time": "2026-01-01",
+    "content": "Consumer Price Index for All Urban Consumers latest BLS observation is 333.020 for 2026-M04.",
+    "trust_level": "high",
+    "score": 1.0,
+    "key_points": [
+      "Consumer Price Index for All Urban Consumers latest BLS observation is 333",
+      "020 for 2026-M04"
+    ],
+    "metadata": {
+      "provider": "BLS",
+      "series_id": "CUUR0000SA0",
+      "series_name": "Consumer Price Index for All Urban Consumers",
+      "observation_date": "2026-M04",
+      "value": "333.020",
+      "source_quality": {
+        "source_authority": "official_statistics",
+        "authority_level": "primary",
+        "authority_score": 0.95,
+        "trust_level": "high",
+        "source_document_type": "macro_statistic",
+        "allowed_claim_types": [
+          "business_context",
+          "employment",
+          "event",
+          "growth",
+          "inflation",
+          "liquidity",
+          "macro_indicator",
+          "management_commentary",
+          "policy_rate",
+          "rates",
+          "risk"
+        ],
+        "reason": "official macroeconomic, statistical, or policy source"
+      },
+      "freshness": {
+        "source_timestamp": "2026-01-01",
+        "data_cutoff": "2026-M04",
+        "freshness_days": 135,
+        "freshness_bucket": "stale"
+      },
+      "evidence_scope": "macro"
+    },
+    "source_authority": "official_statistics",
+    "authority_level": "primary",
+    "authority_score": 0.95,
+    "source_document_type": "macro_statistic",
+    "allowed_claim_types": [
+      "business_context",
+      "employment",
+      "event",
+      "growth",
+      "inflation",
+      "liquidity",
+      "macro_indicator",
+      "management_commentary",
+      "policy_rate",
+      "rates",
+      "risk"
+    ],
+    "source_timestamp": "2026-01-01",
+    "data_cutoff": "2026-M04",
+    "freshness_days": 135,
+    "freshness_bucket": "stale",
+    "evidence_scope": "macro"
+  }
+]

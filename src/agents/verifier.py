@@ -232,6 +232,8 @@ def _check_primary_source_support(
 def _requires_primary_financial_source(claim: ClaimItem) -> bool:
     if not claim.numeric_values or _is_derived_numeric_claim(claim):
         return False
+    if _is_market_numeric_claim(claim) or _is_macro_numeric_claim(claim):
+        return False
     text = f"{claim.section_name} {claim.claim_text} {claim.notes}".lower()
     financial_markers = [
         "financial",
@@ -252,6 +254,55 @@ def _requires_primary_financial_source(claim: ClaimItem) -> bool:
         "现金流",
     ]
     return claim.section_name in {"financial_analysis", "financial_statements"} or any(marker in text for marker in financial_markers)
+
+
+def _is_market_numeric_claim(claim: ClaimItem) -> bool:
+    keys = {str(key).lower() for key in claim.numeric_values}
+    if not keys:
+        return False
+    market_keys = {
+        "close",
+        "latest_close",
+        "last_close",
+        "previous_close",
+        "price",
+        "market_price",
+        "volume",
+        "latest_volume",
+        "change_pct",
+        "monthly_change_pct",
+        "one_month_change_pct",
+        "market_cap",
+        "market_cap_billion",
+        "market_cap_billion_cny",
+        "pe_ttm",
+        "pb",
+        "ps",
+    }
+    text = claim.claim_text.lower()
+    market_markers = ["收盘价", "股价", "行情", "成交量", "市值", "market", "price", "volume"]
+    return keys.issubset(market_keys) or any(marker in text for marker in market_markers)
+
+
+def _is_macro_numeric_claim(claim: ClaimItem) -> bool:
+    keys = {str(key).lower() for key in claim.numeric_values}
+    if not keys:
+        return False
+    macro_keys = {
+        "cpi",
+        "inflation",
+        "unemployment",
+        "unemployment_rate",
+        "fed_funds",
+        "fedfunds",
+        "policy_rate",
+        "rate",
+        "yield",
+        "gdp",
+    }
+    text = claim.claim_text.lower()
+    macro_markers = ["cpi", "通胀", "失业率", "利率", "federal reserve", "bls", "fred", "bea"]
+    return keys.issubset(macro_keys) or any(marker in text for marker in macro_markers)
 
 
 def _authority_grade(record: Dict[str, Any]) -> Dict[str, Any]:
