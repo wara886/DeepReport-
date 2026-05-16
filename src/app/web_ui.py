@@ -15,6 +15,9 @@ from urllib.parse import unquote, urlparse
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.app.agent_chat import AgentChatService
 from src.app.chat_task_parser import parse_chat_task
+from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
+from src.evaluation.llm_report_review import review_report_with_llm_from_paths, write_llm_review_outputs_for_paths
+from src.evaluation.report_quality import evaluate_report_quality_from_paths, write_quality_outputs_for_paths
 
 
 DEFAULT_OUTPUT_DIR = "data/outputs/multi_agent"
@@ -115,8 +118,9 @@ def create_ui_handler(
                 enable_remote_data=enable_remote_data,
                 data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
             )
+            quality_result = run_delivery_quality_pipeline(output_root, report_root, config_path)
             latest = load_run_payload(output_root, report_root)
-            self._send_json({"result": result, "latest": latest})
+            self._send_json({"result": {**result, **quality_result}, "latest": latest})
 
         def _handle_chat(self) -> None:
             payload = self._read_json_body()
@@ -192,6 +196,9 @@ def create_ui_handler(
             )
             response["parsed_task"] = parsed_task.to_dict()
             if response.get("mode") == "report_run":
+                quality_result = run_delivery_quality_pipeline(output_root, report_root, config_path)
+                if isinstance(response.get("result"), dict):
+                    response["result"].update(quality_result)
                 response["latest"] = load_run_payload(output_root, report_root)
             self._send_json(response)
 
@@ -248,6 +255,38 @@ def create_ui_handler(
             return
 
     return WebUIHandler
+
+
+def run_delivery_quality_pipeline(
+    output_root: str | Path = DEFAULT_OUTPUT_DIR,
+    report_root: str | Path = DEFAULT_REPORT_DIR,
+    config_path: str = "configs/model_backends.yaml",
+) -> Dict[str, Any]:
+    output_path = Path(output_root)
+    report_path = Path(report_root)
+    quality_report = evaluate_report_quality_from_paths(output_path, report_path, run_dir=output_path)
+    write_quality_outputs_for_paths(output_path, report_path, quality_report)
+    llm_review = review_report_with_llm_from_paths(output_path, report_path, run_dir=output_path, config_path=config_path)
+    write_llm_review_outputs_for_paths(output_path, report_path, llm_review)
+    delivery_gate = build_delivery_gate_from_outputs(output_path, run_dir=output_path)
+    write_delivery_gate_for_outputs(output_path, delivery_gate)
+    return {
+        "quality_report": {
+            "objective_pass": quality_report.get("objective_pass"),
+            "total_score": quality_report.get("total_score"),
+        },
+        "llm_quality_review": {
+            "llm_review_pass": llm_review.get("llm_review_pass"),
+            "total_score": llm_review.get("total_score"),
+            "model_status": llm_review.get("model_status"),
+        },
+        "delivery_gate": {
+            "delivery_pass": delivery_gate.get("delivery_pass"),
+            "verifier_passed": delivery_gate.get("verifier_passed"),
+            "objective_pass": delivery_gate.get("objective_pass"),
+            "llm_review_pass": delivery_gate.get("llm_review_pass"),
+        },
+    }
 
 
 def load_run_payload(

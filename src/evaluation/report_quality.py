@@ -32,6 +32,19 @@ class RunPaths:
 
 def evaluate_report_quality(run_dir: str | Path) -> Dict[str, Any]:
     paths = resolve_run_paths(run_dir)
+    return evaluate_report_quality_from_paths(paths.outputs_dir, paths.reports_dir, paths.run_dir)
+
+
+def evaluate_report_quality_from_paths(
+    outputs_dir: str | Path,
+    reports_dir: str | Path,
+    run_dir: str | Path | None = None,
+) -> Dict[str, Any]:
+    paths = RunPaths(
+        run_dir=Path(run_dir) if run_dir is not None else Path(outputs_dir),
+        outputs_dir=Path(outputs_dir),
+        reports_dir=Path(reports_dir),
+    )
     artifacts = load_quality_artifacts(paths)
     issues: List[Dict[str, Any]] = []
     scores = {
@@ -80,7 +93,16 @@ def evaluate_report_quality(run_dir: str | Path) -> Dict[str, Any]:
 
 def write_quality_outputs(run_dir: str | Path, report: Dict[str, Any] | None = None) -> Dict[str, str]:
     paths = resolve_run_paths(run_dir)
-    quality = report or evaluate_report_quality(run_dir)
+    return write_quality_outputs_for_paths(paths.outputs_dir, paths.reports_dir, report or evaluate_report_quality(run_dir))
+
+
+def write_quality_outputs_for_paths(
+    outputs_dir: str | Path,
+    reports_dir: str | Path,
+    report: Dict[str, Any],
+) -> Dict[str, str]:
+    paths = RunPaths(run_dir=Path(outputs_dir), outputs_dir=Path(outputs_dir), reports_dir=Path(reports_dir))
+    quality = report
     paths.outputs_dir.mkdir(parents=True, exist_ok=True)
     json_path = paths.outputs_dir / "quality_report.json"
     md_path = paths.outputs_dir / "quality_report.md"

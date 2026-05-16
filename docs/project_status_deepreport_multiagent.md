@@ -487,3 +487,13 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_llm_report_review.py tests/test_report_quality.py tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py`；`python scripts/review_report_with_llm.py --run-dir eval_outputs/web_link_test_AMD_2025Q4`。
 - 质量结果：22 passed；AMD 样本当前 `llm_review_pass=false`，本机模型调用状态为 `error`，交付门禁应阻断。
 - 未完成项：delivery gate 接入和双样本内容修复仍待后续 commit。
+
+# 2026-05-16 Commit 6：delivery gate 接入状态更新
+
+- 新增 `src/evaluation/delivery_gate.py`，将 verifier、objective quality eval、LLM/Codex review 汇总为 `delivery_gate.json`。
+- `/api/chat` 和 `/api/run` 生成报告后自动运行三层质量链路，并回传 `quality_report`、`llm_quality_review`、`delivery_gate` 摘要。
+- Web UI“质量评测”tab 已能展示 objective 分数、LLM review 结论和 fatal/blocker/warning 问题。
+- 最终可交付条件固定为：`verification_passed=true`、`objective_pass=true`、`llm_review_pass=true` 三者同时成立。
+- 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_delivery_gate.py tests/test_llm_report_review.py tests/test_report_quality.py tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py`。
+- 质量结果：24 passed。
+- 未完成项：600519 与 AMD 内容修复、双样本重跑和记录仍待后续 commit。

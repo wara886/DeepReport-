@@ -209,6 +209,8 @@ def test_chat_api_routes_report_run_and_returns_trace(monkeypatch, tmp_path):
     assert any(item["detail"] == "start_multi_agent_report_run" for item in body["tool_trace"])
     assert any(item["stage"] == "verify" for item in body["tool_trace"])
     assert body["result"]["verification_passed"] is True
+    assert "delivery_gate" in body["result"]
+    assert body["latest"]["delivery_gate"]["delivery_pass"] is False
     assert body["parsed_task"]["symbol"] == "600519.SS"
     assert body["parsed_task"]["period"] == "2025Q4"
     assert captured["enable_remote_data"] is True

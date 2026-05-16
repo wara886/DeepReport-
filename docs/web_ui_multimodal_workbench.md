@@ -131,3 +131,31 @@ python scripts/review_report_with_llm.py --run-dir eval_outputs/web_link_test_AM
 下一步：
 
 - Commit 6：把 verifier、objective eval、LLM review 汇总成 `delivery_gate.json`，并接入 Chat 生成链路与 Web UI。
+
+## 2026-05-16 Commit 6：质量评测接入 Chat 生成链路
+
+改动：
+
+- 新增 `src/evaluation/delivery_gate.py`，合并 verifier、objective eval、LLM review 三层结果。
+- `src/app/web_ui.py` 新增 `run_delivery_quality_pipeline()`，报告生成完成后自动运行：
+  1. objective quality eval；
+  2. LLM/Codex 主观 review；
+  3. delivery gate 汇总。
+- `/api/chat` 和 `/api/run` 都会写出 `quality_report.json`、`llm_quality_review.json`、`delivery_gate.json`。
+- Chat 返回中包含三层质量结果；前端“质量评测”tab 可直接展示 objective 分数、LLM review 和 fatal/blocker/warning 问题。
+
+验证命令：
+
+```powershell
+python -m py_compile src/evaluation/report_quality.py src/evaluation/llm_report_review.py src/evaluation/delivery_gate.py src/app/web_ui.py scripts/evaluate_report_quality.py scripts/review_report_with_llm.py
+$env:PYTHONPATH='.'; pytest -q tests/test_delivery_gate.py tests/test_llm_report_review.py tests/test_report_quality.py tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py
+```
+
+质量结果：
+
+- 24 passed。
+- 当前最终交付门禁严格要求 `verification_passed=true`、`objective_pass=true`、`llm_review_pass=true` 三者同时成立。
+
+下一步：
+
+- Commit 7：针对 600519 和 AMD 的内容缺陷做报告链路修复。

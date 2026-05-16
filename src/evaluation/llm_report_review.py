@@ -27,12 +27,30 @@ def review_report_with_llm(
     model: Any | None = None,
 ) -> Dict[str, Any]:
     paths = resolve_run_paths(run_dir)
-    artifacts = _load_review_artifacts(paths.outputs_dir, paths.reports_dir)
+    return review_report_with_llm_from_paths(
+        outputs_dir=paths.outputs_dir,
+        reports_dir=paths.reports_dir,
+        run_dir=paths.run_dir,
+        config_path=config_path,
+        model=model,
+    )
+
+
+def review_report_with_llm_from_paths(
+    outputs_dir: str | Path,
+    reports_dir: str | Path,
+    run_dir: str | Path | None = None,
+    config_path: str = "configs/model_backends.yaml",
+    model: Any | None = None,
+) -> Dict[str, Any]:
+    outputs_path = Path(outputs_dir)
+    reports_path = Path(reports_dir)
+    artifacts = _load_review_artifacts(outputs_path, reports_path)
     adapter = model or ModelAdapter.from_config(config_path=config_path)
     base = {
         "schema_version": "llm_quality_review.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "run_dir": str(paths.run_dir),
+        "run_dir": str(Path(run_dir) if run_dir is not None else outputs_path),
         "model": getattr(adapter, "model_name", ""),
     }
     if not getattr(adapter, "api_key", "") and model is None:
@@ -69,10 +87,19 @@ def review_report_with_llm(
 
 def write_llm_review_outputs(run_dir: str | Path, review: Dict[str, Any] | None = None) -> Dict[str, str]:
     paths = resolve_run_paths(run_dir)
-    payload = review or review_report_with_llm(run_dir)
-    paths.outputs_dir.mkdir(parents=True, exist_ok=True)
-    json_path = paths.outputs_dir / "llm_quality_review.json"
-    md_path = paths.outputs_dir / "llm_quality_review.md"
+    return write_llm_review_outputs_for_paths(paths.outputs_dir, paths.reports_dir, review or review_report_with_llm(run_dir))
+
+
+def write_llm_review_outputs_for_paths(
+    outputs_dir: str | Path,
+    reports_dir: str | Path,
+    review: Dict[str, Any],
+) -> Dict[str, str]:
+    outputs_path = Path(outputs_dir)
+    payload = review
+    outputs_path.mkdir(parents=True, exist_ok=True)
+    json_path = outputs_path / "llm_quality_review.json"
+    md_path = outputs_path / "llm_quality_review.md"
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     md_path.write_text(render_llm_review_markdown(payload), encoding="utf-8")
     return {"llm_quality_review": str(json_path), "llm_quality_review_md": str(md_path)}
