@@ -77,3 +77,30 @@ python -m py_compile src/app/chat_task_parser.py src/app/web_ui.py
 下一步：
 
 - Commit 4：完善本地多 Agent/objective quality eval，生成 `quality_report.json/md` 和 `quality_issues.jsonl`。
+
+## 2026-05-16 Commit 4：本地 objective quality eval
+
+改动：
+
+- 新增 `src/evaluation/report_quality.py`，提供可 import 的本地客观质量评测器。
+- 新增 `scripts/evaluate_report_quality.py`，支持 `--run-dir` 指向 eval 根目录、`company/`、`outputs/` 或普通 run 目录。
+- 输出 `quality_report.json`、`quality_report.md`、`quality_issues.jsonl`。
+- 指标覆盖结构完整度、证据支撑、财务质量、多模态质量、专业深度和合规披露。
+- 质量门禁要求：总分 >= 0.82、无 fatal issue、执行摘要/风险/投资结论非空、公司报告具备三表摘要/业务画像/风险提示，估值缺失时必须说明不可用原因。
+
+验证命令：
+
+```powershell
+python -m py_compile src/evaluation/report_quality.py scripts/evaluate_report_quality.py
+$env:PYTHONPATH='.'; pytest -q tests/test_report_quality.py tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py
+python scripts/evaluate_report_quality.py --run-dir eval_outputs/web_link_test_AMD_2025Q4
+```
+
+质量结果：
+
+- 19 passed。
+- AMD 样本本地客观评测：`total_score=0.892`，但 `objective_pass=false`，说明硬门禁已能拦截“分数不错但仍不可交付”的报告。
+
+下一步：
+
+- Commit 5：新增 LLM/Codex 主观质量复核，输出 `llm_quality_review.json/md`。

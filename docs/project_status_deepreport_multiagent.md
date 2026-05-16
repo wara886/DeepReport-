@@ -468,3 +468,12 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py`；`python -m py_compile src/app/chat_task_parser.py src/app/web_ui.py`。
 - 质量结果：17 passed。
 - 未完成项：objective quality eval、LLM/Codex review、delivery gate 接入和双样本内容修复仍待后续 commit。
+
+# 2026-05-16 Commit 4：objective quality eval 状态更新
+
+- 新增 `src/evaluation/report_quality.py` 和 `scripts/evaluate_report_quality.py`。
+- 本地客观评测输出 `quality_report.json`、`quality_report.md`、`quality_issues.jsonl`，覆盖结构完整度、证据支撑、财务质量、多模态质量、专业深度和合规披露。
+- 门禁规则已实现：总分 >= 0.82、无 fatal issue、执行摘要/风险/投资结论非空、公司/个股报告具备三表摘要/业务画像/风险提示；估值缺失时必须说明“估值不可用原因”。
+- 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_report_quality.py tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py`；`python scripts/evaluate_report_quality.py --run-dir eval_outputs/web_link_test_AMD_2025Q4`。
+- 质量结果：19 passed；AMD 样本 `total_score=0.892` 但 `objective_pass=false`，硬门禁已能拦截不可交付报告。
+- 未完成项：LLM/Codex review、delivery gate 接入和双样本内容修复仍待后续 commit。

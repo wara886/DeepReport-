@@ -1,0 +1,379 @@
+"""Objective quality evaluation for generated company research reports."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+import re
+from typing import Any, Dict, Iterable, List
+
+
+GROUP_WEIGHTS = {
+    "structure": 0.18,
+    "evidence": 0.20,
+    "financial": 0.18,
+    "multimodal": 0.12,
+    "professional_depth": 0.20,
+    "compliance": 0.12,
+}
+
+EMPTY_MARKERS = ("暂无可验证结论", "暂无结论", "无法判断", "待补充", "N/A")
+SCI_NOTATION_RE = re.compile(r"(?<![A-Za-z])[-+]?\d+(?:\.\d+)?[eE][-+]?\d+")
+
+
+@dataclass
+class RunPaths:
+    run_dir: Path
+    outputs_dir: Path
+    reports_dir: Path
+
+
+def evaluate_report_quality(run_dir: str | Path) -> Dict[str, Any]:
+    paths = resolve_run_paths(run_dir)
+    artifacts = load_quality_artifacts(paths)
+    issues: List[Dict[str, Any]] = []
+    scores = {
+        "structure": _score_structure(artifacts, issues),
+        "evidence": _score_evidence(artifacts, issues),
+        "financial": _score_financial(artifacts, issues),
+        "multimodal": _score_multimodal(artifacts, issues),
+        "professional_depth": _score_professional_depth(artifacts, issues),
+        "compliance": _score_compliance(artifacts, issues),
+    }
+    total = round(sum(scores[key] * GROUP_WEIGHTS[key] for key in GROUP_WEIGHTS), 4)
+    required = _required_gate_checks(artifacts, issues)
+    fatal_count = sum(1 for issue in issues if issue["severity"] == "fatal")
+    blocker_count = sum(1 for issue in issues if issue["severity"] == "blocker")
+    objective_pass = bool(total >= 0.82 and fatal_count == 0 and required["passed"])
+    report = {
+        "schema_version": "quality_report.v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "run_dir": str(paths.run_dir),
+        "outputs_dir": str(paths.outputs_dir),
+        "reports_dir": str(paths.reports_dir),
+        "total_score": total,
+        "objective_pass": objective_pass,
+        "scores": scores,
+        "weights": GROUP_WEIGHTS,
+        "issue_counts": {
+            "fatal": fatal_count,
+            "blocker": blocker_count,
+            "warning": sum(1 for issue in issues if issue["severity"] == "warning"),
+            "info": sum(1 for issue in issues if issue["severity"] == "info"),
+        },
+        "required_checks": required,
+        "top_issues": _top_issues(issues),
+        "issues": issues,
+        "artifact_counts": {
+            "claims": len(artifacts["claims"]),
+            "evidence": len(artifacts["evidence"]),
+            "tables": len(artifacts["tables"]),
+            "charts": len(artifacts["charts"]),
+            "pdf_sections": len(artifacts["pdf_sections"]),
+            "citations": len(artifacts["citations"]),
+        },
+    }
+    return report
+
+
+def write_quality_outputs(run_dir: str | Path, report: Dict[str, Any] | None = None) -> Dict[str, str]:
+    paths = resolve_run_paths(run_dir)
+    quality = report or evaluate_report_quality(run_dir)
+    paths.outputs_dir.mkdir(parents=True, exist_ok=True)
+    json_path = paths.outputs_dir / "quality_report.json"
+    md_path = paths.outputs_dir / "quality_report.md"
+    issues_path = paths.outputs_dir / "quality_issues.jsonl"
+    json_path.write_text(json.dumps(quality, ensure_ascii=False, indent=2), encoding="utf-8")
+    md_path.write_text(render_quality_markdown(quality), encoding="utf-8")
+    issues_path.write_text(
+        "\n".join(json.dumps(issue, ensure_ascii=False) for issue in quality.get("issues", [])) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "quality_report": str(json_path),
+        "quality_report_md": str(md_path),
+        "quality_issues": str(issues_path),
+    }
+
+
+def render_quality_markdown(report: Dict[str, Any]) -> str:
+    lines = [
+        "# Report Quality Evaluation",
+        "",
+        f"- objective_pass: `{report.get('objective_pass')}`",
+        f"- total_score: `{report.get('total_score')}`",
+        f"- run_dir: `{report.get('run_dir')}`",
+        "",
+        "## Scores",
+        "",
+    ]
+    for key, value in dict(report.get("scores", {})).items():
+        lines.append(f"- {key}: `{value}`")
+    lines.extend(["", "## Required Checks", ""])
+    for key, value in dict(report.get("required_checks", {})).items():
+        if key != "details":
+            lines.append(f"- {key}: `{value}`")
+    lines.extend(["", "## Top Issues", ""])
+    issues = report.get("top_issues", []) or []
+    if not issues:
+        lines.append("- No issues.")
+    for issue in issues:
+        lines.append(f"- **{issue.get('severity')} / {issue.get('category')}**: {issue.get('message')}")
+    return "\n".join(lines) + "\n"
+
+
+def resolve_run_paths(run_dir: str | Path) -> RunPaths:
+    root = Path(run_dir)
+    if (root / "company" / "outputs").exists():
+        outputs = root / "company" / "outputs"
+        reports = root / "company" / "reports"
+        return RunPaths(run_dir=root, outputs_dir=outputs, reports_dir=reports)
+    if root.name == "outputs":
+        reports = root.parent / "reports"
+        return RunPaths(run_dir=root.parent, outputs_dir=root, reports_dir=reports)
+    if (root / "outputs").exists():
+        return RunPaths(run_dir=root, outputs_dir=root / "outputs", reports_dir=root / "reports")
+    return RunPaths(run_dir=root, outputs_dir=root, reports_dir=root.parent / "reports")
+
+
+def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
+    return {
+        "summary": _read_json(paths.outputs_dir / "run_summary.json", {}),
+        "claims": _as_list(_read_json(paths.outputs_dir / "claims.json", [])),
+        "evidence": _as_list(_read_json(paths.outputs_dir / "evidence.json", [])),
+        "citations": _as_list(_read_json(paths.outputs_dir / "citations.json", [])),
+        "tables": _as_list(_read_json(paths.outputs_dir / "tables.json", [])),
+        "financial_metrics": _read_json(paths.outputs_dir / "financial_metrics.json", {}),
+        "charts": _as_list(_read_json(paths.outputs_dir / "charts.json", [])),
+        "pdf_sections": _as_list(_read_json(paths.outputs_dir / "pdf_sections.json", [])),
+        "profile": _read_json(paths.outputs_dir / "company_profile_extracted.json", {}),
+        "verification": _read_json(paths.outputs_dir / "verification_report.json", {}),
+        "scorecard": _read_json(paths.outputs_dir / "company_report_scorecard.json", {}),
+        "report_md": _read_text(paths.reports_dir / "report.md"),
+        "report_html": _read_text(paths.reports_dir / "report.html"),
+        "report_json": _read_json(paths.reports_dir / "report.json", {}),
+    }
+
+
+def _score_structure(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:
+    text = _report_text(artifacts)
+    required = {
+        "executive_summary": ("执行摘要", "摘要", "核心观点", "summary"),
+        "business_profile": ("主营业务", "业务画像", "公司画像", "business"),
+        "financial_analysis": ("财务", "三表", "盈利", "现金流", "financial"),
+        "valuation": ("估值", "valuation", "p/e", "p/b"),
+        "risk": ("风险", "risk"),
+        "investment_conclusion": ("投资建议", "投资结论", "评级", "conclusion"),
+    }
+    present = {key: _contains_any(text, terms) for key, terms in required.items()}
+    for key, ok in present.items():
+        if not ok:
+            _issue(issues, "blocker", "structure", f"缺少必备章节或段落：{key}")
+    if any(marker in text for marker in EMPTY_MARKERS):
+        _issue(issues, "blocker", "structure", "报告包含空洞占位结论或暂无可验证结论")
+    return round(sum(1 for ok in present.values() if ok) / len(required), 4)
+
+
+def _score_evidence(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:
+    claims = artifacts["claims"]
+    evidence = artifacts["evidence"]
+    citations = artifacts["citations"]
+    text = _report_text(artifacts)
+    if not claims:
+        _issue(issues, "fatal", "evidence", "claims.json 为空，无法形成论点-论据链")
+        return 0.0
+    covered = 0
+    for claim in claims:
+        evidence_ids = claim.get("evidence_ids") if isinstance(claim, dict) else []
+        if isinstance(evidence_ids, list) and evidence_ids:
+            covered += 1
+        else:
+            _issue(issues, "blocker", "evidence", f"claim 缺少 evidence_ids：{claim.get('claim_id') if isinstance(claim, dict) else '-'}")
+    coverage = covered / max(1, len(claims))
+    citation_in_body = 1.0 if re.search(r"(ev_|evidence|citation|来源|引用|\[\d+\])", text, flags=re.IGNORECASE) else 0.0
+    if citations and citation_in_body == 0.0:
+        _issue(issues, "blocker", "evidence", "引用表存在，但正文没有明显引用标记")
+    primary = sum(1 for item in evidence if _is_primary_source(item))
+    primary_ratio = primary / max(1, len(evidence))
+    if primary_ratio < 0.35:
+        _issue(issues, "warning", "evidence", f"权威/一手来源占比偏低：{primary_ratio:.2f}")
+    return round(0.55 * coverage + 0.25 * min(1.0, len(citations) / max(1, len(claims))) + 0.2 * max(citation_in_body, primary_ratio), 4)
+
+
+def _score_financial(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:
+    tables = artifacts["tables"]
+    metrics = artifacts["financial_metrics"]
+    text = _report_text(artifacts)
+    statements = {_statement_name(row) for row in tables if isinstance(row, dict)}
+    has_income = any("income" in item or "利润" in item for item in statements)
+    has_balance = any("balance" in item or "资产" in item for item in statements)
+    has_cashflow = any("cash" in item or "现金" in item for item in statements)
+    for ok, name in [(has_income, "利润表"), (has_balance, "资产负债表"), (has_cashflow, "现金流量表")]:
+        if not ok:
+            _issue(issues, "blocker", "financial", f"缺少{name}摘要")
+    if SCI_NOTATION_RE.search(text):
+        _issue(issues, "blocker", "financial", "正文包含科学计数法，财务数值展示不专业")
+    if not re.search(r"(亿元|万美元|亿美元|%|pct|bps|million|billion)", text, flags=re.IGNORECASE):
+        _issue(issues, "warning", "financial", "正文缺少清晰单位或百分比表达")
+    metric_score = 1.0 if metrics else 0.45
+    period_alignment = _period_alignment_score(artifacts, issues)
+    table_score = (int(has_income) + int(has_balance) + int(has_cashflow)) / 3
+    return round(0.45 * table_score + 0.25 * metric_score + 0.2 * period_alignment + 0.1 * (0 if SCI_NOTATION_RE.search(text) else 1), 4)
+
+
+def _score_multimodal(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:
+    charts = artifacts["charts"]
+    tables = artifacts["tables"]
+    text = _report_text(artifacts)
+    if not charts:
+        _issue(issues, "blocker", "multimodal", "缺少图表产物")
+    useful = 0
+    for chart in charts:
+        title = str(chart.get("title") or chart.get("chart_id") or "") if isinstance(chart, dict) else ""
+        if _contains_any(title, ("收入", "利润", "现金", "指标", "margin", "revenue", "income", "metrics")):
+            useful += 1
+    if charts and useful == 0:
+        _issue(issues, "warning", "multimodal", "图表未明显服务于财务分析")
+    figure_mentioned = 1.0 if _contains_any(text, ("图", "表", "chart", "figure")) else 0.0
+    return round(0.45 * min(1.0, len(charts) / 2) + 0.25 * min(1.0, useful / 1) + 0.2 * min(1.0, len(tables) / 3) + 0.1 * figure_mentioned, 4)
+
+
+def _score_professional_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:
+    text = _report_text(artifacts)
+    profile = artifacts["profile"]
+    checks = {
+        "business_profile": bool(profile) or _contains_any(text, ("主营业务", "业务画像", "产品", "渠道", "business")),
+        "peer_compare": _contains_any(text, ("同行", "可比公司", "NVIDIA", "Intel", "Broadcom", "竞品", "peer")),
+        "valuation": _contains_any(text, ("估值", "P/E", "P/B", "市盈率", "市净率", "valuation")),
+        "sensitivity": _contains_any(text, ("敏感性", "情景", "scenario", "sensitivity")),
+        "risk": _contains_any(text, ("风险", "risk")),
+        "investment": _contains_any(text, ("投资建议", "投资结论", "评级", "中性", "买入", "持有")),
+    }
+    for key, ok in checks.items():
+        if not ok:
+            severity = "blocker" if key in {"business_profile", "risk", "investment"} else "warning"
+            _issue(issues, severity, "professional_depth", f"专业深度不足：缺少 {key}")
+    return round(sum(1 for ok in checks.values() if ok) / len(checks), 4)
+
+
+def _score_compliance(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:
+    text = _report_text(artifacts)
+    checks = {
+        "risk_disclosure": _contains_any(text, ("风险提示", "风险因素", "risk")),
+        "source_disclosure": _contains_any(text, ("资料来源", "数据来源", "来源", "citation")),
+        "rating_explanation": _contains_any(text, ("评级", "投资建议", "中性", "买入", "持有")),
+        "use_limitation": _contains_any(text, ("不构成投资建议", "仅供参考", "使用限制", "免责声明")),
+        "conflict_statement": _contains_any(text, ("利益冲突", "独立性", "披露")),
+    }
+    for key, ok in checks.items():
+        if not ok:
+            _issue(issues, "warning", "compliance", f"合规披露不足：缺少 {key}")
+    return round(sum(1 for ok in checks.values() if ok) / len(checks), 4)
+
+
+def _required_gate_checks(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> Dict[str, Any]:
+    text = _report_text(artifacts)
+    tables = artifacts["tables"]
+    statements = {_statement_name(row) for row in tables if isinstance(row, dict)}
+    has_three_tables = (
+        any("income" in item or "利润" in item for item in statements)
+        and any("balance" in item or "资产" in item for item in statements)
+        and any("cash" in item or "现金" in item for item in statements)
+    )
+    checks = {
+        "non_empty_executive_summary": _contains_any(text, ("执行摘要", "摘要", "核心观点", "summary")) and not _section_is_empty(text, ("执行摘要", "摘要", "核心观点")),
+        "non_empty_risk": _contains_any(text, ("风险", "risk")) and not _section_is_empty(text, ("风险",)),
+        "non_empty_investment_conclusion": _contains_any(text, ("投资建议", "投资结论", "评级")) and not _section_is_empty(text, ("投资建议", "投资结论", "评级")),
+        "has_three_table_summary": has_three_tables,
+        "has_business_profile": bool(artifacts["profile"]) or _contains_any(text, ("主营业务", "业务画像", "公司画像", "business")),
+        "valuation_or_reason": _contains_any(text, ("估值", "P/E", "P/B", "市盈率", "市净率", "估值不可用原因", "估值暂不可用")),
+    }
+    for key, ok in checks.items():
+        if not ok:
+            _issue(issues, "fatal" if key in {"non_empty_executive_summary", "non_empty_risk", "non_empty_investment_conclusion"} else "blocker", "gate", f"质量门禁未通过：{key}")
+    return {"passed": all(checks.values()), "details": checks}
+
+
+def _report_text(artifacts: Dict[str, Any]) -> str:
+    return "\n".join([str(artifacts.get("report_md") or ""), str(artifacts.get("report_html") or "")])
+
+
+def _statement_name(row: Dict[str, Any]) -> str:
+    return str(row.get("statement") or row.get("table_type") or row.get("source_table") or row.get("title") or "").lower()
+
+
+def _period_alignment_score(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:
+    summary_period = str(artifacts["summary"].get("period") or "").upper()
+    if not summary_period:
+        return 0.7
+    mismatches = []
+    for claim in artifacts["claims"]:
+        if not isinstance(claim, dict):
+            continue
+        metadata = claim.get("metadata") if isinstance(claim.get("metadata"), dict) else {}
+        period = str(claim.get("period") or metadata.get("period") or "").upper()
+        if period and period != summary_period:
+            mismatches.append(claim.get("claim_id") or period)
+    if mismatches:
+        _issue(issues, "warning", "financial", f"claim period 与 summary period 可能不一致：{mismatches[:5]}")
+        return 0.55
+    return 1.0
+
+
+def _section_is_empty(text: str, headings: Iterable[str]) -> bool:
+    for heading in headings:
+        idx = text.find(heading)
+        if idx < 0:
+            continue
+        snippet = text[idx : idx + 500]
+        if any(marker in snippet for marker in EMPTY_MARKERS):
+            return True
+    return False
+
+
+def _contains_any(text: str, terms: Iterable[str]) -> bool:
+    lowered = str(text or "").lower()
+    return any(str(term).lower() in lowered for term in terms)
+
+
+def _is_primary_source(item: Any) -> bool:
+    if not isinstance(item, dict):
+        return False
+    joined = " ".join(str(item.get(key, "")) for key in ["source_type", "trust_level", "source_url", "title"]).lower()
+    return any(term in joined for term in ["primary", "sec", "edgar", "cninfo", "sse", "szse", "exchange", "eastmoney_financial"])
+
+
+def _top_issues(issues: List[Dict[str, Any]], limit: int = 12) -> List[Dict[str, Any]]:
+    order = {"fatal": 0, "blocker": 1, "warning": 2, "info": 3}
+    return sorted(issues, key=lambda item: (order.get(item.get("severity"), 9), item.get("category", "")))[:limit]
+
+
+def _issue(issues: List[Dict[str, Any]], severity: str, category: str, message: str) -> None:
+    issue_id = f"{category}_{len(issues) + 1:04d}"
+    issues.append({"issue_id": issue_id, "severity": severity, "category": category, "message": message})
+
+
+def _read_json(path: Path, default: Any) -> Any:
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return default
+
+
+def _read_text(path: Path) -> str:
+    if not path.exists():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _as_list(value: Any) -> List[Dict[str, Any]]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    return []
