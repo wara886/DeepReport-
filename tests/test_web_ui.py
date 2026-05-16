@@ -23,6 +23,9 @@ def test_load_run_payload_reads_latest_artifacts(tmp_path):
     (output_root / "tables.json").write_text('[{"statement":"income_statement"}]', encoding="utf-8")
     (output_root / "pdf_sections.json").write_text('[{"section_id":"pdf1"}]', encoding="utf-8")
     (output_root / "company_profile_extracted.json").write_text('{"has_profile_hints":true}', encoding="utf-8")
+    (output_root / "quality_report.json").write_text('{"objective_pass":true}', encoding="utf-8")
+    (output_root / "llm_quality_review.json").write_text('{"llm_review_pass":false}', encoding="utf-8")
+    (output_root / "delivery_gate.json").write_text('{"delivery_pass":false}', encoding="utf-8")
     (output_root / "task_trace.jsonl").write_text(json.dumps({"agent": "PlanningAgent"}) + "\n", encoding="utf-8")
     (report_root / "report.md").write_text("# Report", encoding="utf-8")
     (report_root / "report.html").write_text("<html></html>", encoding="utf-8")
@@ -35,20 +38,26 @@ def test_load_run_payload_reads_latest_artifacts(tmp_path):
     assert payload["tables"][0]["statement"] == "income_statement"
     assert payload["pdf_sections"][0]["section_id"] == "pdf1"
     assert payload["company_profile_extracted"]["has_profile_hints"] is True
+    assert payload["quality_report"]["objective_pass"] is True
+    assert payload["llm_quality_review"]["llm_review_pass"] is False
+    assert payload["delivery_gate"]["delivery_pass"] is False
     assert payload["trace"][0]["agent"] == "PlanningAgent"
     assert payload["report_html_url"] == "/artifacts/report.html"
 
 
-def test_render_index_html_contains_workbench_controls():
+def test_render_index_html_contains_chat_first_controls():
     html = render_index_html()
 
-    assert "生成多智能体研究报告" in html
+    assert "你今天在想些什么？" in html
+    assert "有问题，尽管问" in html
+    assert "Thinking" in html
+    assert "高级设置" in html
     assert "local_real_data,yahoo_finance,tavily,local_evidence" in html
-    assert "图表" in html
-    assert "引用" in html
-    assert "研究助手" in html
-    assert "启用三层记忆" in html
+    assert "允许 Chat 启动研报" in html
+    assert "启用 memory" in html
+    assert "实时数据/A股正式源" in html
     assert "PDF章节" in html
+    assert "质量评测" in html
     assert "Markdown 源文" not in html
 
 

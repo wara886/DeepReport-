@@ -450,3 +450,11 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - UI 已新增多模态 tabs：三表表格、PDF 章节、公司画像、Claims，并继续保留图表、引用、执行轨迹、时间线和原始 JSON。
 - PDF artifacts 已进入分析链：browser 阶段后会提前构建 PDF artifacts，把 `pdf_sections` 转成 `pdf_section` evidence records；`DeepAnalyzeAgent` 会从主营业务、管理层讨论、股东治理、风险、财务报表 PDF 片段派生 claims。
 - 详细记录见 `docs/web_ui_multimodal_workbench.md`。
+# 2026-05-16 Commit 2：Chat-first UI 状态更新
+
+- 已完成 ChatGPT-like 首屏对话 UI：标题“你今天在想些什么？”，输入框“有问题，尽管问”，右侧圆形发送按钮。
+- 高级设置默认折叠，默认开启 `allow_report_run=true`、`memory_enabled=true`、`enable_remote_data=true`、`fast=true`。
+- `/api/latest` 与前端“质量评测”tab 已预留 `quality_report.json`、`llm_quality_review.json`、`delivery_gate.json` 展示。
+- 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_web_ui.py tests/test_agent_chat.py`。
+- 质量结果：12 passed。
+- 未完成项：自然语言任务解析、objective quality eval、LLM/Codex review、delivery gate 接入和 600519/AMD 内容修复仍待后续 commit。

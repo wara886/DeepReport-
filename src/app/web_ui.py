@@ -1,4 +1,4 @@
-"""Local web UI for running and inspecting the financial multi-agent workflow."""
+"""Local Chat-first web workbench for DeepReport++."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 from urllib.parse import unquote, urlparse
 
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
@@ -19,17 +19,38 @@ from src.app.agent_chat import AgentChatService
 DEFAULT_OUTPUT_DIR = "data/outputs/multi_agent"
 DEFAULT_REPORT_DIR = "data/reports/multi_agent"
 DEFAULT_ENGINES = "local_real_data,yahoo_finance,tavily,local_evidence"
-A_SHARE_ENGINES = "local_real_data,cninfo_announcements,exchange_announcements,eastmoney_financials,yahoo_finance,eastmoney,local_evidence"
+A_SHARE_ENGINES = (
+    "local_real_data,cninfo_announcements,exchange_announcements,"
+    "eastmoney_financials,yahoo_finance,eastmoney,local_evidence"
+)
 US_ENGINES = "local_real_data,sec_edgar,yahoo_finance,independent_macro,local_evidence"
+
+
+def run_ui_server(
+    host: str = "127.0.0.1",
+    port: int = 8787,
+    output_dir: str = DEFAULT_OUTPUT_DIR,
+    report_dir: str = DEFAULT_REPORT_DIR,
+    config_path: str = "configs/model_backends.yaml",
+    memory_root: str = "memory/chat",
+) -> tuple[ThreadingHTTPServer, str]:
+    handler = create_ui_handler(
+        output_dir=output_dir,
+        report_dir=report_dir,
+        config_path=config_path,
+        memory_root=memory_root,
+    )
+    server = ThreadingHTTPServer((host, int(port)), handler)
+    actual_host, actual_port = server.server_address
+    return server, f"http://{actual_host}:{actual_port}"
 
 
 def create_ui_handler(
     output_dir: str = DEFAULT_OUTPUT_DIR,
     report_dir: str = DEFAULT_REPORT_DIR,
     config_path: str = "configs/model_backends.yaml",
-    raw_data_root: str = "data/raw/real_data",
     memory_root: str = "memory/chat",
-) -> type[BaseHTTPRequestHandler]:
+):
     output_root = Path(output_dir)
     report_root = Path(report_dir)
     chat_service = AgentChatService(
@@ -39,262 +60,841 @@ def create_ui_handler(
         report_root=report_root,
     )
 
-    class FinancialAgentUIHandler(BaseHTTPRequestHandler):
-        server_version = "DeepReportPlusUI/0.2"
+    class WebUIHandler(BaseHTTPRequestHandler):
+        server_version = "DeepReportWebUI/0.3"
 
-        def do_GET(self) -> None:
-            path = urlparse(self.path).path
-            if path == "/":
+        def do_GET(self) -> None:  # noqa: N802
+            parsed = urlparse(self.path)
+            if parsed.path == "/":
                 self._send_html(render_index_html())
-            elif path == "/api/latest":
-                self._send_json(load_run_payload(output_root=output_root, report_root=report_root))
-            elif path.startswith("/artifacts/"):
-                self._serve_artifact(path.removeprefix("/artifacts/"), output_root=output_root, report_root=report_root)
-            else:
-                self._send_json({"error": f"not found: {path}"}, status=HTTPStatus.NOT_FOUND)
+                return
+            if parsed.path == "/api/latest":
+                self._send_json(load_run_payload(output_root, report_root))
+                return
+            if parsed.path.startswith("/artifacts/"):
+                self._send_artifact(parsed.path.removeprefix("/artifacts/"))
+                return
+            self.send_error(HTTPStatus.NOT_FOUND)
 
-        def do_POST(self) -> None:
-            path = urlparse(self.path).path
-            if path == "/api/chat":
+        def do_POST(self) -> None:  # noqa: N802
+            parsed = urlparse(self.path)
+            if parsed.path == "/api/run":
+                self._handle_run()
+                return
+            if parsed.path == "/api/chat":
                 self._handle_chat()
                 return
-            if path != "/api/run":
-                self._send_json({"error": f"not found: {path}"}, status=HTTPStatus.NOT_FOUND)
+            self.send_error(HTTPStatus.NOT_FOUND)
+
+        def _handle_run(self) -> None:
+            payload = self._read_json_body()
+            symbol = str(payload.get("symbol") or "AAPL").strip().upper()
+            period = str(payload.get("period") or "2025Q4").strip().upper()
+            guard = validate_period_for_report(period)
+            if not guard["ok"]:
+                self._send_json({"error": guard["message"], "period_guard": guard}, status=HTTPStatus.BAD_REQUEST)
                 return
-            try:
-                payload = self._read_json()
-                symbol = str(payload.get("symbol") or "AAPL").strip().upper()
-                period = str(payload.get("period") or "2025Q4").strip()
+            topic = str(payload.get("topic") or f"生成 {symbol} {period} 公司财报研报")
+            enable_remote_data = bool(payload.get("enable_remote_data", False))
+            engines = _parse_engines(payload.get("engines") or default_engines_for_symbol(symbol, enable_remote_data))
+            orchestrator = MultiAgentOrchestrator(
+                output_dir=str(output_root),
+                report_dir=str(report_root),
+                config_path=config_path,
+                memory_enabled=bool(payload.get("memory_enabled", False)),
+                memory_root=str(Path(memory_root) / "durable"),
+            )
+            result = orchestrator.run(
+                research_topic=topic,
+                symbol=symbol,
+                period=period,
+                execution_mode=str(payload.get("execution_mode") or "dynamic"),
+                fast=bool(payload.get("fast", True)),
+                search_engines=engines,
+                enable_remote_data=enable_remote_data,
+                data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
+            )
+            latest = load_run_payload(output_root, report_root)
+            self._send_json({"result": result, "latest": latest})
+
+        def _handle_chat(self) -> None:
+            payload = self._read_json_body()
+            message = str(payload.get("message") or "").strip()
+            symbol = str(payload.get("symbol") or "AAPL").strip().upper()
+            period = str(payload.get("period") or "2025Q4").strip().upper()
+            allow_report_run = bool(payload.get("allow_report_run", True))
+            enable_remote_data = bool(payload.get("enable_remote_data", True))
+            engines = _parse_engines(payload.get("engines") or default_engines_for_symbol(symbol, enable_remote_data))
+            if allow_report_run and _looks_like_report_request(message):
                 guard = validate_period_for_report(period)
                 if not guard["ok"]:
                     self._send_json({"error": guard["message"], "period_guard": guard}, status=HTTPStatus.BAD_REQUEST)
                     return
-                enable_remote_data = bool(payload.get("enable_remote_data", False))
-                data_source_config_path = str(payload.get("data_source_config_path") or "configs/data_sources.yaml").strip()
-                engines = _parse_engines(payload.get("engines") or default_engines_for_symbol(symbol, enable_remote_data))
+            orchestrator = None
+            if allow_report_run:
                 orchestrator = MultiAgentOrchestrator(
                     output_dir=str(output_root),
                     report_dir=str(report_root),
                     config_path=config_path,
-                    raw_data_root=raw_data_root,
-                    memory_enabled=bool(payload.get("memory_enabled", False)),
+                    memory_enabled=bool(payload.get("memory_enabled", True)),
+                    memory_root=str(Path(memory_root) / "durable"),
                 )
-                result = orchestrator.run(
-                    research_topic=str(payload.get("topic") or f"分析 {symbol} {period} 财务表现，并生成带引用的研究报告").strip(),
-                    symbol=symbol,
-                    period=period,
-                    execution_mode=str(payload.get("execution_mode") or "dynamic"),
-                    fast=bool(payload.get("fast", True)),
-                    search_engines=engines,
-                    enable_remote_data=enable_remote_data,
-                    data_source_config_path=data_source_config_path,
-                )
-                response = load_run_payload(output_root=output_root, report_root=report_root)
-                response["result"] = result
-                self._send_json(response)
-            except Exception as exc:
-                self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            response = chat_service.handle_chat(
+                message=message,
+                session_id=str(payload.get("session_id") or "local"),
+                user_id=str(payload.get("user_id") or "local_user"),
+                symbol=symbol,
+                period=period,
+                memory_enabled=bool(payload.get("memory_enabled", True)),
+                allow_report_run=allow_report_run,
+                orchestrator=orchestrator,
+                engines=engines,
+                fast=bool(payload.get("fast", True)),
+                execution_mode=str(payload.get("execution_mode") or "dynamic"),
+                enable_remote_data=enable_remote_data,
+                data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
+            )
+            if response.get("mode") == "report_run":
+                response["latest"] = load_run_payload(output_root, report_root)
+            self._send_json(response)
 
-        def _handle_chat(self) -> None:
+        def _send_artifact(self, relative_name: str) -> None:
+            name = unquote(relative_name)
+            candidates = {
+                "report.html": report_root / "report.html",
+                "report.md": report_root / "report.md",
+                "report.json": report_root / "report.json",
+            }
+            path = candidates.get(name, output_root / name)
             try:
-                payload = self._read_json()
-                symbol = str(payload.get("symbol") or "AAPL").strip().upper()
-                period = str(payload.get("period") or "2025Q4").strip()
-                allow_report_run = bool(payload.get("allow_report_run", False))
-                guard = validate_period_for_report(period)
-                if allow_report_run and not guard["ok"]:
-                    self._send_json({"error": guard["message"], "period_guard": guard}, status=HTTPStatus.BAD_REQUEST)
-                    return
-                enable_remote_data = bool(payload.get("enable_remote_data", False))
-                data_source_config_path = str(payload.get("data_source_config_path") or "configs/data_sources.yaml").strip()
-                memory_enabled = bool(payload.get("memory_enabled", False))
-                orchestrator = None
-                if allow_report_run:
-                    orchestrator = MultiAgentOrchestrator(
-                        output_dir=str(output_root),
-                        report_dir=str(report_root),
-                        config_path=config_path,
-                        raw_data_root=raw_data_root,
-                        memory_enabled=memory_enabled,
-                    )
-                response = chat_service.handle_chat(
-                    message=str(payload.get("message") or ""),
-                    session_id=str(payload.get("session_id") or "default"),
-                    user_id=str(payload.get("user_id") or "local_user"),
-                    symbol=symbol,
-                    period=period,
-                    memory_enabled=memory_enabled,
-                    allow_report_run=allow_report_run,
-                    orchestrator=orchestrator,
-                    engines=_parse_engines(payload.get("engines") or default_engines_for_symbol(symbol, enable_remote_data)),
-                    fast=bool(payload.get("fast", True)),
-                    execution_mode=str(payload.get("execution_mode") or "dynamic"),
-                    enable_remote_data=enable_remote_data,
-                    data_source_config_path=data_source_config_path,
-                )
-                if response.get("result"):
-                    response["latest"] = load_run_payload(output_root=output_root, report_root=report_root)
-                self._send_json(response)
-            except Exception as exc:
-                self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                resolved = path.resolve()
+                allowed = any(_is_relative_to(resolved, root.resolve()) for root in [output_root, report_root])
+            except OSError:
+                allowed = False
+            if not allowed or not path.exists() or not path.is_file():
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+            body = path.read_bytes()
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
-        def log_message(self, format: str, *args: Any) -> None:
-            return
-
-        def _read_json(self) -> Dict[str, Any]:
+        def _read_json_body(self) -> Dict[str, Any]:
             length = int(self.headers.get("Content-Length", "0") or 0)
-            raw = self.rfile.read(length).decode("utf-8") if length else "{}"
-            payload = json.loads(raw)
-            if not isinstance(payload, dict):
-                raise ValueError("JSON payload must be an object")
-            return payload
+            raw = self.rfile.read(length) if length else b"{}"
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except json.JSONDecodeError:
+                payload = {}
+            return payload if isinstance(payload, dict) else {}
 
-        def _send_json(self, payload: Dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
+        def _send_json(self, payload: Any, status: int = HTTPStatus.OK) -> None:
             body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-            self.send_response(int(status))
+            self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
-        def _send_html(self, html: str, status: HTTPStatus = HTTPStatus.OK) -> None:
+        def _send_html(self, html: str) -> None:
             body = html.encode("utf-8")
-            self.send_response(int(status))
+            self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
-        def _serve_artifact(self, raw_path: str, output_root: Path, report_root: Path) -> None:
-            relative = Path(unquote(raw_path))
-            candidates = [(output_root / relative).resolve(), (report_root / relative).resolve()]
-            allowed_roots = [output_root.resolve(), report_root.resolve()]
-            for candidate in candidates:
-                if not candidate.exists() or not candidate.is_file():
-                    continue
-                if not any(_is_relative_to(candidate, root) for root in allowed_roots):
-                    continue
-                body = candidate.read_bytes()
-                self.send_response(int(HTTPStatus.OK))
-                self.send_header("Content-Type", mimetypes.guess_type(str(candidate))[0] or "application/octet-stream")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-                return
-            self._send_json({"error": f"artifact not found: {raw_path}"}, status=HTTPStatus.NOT_FOUND)
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+            return
 
-    return FinancialAgentUIHandler
+    return WebUIHandler
 
 
-def load_run_payload(output_root: Path, report_root: Path) -> Dict[str, Any]:
-    summary = _read_json(output_root / "run_summary.json", default={})
-    report_html_path = report_root / "report.html"
-    return {
-        "summary": summary,
-        "search_meta": _read_json(output_root / "search_meta.json", default={}),
-        "citations": _read_json(output_root / "citations.json", default=[]),
-        "charts": _read_json(output_root / "charts.json", default=[]),
-        "claims": _read_json(output_root / "claims.json", default=[]),
-        "evidence": _read_json(output_root / "evidence.json", default=[]),
-        "tables": _read_json(output_root / "tables.json", default=[]),
-        "financial_metrics": _read_json(output_root / "financial_metrics.json", default={}),
-        "pdf_manifest": _read_json(output_root / "pdf_manifest.json", default=[]),
-        "pdf_sections": _read_json(output_root / "pdf_sections.json", default=[]),
-        "company_profile_extracted": _read_json(output_root / "company_profile_extracted.json", default={}),
-        "mcp_manifest": _read_json(output_root / "mcp_manifest.json", default={}),
-        "revision_history": _read_json(output_root / "revision_history.json", default=[]),
-        "verification_report": _read_json(output_root / "verification_report.json", default={}),
-        "trace": _read_jsonl(output_root / "task_trace.jsonl"),
-        "report_markdown": _read_text(report_root / "report.md"),
-        "report_html_url": "/artifacts/report.html" if report_html_path.exists() else "",
-        "output_dir": str(output_root),
-        "report_dir": str(report_root),
-        "artifact_urls": _artifact_urls(output_root),
+def load_run_payload(
+    output_root: str | Path = DEFAULT_OUTPUT_DIR,
+    report_root: str | Path = DEFAULT_REPORT_DIR,
+) -> Dict[str, Any]:
+    output_path = Path(output_root)
+    report_path = Path(report_root)
+    report_html = report_path / "report.html"
+    payload = {
+        "summary": _read_json(output_path / "run_summary.json"),
+        "search_meta": _read_json(output_path / "search_meta.json"),
+        "citations": _read_json(output_path / "citations.json", default=[]),
+        "charts": _read_json(output_path / "charts.json", default=[]),
+        "claims": _read_json(output_path / "claims.json", default=[]),
+        "evidence": _read_json(output_path / "evidence.json", default=[]),
+        "tables": _read_json(output_path / "tables.json", default=[]),
+        "financial_metrics": _read_json(output_path / "financial_metrics.json", default={}),
+        "pdf_manifest": _read_json(output_path / "pdf_manifest.json", default={}),
+        "pdf_sections": _read_json(output_path / "pdf_sections.json", default=[]),
+        "company_profile_extracted": _read_json(output_path / "company_profile_extracted.json", default={}),
+        "mcp_manifest": _read_json(output_path / "mcp_manifest.json", default={}),
+        "revision_history": _read_json(output_path / "revision_history.json", default=[]),
+        "verification_report": _read_json(output_path / "verification_report.json", default={}),
+        "quality_report": _read_json(output_path / "quality_report.json", default={}),
+        "llm_quality_review": _read_json(output_path / "llm_quality_review.json", default={}),
+        "delivery_gate": _read_json(output_path / "delivery_gate.json", default={}),
+        "trace": _read_jsonl(output_path / "task_trace.jsonl"),
+        "report_markdown": _read_text(report_path / "report.md"),
+        "report_html_url": "/artifacts/report.html" if report_html.exists() else "",
+        "output_dir": str(output_path),
+        "report_dir": str(report_path),
+    }
+    payload["artifact_urls"] = _artifact_urls(output_path, report_path)
+    return payload
+
+
+def render_index_html() -> str:
+    default_topic = "生成 AAPL 2025Q4 公司财报研报"
+    template = r"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepReport++ Chat Workbench</title>
+  <style>
+    :root {
+      --bg: #080808;
+      --panel: #141414;
+      --panel-2: #202020;
+      --text: #f6f6f6;
+      --muted: #a7a7a7;
+      --line: #333333;
+      --accent: #ffffff;
+      --ok: #62d98b;
+      --warn: #ffd166;
+      --bad: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      letter-spacing: 0;
+    }
+    button, input, textarea, select { font: inherit; }
+    button { cursor: pointer; }
+    .hero {
+      min-height: 48vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 28px 18px 16px;
+      gap: 28px;
+    }
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(26px, 4vw, 38px);
+      font-weight: 760;
+    }
+    .chat-shell {
+      width: min(1000px, calc(100vw - 34px));
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel-2);
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+      min-height: 74px;
+      padding: 8px 8px 8px 28px;
+      gap: 14px;
+    }
+    #chatInput {
+      width: 100%;
+      min-height: 34px;
+      max-height: 92px;
+      resize: vertical;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 20px;
+      line-height: 1.4;
+      padding: 6px 0;
+    }
+    #chatInput::placeholder { color: #b7b7b7; }
+    .thinking {
+      color: #d8d8d8;
+      min-width: 118px;
+      text-align: center;
+      font-size: 17px;
+    }
+    .send {
+      width: 46px;
+      height: 46px;
+      border-radius: 999px;
+      border: 0;
+      background: var(--accent);
+      color: #111111;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 800;
+    }
+    main {
+      width: min(1220px, calc(100vw - 32px));
+      margin: 0 auto 40px;
+    }
+    .status-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 14px;
+      padding: 0 4px 14px;
+      flex-wrap: wrap;
+    }
+    .chat-log {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .bubble {
+      border: 1px solid var(--line);
+      background: #121212;
+      border-radius: 8px;
+      padding: 14px 16px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+    }
+    .bubble.user { justify-self: end; max-width: 82%; background: #1f1f1f; }
+    .bubble.assistant { justify-self: start; max-width: 88%; }
+    details {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #111111;
+      margin: 14px 0;
+    }
+    summary {
+      padding: 12px 14px;
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 650;
+    }
+    .settings {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      padding: 0 14px 14px;
+    }
+    label { color: var(--muted); font-size: 13px; display: grid; gap: 6px; }
+    input, select, textarea {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #090909;
+      color: var(--text);
+      padding: 9px 10px;
+      min-width: 0;
+    }
+    .span-2 { grid-column: span 2; }
+    .checks {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      grid-column: 1 / -1;
+    }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 9px 10px;
+      color: var(--text);
+    }
+    .check input { width: auto; }
+    .actions { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; }
+    .secondary {
+      border: 1px solid var(--line);
+      background: #191919;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 9px 12px;
+    }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 12px; }
+    .tab {
+      border: 1px solid var(--line);
+      background: #121212;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 8px 12px;
+    }
+    .tab.active { background: var(--text); color: #111111; border-color: var(--text); }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101010;
+      padding: 16px;
+      min-height: 240px;
+    }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #151515;
+    }
+    .item h3 { margin: 0 0 8px; font-size: 15px; }
+    .muted { color: var(--muted); }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+    iframe {
+      width: 100%;
+      height: 78vh;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; }
+    pre { overflow: auto; white-space: pre-wrap; word-break: break-word; }
+    a { color: #ffffff; }
+    @media (max-width: 760px) {
+      .hero { min-height: 42vh; }
+      .chat-shell { grid-template-columns: 1fr auto; border-radius: 28px; padding-left: 18px; }
+      .thinking { grid-column: 1 / -1; order: 3; text-align: left; padding-left: 2px; }
+      .settings, .checks, .grid { grid-template-columns: 1fr; }
+      .span-2 { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+  <section class="hero">
+    <h1>你今天在想些什么？</h1>
+    <div class="chat-shell">
+      <textarea id="chatInput" rows="1" placeholder="有问题，尽管问"></textarea>
+      <div id="thinkingLabel" class="thinking">Thinking</div>
+      <button id="chatBtn" class="send" title="发送">↑</button>
+    </div>
+  </section>
+  <main>
+    <div class="status-line">
+      <div id="statusText">Ready</div>
+      <div id="runMeta">尚未读取报告</div>
+    </div>
+    <div id="chatLog" class="chat-log"></div>
+
+    <details id="advancedSettings">
+      <summary>高级设置</summary>
+      <div class="settings">
+        <label>Session ID<input id="sessionId" value="local"></label>
+        <label>股票代码<input id="symbol" value="AAPL"></label>
+        <label>报告期<input id="period" value="2025Q4"></label>
+        <label>执行模式<select id="executionMode"><option value="dynamic">dynamic</option><option value="static">static</option></select></label>
+        <label class="span-2">研究主题<input id="topic" value="__DEFAULT_TOPIC__"></label>
+        <label class="span-2">搜索/数据源<input id="engines" value="__US_ENGINES__"></label>
+        <label class="span-2">数据源配置<input id="dataSourceConfig" value="configs/data_sources.yaml"></label>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="allowReportRun" checked>允许 Chat 启动研报</label>
+          <label class="check"><input type="checkbox" id="memoryEnabled" checked>启用 memory</label>
+          <label class="check"><input type="checkbox" id="realtimeData" checked>实时数据/A股正式源</label>
+          <label class="check"><input type="checkbox" id="fastMode" checked>快速模式</label>
+        </div>
+        <div class="actions">
+          <button id="runBtn" class="secondary">按表单生成报告</button>
+          <button id="refreshBtn" class="secondary">读取最近输出</button>
+        </div>
+      </div>
+    </details>
+
+    <div class="tabs" id="tabs"></div>
+    <section id="content" class="panel"></section>
+  </main>
+
+  <script>
+    const DEFAULT_ENGINES = "__DEFAULT_ENGINES__";
+    const A_SHARE_ENGINES = "__A_SHARE_ENGINES__";
+    const US_ENGINES = "__US_ENGINES__";
+    const tabs = ["总览", "报告", "图表", "引用", "表格", "PDF章节", "公司画像", "Claims", "质量评测", "轨迹", "时间线", "原始数据"];
+    let latest = {};
+    let activeTab = "总览";
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]));
+    const asList = (value) => Array.isArray(value) ? value : [];
+    const asObj = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
+
+    function setStatus(text, isError = false) {
+      $("statusText").textContent = text;
+      $("statusText").className = isError ? "bad" : "";
+      $("thinkingLabel").textContent = text.includes("Error") ? "Error" : text.split(" ")[0] || "Thinking";
     }
 
+    function payloadBase() {
+      return {
+        session_id: $("sessionId").value || "local",
+        symbol: $("symbol").value || "AAPL",
+        period: $("period").value || "2025Q4",
+        topic: $("topic").value,
+        engines: $("engines").value,
+        execution_mode: $("executionMode").value,
+        fast: $("fastMode").checked,
+        memory_enabled: $("memoryEnabled").checked,
+        allow_report_run: $("allowReportRun").checked,
+        enable_remote_data: $("realtimeData").checked,
+        data_source_config_path: $("dataSourceConfig").value || "configs/data_sources.yaml"
+      };
+    }
 
-def run_ui_server(
-    host: str = "127.0.0.1",
-    port: int = 8787,
-    output_dir: str = DEFAULT_OUTPUT_DIR,
-    report_dir: str = DEFAULT_REPORT_DIR,
-    config_path: str = "configs/model_backends.yaml",
-    raw_data_root: str = "data/raw/real_data",
-    memory_root: str = "memory/chat",
-) -> Tuple[ThreadingHTTPServer, str]:
-    handler = create_ui_handler(
-        output_dir=output_dir,
-        report_dir=report_dir,
-        config_path=config_path,
-        raw_data_root=raw_data_root,
-        memory_root=memory_root,
+    function syncEnginesFromSwitch() {
+      const symbol = ($("symbol").value || "").toUpperCase();
+      if (!$("realtimeData").checked) {
+        $("engines").value = DEFAULT_ENGINES;
+      } else if (symbol.endsWith(".SS") || symbol.endsWith(".SZ") || /^[0-9]{6}$/.test(symbol)) {
+        $("engines").value = A_SHARE_ENGINES;
+      } else {
+        $("engines").value = US_ENGINES;
+      }
+    }
+
+    async function postJson(url, payload) {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || JSON.stringify(data));
+      return data;
+    }
+
+    async function loadLatest() {
+      setStatus("Loading");
+      const resp = await fetch("/api/latest");
+      latest = await resp.json();
+      syncFormFromLatest(latest);
+      render();
+      setStatus("Ready");
+    }
+
+    function syncFormFromLatest(data) {
+      const summary = asObj(data.summary);
+      if (summary.symbol) $("symbol").value = summary.symbol;
+      if (summary.period) $("period").value = summary.period;
+      if (summary.research_topic) $("topic").value = summary.research_topic;
+      if (Array.isArray(summary.search_engines) && summary.search_engines.length) $("engines").value = summary.search_engines.join(",");
+      const bits = [];
+      if (data.output_dir) bits.push(`输出：${data.output_dir}`);
+      if (summary.symbol || summary.period) bits.push(`${summary.symbol || ""} ${summary.period || ""}`.trim());
+      if (summary.generated_at) bits.push(summary.generated_at);
+      $("runMeta").textContent = bits.length ? bits.join(" | ") : "尚未读取报告";
+    }
+
+    async function runReport() {
+      setStatus("Planning");
+      $("runBtn").disabled = true;
+      try {
+        const data = await postJson("/api/run", payloadBase());
+        latest = data.latest || {};
+        syncFormFromLatest(latest);
+        appendBubble("assistant", buildResultText(data.result || {}, latest));
+        render();
+        setStatus("Done");
+      } catch (err) {
+        appendBubble("assistant", `运行失败：${err.message}`);
+        setStatus("Error", true);
+      } finally {
+        $("runBtn").disabled = false;
+      }
+    }
+
+    async function sendChat() {
+      const message = $("chatInput").value.trim();
+      if (!message) return;
+      appendBubble("user", message);
+      $("chatInput").value = "";
+      $("chatBtn").disabled = true;
+      setStatus("Thinking");
+      try {
+        const payload = { ...payloadBase(), message };
+        const data = await postJson("/api/chat", payload);
+        if (data.mode === "report_run") setStatus("Evaluating");
+        if (data.latest) {
+          latest = data.latest;
+          syncFormFromLatest(latest);
+        }
+        appendBubble("assistant", renderChatAnswer(data));
+        render();
+        setStatus("Ready");
+      } catch (err) {
+        appendBubble("assistant", `对话失败：${err.message}`);
+        setStatus("Error", true);
+      } finally {
+        $("chatBtn").disabled = false;
+      }
+    }
+
+    function renderChatAnswer(data) {
+      const lines = [data.answer || "已完成。"];
+      const memory = asObj(data.memory_used);
+      if (memory.enabled) {
+        const prefs = asList(memory.preference_updates).map((x) => `${x.key}=${x.value}`).join("，") || "已启用";
+        lines.push(`已使用记忆偏好：${prefs}`);
+        lines.push("事实仍以 evidence_id/citation/verifier 为准。");
+      }
+      if (data.latest) lines.push(buildResultText(data.result || {}, data.latest));
+      return lines.join("\n");
+    }
+
+    function buildResultText(result, data) {
+      const gate = asObj(data.delivery_gate);
+      const quality = asObj(data.quality_report);
+      const llm = asObj(data.llm_quality_review);
+      const verification = asObj(data.verification_report);
+      const link = data.report_html_url ? `${location.origin}${data.report_html_url}` : "";
+      const lines = [];
+      if (link) lines.push(`报告链接：${link}`);
+      lines.push(`Verifier：${result.verification_passed ?? verification.passed ?? "未运行"}`);
+      lines.push(`本地测评分：${quality.total_score ?? quality.score ?? "未运行"}`);
+      lines.push(`LLM/Codex 复核：${llm.llm_review_pass ?? llm.passed ?? "未运行"}`);
+      lines.push(`交付门禁：${gate.delivery_pass ?? "未运行"}`);
+      const issues = topIssues(data).slice(0, 5);
+      if (issues.length) lines.push(`主要待修问题：\n- ${issues.map((item) => issueText(item)).join("\n- ")}`);
+      return lines.join("\n");
+    }
+
+    function appendBubble(role, text) {
+      const node = document.createElement("div");
+      node.className = `bubble ${role}`;
+      node.textContent = text;
+      $("chatLog").appendChild(node);
+      node.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+
+    function renderTabs() {
+      $("tabs").innerHTML = tabs.map((tab) => `<button class="tab ${tab === activeTab ? "active" : ""}" data-tab="${esc(tab)}">${esc(tab)}</button>`).join("");
+      document.querySelectorAll(".tab").forEach((btn) => btn.addEventListener("click", () => {
+        activeTab = btn.dataset.tab;
+        render();
+      }));
+    }
+
+    function render() {
+      renderTabs();
+      const map = {
+        "总览": renderOverview,
+        "报告": renderReport,
+        "图表": renderCharts,
+        "引用": renderCitations,
+        "表格": renderTables,
+        "PDF章节": renderPdf,
+        "公司画像": renderProfile,
+        "Claims": renderClaims,
+        "质量评测": renderQuality,
+        "轨迹": renderTrace,
+        "时间线": renderTimeline,
+        "原始数据": renderRaw
+      };
+      $("content").innerHTML = (map[activeTab] || renderOverview)(latest);
+    }
+
+    function renderOverview(data) {
+      const summary = asObj(data.summary);
+      const verification = asObj(data.verification_report);
+      const gate = asObj(data.delivery_gate);
+      return `<div class="grid">
+        ${metric("标的", summary.symbol || "-")}
+        ${metric("期间", summary.period || "-")}
+        ${metric("Verifier", summary.verification_passed ?? verification.passed ?? "未运行")}
+        ${metric("交付门禁", gate.delivery_pass ?? "未运行")}
+        ${metric("Claims", asList(data.claims).length)}
+        ${metric("Evidence", asList(data.evidence).length)}
+        ${metric("Charts", asList(data.charts).length)}
+        ${metric("PDF Sections", asList(data.pdf_sections).length)}
+      </div>`;
+    }
+
+    function metric(name, value) {
+      return `<div class="item"><h3>${esc(name)}</h3><div>${esc(value)}</div></div>`;
+    }
+
+    function renderReport(data) {
+      if (data.report_html_url) return `<iframe src="${esc(data.report_html_url)}" title="report"></iframe>`;
+      if (data.report_markdown) return `<pre>${esc(data.report_markdown)}</pre>`;
+      return `<p class="muted">尚未生成报告。</p>`;
+    }
+
+    function renderCharts(data) {
+      const rows = asList(data.charts);
+      if (!rows.length) return `<p class="muted">暂无图表。</p>`;
+      return `<div class="grid">${rows.map((c) => `<div class="item"><h3>${esc(c.title || c.chart_id || "chart")}</h3><pre>${esc(JSON.stringify(c, null, 2))}</pre></div>`).join("")}</div>`;
+    }
+
+    function renderCitations(data) {
+      return table(asList(data.citations), ["evidence_id", "title", "source_url", "trust_level"]);
+    }
+
+    function renderTables(data) {
+      const tables = asList(data.tables);
+      if (!tables.length) return `<p class="muted">暂无三表标准化数据。</p><pre>${esc(JSON.stringify(data.financial_metrics || {}, null, 2))}</pre>`;
+      return `<div class="grid">${tables.map((t) => `<div class="item"><h3>${esc(t.statement || t.title || "table")}</h3><pre>${esc(JSON.stringify(t, null, 2))}</pre></div>`).join("")}</div>`;
+    }
+
+    function renderPdf(data) {
+      const rows = asList(data.pdf_sections);
+      if (!rows.length) return `<p class="muted">暂无 PDF 抽取章节。</p><pre>${esc(JSON.stringify(data.pdf_manifest || {}, null, 2))}</pre>`;
+      return `<div class="grid">${rows.map((s) => `<div class="item"><h3>${esc(s.heading || s.section_id || "section")}</h3><p>${esc(s.text || s.content || "")}</p><pre>${esc(JSON.stringify(s.metadata || {}, null, 2))}</pre></div>`).join("")}</div>`;
+    }
+
+    function renderProfile(data) {
+      return `<pre>${esc(JSON.stringify(data.company_profile_extracted || {}, null, 2))}</pre>`;
+    }
+
+    function renderClaims(data) {
+      return table(asList(data.claims), ["claim_id", "section_name", "claim_text", "evidence_ids", "confidence"]);
+    }
+
+    function renderQuality(data) {
+      const quality = asObj(data.quality_report);
+      const llm = asObj(data.llm_quality_review);
+      const gate = asObj(data.delivery_gate);
+      if (!Object.keys(quality).length && !Object.keys(llm).length && !Object.keys(gate).length) {
+        return `<p class="muted">尚未运行质量评测。</p>`;
+      }
+      const issues = topIssues(data);
+      return `<div class="grid">
+        ${metric("Objective Score", quality.total_score ?? quality.score ?? "未运行")}
+        ${metric("Objective Pass", quality.objective_pass ?? "未运行")}
+        ${metric("LLM Review Score", llm.total_score ?? llm.score ?? "未运行")}
+        ${metric("LLM Review Pass", llm.llm_review_pass ?? llm.passed ?? "未运行")}
+        ${metric("Delivery Pass", gate.delivery_pass ?? "未运行")}
+      </div>
+      <h3>质量问题</h3>
+      ${issues.length ? `<ul>${issues.map((item) => `<li>${esc(issueText(item))}</li>`).join("")}</ul>` : `<p class="ok">暂无问题。</p>`}
+      <h3>Objective</h3><pre>${esc(JSON.stringify(quality, null, 2))}</pre>
+      <h3>LLM/Codex Review</h3><pre>${esc(JSON.stringify(llm, null, 2))}</pre>`;
+    }
+
+    function topIssues(data) {
+      const quality = asObj(data.quality_report);
+      const llm = asObj(data.llm_quality_review);
+      const gate = asObj(data.delivery_gate);
+      return [
+        ...asList(gate.issues),
+        ...asList(quality.issues),
+        ...asList(quality.top_issues),
+        ...asList(llm.issues),
+        ...asList(llm.top_issues)
+      ];
+    }
+
+    function issueText(item) {
+      if (typeof item === "string") return item;
+      return [item.severity, item.category, item.message || item.detail || item.issue].filter(Boolean).join(" | ") || JSON.stringify(item);
+    }
+
+    function renderTrace(data) {
+      return table(asList(data.trace), ["agent", "stage", "status", "detail"]);
+    }
+
+    function renderTimeline(data) {
+      const rows = asList(data.trace).map((row, idx) => ({ idx, ...row }));
+      return table(rows, ["idx", "agent", "stage", "status", "started_at", "finished_at"]);
+    }
+
+    function renderRaw(data) {
+      return `<pre>${esc(JSON.stringify(data, null, 2))}</pre>`;
+    }
+
+    function table(rows, columns) {
+      if (!rows.length) return `<p class="muted">暂无数据。</p>`;
+      return `<table><thead><tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${columns.map((c) => `<td>${esc(Array.isArray(row[c]) ? row[c].join(", ") : row[c] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    }
+
+    $("chatBtn").addEventListener("click", sendChat);
+    $("runBtn").addEventListener("click", runReport);
+    $("refreshBtn").addEventListener("click", loadLatest);
+    $("symbol").addEventListener("change", syncEnginesFromSwitch);
+    $("realtimeData").addEventListener("change", syncEnginesFromSwitch);
+    $("chatInput").addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        sendChat();
+      }
+    });
+
+    syncEnginesFromSwitch();
+    render();
+    loadLatest();
+  </script>
+</body>
+</html>"""
+    return (
+        template.replace("__DEFAULT_TOPIC__", escape(default_topic))
+        .replace("__DEFAULT_ENGINES__", escape(DEFAULT_ENGINES))
+        .replace("__A_SHARE_ENGINES__", escape(A_SHARE_ENGINES))
+        .replace("__US_ENGINES__", escape(US_ENGINES))
     )
-    server = ThreadingHTTPServer((host, port), handler)
-    return server, f"http://{host}:{server.server_address[1]}"
-
-
-def _artifact_urls(output_root: Path) -> Dict[str, str]:
-    names = [
-        "run_summary",
-        "search_meta",
-        "citations",
-        "charts",
-        "claims",
-        "evidence",
-        "tables",
-        "financial_metrics",
-        "pdf_manifest",
-        "pdf_sections",
-        "company_profile_extracted",
-        "mcp_manifest",
-        "revision_history",
-    ]
-    return {name.replace("run_", "") if name == "run_summary" else name: f"/artifacts/{name}.json" for name in names if (output_root / f"{name}.json").exists()}
-
-
-def _parse_engines(value: Any) -> List[str]:
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    return [item.strip() for item in str(value).split(",") if item.strip()]
 
 
 def default_engines_for_symbol(symbol: str, realtime: bool = False) -> str:
     if not realtime:
         return DEFAULT_ENGINES
-    normalized = str(symbol or "").upper()
-    if normalized.endswith((".SS", ".SZ")) or (normalized[:1] in {"0", "3", "6"} and normalized[:6].isdigit()):
+    symbol_key = str(symbol or "").strip().upper()
+    if symbol_key.endswith((".SS", ".SZ")) or (len(symbol_key) == 6 and symbol_key.isdigit()):
         return A_SHARE_ENGINES
     return US_ENGINES
 
 
-def validate_period_for_report(period: str, today: date | None = None) -> Dict[str, Any]:
+def validate_period_for_report(raw_period: str, today: date | None = None) -> Dict[str, Any]:
+    raw = str(raw_period or "").strip().upper()
     today = today or date.today()
-    raw = str(period or "").strip().upper()
-    if len(raw) != 6 or raw[4] != "Q" or not raw[:4].isdigit() or raw[5] not in "1234":
-        return {"ok": True, "period": raw, "message": ""}
+    if len(raw) != 6 or raw[4] != "Q" or not raw[:4].isdigit() or raw[-1] not in "1234":
+        return {"ok": True, "message": "", "suggested_periods": []}
     year = int(raw[:4])
-    quarter = int(raw[5])
-    quarter_end = {1: date(year, 3, 31), 2: date(year, 6, 30), 3: date(year, 9, 30), 4: date(year, 12, 31)}[quarter]
-    if today <= quarter_end:
-        prior_q = 4 if quarter == 1 else quarter - 1
-        prior_y = year - 1 if quarter == 1 else year
-        return {
-            "ok": False,
-            "period": raw,
-            "quarter_end": quarter_end.isoformat(),
-            "today": today.isoformat(),
-            "suggested_periods": [f"{prior_y}Q{prior_q}", f"{year - 1}Q4"],
-            "message": f"{raw} 尚未结束，不能生成正式财报口径研报；可选 {prior_y}Q{prior_q} 或 {year - 1}Q4。",
-        }
-    return {"ok": True, "period": raw, "quarter_end": quarter_end.isoformat(), "today": today.isoformat(), "message": ""}
+    quarter = int(raw[-1])
+    quarter_end_month = {1: 3, 2: 6, 3: 9, 4: 12}[quarter]
+    quarter_end_day = {1: 31, 2: 30, 3: 30, 4: 31}[quarter]
+    quarter_end = date(year, quarter_end_month, quarter_end_day)
+    if quarter_end < today:
+        return {"ok": True, "message": "", "suggested_periods": []}
+    prior_year, prior_quarter = _previous_completed_quarter(today)
+    suggested = [f"{prior_year}Q{prior_quarter}", f"{today.year - 1}Q4"]
+    return {
+        "ok": False,
+        "message": f"{raw} 尚未结束，不能生成正式财报口径研报；可选 {suggested[0]} 或 {suggested[1]}。",
+        "suggested_periods": suggested,
+    }
 
 
-def _read_json(path: Path, default: Any) -> Any:
+def _previous_completed_quarter(today: date) -> tuple[int, int]:
+    month = today.month
+    if month <= 3:
+        return today.year - 1, 4
+    if month <= 6:
+        return today.year, 1
+    if month <= 9:
+        return today.year, 2
+    return today.year, 3
+
+
+def _looks_like_report_request(text: str) -> bool:
+    lowered = str(text or "").lower()
+    return any(term in lowered for term in ["研报", "财报", "报告", "research report", "company report"])
+
+
+def _parse_engines(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [part.strip() for part in str(value or "").split(",") if part.strip()]
+
+
+def _read_json(path: Path, default: Any | None = None) -> Any:
+    if default is None:
+        default = {}
     if not path.exists():
         return default
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return default
 
 
@@ -303,19 +903,59 @@ def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
         return []
     rows: List[Dict[str, Any]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
+        line = line.strip()
+        if not line:
             continue
         try:
-            item = json.loads(line)
+            payload = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(item, dict):
-            rows.append(item)
+        if isinstance(payload, dict):
+            rows.append(payload)
     return rows
 
 
 def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8") if path.exists() else ""
+    if not path.exists():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _artifact_urls(output_path: Path, report_path: Path) -> Dict[str, str]:
+    names = [
+        "run_summary.json",
+        "search_meta.json",
+        "citations.json",
+        "charts.json",
+        "claims.json",
+        "evidence.json",
+        "tables.json",
+        "financial_metrics.json",
+        "pdf_manifest.json",
+        "pdf_sections.json",
+        "company_profile_extracted.json",
+        "mcp_manifest.json",
+        "revision_history.json",
+        "verification_report.json",
+        "quality_report.json",
+        "llm_quality_review.json",
+        "delivery_gate.json",
+        "task_trace.jsonl",
+    ]
+    urls: Dict[str, str] = {}
+    for name in names:
+        if (output_path / name).exists():
+            urls[name] = f"/artifacts/{name}"
+    if (report_path / "report.md").exists():
+        urls["report.md"] = "/artifacts/report.md"
+    if (report_path / "report.html").exists():
+        urls["report.html"] = "/artifacts/report.html"
+    if (report_path / "report.json").exists():
+        urls["report.json"] = "/artifacts/report.json"
+    return urls
 
 
 def _is_relative_to(path: Path, root: Path) -> bool:
@@ -326,142 +966,10 @@ def _is_relative_to(path: Path, root: Path) -> bool:
         return False
 
 
-def render_index_html() -> str:
-    default_topic = "分析 AAPL 2025Q4 财务表现，并生成带引用、图表和验证报告的研究报告"
-    return f"""<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DeepReport+ 金融研究工作台</title>
-  <style>
-    :root {{ --ink:#17201d; --muted:#65736d; --line:#d7dfda; --panel:#fff; --soft:#f5f7f3; --accent:#0f766e; --accent-dark:#115e59; --bad:#b91c1c; --shadow:0 18px 50px rgba(23,32,29,.08); }}
-    * {{ box-sizing:border-box; }}
-    body {{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; color:var(--ink); background:var(--soft); }}
-    header {{ padding:16px 22px; border-bottom:1px solid var(--line); background:rgba(255,255,255,.94); display:flex; justify-content:space-between; gap:16px; position:sticky; top:0; z-index:4; }}
-    h1 {{ font-size:20px; margin:0; letter-spacing:0; }} h2 {{ font-size:16px; margin:20px 0 10px; }}
-    main {{ display:grid; grid-template-columns:minmax(360px,430px) 1fr; gap:16px; padding:16px; min-height:calc(100vh - 70px); }}
-    aside,.panel {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; box-shadow:var(--shadow); }}
-    aside {{ padding:16px; align-self:start; position:sticky; top:86px; max-height:calc(100vh - 100px); overflow:auto; }}
-    label {{ display:block; font-size:13px; color:var(--muted); margin:12px 0 6px; }}
-    input,textarea,select {{ width:100%; border:1px solid var(--line); border-radius:7px; padding:10px 11px; font-size:14px; background:#fff; color:var(--ink); }}
-    textarea {{ min-height:108px; resize:vertical; line-height:1.5; }}
-    button {{ width:100%; border:0; border-radius:7px; background:var(--accent); color:#fff; padding:11px 12px; font-weight:750; cursor:pointer; }}
-    button.secondary {{ background:#eef2ef; color:var(--ink); border:1px solid var(--line); }}
-    button.tab {{ width:auto; background:#fff; color:var(--ink); border:1px solid var(--line); padding:8px 11px; }}
-    button.tab.active {{ background:var(--accent); color:#fff; border-color:var(--accent); }}
-    button:disabled {{ opacity:.6; cursor:wait; }}
-    .row {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }} .actions {{ display:grid; gap:9px; margin-top:14px; }}
-    .check {{ display:flex; align-items:center; gap:8px; margin-top:11px; font-size:14px; }} .check input {{ width:auto; }}
-    .pill {{ display:inline-flex; border:1px solid #b7d8d2; color:var(--accent-dark); background:#eef9f6; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:700; }}
-    .side-title {{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }}
-    .chat-first {{ border:1px solid #b7d8d2; background:#fbfffd; padding:12px; border-radius:8px; margin-bottom:14px; }}
-    .chat-log {{ display:grid; gap:8px; max-height:240px; overflow:auto; padding:8px; border:1px solid var(--line); border-radius:8px; background:#fbfcfb; }}
-    .msg {{ padding:8px 10px; border-radius:8px; font-size:13px; line-height:1.45; background:#eef2ef; }} .msg.user {{ margin-left:28px; background:#e0f2f1; }} .msg.assistant {{ margin-right:28px; background:#fff; border:1px solid var(--line); }}
-    .tabs {{ display:flex; gap:6px; padding:10px; border-bottom:1px solid var(--line); background:#fff; border-radius:8px 8px 0 0; flex-wrap:wrap; position:sticky; top:69px; z-index:3; }}
-    .content {{ padding:18px; }} .grid {{ display:grid; grid-template-columns:repeat(4,minmax(120px,1fr)); gap:12px; }}
-    .metric {{ border:1px solid var(--line); border-radius:8px; padding:13px; background:#fff; min-height:78px; }} .metric b {{ display:block; font-size:22px; color:var(--accent-dark); }} .metric span,.hint,.status {{ color:var(--muted); font-size:12px; line-height:1.5; }}
-    .status {{ font-size:13px; min-height:20px; }} .error {{ color:var(--bad); }}
-    table {{ border-collapse:collapse; width:100%; font-size:13px; }} th,td {{ border-bottom:1px solid var(--line); padding:8px; text-align:left; vertical-align:top; }} th {{ color:var(--muted); }}
-    pre {{ white-space:pre-wrap; word-break:break-word; background:#111827; color:#e5e7eb; padding:14px; border-radius:8px; overflow:auto; }}
-    iframe {{ width:100%; height:720px; border:1px solid var(--line); border-radius:8px; background:#fff; }}
-    .charts {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }} figure {{ margin:0; border:1px solid var(--line); border-radius:8px; padding:10px; background:#fff; }} figure img {{ width:100%; height:auto; display:block; }}
-    .links a {{ display:inline-block; margin:0 8px 8px 0; color:var(--accent); font-weight:650; }} .timeline {{ display:grid; gap:10px; }} .event {{ border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#fff; }}
-    @media (max-width:900px) {{ main {{ grid-template-columns:1fr; }} aside {{ position:static; max-height:none; }} .grid {{ grid-template-columns:repeat(2,1fr); }} }}
-  </style>
-</head>
-<body>
-  <header><div><div class="pill">Financial Multi-Agent</div><h1>DeepReport+ 对话式多模态研究工作台</h1></div><div id="headerStatus" class="status">就绪</div></header>
-  <main>
-    <aside>
-      <div class="chat-first">
-        <div class="side-title"><b>研究助手</b><span class="pill">Chat first</span></div>
-        <label for="sessionId">会话</label><input id="sessionId" value="local-session">
-        <label for="chatInput">对话</label><textarea id="chatInput" placeholder="例如：帮我生成 600519.SS 2025Q4 研报，使用 A 股正式源。"></textarea>
-        <div class="check"><input id="allowReportRun" type="checkbox" checked><span>允许 Chat 在确认参数后启动研报</span></div>
-        <div class="actions"><button id="chatBtn" type="button">发送给研究助手</button></div>
-        <div id="chatLog" class="chat-log"></div>
-      </div>
-      <div class="side-title"><b>任务配置</b><span class="pill">端到端</span></div>
-      <label for="topic">研究任务</label><textarea id="topic">{escape(default_topic)}</textarea>
-      <div class="row"><div><label for="symbol">股票代码</label><input id="symbol" value="AAPL"></div><div><label for="period">期间</label><input id="period" value="2025Q4"></div></div>
-      <label for="engines">搜索/数据源</label><input id="engines" value="{DEFAULT_ENGINES}">
-      <label for="mode">执行模式</label><select id="mode"><option value="dynamic">dynamic</option><option value="static">static</option></select>
-      <div class="check"><input id="fast" type="checkbox" checked><span>快速模式</span></div>
-      <div class="check"><input id="realtimeData" type="checkbox"><span>实时数据 / A 股正式源</span></div>
-      <div class="check"><input id="memoryEnabled" type="checkbox"><span>启用三层记忆</span></div>
-      <div class="actions"><button id="runBtn">生成多智能体研究报告</button><button class="secondary" id="refreshBtn" type="button">读取最近一次结果</button></div>
-      <div id="status" class="status"></div>
-      <div id="runMeta" class="hint"></div>
-    </aside>
-    <section class="panel">
-      <div class="tabs">
-        <button class="tab active" data-tab="overview">总览</button><button class="tab" data-tab="report">报告</button><button class="tab" data-tab="charts">图表</button><button class="tab" data-tab="citations">引用</button><button class="tab" data-tab="tables">表格</button><button class="tab" data-tab="pdf">PDF章节</button><button class="tab" data-tab="profile">公司画像</button><button class="tab" data-tab="claims">Claims</button><button class="tab" data-tab="trace">轨迹</button><button class="tab" data-tab="timeline">时间线</button><button class="tab" data-tab="raw">原始数据</button>
-      </div>
-      <div class="content" id="content"></div>
-    </section>
-  </main>
-  <script>
-    let latest = null, activeTab = 'overview', chatMessages = [], chatTrace = [];
-    const $ = id => document.getElementById(id);
-    const aShareEngines = '{A_SHARE_ENGINES}';
-    const usEngines = '{US_ENGINES}';
-    const defaultEngines = '{DEFAULT_ENGINES}';
-    function setStatus(text, isError=false) {{ $('status').textContent=text; $('headerStatus').textContent=text||'就绪'; $('status').className=isError?'status error':'status'; }}
-    function isAShare(symbol) {{ const s=String(symbol||'').toUpperCase(); return s.endsWith('.SS')||s.endsWith('.SZ')||/^[036]\\d{{5}}$/.test(s); }}
-    function syncEnginesFromSwitch() {{ if (!$('realtimeData').checked) $('engines').value=defaultEngines; else $('engines').value=isAShare($('symbol').value)?aShareEngines:usEngines; }}
-    function localPeriodGuard() {{
-      const p=String($('period').value||'').toUpperCase(), m=p.match(/^(\\d{{4}})Q([1-4])$/); if(!m) return '';
-      const y=Number(m[1]), q=Number(m[2]), end=new Date(y, [2,5,8,11][q-1], [31,30,30,31][q-1]);
-      const now=new Date(); if(now<=end) {{ const pq=q===1?4:q-1, py=q===1?y-1:y; return `${{p}} 尚未结束，不能生成正式财报口径研报；可选 ${{py}}Q${{pq}} 或 ${{y-1}}Q4。`; }} return '';
-    }}
-    async function runReport() {{
-      const guard=localPeriodGuard(); if(guard) {{ setStatus(guard,true); return; }}
-      $('runBtn').disabled=true; setStatus('多智能体正在协作生成报告，通常需要 40-120 秒...');
-      try {{
-        const res=await fetch('/api/run',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{topic:$('topic').value,symbol:$('symbol').value,period:$('period').value,engines:$('engines').value,execution_mode:$('mode').value,fast:$('fast').checked,memory_enabled:$('memoryEnabled').checked,enable_remote_data:$('realtimeData').checked,data_source_config_path:'configs/data_sources.yaml'}})}});
-        latest=await res.json(); if(!res.ok||latest.error) throw new Error(latest.error||'运行失败'); syncFormFromLatest(); setStatus('报告生成完成'); render();
-      }} catch(err) {{ setStatus(err.message,true); }} finally {{ $('runBtn').disabled=false; }}
-    }}
-    async function loadLatest() {{ setStatus('正在读取最近一次输出...'); const res=await fetch('/api/latest'); latest=await res.json(); syncFormFromLatest(); setStatus('已读取最近一次输出'); render(); }}
-    function syncFormFromLatest() {{
-      const s=(latest&&latest.summary)||{{}}; if(s.symbol) $('symbol').value=s.symbol; if(s.period) $('period').value=s.period; if(s.research_topic) $('topic').value=s.research_topic;
-      if(Array.isArray(s.search_engines)&&s.search_engines.length) $('engines').value=s.search_engines.join(',');
-      $('realtimeData').checked = Array.isArray(s.search_engines) && s.search_engines.some(x=>['cninfo_announcements','exchange_announcements','eastmoney_financials','sec_edgar','independent_macro'].includes(x));
-      $('runMeta').innerHTML = latest ? `当前输出：${{escapeHtml(latest.output_dir||'')}}<br>报告目录：${{escapeHtml(latest.report_dir||'')}}<br>标的/期间：${{escapeHtml(s.symbol||'-')}} / ${{escapeHtml(s.period||'-')}}，模式：${{escapeHtml(s.execution_mode||'-')}}，实时源：${{$('realtimeData').checked?'是':'否'}}` : '';
-    }}
-    async function sendChat() {{
-      const text=$('chatInput').value.trim(); if(!text) return; const guard=$('allowReportRun').checked?localPeriodGuard():''; if(guard) {{ setStatus(guard,true); return; }}
-      $('chatBtn').disabled=true; chatMessages.push({{role:'user',content:text}}); renderChatLog(); setStatus('研究助手正在处理...');
-      try {{
-        const res=await fetch('/api/chat',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{message:text,session_id:$('sessionId').value||'local-session',symbol:$('symbol').value,period:$('period').value,engines:$('engines').value,execution_mode:$('mode').value,fast:$('fast').checked,memory_enabled:$('memoryEnabled').checked,allow_report_run:$('allowReportRun').checked,enable_remote_data:$('realtimeData').checked,data_source_config_path:'configs/data_sources.yaml'}})}});
-        const payload=await res.json(); if(!res.ok||payload.error) throw new Error(payload.error||'Chat 失败'); chatMessages.push({{role:'assistant',content:payload.answer||''}}); chatTrace=payload.tool_trace||[]; if(payload.latest) latest=payload.latest; syncFormFromLatest(); renderChatLog(); render(); setStatus('研究助手已回复');
-      }} catch(err) {{ chatMessages.push({{role:'assistant',content:err.message}}); renderChatLog(); setStatus(err.message,true); }} finally {{ $('chatBtn').disabled=false; $('chatInput').value=''; }}
-    }}
-    function render() {{
-      const c=$('content'); if(!latest) {{ c.innerHTML='<p>还没有加载运行结果。</p>'; return; }}
-      const map={{overview:renderOverview,report:renderReport,charts:renderCharts,citations:renderCitations,tables:renderTables,pdf:renderPdf,profile:renderProfile,claims:renderClaims,trace:renderTrace,timeline:renderTimeline,raw:d=>'<pre>'+escapeHtml(JSON.stringify(d,null,2))+'</pre>'}};
-      c.innerHTML=(map[activeTab]||map.overview)(latest);
-    }}
-    function renderOverview(d) {{ const s=d.summary||{{}}, engines=(s.search_engines||[]).join(', '), passed=s.verification_passed===true?'通过':'未通过'; return `<div class="grid">${{metric('智能体',s.agent_count)}}${{metric('证据',s.evidence_count)}}${{metric('结论',s.claim_count)}}${{metric('引用',s.citation_count)}}${{metric('图表',s.chart_count)}}${{metric('PDF章节',((d.pdf_sections||[]).length))}}${{metric('验证',passed)}}${{metric('耗时秒',s.total_duration_sec)}}</div><h2>搜索与数据源</h2><p>${{escapeHtml(engines||'暂无搜索元数据。')}}</p><h2>产物文件</h2><div class="links">${{artifactLinks(d.artifact_urls||{{}})}}${{d.report_html_url?`<a href="${{d.report_html_url}}" target="_blank">report.html</a>`:''}}</div>`; }}
-    function renderReport(d) {{ return d.report_html_url?`<iframe src="${{d.report_html_url}}"></iframe>`:`<pre>${{escapeHtml(d.report_markdown||'暂无报告。')}}</pre>`; }}
-    function renderCharts(d) {{ const rows=d.charts||[]; if(!rows.length) return '<p>暂无图表。</p>'; return '<div class="charts">'+rows.map(ch=>{{ const path=String(ch.output_path||'').replace('data/outputs/multi_agent/',''); return `<figure><img src="/artifacts/${{escapeAttr(path)}}" alt="${{escapeAttr(ch.title||ch.chart_id)}}"><figcaption>${{escapeHtml(ch.title||ch.chart_id)}}</figcaption></figure>`; }}).join('')+'</div>'; }}
-    function renderCitations(d) {{ const rows=d.citations||[]; if(!rows.length) return '<p>暂无引用。</p>'; return table(['证据ID','标题','类型','支持结论','来源'],rows.map(r=>[r.evidence_id,r.title,r.source_type,(r.claim_ids||[]).join(', ')||'未关联',r.source_url?`<a href="${{escapeAttr(r.source_url)}}" target="_blank">打开</a>`:''])); }}
-    function renderTables(d) {{ const rows=d.tables||[]; if(!rows.length) return '<p>暂无三表标准化表格。</p>'; return table(['表','指标','值','单位','期间','来源证据'],rows.slice(0,240).map(r=>[r.statement||r.table_type,r.metric_name||r.field_name,r.value,r.unit,r.period,r.source_evidence_id||r.evidence_id])); }}
-    function renderPdf(d) {{ const rows=d.pdf_sections||[]; if(!rows.length) return '<p>暂无 PDF 章节抽取结果。</p>'; return table(['章节','页码','来源证据','关键词','片段'],rows.map(r=>[r.section_type,r.page,r.evidence_id,r.matched_keyword,r.snippet])); }}
-    function renderProfile(d) {{ return '<pre>'+escapeHtml(JSON.stringify(d.company_profile_extracted||{{}},null,2))+'</pre>'; }}
-    function renderClaims(d) {{ const rows=d.claims||[]; if(!rows.length) return '<p>暂无 claims。</p>'; return table(['Claim ID','章节','结论','证据','置信度'],rows.map(r=>[r.claim_id,r.section_name,r.claim_text,(r.evidence_ids||[]).join(', '),r.confidence])); }}
-    function renderTrace(d) {{ const rows=d.trace||[]; if(!rows.length) return '<p>暂无执行轨迹。</p>'; return table(['智能体','任务','状态','秒','输出字段'],rows.map(r=>[r.agent,(r.task||{{}}).task_type,r.status,r.duration_sec,(r.output_keys||[]).join(', ')])); }}
-    function renderTimeline(d) {{ const events=[]; (chatTrace||[]).forEach(x=>events.push({{stage:x.stage||'chat',detail:x.detail||''}})); (d.trace||[]).forEach(r=>events.push({{stage:r.agent||'agent',detail:`${{(r.task||{{}}).task_type||''}} | ${{r.status||''}} | ${{r.duration_sec||''}}s`}})); if(!events.length) return '<p>暂无时间线。</p>'; return '<div class="timeline">'+events.map(e=>`<div class="event"><b>${{escapeHtml(e.stage)}}</b><span>${{escapeHtml(e.detail)}}</span></div>`).join('')+'</div>'; }}
-    function renderChatLog() {{ const log=$('chatLog'); log.innerHTML=chatMessages.length?chatMessages.map(m=>`<div class="msg ${{escapeAttr(m.role)}}"><b>${{escapeHtml(m.role)}}:</b> ${{escapeHtml(m.content)}}</div>`).join(''):'<div class="hint">暂无对话。</div>'; log.scrollTop=log.scrollHeight; }}
-    function metric(label,value) {{ return `<div class="metric"><b>${{escapeHtml(value??'-')}}</b><span>${{escapeHtml(label)}}</span></div>`; }}
-    function table(headers,rows) {{ return `<table><thead><tr>${{headers.map(h=>`<th>${{escapeHtml(h)}}</th>`).join('')}}</tr></thead><tbody>${{rows.map(row=>`<tr>${{row.map(cell=>`<td>${{String(cell??'').startsWith('<a ')?cell:escapeHtml(cell)}}</td>`).join('')}}</tr>`).join('')}}</tbody></table>`; }}
-    function artifactLinks(urls) {{ const names={{summary:'运行摘要',search_meta:'搜索记录',citations:'引用表',charts:'图表索引',claims:'Claims',evidence:'Evidence',tables:'三表',financial_metrics:'指标',pdf_manifest:'PDF缓存',pdf_sections:'PDF章节',company_profile_extracted:'公司画像',mcp_manifest:'MCP工具',revision_history:'改写历史'}}; return Object.entries(urls).filter(([k,v])=>v).map(([k,v])=>`<a href="${{v}}" target="_blank">${{escapeHtml(names[k]||k)}}</a>`).join(''); }}
-    function escapeHtml(v) {{ return String(v??'').replace(/[&<>"']/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c])); }}
-    function escapeAttr(v) {{ return encodeURI(String(v??'')); }}
-    document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{{ document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); activeTab=btn.dataset.tab; render(); }}));
-    $('runBtn').addEventListener('click',runReport); $('refreshBtn').addEventListener('click',loadLatest); $('chatBtn').addEventListener('click',sendChat); $('realtimeData').addEventListener('change',syncEnginesFromSwitch); $('symbol').addEventListener('change',()=>{{ if($('realtimeData').checked) syncEnginesFromSwitch(); }});
-    renderChatLog(); loadLatest();
-  </script>
-</body>
-</html>"""
+if __name__ == "__main__":
+    server, url = run_ui_server()
+    print(f"DeepReport++ web UI: {url}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        server.server_close()
