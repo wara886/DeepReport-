@@ -1231,9 +1231,11 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
     ranked = sorted(deduped.values(), key=lambda item: (item.score + item.authority_score * 0.05), reverse=True)
     selected: List[SearchResult] = []
     source_counts: Dict[str, int] = {}
-    diversity_cap = 2
+    default_diversity_cap = 2
+    source_diversity_caps = {"eastmoney_financials": 3}
     for hit in ranked:
         source_key = hit.source_type or hit.engine
+        diversity_cap = source_diversity_caps.get(source_key, default_diversity_cap)
         if source_counts.get(source_key, 0) >= diversity_cap:
             continue
         selected.append(hit)

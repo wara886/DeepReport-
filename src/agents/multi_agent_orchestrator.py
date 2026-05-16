@@ -23,6 +23,7 @@ from src.agents.gap_router import build_gap_resolution_trace
 from src.agents.planning_agent import PlanningAgent
 from src.agents.verifier_agent import VerifierAgent
 from src.data.company_universe import resolve_company_identifier, resolve_company_identifier_with_diagnostics
+from src.data.pdf_artifacts import build_pdf_artifacts
 from src.evaluation.company_report_scorecard import build_company_report_scorecard
 from src.evaluation.multimodal_consistency import audit_multimodal_consistency
 from src.models import ModelAdapter
@@ -44,7 +45,7 @@ from src.utils import MCPManager
 
 
 FAST_PROFILE = {
-    "research_topk": 6,
+    "research_topk": 8,
     "research_use_react": False,
     "research_react_max_steps": 2,
     "research_use_chunks": True,
@@ -54,7 +55,7 @@ FAST_PROFILE = {
     "browser_reader_max_records": 1,
     "browser_reader_max_chars": 1200,
     "browser_max_llm_records": 4,
-    "analyze_max_records": 8,
+    "analyze_max_records": 10,
     "analyze_content_limit": 450,
     "analyze_max_tokens": 1200,
     "analyze_use_react": False,
@@ -683,6 +684,20 @@ class MultiAgentOrchestrator:
         self._write_json("claims.json", claims)
         self._write_json("analysis_artifacts.json", state.get("analysis_artifacts", {}))
         analysis_artifacts = state.get("analysis_artifacts", {})
+        pdf_artifacts = state.get("pdf_artifacts")
+        if not isinstance(pdf_artifacts, dict):
+            pdf_artifacts = build_pdf_artifacts(
+                records=list(evidence_records) if isinstance(evidence_records, list) else [],
+                cache_dir=self.output_dir / "pdf_cache",
+                max_pdfs=2 if fast else 4,
+                max_pages=6 if fast else 12,
+            )
+        pdf_manifest_path = self._write_json("pdf_manifest.json", pdf_artifacts.get("pdf_manifest", []))
+        pdf_sections_path = self._write_json("pdf_sections.json", pdf_artifacts.get("pdf_sections", []))
+        company_profile_extracted_path = self._write_json(
+            "company_profile_extracted.json",
+            pdf_artifacts.get("company_profile_extracted", {}),
+        )
         financial_metrics_path = self._write_json(
             "financial_metrics.json",
             analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
@@ -777,6 +792,7 @@ class MultiAgentOrchestrator:
             "claim_count": len(claims) if isinstance(claims, list) else 0,
             "citation_count": len(state.get("citations", [])) if isinstance(state.get("citations"), list) else 0,
             "chart_count": len(state.get("charts", [])) if isinstance(state.get("charts"), list) else 0,
+            "pdf_artifact_meta": pdf_artifacts.get("meta", {}),
             "multimodal_consistency_passed": bool(multimodal_consistency.get("passed", False)),
             "mcp_tool_count": len(self.mcp_manager.list_tools()),
             "search_engines": state.get("search_meta", {}).get("engines", []),
@@ -813,6 +829,9 @@ class MultiAgentOrchestrator:
             "claims": str(self.output_dir / "claims.json"),
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
             "financial_metrics": str(financial_metrics_path),
+            "pdf_manifest": str(pdf_manifest_path),
+            "pdf_sections": str(pdf_sections_path),
+            "company_profile_extracted": str(company_profile_extracted_path),
             "tables": str(tables_path),
             "valuation_model": str(valuation_model_path),
             "valuation_assumptions": str(valuation_assumptions_path),
@@ -859,6 +878,8 @@ class MultiAgentOrchestrator:
             result = self._execute(agent_key_for_task(enriched.task_type), enriched)
             results[enriched.task_id] = result
             merge_task_result(state=state, task_type=enriched.task_type, result=result)
+            if enriched.task_type == "browser":
+                attach_pdf_artifacts_to_state(state=state)
             if enriched.task_type == "verifier":
                 absorb_verifier_feedback(state)
             del pending[enriched.task_id]
@@ -1353,6 +1374,75 @@ def merge_task_result(state: Dict[str, Any], task_type: str, result: TaskResult)
         gaps = state["verification_report"].get("evidence_gaps", []) if isinstance(state["verification_report"], dict) else []
         if gaps or not state.get("gap_resolution_trace"):
             state["gap_resolution_trace"] = build_gap_resolution_trace(gaps)
+
+
+def attach_pdf_artifacts_to_state(state: Dict[str, Any]) -> None:
+    """Extract filing PDF snippets early enough for analysis and writing."""
+
+    if isinstance(state.get("pdf_artifacts"), dict):
+        return
+    records = list(state.get("evidence_records", [])) if isinstance(state.get("evidence_records"), list) else []
+    if not records:
+        return
+    chart_dir = Path(str(state.get("chart_output_dir") or "data/outputs/multi_agent/charts"))
+    output_dir = chart_dir.parent
+    fast = state.get("performance_profile") == "fast"
+    pdf_artifacts = build_pdf_artifacts(
+        records=records,
+        cache_dir=output_dir / "pdf_cache",
+        max_pdfs=2 if fast else 4,
+        max_pages=6 if fast else 12,
+    )
+    state["pdf_artifacts"] = pdf_artifacts
+    section_records = _pdf_sections_as_evidence_records(
+        sections=pdf_artifacts.get("pdf_sections", []),
+        symbol=str(state.get("symbol", "")),
+        period=str(state.get("period", "")),
+    )
+    if section_records:
+        state["evidence_records"] = _merge_records(
+            records,
+            section_records,
+            key_names=["evidence_id", "sample_id", "source_url"],
+        )
+
+
+def _pdf_sections_as_evidence_records(sections: Any, symbol: str, period: str) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    if not isinstance(sections, list):
+        return output
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        section_id = str(section.get("section_id") or "")
+        source_evidence_id = str(section.get("evidence_id") or "")
+        snippet = str(section.get("snippet") or "").strip()
+        if not section_id or not snippet:
+            continue
+        evidence_id = f"pdf_section_{section_id}"
+        output.append(
+            {
+                "evidence_id": evidence_id,
+                "sample_id": evidence_id,
+                "source_type": "pdf_section",
+                "title": f"PDF section: {section.get('section_type') or 'unknown'}",
+                "source_url": str(section.get("source_url") or ""),
+                "publish_time": "",
+                "content": snippet,
+                "symbol": symbol,
+                "period": period,
+                "trust_level": "high",
+                "metadata": {
+                    "section_id": section_id,
+                    "section_type": section.get("section_type", ""),
+                    "page": section.get("page", ""),
+                    "matched_keyword": section.get("matched_keyword", ""),
+                    "source_evidence_id": source_evidence_id,
+                    "extraction_method": section.get("extraction_method", ""),
+                },
+            }
+        )
+    return output
 
 
 def _update_gap_trace_after_rework(state: Dict[str, Any], round_index: int) -> None:

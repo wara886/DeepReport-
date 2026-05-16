@@ -34,6 +34,11 @@
 - Agent Chat 的边界已固定：memory 只作为上下文、偏好和路由提示，不替代 `evidence_id`、citation、numeric audit 或 verifier；Chat 启动研报时仍进入现有 `MultiAgentOrchestrator` 多 Agent 主链。
 - 本轮补齐 A 股正式数据源 v1：`SearchManager` 新增 `cninfo_announcements`、`exchange_announcements`、`eastmoney_financials` 三个引擎；`configs/data_sources.yaml` 新增巨潮、上交所/深交所、东方财富财务表配置；source authority 将巨潮/交易所公告和东方财富财务表标为 primary，可支撑核心财务 claim。
 - 本轮修复实时检索 source diversity：避免 topK 被同一类巨潮公告占满，并修复东方财富三张财务表共用 URL 被去重折叠的问题；东方财富财务表现在按 `period` 选择目标报告期，例如 `2025Q4` 优先选择 `2025-12-31`。
+- 本轮完成下一阶段数据层补强 v1：新增统一三表指标标准化，将东方财富 income/balance/cashflow 与 SEC companyfacts 写入 `financial_metrics.json`、三表 rows 和 table artifacts；A 股 fast realtime 会保留东方财富三表各 1 条 evidence；新增 PDF artifact v1，输出 `pdf_manifest.json`、`pdf_sections.json`、`company_profile_extracted.json`，缺 PyMuPDF 或下载失败时记录 failure reason 而不中断主链。
+- 本轮补强 rich baseline 桥：`--baseline-deepseek-workflow` 额外输出 `evidence_grounded_rewrite.json`，按 claim 记录 rich draft claim、matched evidence、rewrite result 与 verifier status。
+- 本轮补齐 Chat UI smoke：新增 `scripts/run_chat_ui_smoke.py`，通过 `/api/chat` 验证普通 chat、RAG 路由、报告启动、tool_trace 和三层记忆写入；`AgentChatService` 报告路由响应会回填 `verification_passed` / `verifier_passed`。
+- 本轮实跑评测：`eval_outputs/next_data_review_600519SS_2025Q4/` 通过，`company_report_score=0.9375`，evidence 包含巨潮 2、交易所 2、东方财富三表 3、市场 1；`eval_outputs/next_data_review_AMD_2025Q4/` 通过，`company_report_score=0.8542`，evidence 包含 SEC companyfacts、Yahoo market snapshot、BLS。Chat UI smoke 输出 `eval_outputs/chat_ui_smoke_next/`，`passed=true`。
+- 本轮继续动态调整：PDF artifact manifest 已拆分 `cache_status` 与 `extraction_status`，当前 600519 两份巨潮 PDF 均已缓存到 `pdf_cache/` 并记录 sha256/size；本机缺 PyMuPDF 时只标记抽取失败，不再把缓存结果视为整体失败。新增 `scripts/summarize_next_data_review.py`，可汇总 A 股、美股和 Chat UI smoke 到 `eval_outputs/next_data_review_summary.json/md`。
 - 本轮开始基线：`7ddf800 Add guarded durable memory foundation`。
 - 主状态文档已改为中文，并把后续维护规则固定为中文。
 - 本次继续补齐 P2：新增 `scripts/run_memory_ablation.py`，可从现有 multi-agent evaluation config 派生 `memory_enabled` / `memory_disabled` 两个 variant，输出 `memory_ablation_comparison.json` 和 `memory_ablation_comparison.md`。
@@ -207,6 +212,7 @@ DeepReport++ 当前主线是一个面向金融研报的证据驱动、多 Agent 
 - competition/docx 交付链路已补回，Industry/Macro 也已有专用本地 Agent 与独立 evidence v1；但远程实时源需要显式 `--realtime-data`、API key 和网络，仍不能宣称已覆盖完整行业数据库或全球宏观数据库。
 - `baseline_deepseek_workflow` 是质量桥接模式，不是 strict/realtime 的替代品；它适合生成 rich draft 并做审计分层，但最终比赛打包和回归测试仍以 evidence、citation、numeric audit、verifier 结果为准。
 - A 股正式数据源已完成 v1 接入：巨潮公告、上交所/深交所公告索引、东方财富利润表/资产负债表/现金流量表可进入 evidence；但 PDF 正文/表格深抽取、公告附件缓存、A 股行业/股权/管理层专项结构化仍是后续缺口。
+- PDF artifact v1 已能建 manifest 并缓存 PDF；当前 Windows 本地评测环境缺 PyMuPDF 时 `cache_status=cached`、`extraction_status=failed`、`extraction_failure_reason=pymupdf_unavailable`，因此仍不能宣称 PDF 正文抽取已稳定覆盖 A 股年报。
 - FRED 与 BEA 当前仍因缺少 API key 记录为 `missing_api_key`；BLS/Federal Reserve 可用，但不能等价为完整宏观数据库覆盖。
 - `AGENTS.md` 和部分 `README.md` 在当前 Windows 输出里有 mojibake，后续如果作为 onboarding 文档，需要单独修复编码/内容。
 
@@ -425,3 +431,12 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - `验证记录`：实际运行过的命令和结果。
 
 不要再新增与本文档竞争的状态文档。若必须新增设计文档或审计文档，应从本文档链接过去，并保持本文档作为入口。
+## 2026-05-16 Web UI 多模态工作台修复
+
+- Web UI 已从结果查看器形态推进到 chat-first 研究工作台形态：研究助手位于主配置区顶部，默认允许在确认参数后启动研报。
+- 已修复最近结果与左侧表单脱节问题：`/api/latest` 返回 `symbol/period/research_topic/search_engines/output_dir/report_dir`，前端读取最近输出后同步回填表单并显示当前 artifact 来源。
+- 已修复 Web UI 不能触发 A 股正式源链路问题：`/api/run` 与 `/api/chat` 透传 `enable_remote_data` 和 `data_source_config_path`；实时源开启时，A 股默认使用巨潮公告、交易所公告、东方财富三表、Yahoo/Eastmoney，本地 evidence 作为补充；美股默认使用 SEC EDGAR、Yahoo 与独立宏观源。
+- 已增加 period guard：未结束季度会被阻止生成正式财报口径研报。按当前日期 2026-05-16，`2026Q2` 会提示尚未结束，并建议选择 `2026Q1` 或 `2025Q4`。
+- UI 已新增多模态 tabs：三表表格、PDF 章节、公司画像、Claims，并继续保留图表、引用、执行轨迹、时间线和原始 JSON。
+- PDF artifacts 已进入分析链：browser 阶段后会提前构建 PDF artifacts，把 `pdf_sections` 转成 `pdf_section` evidence records；`DeepAnalyzeAgent` 会从主营业务、管理层讨论、股东治理、风险、财务报表 PDF 片段派生 claims。
+- 详细记录见 `docs/web_ui_multimodal_workbench.md`。

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import shutil
 import sys
+from typing import Dict
 import zipfile
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -112,6 +113,10 @@ def main(argv: list[str] | None = None) -> int:
             model_config_path=args.baseline_model_config,
         )
         company_md = str(baseline_payload.get("markdown") or company_md)
+        (output_dir / "evidence_grounded_rewrite.json").write_text(
+            json.dumps(baseline_payload.get("evidence_grounded_rewrite", {}), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
     industry_payload = _run_industry_agent(
         symbol=args.symbol,
         period=args.period,
@@ -195,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         "baseline_deepseek_workflow_enabled": bool(args.baseline_deepseek_workflow),
         "baseline_deepseek_report_json": str(output_dir / "baseline_deepseek_report.json") if baseline_payload else "",
         "baseline_deepseek_meta": baseline_payload.get("meta", {}) if baseline_payload else {},
+        "evidence_grounded_rewrite_json": str(output_dir / "evidence_grounded_rewrite.json") if baseline_payload else "",
         "independent_source_record_count": len(independent_records),
         "independent_source_meta": independent_payload["meta"],
         "limitations": [
@@ -327,6 +333,7 @@ def _build_baseline_deepseek_workflow(
     model_config_path: str,
 ) -> dict:
     audit = _claim_audit_buckets(claims=claims, evidence_records=evidence_records)
+    rewrite = _build_evidence_grounded_rewrite(claims=claims, audit=audit, evidence_records=evidence_records)
     fallback_markdown = _render_baseline_audit_markdown(
         symbol=symbol,
         period=period,
@@ -377,10 +384,59 @@ def _build_baseline_deepseek_workflow(
             "symbol": symbol,
             "period": period,
             "audit": audit,
+            "evidence_grounded_rewrite": rewrite,
             "meta": meta,
         },
         "meta": meta,
+        "evidence_grounded_rewrite": rewrite,
     }
+
+
+def _build_evidence_grounded_rewrite(claims: list[dict], audit: dict, evidence_records: list[dict]) -> dict:
+    evidence_by_id = {
+        str(item.get("evidence_id") or item.get("sample_id") or ""): item
+        for item in evidence_records
+        if isinstance(item, dict) and str(item.get("evidence_id") or item.get("sample_id") or "").strip()
+    }
+    status_by_claim: Dict[str, str] = {}
+    for key, status in [("verified", "verified"), ("pending_verification", "pending"), ("unsupported", "unsupported")]:
+        for row in audit.get(key, []):
+            if isinstance(row, dict):
+                status_by_claim[str(row.get("claim_id") or "")] = status
+    rows = []
+    for index, claim in enumerate([item for item in claims if isinstance(item, dict)], start=1):
+        claim_id = str(claim.get("claim_id") or f"claim_{index:03d}")
+        ids = [str(item) for item in claim.get("evidence_ids", [])] if isinstance(claim.get("evidence_ids"), list) else []
+        matched = [evidence_id for evidence_id in ids if evidence_id in evidence_by_id]
+        status = status_by_claim.get(claim_id, "pending")
+        claim_text = str(claim.get("claim_text") or claim.get("text") or "").strip()
+        rows.append(
+            {
+                "claim_id": claim_id,
+                "rich_draft_claim": claim_text,
+                "matched_evidence_ids": matched,
+                "missing_evidence_ids": [evidence_id for evidence_id in ids if evidence_id not in evidence_by_id],
+                "rewrite_result": _rewrite_supported_claim(claim_text, matched) if status == "verified" else "",
+                "verifier_status": status,
+                "notes": "可进入 evidence-grounded 正文" if status == "verified" else "保留为待补证/不支持研究线索，不进入最终可验证结论",
+            }
+        )
+    return {
+        "mode": "evidence_grounded_rewrite_v1",
+        "rows": rows,
+        "verified_rewrite_count": len([row for row in rows if row["verifier_status"] == "verified"]),
+        "pending_or_unsupported_count": len([row for row in rows if row["verifier_status"] != "verified"]),
+    }
+
+
+def _rewrite_supported_claim(claim_text: str, evidence_ids: list[str]) -> str:
+    suffix = " ".join(f"[{evidence_id}]" for evidence_id in evidence_ids)
+    text = claim_text.strip()
+    if not text:
+        return ""
+    if suffix and suffix not in text:
+        return f"{text} {suffix}".strip()
+    return text
 
 
 def _claim_audit_buckets(claims: list[dict], evidence_records: list[dict]) -> dict:

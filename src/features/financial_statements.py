@@ -6,6 +6,8 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
+from src.data.financial_statement_metrics import build_standard_statement_rows
+
 
 def build_three_statement_view(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Build an income/cash-flow/balance-sheet view from available evidence records.
@@ -14,7 +16,7 @@ def build_three_statement_view(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     function keeps every derived balance-sheet line explicitly marked as estimated.
     """
 
-    rows: List[Dict[str, Any]] = []
+    rows: List[Dict[str, Any]] = build_standard_statement_rows(records)
     source_records = [record for record in records if isinstance(record, dict)]
     financial_records = [record for record in source_records if str(record.get("source_type", "")).lower() == "financials"]
     for record in financial_records:
@@ -85,7 +87,8 @@ def build_three_statement_view(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {
         "rows": rows,
         "coverage": _coverage(rows),
-        "source_record_count": len(financial_records),
+        "source_record_count": len(financial_records)
+        + len([record for record in source_records if str(record.get("source_type", "")).lower() == "eastmoney_financials"]),
     }
 
 

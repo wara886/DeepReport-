@@ -8,6 +8,7 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+build/
 .DS_Store
 
 artifacts/

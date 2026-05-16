@@ -111,8 +111,12 @@ def test_baseline_deepseek_workflow_preserves_audit_buckets(tmp_path):
 
     markdown = payload["markdown"]
     audit = payload["report_json"]["audit"]
+    rewrite = payload["report_json"]["evidence_grounded_rewrite"]
     assert "## 证据审计分层" in markdown
     assert audit["verified"][0]["claim_id"] == "c1"
     assert audit["pending_verification"][0]["claim_id"] == "c2"
     assert audit["unsupported"][0]["claim_id"] == "c3"
+    assert rewrite["verified_rewrite_count"] == 1
+    assert rewrite["rows"][0]["rewrite_result"].endswith("[ev_1]")
+    assert rewrite["rows"][1]["verifier_status"] == "pending"
     assert payload["meta"]["model_used"] is False

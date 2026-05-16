@@ -288,6 +288,9 @@ def build_rule_claims(
         )
         claim_index += 1
 
+    pdf_claims, claim_index = _build_pdf_section_claims(records=records, start_index=claim_index)
+    claims.extend(pdf_claims)
+
     for record in records:
         if str(record.get("source_type") or "") != "sec_companyfacts":
             continue
@@ -1108,6 +1111,58 @@ def _is_derived_claim_allowed(claim: ClaimItem) -> bool:
         "estimated",
     ]
     return any(marker in text for marker in markers)
+
+
+def _build_pdf_section_claims(records: List[Dict[str, Any]], start_index: int) -> tuple[List[ClaimItem], int]:
+    claims: List[ClaimItem] = []
+    claim_index = start_index
+    buckets: Dict[str, List[Dict[str, Any]]] = {}
+    for record in records:
+        if str(record.get("source_type") or "") != "pdf_section":
+            continue
+        metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+        section_type = str(metadata.get("section_type") or "")
+        if section_type:
+            buckets.setdefault(section_type, []).append(record)
+
+    specs = [
+        ("business_overview", "strategy_business", "年报/公告 PDF 抽取的主营业务与业务结构片段显示：{snippet}"),
+        ("management_discussion", "strategy_business", "管理层讨论与经营情况 PDF 片段显示：{snippet}"),
+        ("ownership_governance", "ownership_governance", "股东结构、治理或管理层 PDF 片段显示：{snippet}"),
+        ("risk_factors", "risks", "风险提示 PDF 片段显示：{snippet}"),
+        ("financial_statements", "financial_statements", "财务报表 PDF 片段显示：{snippet}"),
+    ]
+    for section_type, section_name, template in specs:
+        rows = buckets.get(section_type, [])
+        if not rows:
+            continue
+        snippets = [_compact_snippet(str(row.get("content") or ""), limit=220) for row in rows[:2]]
+        snippets = [item for item in snippets if item]
+        evidence_ids = [str(row.get("evidence_id") or row.get("sample_id") or "") for row in rows[:2]]
+        evidence_ids = [item for item in evidence_ids if item]
+        if not snippets or not evidence_ids:
+            continue
+        claims.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name=section_name,
+                claim_text=template.format(snippet="；".join(snippets)),
+                evidence_ids=evidence_ids,
+                numeric_values={},
+                risk_level="medium" if section_type == "risk_factors" else "low",
+                confidence=0.73,
+                notes="由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。",
+            )
+        )
+        claim_index += 1
+    return claims, claim_index
+
+
+def _compact_snippet(text: str, limit: int = 220) -> str:
+    compact = " ".join(str(text or "").split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: max(0, limit - 1)].rstrip() + "…"
 
 
 def _financial_evidence_ids(records: List[Dict[str, Any]]) -> List[str]:

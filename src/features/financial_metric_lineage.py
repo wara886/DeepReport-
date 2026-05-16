@@ -6,6 +6,10 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
+from src.data.financial_statement_metrics import (
+    build_standard_financial_metrics,
+    build_standard_table_artifacts,
+)
 from src.features.financial_ratios import build_financial_ratios
 from src.features.financial_statements import build_three_statement_view
 
@@ -15,6 +19,10 @@ CORE_METRICS = ("revenue", "net_income", "gross_margin", "free_cash_flow")
 
 def build_financial_metric_lineage(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Extract core company-report metrics with table/evidence lineage."""
+
+    standard = build_standard_financial_metrics(records)
+    if standard.get("metric_count"):
+        return standard
 
     rows: List[Dict[str, Any]] = []
     for record in [item for item in records if isinstance(item, dict)]:
@@ -109,6 +117,10 @@ def build_financial_metric_lineage(records: List[Dict[str, Any]]) -> Dict[str, A
 
 def build_financial_metric_tables(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Build minimal table artifacts from existing three-statement rows."""
+
+    standard_tables = build_standard_table_artifacts(records)
+    if standard_tables:
+        return standard_tables
 
     statement_payload = build_three_statement_view(records)
     rows_by_table: Dict[str, List[Dict[str, Any]]] = {}

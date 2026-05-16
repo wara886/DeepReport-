@@ -281,6 +281,8 @@ class AgentChatService:
         engines: List[str] | None = None,
         fast: bool = True,
         execution_mode: str = "dynamic",
+        enable_remote_data: bool = False,
+        data_source_config_path: str = "configs/data_sources.yaml",
     ) -> Dict[str, Any]:
         text = _clean(message, limit=2000)
         if not text:
@@ -307,7 +309,10 @@ class AgentChatService:
                 execution_mode=execution_mode,
                 fast=fast,
                 search_engines=engines or [],
+                enable_remote_data=bool(enable_remote_data),
+                data_source_config_path=data_source_config_path,
             )
+            result_payload = _attach_report_status(result_payload, self.output_root)
             answer = "已启动并完成多智能体研报生成。右侧报告、引用、图表和轨迹已刷新。"
             citations = _read_json(self.output_root / "citations.json") or []
             trace.append({"stage": "verify", "detail": f"report_run_complete verification={result_payload.get('verification_passed')}"})
@@ -463,6 +468,17 @@ def _read_json(path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
+
+
+def _attach_report_status(result_payload: Dict[str, Any], output_root: Path) -> Dict[str, Any]:
+    output = dict(result_payload) if isinstance(result_payload, dict) else {}
+    summary = _read_json(output_root / "run_summary.json")
+    verification = _read_json(output_root / "verification_report.json")
+    if "verification_passed" not in output and isinstance(summary, dict):
+        output["verification_passed"] = bool(summary.get("verification_passed", False))
+    if "verifier_passed" not in output and isinstance(verification, dict):
+        output["verifier_passed"] = bool(verification.get("passed", False))
+    return output
 
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> None:
