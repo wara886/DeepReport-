@@ -10,6 +10,7 @@ from src.report.citation_manager import (
 from src.report.chart_generator import generate_report_charts
 from src.report.chart_consistency import audit_chart_consistency
 from src.report.compliance_disclosure import append_compliance_disclosures, append_compliance_disclosures_to_html
+from src.report.docx_exporter import export_markdown_to_docx
 from src.report.html_report_generator import render_professional_html_report
 from src.report.report_enhancer import attach_charts_to_html, attach_charts_to_markdown, polish_report_html
 
@@ -23,6 +24,7 @@ __all__ = [
     "audit_chart_consistency",
     "build_citation_artifacts",
     "build_citations",
+    "export_markdown_to_docx",
     "generate_report_charts",
     "polish_report_html",
     "render_professional_html_report",

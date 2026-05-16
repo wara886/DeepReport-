@@ -14,4 +14,4 @@ def test_app_yaml_contains_durable_memory_defaults():
     assert durable["enabled"] is False
     assert durable["root"] == "memory"
     assert durable["max_context_chars"] > 0
-
+    assert durable["context_scope"] == "planner_router"

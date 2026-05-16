@@ -85,6 +85,11 @@ evaluation:
     assert "retrieval_ablation" in summary
     assert "hybrid_rerank" in summary["retrieval_ablation"]["modes"]
     assert summary["contest_checklist_score_mean"] > 0
+    assert "verification_pass_rate" in summary
+    assert "unsupported_fallback_rate" in summary
+    assert "skill_routed_task_rate" in summary
+    assert "citation_support_rate" in summary
+    assert "numeric_audit_pass_rate" in summary
     assert "failure_taxonomy_summary" in summary
     assert len(summary["regression_topics"]) >= 5
     assert len(rows) == 1
@@ -97,6 +102,8 @@ evaluation:
     assert row["durable_memory_enabled"] is False
     assert row["durable_memory_available"] is False
     assert "contest_checklist" in row
+    assert "selected_skill_names" in row
+    assert "unsupported_fallback_count" in row
 
 
 def test_retrieval_ablation_summarizes_mode_deltas():

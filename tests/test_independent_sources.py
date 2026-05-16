@@ -1,0 +1,128 @@
+import json
+from datetime import date
+
+from src.data.evidence_metadata import annotate_evidence_record
+from src.data.independent_sources import fetch_fred_series_evidence, fetch_independent_evidence_bundle, fetch_sec_companyfacts_evidence
+from src.data.source_authority import grade_source_authority
+
+
+def test_evidence_metadata_adds_freshness_cutoff_and_scope():
+    record = annotate_evidence_record(
+        {
+            "source_type": "fred_series",
+            "publish_time": "2026-05-01",
+            "period": "2026Q2",
+            "metadata": {"observation_date": "2026-04-30"},
+        },
+        reference_date=date(2026, 5, 16),
+    )
+
+    assert record["source_timestamp"] == "2026-05-01"
+    assert record["data_cutoff"] == "2026-04-30"
+    assert record["freshness_days"] == 15
+    assert record["freshness_bucket"] == "fresh"
+    assert record["evidence_scope"] == "macro"
+
+
+def test_source_authority_marks_macro_official_statistics():
+    grade = grade_source_authority(
+        {
+            "source_type": "fred_series",
+            "source_url": "https://fred.stlouisfed.org/series/FEDFUNDS",
+            "title": "FRED FEDFUNDS",
+        }
+    )
+
+    assert grade["source_authority"] == "official_statistics"
+    assert grade["authority_level"] == "primary"
+    assert "macro_indicator" in grade["allowed_claim_types"]
+    assert "revenue" not in grade["allowed_claim_types"]
+
+
+def test_independent_bundle_skips_remote_sources_by_default():
+    payload = fetch_independent_evidence_bundle(symbol="AAPL", period="2025Q4", enable_remote=False)
+
+    assert payload["records"] == []
+    assert payload["meta"]["failure_reason"] == "remote_sources_disabled"
+
+
+def test_fred_series_fetch_normalizes_latest_observation(monkeypatch, tmp_path):
+    monkeypatch.setenv("FRED_API_KEY", "fred-test")
+    config_path = tmp_path / "data_sources.yaml"
+    config_path.write_text(
+        """
+independent_sources:
+  macro:
+    fred:
+      base_url: https://api.stlouisfed.org/fred/series/observations
+      api_key_env: FRED_API_KEY
+""".strip(),
+        encoding="utf-8",
+    )
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"observations": [{"date": "2026-04-01", "value": "4.33"}]}).encode("utf-8")
+
+    monkeypatch.setattr("src.data.independent_sources.request.urlopen", lambda req, timeout: FakeResponse())
+
+    payload = fetch_fred_series_evidence(series={"FEDFUNDS": "Effective Federal Funds Rate"}, config_path=str(config_path))
+
+    assert payload.hits[0]["source_type"] == "fred_series"
+    assert payload.hits[0]["data_cutoff"] == "2026-04-01"
+    assert payload.hits[0]["authority_level"] == "primary"
+    assert payload.meta["failure_reason"] == ""
+
+
+def test_sec_companyfacts_fetch_normalizes_supported_metrics(monkeypatch, tmp_path):
+    config_path = tmp_path / "data_sources.yaml"
+    config_path.write_text(
+        """
+independent_sources:
+  company:
+    sec_edgar:
+      companyfacts_base_url: https://data.sec.gov/api/xbrl/companyfacts
+      cik_map:
+        AAPL: "0000320193"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "facts": {
+                        "us-gaap": {
+                            "Revenues": {
+                                "units": {
+                                    "USD": [
+                                        {"val": 100, "end": "2025-12-31", "filed": "2026-01-30", "form": "10-K"}
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            ).encode("utf-8")
+
+    monkeypatch.setattr("src.data.independent_sources.request.urlopen", lambda req, timeout: FakeResponse())
+
+    payload = fetch_sec_companyfacts_evidence(symbol="AAPL", period="2025Q4", config_path=str(config_path))
+
+    assert payload.hits[0]["source_type"] == "sec_companyfacts"
+    assert payload.hits[0]["metadata"]["metrics"]["Revenues"]["value"] == 100
+    assert payload.hits[0]["source_authority"] == "official"
+    assert payload.meta["failure_reason"] == ""

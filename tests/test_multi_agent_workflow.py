@@ -5,7 +5,7 @@ import sys
 from src.agents import AgentStatus, AgentTask, BrowserAgent, DeepAnalyzeAgent, FinalAnswerAgent, VerifierAgent
 from src.agents.browser_agent import enrich_records_with_reader, read_pdf_content, read_url_content
 from src.agents.final_answer_agent import insert_missing_sections_from_claims, normalize_report_headings
-from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator, prepare_dynamic_tasks
+from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator, enrich_task_parameters, prepare_dynamic_tasks
 from src.agents.verifier import Verifier
 from src.schemas.claim import ClaimItem
 from src.search import SearchManager
@@ -320,8 +320,11 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert summary["citation_count"] >= 1
     assert summary["chart_count"] >= 1
     assert summary["mcp_tool_count"] >= 1
+    assert summary["skill_registry_enabled"] is True
+    assert summary["skill_count"] >= 1
     assert len(trace_lines) == 6
     assert result["report_md"].endswith("report.md")
+    assert result["task_route_context"].endswith("task_route_context.json")
     assert result["citations"].endswith("citations.json")
     assert result["charts"].endswith("charts.json")
     assert result["financial_metrics"].endswith("financial_metrics.json")
@@ -341,6 +344,8 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert (tmp_path / "outputs" / "company_report_scorecard.json").exists()
     assert (tmp_path / "outputs" / "conversation_context.json").exists()
     assert (tmp_path / "outputs" / "mcp_manifest.json").exists()
+    route_context = json.loads((tmp_path / "outputs" / "task_route_context.json").read_text(encoding="utf-8"))
+    assert any("financial_statement_analysis" in item["selected_skills"] for item in route_context["tasks"])
     assert "## 参考来源" in (tmp_path / "reports" / "report.md").read_text(encoding="utf-8")
     assert "## 图表" in (tmp_path / "reports" / "report.md").read_text(encoding="utf-8")
     financial_metrics = json.loads((tmp_path / "outputs" / "financial_metrics.json").read_text(encoding="utf-8"))
@@ -380,9 +385,12 @@ def test_multi_agent_orchestrator_can_persist_durable_memory_without_quality_reg
     assert summary["verification_passed"] is True
     assert summary["citation_count"] >= 1
     assert summary["durable_memory_enabled"] is True
+    assert summary["durable_memory_context_scope"] == "planner_router"
     assert summary["durable_memory"]["working_snapshot"] == result["durable_memory"]
     assert (tmp_path / "memory" / "domain" / "AAPL.json").exists()
     assert "DurableMemory" in next(item for item in trace if item["agent"] == "PlanningAgent")["task"]["parameters"]["conversation_brief"]
+    assert "DurableMemory" not in next(item for item in trace if item["agent"] == "FinalAnswerAgent")["task"]["parameters"]["conversation_brief"]
+    assert next(item for item in trace if item["agent"] == "DeepAnalyzeAgent")["task"]["metadata"]["selected_skills"]
 
 
 def test_multi_agent_orchestrator_fast_mode_uses_smaller_context(tmp_path):
@@ -730,6 +738,28 @@ def test_prepare_dynamic_tasks_drops_reverse_dependencies_that_would_cycle_graph
     assert "task_analyze" not in by_id["task_browser"].dependencies
     assert "task_research" in by_id["task_browser"].dependencies
     assert "task_browser" in by_id["task_analyze"].dependencies
+
+
+def test_enrich_task_parameters_replaces_model_placeholder_artifact_names():
+    task = AgentTask(
+        task_id="task_analyze",
+        task_type="deep_analyze",
+        description="Analyze evidence",
+        parameters={"evidence_records": "evidence_records.json"},
+    )
+
+    enriched = enrich_task_parameters(
+        task=task,
+        state={
+            "symbol": "AAPL",
+            "period": "2025Q4",
+            "evidence_records": [{"evidence_id": "ev_1", "content": "Revenue evidence."}],
+            "retrieval_ranking_mode": "hybrid_rerank",
+        },
+        raw_data_root="data/raw/real_data",
+    )
+
+    assert enriched.parameters["evidence_records"] == [{"evidence_id": "ev_1", "content": "Revenue evidence."}]
 
 
 def test_rule_verifier_fails_missing_evidence_id():

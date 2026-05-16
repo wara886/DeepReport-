@@ -1,0 +1,77 @@
+import json
+import zipfile
+
+from scripts.run_competition import REQUIRED_DOCX, _ranking_mode_for_run, _search_engines_for_run, main
+
+
+def test_competition_runner_packages_existing_company_artifacts(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    outputs = tmp_path / "data" / "outputs" / "multi_agent"
+    reports = tmp_path / "data" / "reports" / "multi_agent"
+    outputs.mkdir(parents=True)
+    reports.mkdir(parents=True)
+    (outputs / "run_summary.json").write_text(
+        json.dumps(
+            {
+                "model": "fake",
+                "verification_passed": True,
+                "multimodal_consistency_passed": True,
+                "company_report_overall_score": 0.91,
+                "evidence_count": 3,
+                "claim_count": 5,
+                "citation_count": 5,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (outputs / "verification_report.json").write_text(json.dumps({"passed": True}), encoding="utf-8")
+    (outputs / "multimodal_consistency.json").write_text(json.dumps({"passed": True}), encoding="utf-8")
+    (outputs / "evidence.json").write_text(
+        json.dumps(
+            [
+                {
+                    "evidence_id": "ev_profile",
+                    "source_type": "company_profile",
+                    "content": "Apple designs consumer electronics and services.",
+                    "metadata": {"sector": "Technology", "industry": "Consumer Electronics"},
+                },
+                {"evidence_id": "ev_market", "source_type": "market_api", "content": "AAPL market snapshot."},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (outputs / "claims.json").write_text(json.dumps([{"claim_id": "cl_1", "claim_text": "AAPL claim."}]), encoding="utf-8")
+    (outputs / "analysis_artifacts.json").write_text(
+        json.dumps({"peer_context": {"peer_count": 3}}),
+        encoding="utf-8",
+    )
+    (reports / "report.md").write_text(
+        "# 公司研究报告\n\n## 执行摘要\n\n- AAPL revenue was supported by evidence. [ev_1]\n" * 12,
+        encoding="utf-8",
+    )
+
+    code = main(["--skip-company-run", "--output-dir", str(tmp_path / "competition"), "--symbol", "AAPL"])
+
+    summary = json.loads((tmp_path / "competition" / "competition_run_summary.json").read_text(encoding="utf-8"))
+    industry_md = (tmp_path / "competition" / "industry_report.md").read_text(encoding="utf-8")
+    macro_md = (tmp_path / "competition" / "macro_report.md").read_text(encoding="utf-8")
+    assert code == 0
+    assert summary["competition_passed"] is True
+    assert summary["industry_report_generated_by"] == "IndustryResearchAgent"
+    assert summary["macro_report_generated_by"] == "MacroResearchAgent"
+    assert summary["independent_source_record_count"] == 0
+    assert summary["independent_source_meta"]["failure_reason"] == "remote_sources_disabled"
+    assert "Consumer Electronics" in industry_md
+    assert "MacroResearchAgent" in macro_md
+    assert "dedicated Industry/Macro agents remain future work" not in summary["limitations"][0]
+    assert (tmp_path / "competition" / "industry_report.json").exists()
+    assert (tmp_path / "competition" / "macro_report.json").exists()
+    with zipfile.ZipFile(tmp_path / "competition" / "results.zip", "r") as zf:
+        assert sorted(zf.namelist()) == sorted(REQUIRED_DOCX)
+
+
+def test_competition_fast_mode_defaults_to_lightweight_retrieval():
+    assert _search_engines_for_run("", fast=True) == ["local_real_data"]
+    assert _ranking_mode_for_run("", fast=True) == "bm25"
+    assert _search_engines_for_run("local_real_data,local_evidence", fast=True) == ["local_real_data", "local_evidence"]
+    assert _ranking_mode_for_run("hybrid_rerank", fast=True) == "hybrid_rerank"

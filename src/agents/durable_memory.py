@@ -23,6 +23,7 @@ class DurableMemoryConfig:
     max_context_chars: int = 1600
     max_domain_items: int = 12
     max_episodic_items: int = 6
+    context_scope: str = "planner_router"
 
 
 class DurableMemoryStore:

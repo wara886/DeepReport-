@@ -28,6 +28,9 @@ local_rag = [
 pdf = [
   "PyMuPDF>=1.23.8",
 ]
+docx = [
+  "python-docx>=1.1.2",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

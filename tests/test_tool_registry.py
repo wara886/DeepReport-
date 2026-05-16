@@ -59,6 +59,30 @@ def test_trend_tool_wraps_existing_feature_logic():
     assert result["rows"][0]["unique_sources"] == 2
 
 
+def test_trend_tool_backfills_missing_group_columns_from_metadata():
+    registry = build_core_tool_registry()
+
+    result = registry.call(
+        "build_trend_features",
+        records=[
+            {
+                "evidence_id": "ev_meta",
+                "content": "Revenue 120.0B.",
+                "metadata": {
+                    "symbol": "MSFT",
+                    "period": "2025Q4",
+                    "source_type": "financials",
+                    "publish_time": "2026-01-31",
+                },
+            }
+        ],
+    )
+
+    assert result["rows"][0]["symbol"] == "MSFT"
+    assert result["rows"][0]["period"] == "2025Q4"
+    assert result["rows"][0]["evidence_count"] == 1
+
+
 def test_company_report_tools_return_statements_peers_and_valuation():
     registry = build_core_tool_registry()
 

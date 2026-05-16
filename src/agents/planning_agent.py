@@ -61,6 +61,7 @@ class PlanningAgent(BaseAgent):
         requirements = task.parameters.get("requirements", [])
         output_format = str(task.parameters.get("output_format", "markdown and html report"))
         conversation_brief = str(task.parameters.get("conversation_brief", "")).strip()
+        skill_brief = str(task.parameters.get("skill_brief", "")).strip()
         try:
             if bool(task.parameters.get("force_fallback_plan", False)):
                 plan = self._fallback_plan(
@@ -75,6 +76,7 @@ class PlanningAgent(BaseAgent):
                 requirements=requirements if isinstance(requirements, list) else [str(requirements)],
                 output_format=output_format,
                 conversation_brief=conversation_brief,
+                skill_brief=skill_brief,
             )
             return self.success(task, {"plan": plan}, metadata={"fallback_used": bool(plan.get("fallback_used"))})
         except Exception as exc:
@@ -86,6 +88,7 @@ class PlanningAgent(BaseAgent):
         requirements: List[str] | None = None,
         output_format: str = "markdown and html report",
         conversation_brief: str = "",
+        skill_brief: str = "",
     ) -> Dict[str, Any]:
         requirements = requirements or []
         if not self.model:
@@ -96,6 +99,7 @@ class PlanningAgent(BaseAgent):
             requirements=requirements,
             output_format=output_format,
             conversation_brief=conversation_brief,
+            skill_brief=skill_brief,
         )
         try:
             raw_plan = self.model.generate_json(
@@ -131,8 +135,10 @@ def _build_planning_prompt(
     requirements: List[str],
     output_format: str,
     conversation_brief: str = "",
+    skill_brief: str = "",
 ) -> str:
     memory_block = f"\nConversation memory:\n{conversation_brief}\n" if conversation_brief else ""
+    skill_block = f"\nAvailable skill brief:\n{skill_brief}\n" if skill_brief else ""
     return f"""
 Research topic:
 {research_topic}
@@ -140,6 +146,7 @@ Research topic:
 Requirements:
 {requirements}
 {memory_block}
+{skill_block}
 
 Output format:
 {output_format}

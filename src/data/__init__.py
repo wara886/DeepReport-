@@ -8,6 +8,7 @@ from src.data.fetch_market import MarketFetcher
 from src.data.fetch_news import NewsFetcher
 from src.data.manifest import build_manifest, write_manifest_json, write_manifest_parquet
 from src.data.company_universe import load_company_universe, resolve_company_identifier, resolve_symbol
+from src.data.independent_sources import fetch_independent_evidence_bundle, fetch_macro_evidence, fetch_sec_companyfacts_evidence
 
 __all__ = [
     "BaseFetcher",
@@ -22,4 +23,7 @@ __all__ = [
     "load_company_universe",
     "resolve_company_identifier",
     "resolve_symbol",
+    "fetch_independent_evidence_bundle",
+    "fetch_macro_evidence",
+    "fetch_sec_companyfacts_evidence",
 ]

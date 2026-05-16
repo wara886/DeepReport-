@@ -7,9 +7,11 @@ from typing import Any, Dict, Iterable, Tuple
 from urllib.parse import urlparse
 
 
-PRIMARY_SOURCE_TYPES = {"filing", "financials", "company_profile", "company_page", "earnings_release"}
+PRIMARY_SOURCE_TYPES = {"filing", "financials", "company_profile", "company_page", "earnings_release", "sec_companyfacts"}
 MARKET_SOURCE_TYPES = {"market", "market_api", "market_data"}
 NEWS_SOURCE_TYPES = {"news", "web_search"}
+MACRO_SOURCE_TYPES = {"macro_api", "macro_statistic", "policy_release", "federal_reserve", "fred_series", "bls_series", "bea_series"}
+INDUSTRY_SOURCE_TYPES = {"industry_report", "industry_statistic", "industry_official", "industry_search"}
 
 PRIMARY_DOMAINS = (
     "sec.gov",
@@ -51,6 +53,22 @@ MEDIA_DOMAINS = (
     "cnbc.com",
     "wsj.com",
 )
+MACRO_DOMAINS = (
+    "fred.stlouisfed.org",
+    "api.stlouisfed.org",
+    "bls.gov",
+    "bea.gov",
+    "apps.bea.gov",
+    "federalreserve.gov",
+)
+INDUSTRY_DOMAINS = (
+    "census.gov",
+    "eia.gov",
+    "trade.gov",
+    "ntia.gov",
+    "nist.gov",
+    "semiconductors.org",
+)
 
 CORE_FINANCIAL_CLAIMS = {
     "financial_statement",
@@ -63,6 +81,8 @@ CORE_FINANCIAL_CLAIMS = {
 }
 MARKET_CLAIMS = {"market_price", "market_cap", "volume", "valuation_market_input"}
 EVENT_CLAIMS = {"event", "risk", "business_context", "management_commentary"}
+MACRO_CLAIMS = {"macro_indicator", "policy_rate", "inflation", "employment", "growth", "rates", "liquidity"}
+INDUSTRY_CLAIMS = {"industry_context", "sector_demand", "market_share", "supply_chain", "industry_risk"}
 
 
 @dataclass(frozen=True)
@@ -106,6 +126,26 @@ class SourceAuthorityPolicy:
                 source_document_type=doc_type,
                 allowed_claim_types=tuple(sorted(CORE_FINANCIAL_CLAIMS | EVENT_CLAIMS)),
                 reason="official filing, structured financial record, or exchange disclosure",
+            )
+        if source_type in MACRO_SOURCE_TYPES or matches_domain(domain, MACRO_DOMAINS):
+            return SourceAuthorityGrade(
+                source_authority="official_statistics",
+                authority_level="primary",
+                authority_score=0.95,
+                trust_level="high",
+                source_document_type=doc_type,
+                allowed_claim_types=tuple(sorted(MACRO_CLAIMS | EVENT_CLAIMS)),
+                reason="official macroeconomic, statistical, or policy source",
+            )
+        if source_type in INDUSTRY_SOURCE_TYPES or matches_domain(domain, INDUSTRY_DOMAINS):
+            return SourceAuthorityGrade(
+                source_authority="industry_authority",
+                authority_level="secondary",
+                authority_score=0.82,
+                trust_level="high",
+                source_document_type=doc_type,
+                allowed_claim_types=tuple(sorted(INDUSTRY_CLAIMS | EVENT_CLAIMS)),
+                reason="industry authority or official sector statistics source",
             )
         if matches_domain(domain, COMPANY_DOMAINS):
             return SourceAuthorityGrade(
@@ -206,6 +246,12 @@ def infer_document_type(source_type: str, url: str, title: str = "") -> str:
         return "investor_presentation"
     if "market" in source_type:
         return "market_snapshot"
+    if source_type in MACRO_SOURCE_TYPES or "fred" in text or "bls" in text or "bea" in text:
+        return "macro_statistic"
+    if "fomc" in text or "federalreserve.gov" in text:
+        return "policy_release"
+    if source_type in INDUSTRY_SOURCE_TYPES:
+        return "industry_context"
     if "news" in source_type or source_type == "web_search":
         return "web_or_news"
     return source_type or "unknown"

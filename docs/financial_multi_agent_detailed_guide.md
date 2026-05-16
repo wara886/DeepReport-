@@ -24,6 +24,9 @@
 5. 输出 Markdown / HTML / JSON 报告。
 6. 自动生成引用表、图表、验证报告。
 7. 当验证未通过时，触发一轮 `Verifier -> FinalAnswer` 自动返工。
+8. 可选启用 durable memory；默认只作为 Planner/Router 历史提示，不替代证据和验证。
+9. 通过静态 `SkillRegistry` 给 Planner/Router 提供金融技能摘要和 task routing trace。
+10. 可通过 competition packaging smoke 导出公司/行业/宏观 DOCX 和 `results.zip`。
 
 ## 3. 系统架构
 
@@ -61,6 +64,10 @@
 
 - `ToolRegistry`
   - 暴露本地金融工具和 schema。
+
+- `SkillRegistry`
+  - 暴露静态金融技能摘要，如证据发现、财务分析、报告组装、验证返工。
+  - Planner 会读取全局 skill brief；dynamic router 会按 task_type/query 选择技能并写入 `task_route_context.json`。
 
 - `MCPManager`
   - 导出本地工具 manifest。
@@ -108,6 +115,7 @@ BM25 lexical recall
 
 - 优先尝试 `chromadb` 本地 ephemeral collection。
 - 如果本地未安装 `chromadb` 或 `sentence-transformers`，自动回退到内存向量索引。
+- 这里的 Chroma 是检索层，不是独立数据源；它只对已经进入 evidence 的记录做语义召回，不能替代 FRED、SEC、BLS、BEA 或行业数据库。
 - embedding 默认对齐轻量模型路线：
   - `BAAI/bge-small-en-v1.5`
 
@@ -167,9 +175,52 @@ data/outputs/multi_agent/revision_history.json
 
 当前默认最多返工 1 轮，目的是先把闭环建立起来，而不是过早引入复杂循环策略。
 
-## 6. 运行方式
+## 6. Memory 与 SkillRegistry
 
-### 6.1 基础环境
+### 6.1 Durable Memory
+
+`src/agents/durable_memory.py` 提供文件化 durable memory，默认关闭。显式开启时会写入：
+
+- `memory/working/`
+- `memory/episodic/`
+- `memory/domain/`
+
+当前默认策略是：
+
+```text
+memory.durable.context_scope: planner_router
+```
+
+也就是说，历史 brief 只作为 Planner/Router 的上下文提示使用，不会默认灌入所有下游 agent。报告事实仍必须来自 evidence records，并继续通过 citation、numeric audit、Verifier gate。
+
+### 6.2 SkillRegistry
+
+`src/tools/skill_registry.py` 提供静态金融技能目录。当前默认技能包括：
+
+- `evidence_discovery`
+- `financial_statement_analysis`
+- `report_assembly`
+- `verification_rework`
+- `industry_research`
+- `macro_context`
+
+Planner 会读取全局 skill brief；dynamic router 会为每个 task 选择匹配 skill，写入 task metadata，并输出：
+
+```text
+data/outputs/multi_agent/task_route_context.json
+```
+
+默认目录位于：
+
+```text
+configs/skill_registry.yaml
+```
+
+这个模块目前是配置化 MVP，不是自动学习技能库。它的价值是先把“能力选择”和“可追溯路由”接入主链，后续再进入评估化。
+
+## 7. 运行方式
+
+### 7.1 基础环境
 
 项目基于 Python 3.10+。
 
@@ -192,7 +243,7 @@ python -m playwright install chromium
 pip install '.[local_rag]'
 ```
 
-### 6.2 模型配置
+### 7.2 模型配置
 
 模型后端配置：
 
@@ -207,9 +258,13 @@ DEEPSEEK_API_KEY=...
 DEEPSEEK_MODEL=deepseek-v4-flash
 TAVILY_API_KEY=...
 SERPER_API_KEY=...
+FRED_API_KEY=...
+BLS_API_KEY=...
+BEA_API_KEY=...
+SEC_USER_AGENT='DeepReportPlus/0.1 your_email@example.com'
 ```
 
-### 6.3 本地 RAG 模型预热
+### 7.3 本地 RAG 模型预热
 
 预热脚本：
 
@@ -228,22 +283,44 @@ configs/local_rag.yaml
 - embedding: `BAAI/bge-small-en-v1.5`
 - reranker: `BAAI/bge-reranker-base`
 
-## 7. 常用运行命令
+## 8. 常用运行命令
 
-### 7.1 任务规划 smoke
+### 8.1 任务规划 smoke
 
 ```bash
 python scripts/run_planning_agent_smoke.py
 ```
 
-### 7.2 联网搜索 smoke
+### 8.2 联网搜索 smoke
 
 ```bash
 python scripts/run_tavily_smoke.py
 python scripts/run_deepseek_smoke.py
 ```
 
-### 7.3 动态多 Agent demo
+### 8.2.1 独立数据源与 DeepSeek realtime smoke
+
+默认不联网，只验证报告路径和 skip reason：
+
+```bash
+python scripts/run_realtime_data_smoke.py \
+  --symbol AAPL \
+  --period 2025Q4
+```
+
+启用远程数据源和 DeepSeek：
+
+```bash
+python scripts/run_realtime_data_smoke.py \
+  --symbol AAPL \
+  --period 2025Q4 \
+  --enable-remote-data \
+  --use-deepseek
+```
+
+缺少 `DEEPSEEK_API_KEY`、`FRED_API_KEY`、`BEA_API_KEY`、`TAVILY_API_KEY` 或 `SERPER_API_KEY` 时，脚本会在 summary 中记录 `missing_api_key`，而不是把 smoke 误判为业务失败。
+
+### 8.3 动态多 Agent demo
 
 ```bash
 python scripts/run_multi_agent_demo.py \
@@ -264,7 +341,7 @@ python scripts/run_multi_agent_demo.py \
   --fast
 ```
 
-### 7.4 本地 UI
+### 8.4 本地 UI
 
 ```bash
 python scripts/run_financial_agent_ui.py --host 127.0.0.1 --port 8787
@@ -276,7 +353,7 @@ python scripts/run_financial_agent_ui.py --host 127.0.0.1 --port 8787
 http://127.0.0.1:8787
 ```
 
-### 7.5 MCP 服务
+### 8.5 MCP 服务
 
 ```bash
 python scripts/run_mcp_server.py --host 127.0.0.1 --port 8765
@@ -288,7 +365,43 @@ python scripts/run_mcp_server.py --host 127.0.0.1 --port 8765
 curl http://127.0.0.1:8765/mcp/manifest
 ```
 
-## 8. 输出物说明
+### 8.6 Competition packaging smoke
+
+从现有公司研报 artifacts 打包：
+
+```bash
+python scripts/run_competition.py --skip-company-run
+```
+
+重新跑公司主链并打包：
+
+```bash
+python scripts/run_competition.py --symbol AAPL --period 2025Q4 --fast
+```
+
+输出包括三份 DOCX、`results.zip`、`industry_report.json` 和 `macro_report.json`。默认情况下 Industry/Macro 可离线基于公司主链 artifacts 打包；如果需要把独立 SEC/宏观/政策 evidence 写入 Industry/Macro 报告，使用：
+
+```bash
+python scripts/run_competition.py \
+  --symbol AAPL \
+  --period 2025Q4 \
+  --fast \
+  --realtime-data
+```
+
+最终本地 qwen3 交付路径：
+
+```bash
+python scripts/run_competition.py \
+  --config configs/model_backends_local_ollama.yaml \
+  --symbol AAPL \
+  --period 2025Q4 \
+  --fast
+```
+
+真实边界：`--realtime-data` 只表示系统会尝试拉取独立数据源；如果 key、网络或源端返回失败，报告会记录 `failure_reason`，不会宣称已经拿到最新宏观或行业事实。
+
+## 9. 输出物说明
 
 动态主链默认输出到：
 
@@ -305,11 +418,14 @@ data/reports/multi_agent/
 - `task_trace.jsonl`
   - 每个 agent/task 的执行轨迹、状态、耗时。
 
+- `task_route_context.json`
+  - Router 为每个 task 选择的 skill 和 memory context policy。
+
 - `search_meta.json`
   - 本轮研究用了哪些搜索源，各引擎返回了什么元信息。
 
 - `evidence.json`
-  - 浏览归一后的证据记录。
+  - 浏览归一后的证据记录。当前会包含 `source_timestamp`、`data_cutoff`、`freshness_bucket`、`evidence_scope` 等时效与边界字段。
 
 - `claims.json`
   - 分析生成的 claim 列表。
@@ -341,7 +457,18 @@ data/reports/multi_agent/
 - `report.json`
   - 结构化报告 payload。
 
-## 9. 代码结构建议阅读顺序
+Competition packaging 额外输出：
+
+- `industry_report.md` / `industry_report.json`
+  - IndustryResearchAgent 生成的行业报告；如果提供独立 evidence，会输出 `independent_evidence_count`、`freshness_summary`、`source_boundary`。
+
+- `macro_report.md` / `macro_report.json`
+  - MacroResearchAgent 生成的宏观传导框架报告；如果提供 FRED/BLS/BEA/Federal Reserve/SEC evidence，会输出对应 evidence ids 和 source boundary。
+
+- `results.zip`
+  - Company/Industry/Macro 三份 DOCX 打包文件。
+
+## 10. 代码结构建议阅读顺序
 
 如果是第一次接手这个仓库，建议按下面顺序读：
 
@@ -357,7 +484,7 @@ data/reports/multi_agent/
 10. `src/agents/final_answer_agent.py`
 11. `src/agents/verifier_agent.py`
 
-## 10. 当前边界与不足
+## 11. 当前边界与不足
 
 虽然动态多 Agent 主链已经建立，但项目还没有完全进入“成熟生产版”：
 
@@ -367,8 +494,10 @@ data/reports/multi_agent/
 - A 股公告、交易所、巨潮等中文金融源还没完全接入。
 - 验证器虽然已有自动返工，但返工轮次控制、修复策略选择还较简单。
 - SearchManager 已经是聚合层，但 source quality ranking 还可以继续做细。
+- SkillRegistry 当前是配置化 MVP，尚未进入学习型技能系统。
+- Industry/Macro 交付已有专用本地 Agent 与独立数据源 v1 适配器；但行业 TAM、市场份额、产业链价格和全球宏观终端覆盖仍需要后续增强。
 
-## 11. 下一步建议
+## 12. 下一步建议
 
 建议后续按这个优先级推进：
 
@@ -376,9 +505,11 @@ data/reports/multi_agent/
 2. 补股本、市值、EV、同行选择规则。
 3. 把 verifier 的数值核查做得更细，增强图文一致性验证。
 4. 完善中文金融源接入。
-5. 如果本地资源允许，再进一步增强 reranker / verifier / rewriter 的轻量训练闭环。
+5. 用更宽 case set 评估 SkillRegistry routing 对验证通过率和 unsupported fallback 的影响。
+6. 给 Industry/Macro Agent 继续补行业专用数据库、TAM/份额/供需周期和更多国家/地区宏观源。
+7. 如果本地资源允许，再进一步增强 reranker / verifier / rewriter 的轻量训练闭环。
 
-## 12. 对 GitHub 读者的建议
+## 13. 对 GitHub 读者的建议
 
 如果你是在 GitHub 上第一次看到这个项目，最重要的判断是：
 

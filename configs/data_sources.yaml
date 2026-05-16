@@ -55,3 +55,59 @@ search:
     timeout_ms: 12000
     wait_until: domcontentloaded
     max_chars: 3000
+
+independent_sources:
+  macro:
+    fred:
+      mode: remote_optional
+      base_url: https://api.stlouisfed.org/fred/series/observations
+      api_key_env: FRED_API_KEY
+      timeout: 20
+      series:
+        FEDFUNDS: Effective Federal Funds Rate
+        DGS10: 10-Year Treasury Constant Maturity Rate
+        CPIAUCSL: Consumer Price Index for All Urban Consumers
+        UNRATE: Unemployment Rate
+    bls:
+      mode: remote_optional
+      base_url: https://api.bls.gov/publicAPI/v2/timeseries/data/
+      api_key_env: BLS_API_KEY
+      timeout: 20
+      series:
+        CUUR0000SA0: Consumer Price Index for All Urban Consumers
+        LNS14000000: Unemployment Rate
+    bea:
+      mode: remote_optional
+      base_url: https://apps.bea.gov/api/data/
+      api_key_env: BEA_API_KEY
+      datasetname: NIPA
+      table_name: T10101
+      frequency: Q
+      timeout: 20
+    federal_reserve:
+      mode: remote_optional
+      url: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
+      timeout: 12
+  company:
+    sec_edgar:
+      mode: remote_optional
+      companyfacts_base_url: https://data.sec.gov/api/xbrl/companyfacts
+      user_agent_env: SEC_USER_AGENT
+      timeout: 20
+      cik_map:
+        AAPL: "0000320193"
+        GOOGL: "0001652044"
+        MSFT: "0000789019"
+        NVDA: "0001045810"
+        TSLA: "0001318605"
+        AMD: "0000002488"
+  industry:
+    authority_domains:
+      - sec.gov
+      - census.gov
+      - eia.gov
+      - trade.gov
+      - federalreserve.gov
+      - bls.gov
+      - bea.gov
+      - fred.stlouisfed.org

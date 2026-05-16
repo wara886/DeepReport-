@@ -13,6 +13,7 @@ from urllib import error, request
 import pandas as pd
 
 from src.data.company_universe import resolve_company_identifier, resolve_symbol
+from src.data.independent_sources import fetch_macro_evidence, fetch_sec_companyfacts_evidence
 from src.data.source_quality import apply_source_quality
 from src.data.yahoo_finance import yahoo_snapshot_to_evidence
 from src.retrieval.chunking import chunk_records
@@ -75,6 +76,8 @@ class SearchManager:
         load_env_files(config_path="configs/data_sources.yaml")
         manager = cls()
         manager.register_engine("local_real_data", local_real_data_search)
+        manager.register_engine("independent_macro", independent_macro_search)
+        manager.register_engine("sec_edgar", sec_edgar_search)
         manager.register_engine("yahoo_finance", yahoo_finance_search)
         manager.register_engine("serper", serper_search)
         manager.register_engine("tavily", tavily_search)
@@ -536,6 +539,51 @@ def yahoo_finance_search(
             "result_count": 1,
         },
     }
+
+
+def independent_macro_search(
+    query: str,
+    topk: int = 5,
+    period: str | None = None,
+    data_source_config_path: str = "configs/data_sources.yaml",
+    enable_remote: bool = False,
+    **_: Any,
+) -> Dict[str, Any]:
+    if not enable_remote:
+        return {
+            "hits": [],
+            "meta": {"mode": "independent_macro", "query": query, "record_count": 0, "failure_reason": "remote_sources_disabled"},
+        }
+    payload = fetch_macro_evidence(period=period or "", config_path=data_source_config_path, topk=topk).to_dict()
+    payload["meta"]["query"] = query
+    return payload
+
+
+def sec_edgar_search(
+    query: str,
+    topk: int = 5,
+    symbol: str | None = None,
+    period: str | None = None,
+    data_source_config_path: str = "configs/data_sources.yaml",
+    raw_data_root: str = "data/raw/real_data",
+    enable_remote: bool = False,
+    **_: Any,
+) -> Dict[str, Any]:
+    if not enable_remote:
+        return {
+            "hits": [],
+            "meta": {"mode": "sec_companyfacts", "query": query, "record_count": 0, "failure_reason": "remote_sources_disabled"},
+        }
+    resolved_symbol = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or _extract_symbol_from_query(query) or "")
+    payload = fetch_sec_companyfacts_evidence(
+        symbol=resolved_symbol,
+        period=period or "",
+        config_path=data_source_config_path,
+        raw_data_root=raw_data_root,
+    ).to_dict()
+    payload["hits"] = payload.get("hits", [])[:topk]
+    payload["meta"]["query"] = query
+    return payload
 
 
 def _normalize_hits(engine: str, hits: Any) -> List[SearchResult]:

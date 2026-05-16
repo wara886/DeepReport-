@@ -255,7 +255,7 @@ def calculate_financial_ratios_tool(records: List[Dict[str, Any]]) -> Dict[str, 
 
 
 def build_trend_features_tool(records: List[Dict[str, Any]]) -> Dict[str, Any]:
-    df = pd.DataFrame(records)
+    df = pd.DataFrame([_backfill_record_metadata(item) for item in records])
     result = build_trend_features(df)
     return {"rows": result.to_dict(orient="records")}
 
@@ -312,3 +312,14 @@ def render_all_charts_tool(
 def attach_charts_to_report_tool(report_path: str, metadata: List[Dict[str, str]]) -> Dict[str, str]:
     path = attach_charts_to_report(report_path=report_path, metadata=metadata)
     return {"report_path": str(path)}
+
+
+def _backfill_record_metadata(record: Dict[str, Any]) -> Dict[str, Any]:
+    row = dict(record)
+    metadata = row.get("metadata", {}) if isinstance(row.get("metadata"), dict) else {}
+    for key in ["symbol", "period", "source_type", "publish_time", "sample_id"]:
+        if row.get(key) in (None, "") and metadata.get(key) not in (None, ""):
+            row[key] = metadata.get(key)
+    if row.get("sample_id") in (None, "") and row.get("evidence_id") not in (None, ""):
+        row["sample_id"] = row.get("evidence_id")
+    return row

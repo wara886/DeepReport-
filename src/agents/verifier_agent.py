@@ -42,6 +42,7 @@ class VerifierAgent(BaseAgent):
         tables = task.parameters.get("tables", [])
         valuation = task.parameters.get("valuation", {})
         conversation_brief = str(task.parameters.get("conversation_brief", "")).strip()
+        skill_brief = str(task.parameters.get("skill_brief", "")).strip()
         expected_symbol = str(task.parameters.get("expected_symbol", "")).strip().upper()
         entity_resolution = task.parameters.get("entity_resolution", {})
         rule_report = self.rule_verifier.verify(
@@ -88,6 +89,7 @@ class VerifierAgent(BaseAgent):
                         evidence_records=packed_evidence,
                         available_evidence_ids=all_evidence_ids,
                         conversation_brief=conversation_brief,
+                        skill_brief=skill_brief,
                     ),
                     system_prompt=VERIFIER_SYSTEM_PROMPT,
                 )
@@ -138,11 +140,14 @@ def _build_verifier_prompt(
     evidence_records: List[Dict[str, Any]],
     available_evidence_ids: List[str] | None = None,
     conversation_brief: str = "",
+    skill_brief: str = "",
 ) -> str:
     evidence_ids = available_evidence_ids or [str(item.get("evidence_id", "")) for item in evidence_records[:30] if isinstance(item, dict)]
     memory_line = f"Conversation memory:\n{conversation_brief}\n" if conversation_brief else ""
+    skill_line = f"Relevant skill brief:\n{skill_brief}\n" if skill_brief else ""
     return (
         f"{memory_line}"
+        f"{skill_line}"
         f"Rule verifier report: {rule_report}\n"
         f"Available evidence ids: {evidence_ids}\n"
         f"Claims: {claims[:20]}\n"

@@ -52,6 +52,7 @@ class DeepAnalyzeAgent(BaseAgent):
         period = str(task.parameters.get("period") or _first_period(records))
         raw_data_root = str(task.parameters.get("raw_data_root") or "data/raw/real_data")
         react_attempted = bool(task.parameters.get("use_react", False))
+        skill_brief = str(task.parameters.get("skill_brief", "")).strip()
         react_payload: Dict[str, Any] = {}
         if react_attempted and self.model and hasattr(self.model, "chat"):
             react_payload = self._run_react_analysis(
@@ -60,6 +61,7 @@ class DeepAnalyzeAgent(BaseAgent):
                 symbol=symbol,
                 period=period,
                 raw_data_root=raw_data_root,
+                skill_brief=skill_brief,
             )
 
         ratio_rows = _react_tool_result(react_payload, "calculate_financial_ratios", "rows")
@@ -106,6 +108,7 @@ class DeepAnalyzeAgent(BaseAgent):
             "react_attempted": react_attempted,
             "react_used": bool(react_payload.get("tool_results")),
             "react_trace": react_payload.get("react_trace", []),
+            "skill_brief_chars": len(skill_brief),
         }
 
         if self.model and records:
@@ -118,6 +121,7 @@ class DeepAnalyzeAgent(BaseAgent):
                         statement_view=statement_view,
                         peer_context=peer_context,
                         valuation=valuation,
+                        skill_brief=skill_brief,
                     ),
                     system_prompt=ANALYZE_SYSTEM_PROMPT,
                     extra_body={"max_tokens": int(task.parameters.get("max_tokens", 1800) or 1800)},
@@ -162,6 +166,7 @@ class DeepAnalyzeAgent(BaseAgent):
         symbol: str,
         period: str,
         raw_data_root: str,
+        skill_brief: str = "",
     ) -> Dict[str, Any]:
         allowed_tools = [
             "calculate_financial_ratios",
@@ -201,6 +206,7 @@ class DeepAnalyzeAgent(BaseAgent):
             user_prompt=(
                 f"Analyze symbol={symbol}, period={period}. "
                 f"Evidence records available: {len(records)}. "
+                f"{'Relevant skills: ' + skill_brief + ' ' if skill_brief else ''}"
                 "Call the tools needed for a company stock research report."
             ),
             tool_schemas=schemas,
@@ -598,6 +604,7 @@ def _build_analyze_prompt(
     statement_view: Dict[str, Any] | None = None,
     peer_context: Dict[str, Any] | None = None,
     valuation: Dict[str, Any] | None = None,
+    skill_brief: str = "",
 ) -> str:
     compact_records = [
         {
@@ -608,8 +615,10 @@ def _build_analyze_prompt(
         }
         for item in records[:10]
     ]
+    skill_line = f"Relevant skill brief:\n{skill_brief}\n" if skill_brief else ""
     return (
         "Generate concise, evidence-backed financial report claims. All claim_text values must be Chinese.\n"
+        f"{skill_line}"
         f"Evidence records: {compact_records}\n"
         f"Financial ratio rows: {ratio_rows[:10]}\n"
         f"Trend rows: {trend_rows[:10]}\n"

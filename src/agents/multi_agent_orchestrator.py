@@ -38,7 +38,7 @@ from src.report import (
     render_professional_html_report,
 )
 from src.search import SearchManager
-from src.tools import build_core_tool_registry
+from src.tools import SkillRegistry, build_core_tool_registry, build_financial_skill_registry
 from src.utils.config import load_config
 from src.utils import MCPManager
 
@@ -105,6 +105,8 @@ class MultiAgentOrchestrator:
         memory_enabled: bool | None = None,
         memory_root: str | None = None,
         memory_max_context_chars: int | None = None,
+        skill_registry: SkillRegistry | None = None,
+        skill_registry_config_path: str | None = "configs/skill_registry.yaml",
     ):
         self.output_dir = Path(output_dir)
         self.report_dir = Path(report_dir)
@@ -124,6 +126,7 @@ class MultiAgentOrchestrator:
         )
         self.model = model or ModelAdapter.from_config(config_path=config_path)
         self.tool_registry = build_core_tool_registry()
+        self.skill_registry = skill_registry or build_financial_skill_registry(config_path=skill_registry_config_path)
         self.mcp_manager = MCPManager.from_tool_registry(self.tool_registry, namespace="finance")
         self.search_manager = search_manager or SearchManager.with_local_sources()
         self.agents = {
@@ -209,13 +212,28 @@ class MultiAgentOrchestrator:
             period=period,
             report_type=conversation.report_type,
         )
-        if durable_memory_brief:
+        if durable_memory_brief and _share_durable_memory_with_agents(self.memory_config.context_scope):
             conversation.add_turn("system", durable_memory_brief, {"source": "durable_memory"})
             conversation_brief = _join_context_briefs(
                 conversation.context_brief(),
                 durable_memory_brief,
                 max_chars=self.memory_config.max_context_chars,
             )
+        planner_memory_brief = (
+            durable_memory_brief
+            if _use_durable_memory_for_planner_router(self.memory_config.context_scope)
+            and not _share_durable_memory_with_agents(self.memory_config.context_scope)
+            else ""
+        )
+        planning_context_brief = _join_context_briefs(
+            conversation_brief,
+            planner_memory_brief,
+            max_chars=self.memory_config.max_context_chars,
+        )
+        planning_skill_brief = self._skill_brief(
+            query=f"{research_topic} {' '.join(requirements)}",
+            task_type="planning",
+        )
 
         planning_result = self._execute(
             "planning",
@@ -228,7 +246,8 @@ class MultiAgentOrchestrator:
                     "requirements": requirements,
                     "output_format": "markdown, html, json with citations",
                     "force_fallback_plan": bool(fast),
-                    "conversation_brief": conversation_brief,
+                    "conversation_brief": planning_context_brief,
+                    "skill_brief": planning_skill_brief,
                 },
                 priority=5,
             ),
@@ -251,6 +270,7 @@ class MultiAgentOrchestrator:
                     "engines": search_engines or ["local_real_data", "tavily", "local_evidence"],
                     "raw_data_root": self.raw_data_root,
                     "ranking_mode": retrieval_ranking_mode,
+                    "skill_brief": self._skill_brief(research_query, "deep_researcher", max_items=2),
                 },
                 dependencies=["task_000_planning"],
                 priority=5,
@@ -278,7 +298,13 @@ class MultiAgentOrchestrator:
                 task_id="task_003_analyze",
                 task_type="deep_analyze",
                 description="Generate financial claims from evidence records.",
-                parameters={"evidence_records": evidence_records, "symbol": symbol, "period": period, "raw_data_root": self.raw_data_root},
+                parameters={
+                    "evidence_records": evidence_records,
+                    "symbol": symbol,
+                    "period": period,
+                    "raw_data_root": self.raw_data_root,
+                    "skill_brief": self._skill_brief("financial analysis valuation peer trend", "deep_analyze", max_items=2),
+                },
                 dependencies=["task_002_browser"],
                 priority=5,
             ),
@@ -319,6 +345,7 @@ class MultiAgentOrchestrator:
                     "claims": claims,
                     "evidence_records": evidence_records,
                     "conversation_brief": conversation_brief,
+                    "skill_brief": self._skill_brief("report markdown citations charts", "final_answer", max_items=2),
                 },
                 dependencies=["task_003_analyze"],
                 priority=4,
@@ -400,6 +427,7 @@ class MultiAgentOrchestrator:
                     "tables": analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
                     "valuation": analysis_artifacts.get("valuation", {}) if isinstance(analysis_artifacts, dict) else {},
                     "conversation_brief": conversation_brief,
+                    "skill_brief": self._skill_brief("verify evidence gaps citations lineage", "verifier", max_items=2),
                     "expected_symbol": symbol,
                     "period": period,
                     "entity_resolution": entity_resolution,
@@ -457,6 +485,9 @@ class MultiAgentOrchestrator:
             "entity_resolution": entity_resolution,
             "conversation_brief_chars": len(conversation_brief),
             "durable_memory_enabled": self.memory_config.enabled,
+            "durable_memory_context_scope": self.memory_config.context_scope,
+            "skill_registry_enabled": bool(self.skill_registry.names()),
+            "skill_count": len(self.skill_registry.names()),
             "total_duration_sec": round(time.perf_counter() - run_started_at, 3),
         }
         if self.memory_config.enabled:
@@ -538,13 +569,28 @@ class MultiAgentOrchestrator:
             period=period,
             report_type=conversation.report_type,
         )
-        if durable_memory_brief:
+        if durable_memory_brief and _share_durable_memory_with_agents(self.memory_config.context_scope):
             conversation.add_turn("system", durable_memory_brief, {"source": "durable_memory"})
             conversation_brief = _join_context_briefs(
                 conversation.context_brief(),
                 durable_memory_brief,
                 max_chars=self.memory_config.max_context_chars,
             )
+        planner_memory_brief = (
+            durable_memory_brief
+            if _use_durable_memory_for_planner_router(self.memory_config.context_scope)
+            and not _share_durable_memory_with_agents(self.memory_config.context_scope)
+            else ""
+        )
+        planning_context_brief = _join_context_briefs(
+            conversation_brief,
+            planner_memory_brief,
+            max_chars=self.memory_config.max_context_chars,
+        )
+        planning_skill_brief = self._skill_brief(
+            query=f"{research_topic} {' '.join(requirements)}",
+            task_type="planning",
+        )
 
         planning_result = self._execute(
             "planning",
@@ -556,7 +602,8 @@ class MultiAgentOrchestrator:
                     "research_topic": research_topic,
                     "requirements": requirements,
                     "output_format": "markdown, html, json with citations",
-                    "conversation_brief": conversation_brief,
+                    "conversation_brief": planning_context_brief,
+                    "skill_brief": planning_skill_brief,
                 },
                 priority=5,
             ),
@@ -587,6 +634,8 @@ class MultiAgentOrchestrator:
             "conversation_brief": conversation_brief,
             "durable_memory_brief": durable_memory_brief,
             "durable_memory_enabled": self.memory_config.enabled,
+            "durable_memory_context_scope": self.memory_config.context_scope,
+            "planner_skill_brief": planning_skill_brief,
             "performance_profile": "fast" if fast else "default",
             "search_engines": search_engines or [],
             "retrieval_ranking_mode": retrieval_ranking_mode,
@@ -601,7 +650,13 @@ class MultiAgentOrchestrator:
             profile=FAST_PROFILE if fast else DEFAULT_PROFILE,
             search_engines=search_engines,
             retrieval_ranking_mode=retrieval_ranking_mode,
+            skill_registry=self.skill_registry,
+            router_memory_brief=durable_memory_brief
+            if _use_durable_memory_for_planner_router(self.memory_config.context_scope)
+            else "",
+            router_context_max_chars=self.memory_config.max_context_chars,
         )
+        route_context_path = self._write_json("task_route_context.json", build_task_route_context(tasks))
         results = self._execute_dynamic_tasks(tasks=tasks, state=state)
         self._run_verifier_rework_loop(state=state)
 
@@ -719,6 +774,9 @@ class MultiAgentOrchestrator:
             "entity_resolution": entity_resolution,
             "conversation_brief_chars": len(str(state.get("conversation_brief", ""))),
             "durable_memory_enabled": self.memory_config.enabled,
+            "durable_memory_context_scope": self.memory_config.context_scope,
+            "skill_registry_enabled": bool(self.skill_registry.names()),
+            "skill_count": len(self.skill_registry.names()),
             "total_duration_sec": round(time.perf_counter() - run_started_at, 3),
         }
         durable_memory_artifacts: Dict[str, str] = {}
@@ -732,6 +790,7 @@ class MultiAgentOrchestrator:
 
         return {
             "task_plan": str(self.output_dir / "task_plan.json"),
+            "task_route_context": str(route_context_path),
             "task_trace": str(trace_path),
             "search_meta": str(self.output_dir / "search_meta.json"),
             "evidence": str(self.output_dir / "evidence.json"),
@@ -817,6 +876,16 @@ class MultiAgentOrchestrator:
             period=period,
             report_type=report_type,
             max_chars=self.memory_config.max_context_chars,
+        )
+
+    def _skill_brief(self, query: str, task_type: str, max_items: int = 4) -> str:
+        if not self.skill_registry:
+            return ""
+        return self.skill_registry.render_brief(
+            query=query,
+            task_type=task_type,
+            max_items=max_items,
+            max_chars=min(1600, self.memory_config.max_context_chars),
         )
 
     def _run_verifier_rework_loop(self, state: Dict[str, Any]) -> None:
@@ -928,6 +997,9 @@ def prepare_dynamic_tasks(
     profile: Dict[str, Any] | None = None,
     search_engines: List[str] | None = None,
     retrieval_ranking_mode: str = "hybrid_rerank",
+    skill_registry: SkillRegistry | None = None,
+    router_memory_brief: str = "",
+    router_context_max_chars: int = 1600,
 ) -> List[AgentTask]:
     profile = profile or DEFAULT_PROFILE
     raw_tasks = plan.get("tasks", []) if isinstance(plan, dict) else []
@@ -959,6 +1031,25 @@ def prepare_dynamic_tasks(
     cleaned = []
     for task in tasks:
         params = dict(task.parameters)
+        metadata = dict(task.metadata)
+        if skill_registry:
+            route_query = f"{research_topic} {symbol} {period} {task.description} {json.dumps(params, ensure_ascii=False, default=str)}"
+            selected_skills = skill_registry.select(query=route_query, task_type=task.task_type, max_items=2)
+            skill_brief = skill_registry.render_brief(
+                query=route_query,
+                task_type=task.task_type,
+                max_items=2,
+                max_chars=min(900, int(router_context_max_chars)),
+            )
+            if skill_brief:
+                params.setdefault("skill_brief", skill_brief)
+            metadata["selected_skills"] = [skill.name for skill in selected_skills]
+        if router_memory_brief:
+            metadata["memory_context_policy"] = {
+                "durable_memory_available": True,
+                "scope": "planner_router_hint_only",
+                "brief_chars": min(len(router_memory_brief), int(router_context_max_chars)),
+            }
         if task.task_type == "deep_researcher":
             params.setdefault("query", f"{symbol} {period} {task.description}")
             params["symbol"] = symbol
@@ -975,10 +1066,29 @@ def prepare_dynamic_tasks(
                 parameters=params,
                 dependencies=[dep for dep in task.dependencies if dep in cleaned_ids],
                 priority=task.priority,
-                metadata=dict(task.metadata),
+                metadata=metadata,
             )
         )
     return cleaned
+
+
+def build_task_route_context(tasks: List[AgentTask]) -> Dict[str, Any]:
+    """Summarize router-selected skills and context policies for traceability."""
+
+    return {
+        "tasks": [
+            {
+                "task_id": task.task_id,
+                "task_type": task.task_type,
+                "selected_skills": list(task.metadata.get("selected_skills", []))
+                if isinstance(task.metadata.get("selected_skills", []), list)
+                else [],
+                "memory_context_policy": task.metadata.get("memory_context_policy", {}),
+                "skill_brief_chars": len(str(task.parameters.get("skill_brief", ""))),
+            }
+            for task in tasks
+        ]
+    }
 
 
 def ensure_minimum_task_graph(
@@ -1099,7 +1209,7 @@ def enrich_task_parameters(
         params.setdefault("raw_data_root", raw_data_root)
         params.setdefault("ranking_mode", str(state.get("retrieval_ranking_mode", "hybrid_rerank")))
     elif task.task_type == "browser":
-        if not params.get("evidence_candidates"):
+        if not isinstance(params.get("evidence_candidates"), list) or not params.get("evidence_candidates"):
             params["evidence_candidates"] = list(state.get("evidence_candidates", []))
         params.setdefault("skip_llm_extract", bool(profile["browser_skip_llm_extract"]))
         params.setdefault("use_reader", bool(profile["browser_use_reader"]))
@@ -1108,7 +1218,7 @@ def enrich_task_parameters(
         params.setdefault("reader_max_chars", int(profile["browser_reader_max_chars"]))
         params.setdefault("max_llm_records", int(profile["browser_max_llm_records"]))
     elif task.task_type == "deep_analyze":
-        if not params.get("evidence_records"):
+        if not isinstance(params.get("evidence_records"), list) or not params.get("evidence_records"):
             params["evidence_records"] = list(state.get("evidence_records", []))
         params.setdefault("symbol", state["symbol"])
         params.setdefault("period", state["period"])
@@ -1120,9 +1230,9 @@ def enrich_task_parameters(
         params.setdefault("react_max_steps", int(profile.get("analyze_react_max_steps", 3)))
     elif task.task_type == "final_answer":
         params.setdefault("research_topic", state["research_topic"])
-        if not params.get("claims"):
+        if not isinstance(params.get("claims"), list) or not params.get("claims"):
             params["claims"] = list(state.get("claims", []))
-        if not params.get("evidence_records"):
+        if not isinstance(params.get("evidence_records"), list) or not params.get("evidence_records"):
             params["evidence_records"] = list(state.get("evidence_records", []))
         params.setdefault("max_claims", int(profile["final_max_claims"]))
         params.setdefault("max_evidence", int(profile["final_max_evidence"]))
@@ -1130,13 +1240,13 @@ def enrich_task_parameters(
         params.setdefault("max_tokens", int(profile["final_max_tokens"]))
         params.setdefault("conversation_brief", str(state.get("conversation_brief", "")))
     elif task.task_type == "verifier":
-        if not params.get("claims"):
+        if not isinstance(params.get("claims"), list) or not params.get("claims"):
             params["claims"] = list(state.get("claims", []))
         if not params.get("markdown"):
             params["markdown"] = str(state.get("markdown", ""))
-        if not params.get("evidence_records"):
+        if not isinstance(params.get("evidence_records"), list) or not params.get("evidence_records"):
             params["evidence_records"] = list(state.get("evidence_records", []))
-        if not params.get("charts"):
+        if not isinstance(params.get("charts"), list) or not params.get("charts"):
             params["charts"] = list(state.get("charts", []))
         if not params.get("tables"):
             params["tables"] = dict(state.get("analysis_artifacts", {})).get("tables", [])
@@ -1375,7 +1485,34 @@ def _load_durable_memory_config(
         ),
         max_domain_items=int(durable.get("max_domain_items", 12) or 12),
         max_episodic_items=int(durable.get("max_episodic_items", 6) or 6),
+        context_scope=_normalize_memory_context_scope(durable.get("context_scope", "planner_router")),
     )
+
+
+def _normalize_memory_context_scope(value: Any) -> str:
+    scope = str(value or "planner_router").strip().lower()
+    aliases = {
+        "planner": "planner_router",
+        "router": "planner_router",
+        "planner-router": "planner_router",
+        "all": "all_agents",
+        "all_agent": "all_agents",
+        "agents": "all_agents",
+        "off": "disabled",
+        "none": "disabled",
+    }
+    scope = aliases.get(scope, scope)
+    if scope not in {"planner_router", "all_agents", "disabled"}:
+        return "planner_router"
+    return scope
+
+
+def _use_durable_memory_for_planner_router(context_scope: str) -> bool:
+    return _normalize_memory_context_scope(context_scope) in {"planner_router", "all_agents"}
+
+
+def _share_durable_memory_with_agents(context_scope: str) -> bool:
+    return _normalize_memory_context_scope(context_scope) == "all_agents"
 
 
 def _join_context_briefs(primary: str, secondary: str, max_chars: int) -> str:

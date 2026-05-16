@@ -142,6 +142,9 @@ def _run_case_variant(
     verification = _read_dict(outputs / "verification_report.json")
     search_meta = _read_dict(outputs / "search_meta.json")
     run_summary = _read_dict(outputs / "run_summary.json")
+    task_trace = _read_jsonl(outputs / "task_trace.jsonl")
+    task_route_context = _read_dict(outputs / "task_route_context.json")
+    skill_metrics = _skill_routing_metrics(task_trace=task_trace, task_route_context=task_route_context)
     durable_memory_artifacts = run_summary.get("durable_memory", {})
     if not isinstance(durable_memory_artifacts, dict):
         durable_memory_artifacts = {}
@@ -178,6 +181,7 @@ def _run_case_variant(
         local_meta=local_meta,
         chart_consistency=chart_consistency,
     )
+    unsupported_fallback_count = _unsupported_fallback_count(failure_taxonomy=failure_taxonomy, engine_meta=engine_meta, task_trace=task_trace)
 
     return {
         "case_id": case.case_id,
@@ -201,6 +205,7 @@ def _run_case_variant(
         "claim_count": claim_count,
         "report_char_count": len(markdown),
         "rule_verifier_passed": bool(verification.get("passed", False)),
+        "verification_pass_rate": 1.0 if bool(verification.get("passed", False)) else 0.0,
         "rule_verifier_error_count": len(verification.get("errors", [])) if isinstance(verification.get("errors"), list) else 0,
         "current_verifier_pass_ratio": 1.0 if bool(verification.get("passed", False)) else 0.0,
         "current_verifier_checkpoint_used": False,
@@ -219,6 +224,15 @@ def _run_case_variant(
         "contest_checklist_pass_rate": contest["pass_rate"],
         "contest_checklist": contest,
         "failure_taxonomy": failure_taxonomy,
+        "unsupported_fallback_count": unsupported_fallback_count,
+        "unsupported_fallback_triggered": unsupported_fallback_count > 0,
+        "numeric_audit_pass_rate": _numeric_consistency(claims),
+        "citation_support_rate": round(
+            (float(len(claims_with_evidence)) / float(claim_count) if claim_count else 0.0)
+            * (float(len(aligned_ids)) / float(len(all_claim_eids)) if all_claim_eids else 0.0),
+            4,
+        ),
+        **skill_metrics,
         "revision_rounds": int(run_summary.get("revision_rounds", 0) or 0),
         "total_duration_sec": float(run_summary.get("total_duration_sec", 0.0) or 0.0),
         "artifacts": {
@@ -231,6 +245,7 @@ def _run_case_variant(
             "report_json": str(reports / "report.json"),
             "task_trace": str(outputs / "task_trace.jsonl"),
             "search_meta": str(outputs / "search_meta.json"),
+            "task_route_context": str(outputs / "task_route_context.json"),
         },
     }
 
@@ -260,6 +275,12 @@ def _summarize(rows: List[Dict[str, Any]], numeric_rows: List[Dict[str, Any]], o
         "variant_count": len({str(row.get("variant_id")) for row in rows}),
         "evidence_coverage": _mean(row.get("evidence_coverage", 0.0) for row in rows),
         "claim_grounded_rate": _mean(row.get("current_verifier_pass_ratio", 0.0) for row in rows),
+        "verification_pass_rate": _mean(row.get("verification_pass_rate", 0.0) for row in rows),
+        "unsupported_fallback_rate": _mean(1.0 if row.get("unsupported_fallback_triggered") else 0.0 for row in rows),
+        "skill_routed_task_rate": _mean(row.get("skill_routed_task_rate", 0.0) for row in rows),
+        "citation_support_rate": _mean(row.get("citation_support_rate", 0.0) for row in rows),
+        "numeric_audit_pass_rate": _mean(row.get("numeric_audit_pass_rate", 0.0) for row in rows),
+        "skill_selection_counts": _skill_selection_counts(rows),
         "numeric_accuracy": numeric_summary.get("numeric_accuracy", 0.0),
         "chart_consistency_pass_rate": _mean(1.0 if row.get("chart_consistency_passed") else 0.0 for row in rows),
         "revision_rate": _mean(1.0 if int(row.get("revision_rounds", 0) or 0) > 0 else 0.0 for row in rows),
@@ -416,6 +437,66 @@ def _failure_taxonomy_summary(rows: List[Dict[str, Any]]) -> Dict[str, int]:
     return dict(sorted(counter.items()))
 
 
+def _skill_routing_metrics(task_trace: List[Dict[str, Any]], task_route_context: Dict[str, Any]) -> Dict[str, Any]:
+    selected_names: List[str] = []
+    routed_tasks = 0
+    total_tasks = 0
+    for item in task_trace:
+        task = item.get("task") if isinstance(item.get("task"), dict) else item
+        metadata = task.get("metadata", {}) if isinstance(task, dict) and isinstance(task.get("metadata"), dict) else {}
+        selected = metadata.get("selected_skills", [])
+        if not isinstance(selected, list):
+            selected = []
+        total_tasks += 1
+        if selected:
+            routed_tasks += 1
+            selected_names.extend(str(name) for name in selected)
+
+    if not selected_names and isinstance(task_route_context.get("tasks"), list):
+        for item in task_route_context["tasks"]:
+            if not isinstance(item, dict):
+                continue
+            selected = item.get("selected_skills", [])
+            if isinstance(selected, list):
+                selected_names.extend(str(name) for name in selected)
+
+    return {
+        "skill_registry_enabled": bool(task_route_context.get("skill_registry_enabled", selected_names)),
+        "selected_skill_count": len(selected_names),
+        "selected_skill_names": sorted(set(selected_names)),
+        "tasks_with_selected_skills": routed_tasks,
+        "task_trace_count": total_tasks,
+        "skill_routed_task_rate": round(float(routed_tasks) / float(total_tasks), 4) if total_tasks else 0.0,
+    }
+
+
+def _unsupported_fallback_count(
+    failure_taxonomy: List[str],
+    engine_meta: Dict[str, Any],
+    task_trace: List[Dict[str, Any]],
+) -> int:
+    count = sum(1 for item in failure_taxonomy if "unsupported" in str(item).lower() or "fallback" in str(item).lower())
+    for meta in engine_meta.values():
+        if isinstance(meta, dict):
+            text = json.dumps(meta, ensure_ascii=False).lower()
+            if "unsupported" in text or "fallback" in text:
+                count += 1
+    for item in task_trace:
+        text = json.dumps(item, ensure_ascii=False).lower()
+        if "unsupported dynamic task_type" in text:
+            count += 1
+    return count
+
+
+def _skill_selection_counts(rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    counter: Counter[str] = Counter()
+    for row in rows:
+        names = row.get("selected_skill_names", [])
+        if isinstance(names, list):
+            counter.update(str(name) for name in names)
+    return dict(sorted(counter.items()))
+
+
 def _regression_topics() -> List[Dict[str, str]]:
     return [
         {"id": "entity_mismatch", "description": "ticker/公司名混淆，例如 Nvda 不应解析成 NADA。"},
@@ -469,6 +550,19 @@ def _read_list(path: Path) -> List[Dict[str, Any]]:
     return [dict(item) for item in payload] if isinstance(payload, list) else []
 
 
+def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
+    if not path.exists():
+        return []
+    rows: List[Dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        payload = json.loads(line)
+        if isinstance(payload, dict):
+            rows.append(payload)
+    return rows
+
+
 def _write_jsonl(path: Path, rows: List[Dict[str, Any]]) -> None:
     path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + ("\n" if rows else ""), encoding="utf-8")
 
@@ -485,7 +579,12 @@ def _render_summary_md(summary: Dict[str, Any]) -> str:
         f"- report_count: {summary['report_count']}",
         f"- evidence_coverage: {summary['evidence_coverage']}",
         f"- claim_grounded_rate: {summary['claim_grounded_rate']}",
+        f"- verification_pass_rate: {summary.get('verification_pass_rate', 0.0)}",
+        f"- unsupported_fallback_rate: {summary.get('unsupported_fallback_rate', 0.0)}",
+        f"- skill_routed_task_rate: {summary.get('skill_routed_task_rate', 0.0)}",
+        f"- citation_support_rate: {summary.get('citation_support_rate', 0.0)}",
         f"- numeric_accuracy: {summary['numeric_accuracy']}",
+        f"- numeric_audit_pass_rate: {summary.get('numeric_audit_pass_rate', 0.0)}",
         f"- chart_consistency_pass_rate: {summary['chart_consistency_pass_rate']}",
         f"- contest_checklist_score_mean: {summary.get('contest_checklist_score_mean', 0.0)}",
         f"- contest_checklist_pass_rate_mean: {summary.get('contest_checklist_pass_rate_mean', 0.0)}",

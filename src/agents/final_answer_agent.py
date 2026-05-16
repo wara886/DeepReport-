@@ -48,6 +48,7 @@ class FinalAnswerAgent(BaseAgent):
         verification_report = task.parameters.get("verification_report", {})
         prior_markdown = str(task.parameters.get("prior_markdown", ""))
         conversation_brief = str(task.parameters.get("conversation_brief", "")).strip()
+        skill_brief = str(task.parameters.get("skill_brief", "")).strip()
         rating = str(task.parameters.get("rating", "")).strip()
         symbol = str(task.parameters.get("symbol", "")).strip().upper()
 
@@ -71,6 +72,7 @@ class FinalAnswerAgent(BaseAgent):
             "evidence_pack_meta": evidence_pack_meta,
             "revision_requested": bool(revision_request),
             "conversation_brief_chars": len(conversation_brief),
+            "skill_brief_chars": len(skill_brief),
         }
 
         markdown = render_markdown_report(claims=all_claims, charts=[])
@@ -86,6 +88,7 @@ class FinalAnswerAgent(BaseAgent):
                         verification_report=verification_report if isinstance(verification_report, dict) else {},
                         prior_markdown=prior_markdown,
                         conversation_brief=conversation_brief,
+                        skill_brief=skill_brief,
                         rating=rating,
                         symbol=symbol,
                     ),
@@ -141,6 +144,7 @@ def _build_final_prompt(
     verification_report: Dict[str, Any] | None = None,
     prior_markdown: str = "",
     conversation_brief: str = "",
+    skill_brief: str = "",
     rating: str = "",
     symbol: str = "",
 ) -> str:
@@ -261,6 +265,8 @@ def _build_final_prompt(
         )
     if conversation_brief:
         prompt.insert(1, f"Conversation memory:\n{conversation_brief}")
+    if skill_brief:
+        prompt.insert(1, f"Relevant skill brief:\n{skill_brief}")
     if rating and symbol:
         prompt.append(
             f"Investment rating determined: {rating}. "

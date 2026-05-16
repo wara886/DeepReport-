@@ -1,0 +1,66 @@
+skills:
+  - name: evidence_discovery
+    description: Find company filings, financial records, market snapshots, and recent news for a target company/period.
+    agent_types: [planning, deep_researcher, browser]
+    trigger_terms: [evidence, source, filing, news, market, citation, research]
+    tool_names: [retrieve_local_evidence, fetch_yahoo_market_snapshot]
+    input_summary: symbol, period, research topic, source preferences, ranking mode
+    output_summary: ranked evidence candidates and citation-ready evidence records
+    guardrails:
+      - Prefer current primary or high-trust evidence for factual claims.
+      - Memory notes can guide search terms but are never evidence.
+  - name: financial_statement_analysis
+    description: Compute financial ratios, trend coverage, three-statement views, peer context, and valuation artifacts.
+    agent_types: [planning, deep_analyze]
+    trigger_terms: [ratio, margin, cash flow, valuation, peer, trend, financial, three statement]
+    tool_names:
+      - calculate_financial_ratios
+      - build_trend_features
+      - build_three_statement_view
+      - build_peer_comparison
+      - perform_company_valuation
+    input_summary: citation-ready evidence records plus symbol/period/raw_data_root
+    output_summary: evidence-backed claims, tables, metrics, valuation model, and sensitivity artifacts
+    guardrails:
+      - Every numeric claim must retain evidence_ids and lineage.
+      - Use fallback notes when peer or valuation inputs are incomplete.
+  - name: report_assembly
+    description: Assemble claims into the required Chinese research report sections with citations, charts, and disclosures.
+    agent_types: [planning, final_answer]
+    trigger_terms: [report, markdown, html, section, citation, chart, disclosure]
+    tool_names: [render_all_charts, attach_charts_to_report]
+    input_summary: claims, evidence records, chart/table artifacts, revision brief
+    output_summary: Markdown, HTML, JSON report payloads with references and compliance disclosure
+    guardrails:
+      - Do not invent unsupported sections or ratings.
+      - Use evidence_id citations after factual claims.
+  - name: verification_rework
+    description: Verify claim support, citation coverage, chart/table lineage, and route repair work for open gaps.
+    agent_types: [planning, verifier]
+    trigger_terms: [verify, verification, gap, rework, audit, scorecard, lineage]
+    tool_names: []
+    input_summary: draft report, claims, evidence, charts, tables, valuation artifacts
+    output_summary: verification report, evidence gaps, revision brief, and scorecard inputs
+    guardrails:
+      - Fail unsupported numbers even when prose looks plausible.
+      - Open gaps route back to research/analyze/final rather than being hidden.
+  - name: industry_research
+    description: Generate an industry research report from company evidence, peer context, sector metadata, and risk signals.
+    agent_types: [planning, industry_research]
+    trigger_terms: [industry, sector, peer, competition, supply chain, 行业, 竞争]
+    tool_names: [build_peer_comparison]
+    input_summary: company run summary, evidence records, claims, peer context
+    output_summary: industry report markdown/json with sector structure and risks
+    guardrails:
+      - Mark missing standalone industry datasets as limitations.
+      - Tie company-specific industry statements back to evidence ids when available.
+  - name: macro_context
+    description: Generate a macro context report for valuation, demand, rates, liquidity, FX, and policy transmission.
+    agent_types: [planning, macro_research]
+    trigger_terms: [macro, rate, inflation, policy, liquidity, fx, 宏观, 利率]
+    tool_names: []
+    input_summary: period, company summary, market evidence, verification context
+    output_summary: macro report markdown/json with transmission channels and risk caveats
+    guardrails:
+      - Do not claim current macro statistics unless explicit evidence is present.
+      - Separate directional transmission logic from evidenced facts.

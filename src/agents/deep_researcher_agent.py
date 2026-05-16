@@ -39,10 +39,11 @@ class DeepResearcherAgent(BaseAgent):
         if engines is not None and not isinstance(engines, list):
             engines = [str(engines)]
         react_attempted = bool(task.parameters.get("use_react", False))
+        skill_brief = str(task.parameters.get("skill_brief", "")).strip()
 
         try:
             if react_attempted and self.model and hasattr(self.model, "chat"):
-                react_payload = self._run_react_search(task=task, query=query, topk=topk)
+                react_payload = self._run_react_search(task=task, query=query, topk=topk, skill_brief=skill_brief)
                 candidates = react_payload.get("evidence_candidates", [])
                 if candidates:
                     return self.success(
@@ -57,6 +58,7 @@ class DeepResearcherAgent(BaseAgent):
                             "react_used": True,
                             "react_trace": react_payload.get("react_trace", []),
                             "react_final_content": react_payload.get("final_content", ""),
+                            "skill_brief_chars": len(skill_brief),
                         },
                     )
             payload = self.search_manager.search(
@@ -82,15 +84,17 @@ class DeepResearcherAgent(BaseAgent):
                     "engine_meta": payload.get("meta", {}).get("engine_meta", {}),
                     "react_attempted": react_attempted,
                     "react_used": False,
+                    "skill_brief_chars": len(skill_brief),
                 },
             )
         except Exception as exc:
             return self.failure(task, str(exc))
 
-    def _run_react_search(self, task: AgentTask, query: str, topk: int) -> Dict[str, Any]:
+    def _run_react_search(self, task: AgentTask, query: str, topk: int, skill_brief: str = "") -> Dict[str, Any]:
         allowed_tools = ["retrieve_local_evidence", "fetch_yahoo_market_snapshot"]
         schemas = [self.tool_registry.get(name).to_tool_schema() for name in allowed_tools]
         handlers = dict(self.tool_registry.handlers())
+        skill_block = f"Relevant skills:\n{skill_brief}\n" if skill_brief else ""
         retrieve_handler = handlers.get("retrieve_local_evidence")
         if retrieve_handler:
             handlers["retrieve_local_evidence"] = lambda **kwargs: retrieve_handler(
@@ -113,6 +117,7 @@ class DeepResearcherAgent(BaseAgent):
                 f"Period: {task.parameters.get('period', '')}\n"
                 f"TopK: {topk}\n"
                 f"Ranking mode: {task.parameters.get('ranking_mode', 'hybrid_rerank')}\n"
+                f"{skill_block}"
                 "Use retrieve_local_evidence for report facts and fetch_yahoo_market_snapshot for market context."
             ),
             tool_schemas=schemas,

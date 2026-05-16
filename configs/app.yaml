@@ -18,3 +18,4 @@ memory:
     max_context_chars: 1600
     max_domain_items: 12
     max_episodic_items: 6
+    context_scope: planner_router
