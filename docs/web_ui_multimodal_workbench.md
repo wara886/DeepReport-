@@ -159,3 +159,29 @@ $env:PYTHONPATH='.'; pytest -q tests/test_delivery_gate.py tests/test_llm_report
 下一步：
 
 - Commit 7：针对 600519 和 AMD 的内容缺陷做报告链路修复。
+
+## 2026-05-16 Commit 7：双样本内容质量修复
+
+改动：
+
+- `DeepAnalyzeAgent` 生成 PDF-derived claims 时新增 `expected_period` 过滤，避免 `2025Q4` 主报告把 `2026Q1` PDF 片段当作核心业务/财务 claim。
+- 中文年度报告片段会识别为 `Q4`，中文季度报告片段会识别为对应季度，用于 period gate。
+- AMD 若缺少完整业务/同行/估值/风险/投资结论 claims，会补充证据约束下的业务画像框架、NVIDIA/Intel/Broadcom 同行框架、估值不可用原因、敏感性框架、风险与中性/审慎观察结论。
+- Eastmoney 财务 claims 使用“亿元”格式展示，不再用科学计数法或原始超长数字。
+- 估值不足时显式写“估值不可用原因”，避免伪造 P/E、P/B 或 DCF 目标价。
+
+验证命令：
+
+```powershell
+python -m py_compile src/agents/deep_analyze_agent.py
+$env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections tests/test_report_quality.py tests/test_delivery_gate.py
+```
+
+质量结果：
+
+- 13 passed。
+- 这一步修复的是生成链路，旧的 `web_link_test_*` 产物需要在 Commit 8 重跑后才能反映新内容。
+
+下一步：
+
+- Commit 8：重新跑“贵州茅台最新财报研报”和“AMD 最新财报研报”，生成网页链接和三层质量结果。

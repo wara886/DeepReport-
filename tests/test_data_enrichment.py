@@ -3,7 +3,7 @@ from pathlib import Path
 
 from src.data.financial_statement_metrics import build_standard_financial_metrics, build_standard_statement_rows
 from src.data.pdf_artifacts import build_pdf_artifacts
-from src.agents.deep_analyze_agent import build_rule_claims
+from src.agents.deep_analyze_agent import apply_evidence_gate, build_rule_claims
 
 
 def test_eastmoney_three_statement_records_build_standard_metrics():
@@ -98,12 +98,102 @@ def test_pdf_section_records_become_business_and_governance_claims():
         ],
         ratio_rows=[],
         trend_rows=[],
+        expected_period="2025Q4",
     )
 
     sections = {claim.section_name for claim in claims}
     assert "strategy_business" in sections
     assert "ownership_governance" in sections
     assert any("PDF" in claim.notes for claim in claims)
+
+
+def test_pdf_section_claims_from_future_quarter_are_rejected_for_annual_report():
+    claims = build_rule_claims(
+        records=[
+            {
+                "evidence_id": "pdf_q1_business",
+                "source_type": "pdf_section",
+                "period": "2026Q1",
+                "content": "贵州茅台酒股份有限公司2026 年第一季度报告，主营业务收入和经销商情况。",
+                "metadata": {"section_type": "business_overview"},
+            },
+            {
+                "evidence_id": "pdf_annual_business",
+                "source_type": "pdf_section",
+                "content": "贵州茅台酒股份有限公司2025 年年度报告，主营业务和渠道结构。",
+                "metadata": {"section_type": "business_overview"},
+            },
+        ],
+        ratio_rows=[],
+        trend_rows=[],
+        expected_period="2025Q4",
+    )
+
+    accepted, gate = apply_evidence_gate(
+        claims=claims,
+        evidence_records=[
+            {
+                "evidence_id": "pdf_q1_business",
+                "source_type": "pdf_section",
+                "period": "2026Q1",
+                "content": "贵州茅台酒股份有限公司2026 年第一季度报告，主营业务收入和经销商情况。",
+            },
+            {
+                "evidence_id": "pdf_annual_business",
+                "source_type": "pdf_section",
+                "content": "贵州茅台酒股份有限公司2025 年年度报告，主营业务和渠道结构。",
+            },
+        ],
+        expected_period="2025Q4",
+    )
+
+    assert gate["rejected_claim_count"] == 0
+    assert all("2026 年第一季度报告" not in claim.claim_text for claim in accepted)
+    assert any("2025 年年度报告" in claim.claim_text for claim in accepted)
+
+
+def test_rule_claims_backfill_amd_peer_valuation_risk_and_conclusion():
+    claims = build_rule_claims(
+        records=[
+            {
+                "evidence_id": "sec_amd",
+                "symbol": "AMD",
+                "period": "2025Q4",
+                "source_type": "sec_companyfacts",
+                "content": "SEC companyfacts for AMD.",
+                "metadata": {"metrics": {"Revenues": {"value": 1000000000, "unit": "USD", "end": "2025-12-27"}}},
+            }
+        ],
+        ratio_rows=[],
+        trend_rows=[],
+    )
+    sections = {claim.section_name for claim in claims}
+    text = "\n".join(claim.claim_text for claim in claims)
+
+    assert {"business_overview", "peer_compare", "valuation", "valuation_sensitivity", "risks", "conclusion"}.issubset(sections)
+    assert "NVIDIA" in text and "Intel" in text and "Broadcom" in text
+    assert "估值不可用原因" in text
+
+
+def test_eastmoney_claims_use_professional_units_not_scientific_notation():
+    claims = build_rule_claims(
+        records=[
+            _eastmoney_record(
+                "income",
+                {
+                    "REPORT_DATE": "2025-12-31",
+                    "TOTAL_OPERATE_INCOME": 172054171890.91,
+                    "PARENT_NETPROFIT": 82320067101.68,
+                },
+            )
+        ],
+        ratio_rows=[],
+        trend_rows=[],
+    )
+    text = "\n".join(claim.claim_text for claim in claims)
+
+    assert "亿元" in text
+    assert "e+" not in text.lower()
 
 
 def test_sec_companyfacts_builds_metric_lineage_rows():

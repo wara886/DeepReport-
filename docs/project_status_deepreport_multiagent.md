@@ -497,3 +497,13 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_delivery_gate.py tests/test_llm_report_review.py tests/test_report_quality.py tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py`。
 - 质量结果：24 passed。
 - 未完成项：600519 与 AMD 内容修复、双样本重跑和记录仍待后续 commit。
+
+# 2026-05-16 Commit 7：600519/AMD 内容链路修复状态更新
+
+- `DeepAnalyzeAgent` 已将 `expected_period` 注入 PDF-derived claims，`2025Q4` 报告不再把 `2026Q1` PDF 片段作为核心业务/财务 claim。
+- period gate 新增中文季度/年度识别：`2026 年第一季度报告` -> `2026Q1`，`2025 年年度报告` -> `2025Q4`。
+- AMD 缺少业务/同行/估值/风险/投资结论 claims 时，会补充证据约束下的业务画像框架、NVIDIA/Intel/Broadcom 同行框架、估值不可用原因、敏感性框架、风险和中性/审慎观察结论。
+- Eastmoney 财务 claims 已改为“亿元”格式，避免科学计数法和原始超长数字。
+- 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections tests/test_report_quality.py tests/test_delivery_gate.py`；`python -m py_compile src/agents/deep_analyze_agent.py`。
+- 质量结果：13 passed。
+- 未完成项：双样本重跑和记录仍待 Commit 8。
