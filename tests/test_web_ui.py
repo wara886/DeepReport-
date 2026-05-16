@@ -186,12 +186,10 @@ def test_chat_api_routes_report_run_and_returns_trace(monkeypatch, tmp_path):
     try:
         payload = json.dumps(
             {
-                "message": "请生成 600519.SS 2025Q4 公司研报",
+                "message": "请生成贵州茅台 2025Q4 公司研报",
                 "memory_enabled": True,
                 "allow_report_run": True,
                 "enable_remote_data": True,
-                "symbol": "600519.SS",
-                "period": "2025Q4",
             }
         ).encode("utf-8")
         req = request.Request(
@@ -211,9 +209,56 @@ def test_chat_api_routes_report_run_and_returns_trace(monkeypatch, tmp_path):
     assert any(item["detail"] == "start_multi_agent_report_run" for item in body["tool_trace"])
     assert any(item["stage"] == "verify" for item in body["tool_trace"])
     assert body["result"]["verification_passed"] is True
+    assert body["parsed_task"]["symbol"] == "600519.SS"
+    assert body["parsed_task"]["period"] == "2025Q4"
     assert captured["enable_remote_data"] is True
+    assert captured["symbol"] == "600519.SS"
+    assert captured["period"] == "2025Q4"
     assert "cninfo_announcements" in captured["search_engines"]
     assert body["latest"]["summary"]["symbol"] == "600519.SS"
+
+
+def test_chat_api_asks_confirmation_for_underspecified_report(monkeypatch, tmp_path):
+    class FakeOrchestrator:
+        def __init__(self, **kwargs):
+            raise AssertionError("orchestrator should not run without confirmed report params")
+
+    monkeypatch.setattr("src.app.web_ui.MultiAgentOrchestrator", FakeOrchestrator)
+    config = _write_model_config(tmp_path)
+    server, url = run_ui_server(
+        port=0,
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        config_path=str(config),
+        memory_root=str(tmp_path / "memory"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps(
+            {
+                "message": "AMD 研报怎么看",
+                "memory_enabled": True,
+                "allow_report_run": True,
+                "enable_remote_data": True,
+            }
+        ).encode("utf-8")
+        req = request.Request(
+            f"{url}/api/chat",
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert body["mode"] == "confirm_report"
+    assert body["parsed_task"]["symbol"] == "AMD"
+    assert "请回复确认" in body["answer"]
 
 
 def _write_model_config(tmp_path):

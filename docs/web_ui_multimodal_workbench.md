@@ -50,3 +50,30 @@ $env:PYTHONPATH='.'; pytest -q tests/test_web_ui.py tests/test_agent_chat.py
 下一步：
 
 - Commit 3：自然语言任务解析与 memory 默认应用，让“生成贵州茅台最新财报研报 / 生成 AMD 最新财报研报”不依赖高级表单。
+
+## 2026-05-16 Commit 3：自然语言任务解析与 memory 应用
+
+改动：
+
+- 新增 `src/app/chat_task_parser.py`，规则解析用户输入中的公司、期间和生成意图。
+- 已支持“贵州茅台/茅台/600519”映射到 `600519.SS`，“AMD”映射到 `AMD`。
+- “最新财报”会按当前日期解析为最近已结束期间；例如 2026-05-16 解析为 `2026Q1`。
+- `/api/chat` 在运行前会用解析结果覆盖 stale 表单值，并按标的自动切换 A 股/美股默认数据源。
+- 参数不足时返回确认信息，不再用默认 `AAPL/2025Q4` 偷跑。
+- Chat 回复会显示“已使用记忆偏好”和“事实仍以 evidence_id/citation/verifier 为准”，同时展示识别到的任务参数。
+
+验证命令：
+
+```powershell
+$env:PYTHONPATH='.'; pytest -q tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py
+python -m py_compile src/app/chat_task_parser.py src/app/web_ui.py
+```
+
+质量结果：
+
+- 17 passed。
+- 解析器仍是规则优先，暂未接入 LLM NER；但已满足先验证 Chat-first 生成入口的需要。
+
+下一步：
+
+- Commit 4：完善本地多 Agent/objective quality eval，生成 `quality_report.json/md` 和 `quality_issues.jsonl`。

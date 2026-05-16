@@ -458,3 +458,13 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_web_ui.py tests/test_agent_chat.py`。
 - 质量结果：12 passed。
 - 未完成项：自然语言任务解析、objective quality eval、LLM/Codex review、delivery gate 接入和 600519/AMD 内容修复仍待后续 commit。
+
+# 2026-05-16 Commit 3：自然语言解析与 memory 应用状态更新
+
+- 新增 `src/app/chat_task_parser.py`，支持把“生成贵州茅台最新财报研报”解析为 `600519.SS + 最近已结束期间`，把“生成 AMD 最新财报研报”解析为 `AMD + 最近已结束期间`。
+- `/api/chat` 会在启动多智能体前用解析结果覆盖表单中的 stale symbol/period，并按 A 股/美股自动选择默认实时数据源。
+- 若用户只泛泛提到“研报怎么看”但没有明确生成意图或参数不足，Chat 返回确认信息，不启动报告任务。
+- Memory 默认用于偏好和上下文，Chat 回复明确提示“事实仍以 evidence_id/citation/verifier 为准”。
+- 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py`；`python -m py_compile src/app/chat_task_parser.py src/app/web_ui.py`。
+- 质量结果：17 passed。
+- 未完成项：objective quality eval、LLM/Codex review、delivery gate 接入和双样本内容修复仍待后续 commit。

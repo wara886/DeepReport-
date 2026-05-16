@@ -14,6 +14,7 @@ from urllib.parse import unquote, urlparse
 
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.app.agent_chat import AgentChatService
+from src.app.chat_task_parser import parse_chat_task
 
 
 DEFAULT_OUTPUT_DIR = "data/outputs/multi_agent"
@@ -124,11 +125,46 @@ def create_ui_handler(
             period = str(payload.get("period") or "2025Q4").strip().upper()
             allow_report_run = bool(payload.get("allow_report_run", True))
             enable_remote_data = bool(payload.get("enable_remote_data", True))
-            engines = _parse_engines(payload.get("engines") or default_engines_for_symbol(symbol, enable_remote_data))
+            parsed_task = parse_chat_task(message, current_symbol=symbol, current_period=period)
+            if parsed_task.should_run:
+                symbol = parsed_task.symbol
+                period = parsed_task.period
+                payload["topic"] = parsed_task.research_topic
+            raw_engines = payload.get("engines")
+            if parsed_task.should_run and str(raw_engines or "") in {DEFAULT_ENGINES, A_SHARE_ENGINES, US_ENGINES}:
+                raw_engines = default_engines_for_symbol(symbol, enable_remote_data)
+            engines = _parse_engines(raw_engines or default_engines_for_symbol(symbol, enable_remote_data))
             if allow_report_run and _looks_like_report_request(message):
                 guard = validate_period_for_report(period)
                 if not guard["ok"]:
                     self._send_json({"error": guard["message"], "period_guard": guard}, status=HTTPStatus.BAD_REQUEST)
+                    return
+                if parsed_task.needs_confirmation:
+                    response = chat_service.handle_chat(
+                        message=message,
+                        session_id=str(payload.get("session_id") or "local"),
+                        user_id=str(payload.get("user_id") or "local_user"),
+                        symbol=symbol,
+                        period=period,
+                        memory_enabled=bool(payload.get("memory_enabled", True)),
+                        allow_report_run=False,
+                        orchestrator=None,
+                        engines=engines,
+                        fast=bool(payload.get("fast", True)),
+                        execution_mode=str(payload.get("execution_mode") or "dynamic"),
+                        enable_remote_data=enable_remote_data,
+                        data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
+                    )
+                    response["mode"] = "confirm_report"
+                    response["parsed_task"] = parsed_task.to_dict()
+                    response["answer"] = (
+                        "我识别到你可能想生成研报，但还需要确认参数：\n"
+                        f"- 标的：{parsed_task.symbol}\n"
+                        f"- 期间：{parsed_task.period}\n"
+                        f"- 数据源：{default_engines_for_symbol(parsed_task.symbol, enable_remote_data)}\n"
+                        "请回复确认后我再启动多智能体生成。"
+                    )
+                    self._send_json(response)
                     return
             orchestrator = None
             if allow_report_run:
@@ -154,6 +190,7 @@ def create_ui_handler(
                 enable_remote_data=enable_remote_data,
                 data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
             )
+            response["parsed_task"] = parsed_task.to_dict()
             if response.get("mode") == "report_run":
                 response["latest"] = load_run_payload(output_root, report_root)
             self._send_json(response)
@@ -639,6 +676,10 @@ def render_index_html() -> str:
         const prefs = asList(memory.preference_updates).map((x) => `${x.key}=${x.value}`).join("，") || "已启用";
         lines.push(`已使用记忆偏好：${prefs}`);
         lines.push("事实仍以 evidence_id/citation/verifier 为准。");
+      }
+      const parsed = asObj(data.parsed_task);
+      if (parsed.symbol && parsed.period) {
+        lines.push(`识别任务：${parsed.symbol} ${parsed.period}，置信度 ${parsed.confidence ?? "-"}`);
       }
       if (data.latest) lines.push(buildResultText(data.result || {}, data.latest));
       return lines.join("\n");
