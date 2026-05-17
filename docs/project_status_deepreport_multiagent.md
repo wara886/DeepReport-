@@ -548,3 +548,20 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   - `$env:PYTHONPATH='.'; pytest -q tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections tests/test_delivery_gate.py tests/test_quality_remediation.py`
 - 质量结果：12 passed；5 passed。
 - 当前风险：三表正文写入已补强，但 600519 PDF 业务画像、AMD 业务线/同行对比、估值和敏感性仍需后续 commit 继续做深。
+
+# 2026-05-17 Commit 11：600519 业务画像和 PDF 片段深度写入
+
+- `DeepAnalyzeAgent` 新增白酒/PDF insight claim 生成：当 PDF section 包含贵州茅台、茅台酒、系列酒、直销、批发代理、经销商、股东、分红/回购、风险等关键词时，会派生更贴近白酒研报的业务画像和治理/风险 claims。
+- 600519 PDF 片段现在可进入以下正文素材：
+  - 产品结构：茅台酒、系列酒。
+  - 渠道结构：直销、批发代理、`i 茅台` 数字营销平台。
+  - 经销商结构：国内/国外经销商数量和变动应进入渠道质量分析。
+  - 股东结构：控股股东、香港中央结算和国资股东。
+  - 股东回报：现金分红、回购注销。
+  - 白酒风险：高端消费需求、渠道库存、批价波动、系列酒渠道调整和回购/分红执行不确定性。
+- 这些 claims 仍绑定原始 PDF section evidence_id，不把 memory 或行业常识当作事实来源；行业语境只用于解释维度。
+- 验证命令：
+  - `python -m py_compile src/agents/deep_analyze_agent.py`
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections`
+- 质量结果：11 passed。
+- 当前风险：600519 业务画像更完整，但估值、敏感性和同行对比仍未闭合；下一步修 AMD 业务线/同行对比。

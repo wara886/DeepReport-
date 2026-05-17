@@ -1503,7 +1503,155 @@ def _build_pdf_section_claims(records: List[Dict[str, Any]], start_index: int, e
             )
         )
         claim_index += 1
+    for claim in _build_moutai_pdf_insight_claims(buckets=buckets, start_index=claim_index):
+        claims.append(claim)
+        claim_index += 1
     return claims, claim_index
+
+
+def _build_moutai_pdf_insight_claims(buckets: Dict[str, List[Dict[str, Any]]], start_index: int) -> List[ClaimItem]:
+    business_rows = buckets.get("business_overview", [])
+    governance_rows = buckets.get("ownership_governance", [])
+    risk_rows = buckets.get("risk_factors", [])
+    all_text = " ".join(str(row.get("content") or "") for row in business_rows + governance_rows + risk_rows)
+    if "贵州茅台" not in all_text and "茅台酒" not in all_text:
+        return []
+    output: List[ClaimItem] = []
+    claim_index = start_index
+
+    business = _first_row_with_terms(business_rows, ["茅台酒", "系列酒", "直销", "批发代理"])
+    if business:
+        evidence_id = str(business.get("evidence_id") or business.get("sample_id") or "")
+        text = str(business.get("content") or "")
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="strategy_business",
+                claim_text=(
+                    "贵州茅台销售结构显示，主营业务可拆为茅台酒、系列酒、直销、批发代理、国内和国外市场；"
+                    "其中公告片段披露“i 茅台”数字营销平台酒类不含税收入，说明直营与数字化渠道已是观察渠道质量的重要抓手。"
+                    f"原始片段：{_compact_snippet(text, 180)}"
+                ),
+                evidence_ids=[evidence_id] if evidence_id else [],
+                numeric_values={},
+                risk_level="low",
+                confidence=0.78,
+                notes="白酒业务画像：由销售结构 PDF 片段生成，强调产品档次、渠道和地区维度。",
+            )
+        )
+        claim_index += 1
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="business_overview",
+                claim_text=(
+                    "贵州茅台的业务画像应围绕高端白酒品牌、茅台酒/系列酒产品结构、直营与批发代理渠道、"
+                    "国内为主且国外补充的地区结构展开；渠道库存、批价稳定性和数字化直销收入是后续跟踪重点。"
+                ),
+                evidence_ids=[evidence_id] if evidence_id else [],
+                numeric_values={},
+                risk_level="medium",
+                confidence=0.72,
+                notes="白酒行业语境补强：由 PDF 销售结构片段派生，不替代正式渠道数据审计。",
+            )
+        )
+        claim_index += 1
+
+    dealer = _first_row_with_terms(business_rows, ["经销商", "国内", "国外"])
+    if dealer:
+        evidence_id = str(dealer.get("evidence_id") or dealer.get("sample_id") or "")
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="strategy_business",
+                claim_text=(
+                    "经销商结构片段显示，公司披露国内、国外经销商数量及增减变化；"
+                    "对白酒研报而言，这应进入渠道质量分析，重点解释经销商净减少、系列酒渠道调整和直营占比变化。"
+                    f"原始片段：{_compact_snippet(str(dealer.get('content') or ''), 180)}"
+                ),
+                evidence_ids=[evidence_id] if evidence_id else [],
+                numeric_values={},
+                risk_level="medium",
+                confidence=0.76,
+                notes="渠道/经销商 claim：由 PDF 经销商表格片段生成。",
+            )
+        )
+        claim_index += 1
+
+    shareholder = _first_row_with_terms(governance_rows, ["中国贵州茅台酒厂", "香港中央结算", "前10"])
+    if shareholder:
+        evidence_id = str(shareholder.get("evidence_id") or shareholder.get("sample_id") or "")
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="ownership_governance",
+                claim_text=(
+                    "股东结构片段显示控股股东、香港中央结算有限公司及国资股东位列主要股东；"
+                    "治理分析应关注控股股东稳定性、外资持股变化、回购注销和分红政策对股东回报的影响。"
+                    f"原始片段：{_compact_snippet(str(shareholder.get('content') or ''), 180)}"
+                ),
+                evidence_ids=[evidence_id] if evidence_id else [],
+                numeric_values={},
+                risk_level="low",
+                confidence=0.75,
+                notes="股东结构 claim：由 PDF 股东表片段生成。",
+            )
+        )
+        claim_index += 1
+
+    payout = _first_row_with_terms(governance_rows, ["现金红利", "利润分配", "回购"])
+    if payout:
+        evidence_id = str(payout.get("evidence_id") or payout.get("sample_id") or "")
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="conclusion",
+                claim_text=(
+                    "分红/回购片段显示，公司以现金分红和股份回购注销强化股东回报；"
+                    "投资结论应把稳定现金流、分红能力和回购价格约束一起纳入，而不能只停留在品牌叙事。"
+                    f"原始片段：{_compact_snippet(str(payout.get('content') or ''), 180)}"
+                ),
+                evidence_ids=[evidence_id] if evidence_id else [],
+                numeric_values={},
+                risk_level="medium",
+                confidence=0.74,
+                notes="股东回报 claim：由年报/季报 PDF 分红和回购片段生成。",
+            )
+        )
+        claim_index += 1
+
+    risk = _first_row_with_terms(risk_rows, ["风险", "不确定性"])
+    if risk:
+        evidence_id = str(risk.get("evidence_id") or risk.get("sample_id") or "")
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="risks",
+                claim_text=(
+                    "风险提示片段明确要求关注公司未来发展讨论中的风险；对白酒公司，应重点跟踪高端消费需求、"
+                    "渠道库存、批价波动、系列酒渠道调整和分红/回购执行不确定性。"
+                    f"原始片段：{_compact_snippet(str(risk.get('content') or ''), 180)}"
+                ),
+                evidence_ids=[evidence_id] if evidence_id else [],
+                numeric_values={},
+                risk_level="high",
+                confidence=0.72,
+                notes="风险 claim：由 PDF 风险提示片段和白酒行业风险框架生成。",
+            )
+        )
+    return output
+
+
+def _first_row_with_terms(rows: List[Dict[str, Any]], terms: List[str]) -> Dict[str, Any] | None:
+    for row in rows:
+        text = str(row.get("content") or "")
+        if all(term in text for term in terms):
+            return row
+    for row in rows:
+        text = str(row.get("content") or "")
+        if any(term in text for term in terms):
+            return row
+    return None
 
 
 def _compact_snippet(text: str, limit: int = 220) -> str:

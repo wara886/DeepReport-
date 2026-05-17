@@ -107,6 +107,40 @@ def test_pdf_section_records_become_business_and_governance_claims():
     assert any("PDF" in claim.notes for claim in claims)
 
 
+def test_moutai_pdf_sections_generate_baijiu_business_channel_and_shareholder_claims():
+    claims = build_rule_claims(
+        records=[
+            {
+                "evidence_id": "pdf_sales",
+                "source_type": "pdf_section",
+                "content": "贵州茅台2026 年第一季度报告 销售情况 茅台酒 系列酒 直销 批发代理 国内 国外 i 茅台 数字营销平台 经销商情况 国内 2098 国外 124。",
+                "metadata": {"section_type": "business_overview"},
+            },
+            {
+                "evidence_id": "pdf_shareholder",
+                "source_type": "pdf_section",
+                "content": "前10名股东 中国贵州茅台酒厂（集团）有限责任公司 香港中央结算有限公司 贵州省国有资本运营有限责任公司。",
+                "metadata": {"section_type": "ownership_governance"},
+            },
+            {
+                "evidence_id": "pdf_risk",
+                "source_type": "pdf_section",
+                "content": "重大风险提示 本公司未来发展存在不确定性，敬请投资者注意投资风险。",
+                "metadata": {"section_type": "risk_factors"},
+            },
+        ],
+        ratio_rows=[],
+        trend_rows=[],
+        expected_period="2026Q1",
+    )
+    text = "\n".join(claim.claim_text for claim in claims)
+
+    assert "高端白酒品牌" in text
+    assert "经销商结构" in text
+    assert "外资持股" in text
+    assert "渠道库存" in text
+
+
 def test_pdf_section_claims_from_future_quarter_are_rejected_for_annual_report():
     claims = build_rule_claims(
         records=[
