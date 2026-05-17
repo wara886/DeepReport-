@@ -518,6 +518,13 @@ def build_rule_claims(
         claim_index += 1
 
     statement_rows = statement_view.get("rows", []) if isinstance(statement_view, dict) else []
+    for summary_claim in _statement_summary_claims(
+        rows=statement_rows,
+        evidence_ids=financial_evidence_ids,
+        start_index=claim_index,
+    ):
+        claims.append(summary_claim)
+        claim_index += 1
     net_income = _statement_value(statement_rows, "income_statement", "net_income")
     free_cash_flow = _statement_value(statement_rows, "cash_flow_statement", "free_cash_flow")
     if _has_number(net_income) and _has_number(free_cash_flow) and financial_evidence_ids:
@@ -860,6 +867,107 @@ def _add_minimum_company_report_claims(
             )
         )
     return output
+
+
+def _statement_summary_claims(
+    rows: Any,
+    evidence_ids: List[str],
+    start_index: int,
+) -> List[ClaimItem]:
+    if not isinstance(rows, list) or not rows or not evidence_ids:
+        return []
+    symbol = str(rows[0].get("symbol") or "Company") if isinstance(rows[0], dict) else "Company"
+    period = str(rows[0].get("period") or "") if isinstance(rows[0], dict) else ""
+    output: List[ClaimItem] = []
+    claim_index = start_index
+
+    income_parts, income_values = _statement_parts(
+        rows,
+        "income_statement",
+        [("revenue", "收入"), ("net_income", "净利润"), ("gross_profit", "毛利")],
+    )
+    if income_parts:
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="financial_statements",
+                claim_text=f"{symbol} {period} 利润表摘要：" + "，".join(income_parts) + "。",
+                evidence_ids=evidence_ids,
+                numeric_values=income_values,
+                risk_level="medium",
+                confidence=0.82,
+                notes="由标准化三表行生成，必须写入正文三表摘要。",
+            )
+        )
+        claim_index += 1
+
+    balance_parts, balance_values = _statement_parts(
+        rows,
+        "balance_sheet",
+        [("total_assets", "总资产"), ("total_liabilities", "总负债"), ("total_equity", "股东权益"), ("cash_and_equivalents", "现金及等价物")],
+    )
+    if balance_parts:
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="financial_statements",
+                claim_text=f"{symbol} {period} 资产负债表摘要：" + "，".join(balance_parts) + "。",
+                evidence_ids=evidence_ids,
+                numeric_values=balance_values,
+                risk_level="medium",
+                confidence=0.82,
+                notes="由标准化三表行生成，必须写入正文三表摘要。",
+            )
+        )
+        claim_index += 1
+
+    cash_parts, cash_values = _statement_parts(
+        rows,
+        "cash_flow_statement",
+        [("operating_cash_flow", "经营现金流"), ("free_cash_flow", "自由现金流"), ("capex", "资本开支")],
+    )
+    if cash_parts:
+        text = f"{symbol} {period} 现金流量表摘要：" + "，".join(cash_parts) + "。"
+        confidence = 0.82
+    else:
+        text = (
+            f"{symbol} {period} 现金流量表缺口：当前标准化表格尚未取得经营现金流或自由现金流字段，"
+            "报告应明确该缺口会限制现金转化率和估值敏感性判断。"
+        )
+        confidence = 0.62
+    output.append(
+        ClaimItem(
+            claim_id=f"cl_{claim_index:04d}",
+            section_name="financial_statements",
+            claim_text=text,
+            evidence_ids=evidence_ids,
+            numeric_values=cash_values,
+            risk_level="medium",
+            confidence=confidence,
+            notes="现金流量表摘要或缺口说明，必须写入正文三表摘要。",
+        )
+    )
+    return output
+
+
+def _statement_parts(rows: List[Dict[str, Any]], statement: str, line_items: List[tuple[str, str]]) -> tuple[List[str], Dict[str, float]]:
+    parts: List[str] = []
+    values: Dict[str, float] = {}
+    for line_item, label in line_items:
+        value = _statement_value(rows, statement, line_item)
+        if _has_number(value):
+            values[line_item] = float(value)
+            parts.append(f"{label}约为 {_format_statement_number(float(value))}")
+    return parts, values
+
+
+def _format_statement_number(value: float) -> str:
+    abs_value = abs(value)
+    if abs_value >= 1_000_000_000:
+        return f"{value / 1_000_000_000:.2f}B"
+    if abs_value >= 1_000_000:
+        return f"{value / 1_000_000:.2f}M"
+    return f"{value:.2f}"
 
 
 def _has_claim_section(claims: List[ClaimItem], section_name: str) -> bool:
@@ -1434,7 +1542,8 @@ def _statement_value(rows: Any, statement: str, line_item: str) -> float | None:
             continue
         if row.get("statement") == statement and row.get("line_item") == line_item:
             try:
-                return float(row.get("value_billion"))
+                value = row.get("value_billion", row.get("value"))
+                return float(value)
             except (TypeError, ValueError):
                 return None
     return None

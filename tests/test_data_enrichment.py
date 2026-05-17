@@ -220,6 +220,43 @@ def test_sec_companyfacts_builds_metric_lineage_rows():
     assert metrics["metric_count"] == 3
 
 
+def test_statement_rows_generate_three_statement_summary_claims_with_cashflow_gap():
+    claims = build_rule_claims(
+        records=[
+            {
+                "evidence_id": "sec_amd",
+                "symbol": "AMD",
+                "period": "2026Q1",
+                "source_type": "sec_companyfacts",
+                "content": "SEC companyfacts for AMD.",
+                "metadata": {
+                    "metrics": {
+                        "RevenueFromContractWithCustomerExcludingAssessedTax": {"value": 7438000000, "unit": "USD", "end": "2025-03-29"},
+                        "NetIncomeLoss": {"value": 709000000, "unit": "USD", "end": "2025-03-29"},
+                        "Assets": {"value": 76926000000, "unit": "USD", "end": "2025-12-27"},
+                        "CashAndCashEquivalentsAtCarryingValue": {"value": 5539000000, "unit": "USD", "end": "2025-12-27"},
+                    }
+                },
+            }
+        ],
+        ratio_rows=[],
+        trend_rows=[],
+        statement_view={
+            "rows": [
+                {"symbol": "AMD", "period": "2026Q1", "statement": "income_statement", "line_item": "revenue", "value": 7438000000.0},
+                {"symbol": "AMD", "period": "2026Q1", "statement": "income_statement", "line_item": "net_income", "value": 709000000.0},
+                {"symbol": "AMD", "period": "2026Q1", "statement": "balance_sheet", "line_item": "total_assets", "value": 76926000000.0},
+                {"symbol": "AMD", "period": "2026Q1", "statement": "balance_sheet", "line_item": "cash_and_equivalents", "value": 5539000000.0},
+            ]
+        },
+    )
+    text = "\n".join(claim.claim_text for claim in claims if claim.section_name == "financial_statements")
+
+    assert "利润表摘要" in text
+    assert "资产负债表摘要" in text
+    assert "现金流量表缺口" in text
+
+
 def _eastmoney_record(table_type: str, raw: dict) -> dict:
     return {
         "evidence_id": f"ev_{table_type}",

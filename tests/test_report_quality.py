@@ -73,6 +73,63 @@ def test_quality_evaluator_detects_empty_sections_scientific_notation_and_missin
     assert report["issue_counts"]["fatal"] >= 1
 
 
+def test_quality_evaluator_reads_nested_statement_rows_and_cashflow_gap(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# AMD 2026Q1 公司研报
+
+## 执行摘要
+收入和资产已披露。[sec_1]
+
+## 业务概览
+主营业务覆盖产品和业务画像。
+
+## 三表摘要
+利润表摘要显示收入；资产负债表摘要显示资产；现金流量表缺口：当前标准化表格尚未取得经营现金流或自由现金流字段。
+
+## 同行对比
+NVIDIA、Intel、Broadcom peer comparison。
+
+## 估值观察
+估值不可用原因：缺少市值或现金流。
+
+## 估值敏感性
+敏感性关注收入和毛利率。
+
+## 风险评估
+风险提示。
+
+## 投资结论
+中性评级，不构成投资建议。
+
+## 合规披露
+资料来源：SEC EDGAR。本文仅供参考，不构成投资建议；不存在利益冲突，保持独立性披露。
+""",
+        tables=[
+            {
+                "table_type": "income_statement",
+                "rows": [
+                    {"statement": "income_statement", "line_item": "revenue"},
+                    {"statement": "balance_sheet", "line_item": "total_assets"},
+                ],
+            }
+        ],
+        claims=[
+            {
+                "claim_id": "cl_1",
+                "section_name": "financial_statements",
+                "claim_text": "AMD 2026Q1 利润表摘要、资产负债表摘要和现金流量表缺口。",
+                "evidence_ids": ["ev_1"],
+            }
+        ],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert report["required_checks"]["details"]["has_three_table_summary"] is True
+
+
 def _write_run(
     tmp_path,
     report_md,

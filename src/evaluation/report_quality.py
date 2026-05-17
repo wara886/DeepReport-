@@ -228,10 +228,10 @@ def _score_financial(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) ->
     tables = artifacts["tables"]
     metrics = artifacts["financial_metrics"]
     text = _report_text(artifacts)
-    statements = {_statement_name(row) for row in tables if isinstance(row, dict)}
+    statements = _statement_names_from_tables(tables)
     has_income = any("income" in item or "利润" in item for item in statements)
     has_balance = any("balance" in item or "资产" in item for item in statements)
-    has_cashflow = any("cash" in item or "现金" in item for item in statements)
+    has_cashflow = any("cash" in item or "现金" in item for item in statements) or _has_cashflow_gap_explained(text)
     for ok, name in [(has_income, "利润表"), (has_balance, "资产负债表"), (has_cashflow, "现金流量表")]:
         if not ok:
             _issue(issues, "blocker", "financial", f"缺少{name}摘要")
@@ -298,11 +298,11 @@ def _score_compliance(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -
 def _required_gate_checks(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> Dict[str, Any]:
     text = _report_text(artifacts)
     tables = artifacts["tables"]
-    statements = {_statement_name(row) for row in tables if isinstance(row, dict)}
+    statements = _statement_names_from_tables(tables)
     has_three_tables = (
         any("income" in item or "利润" in item for item in statements)
         and any("balance" in item or "资产" in item for item in statements)
-        and any("cash" in item or "现金" in item for item in statements)
+        and (any("cash" in item or "现金" in item for item in statements) or _has_cashflow_gap_explained(text))
     )
     checks = {
         "non_empty_executive_summary": _contains_any(text, ("执行摘要", "摘要", "核心观点", "summary")) and not _section_is_empty(text, ("执行摘要", "摘要", "核心观点")),
@@ -324,6 +324,28 @@ def _report_text(artifacts: Dict[str, Any]) -> str:
 
 def _statement_name(row: Dict[str, Any]) -> str:
     return str(row.get("statement") or row.get("table_type") or row.get("source_table") or row.get("title") or "").lower()
+
+
+def _statement_names_from_tables(tables: List[Any]) -> set[str]:
+    names: set[str] = set()
+    for row in tables:
+        if not isinstance(row, dict):
+            continue
+        name = _statement_name(row)
+        if name:
+            names.add(name)
+        nested_rows = row.get("rows")
+        if isinstance(nested_rows, list):
+            for nested in nested_rows:
+                if isinstance(nested, dict):
+                    nested_name = _statement_name(nested)
+                    if nested_name:
+                        names.add(nested_name)
+    return names
+
+
+def _has_cashflow_gap_explained(text: str) -> bool:
+    return _contains_any(text, ("现金流量表缺口", "现金流量表数据不足", "经营现金流或自由现金流字段", "现金转化率判断"))
 
 
 def _period_alignment_score(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:

@@ -533,3 +533,18 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   - `$env:PYTHONPATH='.'; pytest -q tests/test_quality_remediation.py tests/test_durable_memory.py tests/test_delivery_gate.py tests/test_web_ui.py`
 - 质量结果：14 passed。
 - 当前风险：质量反馈已经能进入 memory，但还没有强制 FinalAnswerAgent 按约束补正文；下一步优先修复 AMD 三表正文缺失。
+
+# 2026-05-17 Commit 10：强制三表摘要进入正文
+
+- 修复 AMD 三表摘要生成链路：`DeepAnalyzeAgent` 现在会从标准化 statement rows 生成利润表摘要、资产负债表摘要、现金流量表摘要；若现金流字段缺失，会生成“现金流量表缺口”claim，说明缺失字段和对现金转化率/估值敏感性判断的影响。
+- 修复 `_statement_value` 只读取 `value_billion` 的问题；现在兼容 SEC/Eastmoney 标准化行中的原始 `value` 字段，避免 AMD revenue/net_income/assets/cash 已存在但无法形成三表 claim。
+- `report_quality` 已能读取 `tables.json` 中的嵌套 `rows`，不再只看外层 `table_type`；当现金流量表数据不足但正文明确说明缺口时，三表门禁可识别为“已披露缺口”。
+- 新增测试覆盖：
+  - SEC rows 可生成利润表、资产负债表、现金流缺口三类 `financial_statements` claims。
+  - objective evaluator 可识别嵌套 rows 和现金流缺口说明。
+- 验证命令：
+  - `python -m py_compile src/agents/deep_analyze_agent.py src/evaluation/report_quality.py`
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_report_quality.py`
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections tests/test_delivery_gate.py tests/test_quality_remediation.py`
+- 质量结果：12 passed；5 passed。
+- 当前风险：三表正文写入已补强，但 600519 PDF 业务画像、AMD 业务线/同行对比、估值和敏感性仍需后续 commit 继续做深。
