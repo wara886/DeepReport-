@@ -19,7 +19,7 @@ AMD 数据中心、客户端、游戏和嵌入式业务共同构成主营业务�
 收入和利润以亿美元展示，现金流和资产负债表口径与 2025Q4 对齐，毛利率为 50%。
 
 ## 估值与敏感性
-估值使用 P/E 和 P/B，敏感性分析覆盖收入增速、毛利率和费用率情景。
+估值使用 P/E 约为 20x 和 P/B 约为 5x，敏感性分析覆盖收入增速、毛利率和费用率情景。
 
 ## 投资建议
 维持中性评级，投资结论是估值与增长预期大体匹配。
@@ -128,6 +128,70 @@ NVIDIA、Intel、Broadcom peer comparison。
     report = evaluate_report_quality(run_dir)
 
     assert report["required_checks"]["details"]["has_three_table_summary"] is True
+
+
+def test_quality_evaluator_fails_when_tables_exist_but_body_omits_three_statement_summary(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# AMD 2026Q1 公司研报
+
+## 执行摘要
+核心观点完整。
+## 业务概览
+主营业务覆盖 CPU、GPU 和数据中心。
+## 三表摘要
+本节只讨论整体财务表现，没有拆开三张报表。
+## 同行对比
+相对 NVIDIA、Intel、Broadcom，AMD 存在竞争压力。
+## 估值观察
+估值不可用原因：缺少市值。
+## 估值敏感性
+收入增速变化会影响利润。
+## 风险评估
+风险提示充分。
+## 投资结论
+基于估值和风险，维持中性观察。
+""",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert report["required_checks"]["details"]["has_three_table_summary"] is False
+
+
+def test_quality_evaluator_blocks_framework_only_sections_and_weak_conclusion(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# AMD 2026Q1 公司研报
+
+## 执行摘要
+核心观点完整。
+## 业务概览
+主营业务覆盖 CPU、GPU 和数据中心。
+## 三表摘要
+利润表显示收入，资产负债表显示总资产，现金流量表显示经营现金流。
+## 同行对比
+同行对比框架待补，缺少可量化同行指标。
+## 估值观察
+估值分析待补。
+## 估值敏感性
+敏感性分析框架待补。
+## 风险评估
+风险提示充分。
+## 投资结论
+维持观察。
+""",
+    )
+
+    report = evaluate_report_quality(run_dir)
+    messages = "\n".join(issue["message"] for issue in report["issues"])
+
+    assert report["objective_pass"] is False
+    assert "同行对比只有框架" in messages
+    assert "估值缺失" in messages
+    assert "投资结论缺少明确方向和理由" in messages
 
 
 def _write_run(

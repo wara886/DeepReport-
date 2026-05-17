@@ -598,3 +598,22 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   - `$env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_report_quality.py tests/test_delivery_gate.py`
 - 质量结果：17 passed。
 - 当前风险：估值计算路径已具备最小版本，但 objective evaluator 仍可能对空洞正文放得过宽；下一步收紧客观质量评测。
+
+# 2026-05-17 Commit 14：收紧客观质量评测，减少虚高分
+
+- `objective_pass` 现在要求总分 >= 0.82、fatal=0、blocker=0 且 required gate 全通过；不再允许 blocker 存在时仍通过。
+- 新增正文有效性规则：
+  - “暂无结论/暂无可验证结论/待补充”等空洞占位过多会 fatal。
+  - `tables.json` 有三表 artifact 但正文没有利润表/资产负债表/现金流量表或现金流缺口说明时，`has_three_table_summary=false`。
+  - 同行对比或敏感性分析只有“框架/待补/缺少可量化”且没有方向性结论时 blocker。
+  - 估值缺失但没有“估值不可用原因”或可计算倍数时 blocker。
+  - 投资结论必须同时有方向和理由。
+- 新增测试覆盖：
+  - tables artifact 存在但正文未写三表时 fail。
+  - 框架化同行/敏感性、弱投资结论会 fail。
+  - 完整公司报告样例仍可通过。
+- 验证命令：
+  - `python -m py_compile src/evaluation/report_quality.py`
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_report_quality.py tests/test_quality_remediation.py tests/test_delivery_gate.py`
+- 质量结果：9 passed。
+- 当前风险：客观评测已更严格，后续重跑可能暴露更多正文质量问题；下一步让 FinalAnswerAgent 消费质量修复约束并 hard backfill。

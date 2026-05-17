@@ -59,7 +59,7 @@ def evaluate_report_quality_from_paths(
     required = _required_gate_checks(artifacts, issues)
     fatal_count = sum(1 for issue in issues if issue["severity"] == "fatal")
     blocker_count = sum(1 for issue in issues if issue["severity"] == "blocker")
-    objective_pass = bool(total >= 0.82 and fatal_count == 0 and required["passed"])
+    objective_pass = bool(total >= 0.82 and fatal_count == 0 and blocker_count == 0 and required["passed"])
     report = {
         "schema_version": "quality_report.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -195,6 +195,9 @@ def _score_structure(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) ->
             _issue(issues, "blocker", "structure", f"缺少必备章节或段落：{key}")
     if any(marker in text for marker in EMPTY_MARKERS):
         _issue(issues, "blocker", "structure", "报告包含空洞占位结论或暂无可验证结论")
+    empty_count = sum(text.count(marker) for marker in EMPTY_MARKERS)
+    if empty_count >= 3:
+        _issue(issues, "fatal", "structure", f"空洞占位表达过多：{empty_count} 处")
     return round(sum(1 for ok in present.values() if ok) / len(required), 4)
 
 
@@ -277,6 +280,14 @@ def _score_professional_depth(artifacts: Dict[str, Any], issues: List[Dict[str, 
         if not ok:
             severity = "blocker" if key in {"business_profile", "risk", "investment"} else "warning"
             _issue(issues, severity, "professional_depth", f"专业深度不足：缺少 {key}")
+    if _section_is_framework_only(text, ("同行对比", "同行比较")):
+        _issue(issues, "blocker", "professional_depth", "同行对比只有框架或待补说明，缺少可读结论")
+    if _section_is_framework_only(text, ("估值敏感性", "敏感性分析")):
+        _issue(issues, "blocker", "professional_depth", "敏感性分析只有框架或待补说明，缺少变量方向和影响")
+    if _valuation_is_unusable_without_reason(text):
+        _issue(issues, "blocker", "professional_depth", "估值缺失但没有明确估值不可用原因")
+    if not _investment_conclusion_has_direction_and_reason(text):
+        _issue(issues, "blocker", "professional_depth", "投资结论缺少明确方向和理由")
     return round(sum(1 for ok in checks.values() if ok) / len(checks), 4)
 
 
@@ -303,6 +314,7 @@ def _required_gate_checks(artifacts: Dict[str, Any], issues: List[Dict[str, Any]
         any("income" in item or "利润" in item for item in statements)
         and any("balance" in item or "资产" in item for item in statements)
         and (any("cash" in item or "现金" in item for item in statements) or _has_cashflow_gap_explained(text))
+        and _body_has_three_statement_summary(text)
     )
     checks = {
         "non_empty_executive_summary": _contains_any(text, ("执行摘要", "摘要", "核心观点", "summary")) and not _section_is_empty(text, ("执行摘要", "摘要", "核心观点")),
@@ -346,6 +358,51 @@ def _statement_names_from_tables(tables: List[Any]) -> set[str]:
 
 def _has_cashflow_gap_explained(text: str) -> bool:
     return _contains_any(text, ("现金流量表缺口", "现金流量表数据不足", "经营现金流或自由现金流字段", "现金转化率判断"))
+
+
+def _body_has_three_statement_summary(text: str) -> bool:
+    return (
+        _contains_any(text, ("利润表", "收入", "营收", "净利润", "income statement"))
+        and _contains_any(text, ("资产负债表", "总资产", "股东权益", "净资产", "balance sheet"))
+        and (_contains_any(text, ("现金流量表", "经营现金流", "自由现金流", "现金流", "cash flow")) or _has_cashflow_gap_explained(text))
+    )
+
+
+def _section_is_framework_only(text: str, titles: Iterable[str]) -> bool:
+    body = _section_body(text, titles)
+    if not body:
+        return False
+    framework_markers = ("框架", "待补", "缺少可量化", "缺少同业", "尚未完整", "暂无")
+    conclusion_markers = ("因此", "说明", "压力", "驱动", "约束", "优于", "弱于", "中性", "积极", "谨慎")
+    return _contains_any(body, framework_markers) and not _contains_any(body, conclusion_markers)
+
+
+def _valuation_is_unusable_without_reason(text: str) -> bool:
+    if not _contains_any(text, ("估值", "P/E", "P/B", "P/S", "市盈率", "市净率")):
+        return True
+    has_multiple = bool(re.search(r"(P/E|P/B|P/S|市盈率|市净率)\s*(约为|为|:|：)?\s*\d", text, flags=re.I))
+    has_reason = _contains_any(text, ("估值不可用原因", "估值暂不可用", "缺少市值", "缺少股本", "缺少净利润", "缺少净资产"))
+    return not has_multiple and not has_reason
+
+
+def _investment_conclusion_has_direction_and_reason(text: str) -> bool:
+    body = _section_body(text, ("投资结论", "投资建议", "评级"))
+    if not body:
+        return False
+    has_direction = _contains_any(body, ("中性", "审慎", "谨慎", "积极", "买入", "持有", "卖出", "观察"))
+    has_reason = _contains_any(body, ("基于", "因为", "由于", "来自", "驱动", "压力", "风险", "估值", "现金流", "证据"))
+    return has_direction and has_reason
+
+
+def _section_body(text: str, titles: Iterable[str]) -> str:
+    for title in titles:
+        match = re.search(rf"(?m)^##\s*{re.escape(title)}\s*$", text)
+        if not match:
+            continue
+        next_header = re.search(r"(?m)^##\s+", text[match.end():])
+        end = match.end() + next_header.start() if next_header else len(text)
+        return text[match.end():end].strip()
+    return ""
 
 
 def _period_alignment_score(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:
