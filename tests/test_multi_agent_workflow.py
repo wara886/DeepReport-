@@ -640,6 +640,39 @@ def test_hard_backfill_quality_sections_replaces_framework_body():
     assert "基于估值约束和竞争风险" in updated
 
 
+
+def test_final_answer_consumes_gap_repair_constraints():
+    model = QualityRemediationFakeModel()
+    final = FinalAnswerAgent(model=model)
+    result = final.execute_task(
+        AgentTask(
+            task_id="task_final",
+            task_type="final_answer",
+            description="Write",
+            parameters={
+                "research_topic": "generic company report",
+                "claims": [
+                    {
+                        "claim_id": "cl_val",
+                        "section_name": "valuation",
+                        "claim_text": "Valuation unavailable because market cap and net income are missing.",
+                        "evidence_ids": ["ev1"],
+                    }
+                ],
+                "evidence_records": [{"evidence_id": "ev1", "title": "public source"}],
+                "repair_constraints": {
+                    "required_backfill_sections": ["valuation"],
+                    "must_explain_unresolved_gaps": ["valuation", "cash_flow"],
+                    "free_public_source_boundary": "Use only free public sources.",
+                },
+            },
+        )
+    )
+
+    assert result.metadata["repair_constraints_used"] is True
+    assert "GapResolver repair constraints" in model.last_prompt
+    assert "valuation" in model.last_prompt
+
 def test_browser_reader_enriches_web_search_record(monkeypatch, tmp_path):
     config_path = tmp_path / "data_sources.yaml"
     config_path.write_text(

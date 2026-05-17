@@ -60,6 +60,11 @@ class FinalAnswerAgent(BaseAgent):
             or task.parameters.get("remediation_plan")
             or task.parameters.get("quality_feedback")
         )
+        repair_constraints = _normalize_repair_constraints(
+            task.parameters.get("repair_constraints")
+            or task.parameters.get("gap_repair_constraints")
+            or quality_remediation_plan.get("repair_constraints")
+        )
 
         prompt_claims, claim_pack_meta = pack_claims(
             all_claims,
@@ -83,6 +88,7 @@ class FinalAnswerAgent(BaseAgent):
             "conversation_brief_chars": len(conversation_brief),
             "skill_brief_chars": len(skill_brief),
             "quality_remediation_used": bool(quality_remediation_plan.get("quality_feedback_used")),
+            "repair_constraints_used": bool(repair_constraints),
             "table_context_count": len(tables) if isinstance(tables, list) else 0,
             "financial_metric_context_count": len(financial_metrics) if isinstance(financial_metrics, dict) else 0,
             "pdf_section_context_count": len(pdf_sections) if isinstance(pdf_sections, list) else 0,
@@ -106,6 +112,7 @@ class FinalAnswerAgent(BaseAgent):
                         rating=rating,
                         symbol=symbol,
                         quality_remediation_plan=quality_remediation_plan,
+                        repair_constraints=repair_constraints,
                         tables=tables,
                         financial_metrics=financial_metrics,
                         pdf_sections=pdf_sections,
@@ -125,7 +132,7 @@ class FinalAnswerAgent(BaseAgent):
         markdown = normalize_report_headings(markdown)
         markdown = backfill_empty_sections_from_claims(markdown, all_claims)
         markdown = insert_missing_sections_from_claims(markdown, all_claims)
-        markdown = hard_backfill_quality_sections(markdown, all_claims, quality_remediation_plan)
+        markdown = hard_backfill_quality_sections(markdown, all_claims, quality_remediation_plan, repair_constraints)
         markdown = normalize_report_headings(markdown)
         html = _markdown_to_simple_html(markdown, title=topic)
         report_json = {
@@ -168,6 +175,7 @@ def _build_final_prompt(
     rating: str = "",
     symbol: str = "",
     quality_remediation_plan: Dict[str, Any] | None = None,
+    repair_constraints: Dict[str, Any] | None = None,
     tables: Any = None,
     financial_metrics: Any = None,
     pdf_sections: Any = None,
@@ -299,6 +307,9 @@ def _build_final_prompt(
     quality_guidance = _quality_remediation_prompt(quality_remediation_plan or {})
     if quality_guidance:
         prompt.insert(1, quality_guidance)
+    repair_guidance = _repair_constraints_prompt(repair_constraints or {})
+    if repair_guidance:
+        prompt.insert(1, repair_guidance)
     if rating and symbol:
         prompt.append(
             f"Investment rating determined: {rating}. "
@@ -386,6 +397,10 @@ def _normalize_quality_remediation_plan(raw: Any) -> Dict[str, Any]:
     return {}
 
 
+def _normalize_repair_constraints(raw: Any) -> Dict[str, Any]:
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
 def _quality_remediation_prompt(plan: Dict[str, Any]) -> str:
     if not plan or not plan.get("quality_feedback_used"):
         return ""
@@ -407,6 +422,27 @@ def _quality_remediation_prompt(plan: Dict[str, Any]) -> str:
         parts.append("Planner constraints: " + " | ".join(constraints[:8]))
     parts.append(
         "Hard rule: if a claim exists for a failed section, write the claim into the corresponding report section instead of leaving a framework, placeholder, or weak conclusion."
+    )
+    return "\n".join(parts)
+
+
+def _repair_constraints_prompt(plan: Dict[str, Any]) -> str:
+    if not plan:
+        return ""
+    sections = [str(item) for item in plan.get("required_backfill_sections", []) if str(item).strip()]
+    unresolved = [str(item) for item in plan.get("must_explain_unresolved_gaps", []) if str(item).strip()]
+    parts = [
+        "GapResolver repair constraints:",
+        "These are writing constraints only; never cite them as evidence.",
+    ]
+    if sections:
+        parts.append("Required backfill sections: " + ", ".join(sections[:10]))
+    if unresolved:
+        parts.append("Unresolved gaps that must be explained in body: " + ", ".join(unresolved[:12]))
+    if plan.get("free_public_source_boundary"):
+        parts.append("Source boundary: " + str(plan.get("free_public_source_boundary")))
+    parts.append(
+        "For unresolved gaps, state what is missing, which free public source classes were attempted, why the item cannot be confirmed, and how it affects the investment view."
     )
     return "\n".join(parts)
 
@@ -580,12 +616,13 @@ def hard_backfill_quality_sections(
     markdown: str,
     claims: List[Dict[str, Any]],
     quality_remediation_plan: Dict[str, Any] | None = None,
+    repair_constraints: Dict[str, Any] | None = None,
 ) -> str:
     """Replace weak framework sections with deterministic claim-backed prose."""
     if not claims:
         return markdown
     plan = quality_remediation_plan or {}
-    target_sections = _quality_target_sections(plan)
+    target_sections = _quality_target_sections(plan, repair_constraints or {})
     by_section = _claims_by_outline_section(claims)
     output = markdown
 
@@ -605,7 +642,7 @@ def hard_backfill_quality_sections(
     return output
 
 
-def _quality_target_sections(plan: Dict[str, Any]) -> set[str]:
+def _quality_target_sections(plan: Dict[str, Any], repair_constraints: Dict[str, Any] | None = None) -> set[str]:
     failed = {str(item) for item in plan.get("failed_sections", []) if str(item)}
     text = " ".join(
         [str(item) for item in plan.get("required_fixes", [])]
@@ -623,6 +660,9 @@ def _quality_target_sections(plan: Dict[str, Any]) -> set[str]:
         "executive_summary": "executive_summary",
     }
     targets = {mapping[item] for item in failed if item in mapping}
+    for item in (repair_constraints or {}).get("required_backfill_sections", []):
+        key = str(item)
+        targets.add(mapping.get(key, key))
     if any(term in text for term in ["三表", "利润表", "资产负债表", "现金流量表"]):
         targets.add("financial_statements")
     if any(term in text for term in ["同行", "对比"]):

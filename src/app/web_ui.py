@@ -440,6 +440,9 @@ def run_delivery_rework_loop(
         remediation = _read_json(Path(output_path) / "quality_remediation_plan.json", default={})
         if not remediation:
             break
+        repair_constraints = _read_json(Path(output_path) / "repair_constraints.json", default={})
+        if isinstance(repair_constraints, dict) and repair_constraints:
+            remediation["repair_constraints"] = repair_constraints
         round_record = {
             "round": round_index,
             "trigger": "delivery_gate_failed",

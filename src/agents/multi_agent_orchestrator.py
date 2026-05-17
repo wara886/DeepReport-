@@ -776,6 +776,7 @@ class MultiAgentOrchestrator:
         self._write_jsonl("gap_resolution_trace.jsonl", state.get("gap_resolution_trace", []))
         gap_resolution_json_path = self._write_json("gap_resolution_trace.json", state.get("gap_resolution_trace", []))
         data_repair_summary_path = self._write_json("data_repair_summary.json", state.get("data_repair_summary", {}))
+        repair_constraints_path = self._write_json("repair_constraints.json", state.get("repair_constraints", {}))
         scorecard = build_company_report_scorecard(
             evidence_records=list(evidence_records) if isinstance(evidence_records, list) else [],
             financial_metrics=analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
@@ -889,6 +890,7 @@ class MultiAgentOrchestrator:
             "gap_resolution_trace": str(self.output_dir / "gap_resolution_trace.jsonl"),
             "gap_resolution_trace_json": str(gap_resolution_json_path),
             "data_repair_summary": str(data_repair_summary_path),
+            "repair_constraints": str(repair_constraints_path),
             "company_report_scorecard": str(scorecard_path),
             "conversation_context": str(conversation_path),
             "durable_memory": durable_memory_artifacts.get("working_snapshot", ""),
@@ -1555,6 +1557,7 @@ def enrich_task_parameters(
         params.setdefault("pdf_sections", analysis_artifacts.get("pdf_sections", []))
         params.setdefault("company_profile", analysis_artifacts.get("company_profile", {}))
         params.setdefault("quality_remediation_plan", dict(state.get("quality_remediation_plan", {})) if isinstance(state.get("quality_remediation_plan"), dict) else {})
+        params.setdefault("repair_constraints", dict(state.get("repair_constraints", {})) if isinstance(state.get("repair_constraints"), dict) else {})
         params.setdefault("max_claims", int(profile["final_max_claims"]))
         params.setdefault("max_evidence", int(profile["final_max_evidence"]))
         params.setdefault("evidence_content_limit", int(profile["final_evidence_content_limit"]))

@@ -726,3 +726,13 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`python -m py_compile src/app/web_ui.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_web_ui.py::test_delivery_rework_loop_reruns_when_gate_fails tests/test_web_ui.py::test_load_run_payload_reads_latest_artifacts`。
 - 质量结果：`2 passed`。
 - 剩余问题：FinalAnswer 还需要显式消费 GapResolver 的 repair constraints，objective evaluator 也需要继续补通用质量门禁。
+
+# 2026-05-17 Commit 23：FinalAnswer 消费 GapResolver 修复约束
+
+- `FinalAnswerAgent` 新增 `repair_constraints` / `gap_repair_constraints` 输入，写作 prompt 会展示 GapResolver 的 required backfill sections、unresolved gaps 和免费公开来源边界。
+- `hard_backfill_quality_sections()` 现在同时消费 quality remediation plan 与 repair constraints，可把 GapResolver 指定的章节纳入 hard backfill 目标。
+- dynamic orchestrator 会写出 `repair_constraints.json` 并把 state 中的 repair constraints 注入后续 final task；delivery rework loop 会把上一轮 `repair_constraints.json` 合并进 remediation plan，确保同轮重跑能消费缺口约束。
+- 新增测试确认 FinalAnswer prompt 中包含 GapResolver repair constraints，且 metadata 标记 `repair_constraints_used=true`。
+- 验证命令：`python -m py_compile src/agents/final_answer_agent.py src/agents/multi_agent_orchestrator.py src/app/web_ui.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_multi_agent_workflow.py::test_final_answer_consumes_gap_repair_constraints tests/test_web_ui.py::test_delivery_rework_loop_reruns_when_gate_fails`。
+- 质量结果：`2 passed`。
+- 剩余问题：objective evaluator 仍需补“上市身份/免费来源尝试/空洞结论”等通用质量门禁，前端 UI 也还未重排。
