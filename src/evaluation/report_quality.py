@@ -55,6 +55,7 @@ def evaluate_report_quality_from_paths(
         "professional_depth": _score_professional_depth(artifacts, issues),
         "compliance": _score_compliance(artifacts, issues),
     }
+    _check_delivery_policy(artifacts, issues)
     total = round(sum(scores[key] * GROUP_WEIGHTS[key] for key in GROUP_WEIGHTS), 4)
     required = _required_gate_checks(artifacts, issues)
     fatal_count = sum(1 for issue in issues if issue["severity"] == "fatal")
@@ -173,6 +174,8 @@ def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
         "profile": _read_json(paths.outputs_dir / "company_profile_extracted.json", {}),
         "verification": _read_json(paths.outputs_dir / "verification_report.json", {}),
         "scorecard": _read_json(paths.outputs_dir / "company_report_scorecard.json", {}),
+        "search_meta": _read_json(paths.outputs_dir / "search_meta.json", {}),
+        "agent_collaboration_trace": _read_json(paths.outputs_dir / "agent_collaboration_trace.json", {}),
         "report_md": _read_text(paths.reports_dir / "report.md"),
         "report_html": _read_text(paths.reports_dir / "report.html"),
         "report_json": _read_json(paths.reports_dir / "report.json", {}),
@@ -306,6 +309,65 @@ def _score_compliance(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -
     return round(sum(1 for ok in checks.values() if ok) / len(checks), 4)
 
 
+def _check_delivery_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    summary = artifacts.get("summary", {}) if isinstance(artifacts.get("summary"), dict) else {}
+    entity = summary.get("entity_resolution", {}) if isinstance(summary.get("entity_resolution"), dict) else {}
+    resolved_symbol = str(entity.get("resolved_symbol") or summary.get("symbol") or "").strip()
+    confidence = float(entity.get("confidence") or entity.get("resolution_confidence") or 0.0)
+    if not resolved_symbol:
+        _issue(issues, "blocker", "delivery_policy", "无法确认上市公司标的，不能生成正式公司/个股研报")
+    elif confidence and confidence < 0.45:
+        _issue(issues, "blocker", "delivery_policy", f"上市公司身份解析置信度过低：{confidence:.2f}")
+
+    report_text = _report_text(artifacts)
+    memory_trace = artifacts.get("agent_collaboration_trace", {})
+    memory_text = json.dumps(memory_trace, ensure_ascii=False) if isinstance(memory_trace, dict) else ""
+    if "DurableMemory" in report_text or "[DurableMemory]" in report_text:
+        _issue(issues, "blocker", "delivery_policy", "正文疑似把 memory 内容当作事实来源")
+    if memory_text and "facts require evidence/citation/verifier" not in memory_text:
+        _issue(issues, "warning", "delivery_policy", "多智能体 trace 未清楚声明 memory 不可替代事实证据")
+
+    engines = _search_engines_used(artifacts.get("search_meta", {}), summary)
+    if len(set(engines)) < 2:
+        _issue(issues, "warning", "delivery_policy", "免费公开数据源尝试不足，至少应记录两个以上数据源/搜索引擎")
+    if engines and _only_local_sources(engines) and not _contains_any(report_text, ("数据缺口", "已尝试", "公开来源", "source gap", "unavailable")):
+        _issue(issues, "blocker", "delivery_policy", "仅使用本地来源但正文未说明实时/公开来源缺口")
+
+    if _contains_any(report_text, ("持续关注", "谨慎观察", "中性")) and not _contains_any(
+        report_text, ("因为", "理由", "增长驱动", "竞争压力", "估值约束", "risk")
+    ):
+        _issue(issues, "blocker", "delivery_policy", "投资结论方向存在但缺少理由、增长驱动、竞争压力或估值约束")
+
+
+def _search_engines_used(search_meta: Any, summary: Dict[str, Any]) -> List[str]:
+    engines: List[str] = []
+    raw = summary.get("search_engines", [])
+    if isinstance(raw, list):
+        engines.extend(str(item) for item in raw if str(item))
+    meta = search_meta.get("engine_meta", search_meta) if isinstance(search_meta, dict) else {}
+    if isinstance(meta, dict):
+        engines.extend(str(key) for key in meta.keys())
+    return [item for item in engines if item]
+
+
+def _only_local_sources(engines: List[str]) -> bool:
+    if not engines:
+        return True
+    remote = {
+        "sec_edgar",
+        "yahoo_finance",
+        "eastmoney",
+        "eastmoney_financials",
+        "cninfo_announcements",
+        "exchange_announcements",
+        "tavily",
+        "serper",
+        "metaso",
+        "sogou",
+    }
+    return not any(engine in remote for engine in engines)
+
+
 def _required_gate_checks(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> Dict[str, Any]:
     text = _report_text(artifacts)
     tables = artifacts["tables"]
@@ -436,7 +498,24 @@ def _section_is_empty(text: str, headings: Iterable[str]) -> bool:
 
 def _contains_any(text: str, terms: Iterable[str]) -> bool:
     lowered = str(text or "").lower()
-    return any(str(term).lower() in lowered for term in terms)
+    expanded = set(str(term).lower() for term in terms)
+    alias_groups = [
+        ("执行摘要", "摘要", "核心观点", "summary"),
+        ("主营业务", "业务画像", "公司画像", "产品", "渠道", "business"),
+        ("财务", "三表", "盈利", "现金", "financial"),
+        ("估值", "市盈率", "市净率", "valuation", "p/e", "p/b"),
+        ("风险", "风险提示", "风险因素", "risk"),
+        ("投资建议", "投资结论", "评级", "中性", "买入", "持有", "conclusion"),
+        ("同行", "可比公司", "竞品", "peer"),
+        ("敏感性", "情景", "scenario", "sensitivity"),
+        ("资料来源", "数据来源", "来源", "citation"),
+        ("不构成投资建议", "仅供参考", "使用限制", "免责声明"),
+        ("利益冲突", "独立性", "披露"),
+    ]
+    for group in alias_groups:
+        if any(item.lower() in expanded for item in group):
+            expanded.update(item.lower() for item in group)
+    return any(term in lowered for term in expanded)
 
 
 def _is_primary_source(item: Any) -> bool:

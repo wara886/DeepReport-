@@ -736,3 +736,13 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`python -m py_compile src/agents/final_answer_agent.py src/agents/multi_agent_orchestrator.py src/app/web_ui.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_multi_agent_workflow.py::test_final_answer_consumes_gap_repair_constraints tests/test_web_ui.py::test_delivery_rework_loop_reruns_when_gate_fails`。
 - 质量结果：`2 passed`。
 - 剩余问题：objective evaluator 仍需补“上市身份/免费来源尝试/空洞结论”等通用质量门禁，前端 UI 也还未重排。
+
+# 2026-05-17 Commit 24：Objective Evaluator 通用交付门禁
+
+- `report_quality` 新增 delivery policy 检查：上市公司身份解析置信度、memory 是否误入事实正文、免费公开数据源尝试数量、仅本地来源时是否说明数据缺口、投资结论是否有理由。
+- `load_quality_artifacts()` 现在读取 `search_meta.json` 和 `agent_collaboration_trace.json`，把多 Agent/memory/source 路由纳入 objective gate。
+- `_contains_any()` 补充中文/英文同义词组，兼容正常中文报告和历史 mojibake 文档测试。
+- 新增测试覆盖：正文把 DurableMemory 当事实来源时 fail；仅使用本地来源且未说明公开来源缺口时 fail。
+- 验证命令：`python -m py_compile src/evaluation/report_quality.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_report_quality.py`。
+- 质量结果：`7 passed`。
+- 剩余问题：前端 Chat UI 仍需要重排为更紧凑的工作台，并展示 collaboration/tool/rework。

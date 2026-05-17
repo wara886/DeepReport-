@@ -194,6 +194,79 @@ def test_quality_evaluator_blocks_framework_only_sections_and_weak_conclusion(tm
     assert "投资结论缺少明确方向和理由" in messages
 
 
+
+def test_quality_evaluator_blocks_memory_as_fact_source(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# TEST 2025Q4 company report
+
+## Executive Summary
+[DurableMemory] says revenue improved, so the report keeps a neutral rating.
+## Business
+The business profile covers products and channels.
+## Three Statement Summary
+The income statement, balance sheet, and cash flow statement are summarized.
+## Peer Comparison
+Peer comparison includes a comparable-company pool and profitability conclusion.
+## Valuation
+P/E and P/B are explained.
+## Sensitivity
+Revenue growth changes would affect profit and valuation.
+## Risk
+Risk disclosure is complete.
+## Investment Conclusion
+Based on growth driver, competition pressure, and valuation constraint, keep neutral.
+## Compliance
+Data source: public sources. This is for reference only and is not investment advice. No conflict of interest.
+""",
+    )
+
+    report = evaluate_report_quality(run_dir)
+    messages = "\n".join(issue["message"] for issue in report["issues"])
+
+    assert report["objective_pass"] is False
+    assert "memory" in messages.lower()
+
+
+def test_quality_evaluator_blocks_only_local_sources_without_gap_explanation(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# TEST 2025Q4 company report
+
+## Executive Summary
+Based on growth driver, competition pressure, and valuation constraint, keep neutral.
+## Business
+The business profile covers products and channels.
+## Three Statement Summary
+The income statement, balance sheet, and cash flow statement are summarized.
+## Peer Comparison
+Peer comparison includes a comparable-company pool and profitability conclusion.
+## Valuation
+P/E and P/B are explained.
+## Sensitivity
+Revenue growth changes would affect profit and valuation.
+## Risk
+Risk disclosure is complete.
+## Investment Conclusion
+Based on growth driver, competition pressure, and valuation constraint, keep neutral.
+## Compliance
+Data source: local index. This is for reference only and is not investment advice. No conflict of interest.
+""",
+    )
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "run_summary.json").write_text(
+        json.dumps({"symbol": "TEST", "period": "2025Q4", "search_engines": ["local_real_data", "local_evidence"]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+    messages = "\n".join(issue["message"] for issue in report["issues"])
+
+    assert report["objective_pass"] is False
+    assert any(issue["category"] == "delivery_policy" and issue["severity"] == "blocker" for issue in report["issues"])
+
 def _write_run(
     tmp_path,
     report_md,
