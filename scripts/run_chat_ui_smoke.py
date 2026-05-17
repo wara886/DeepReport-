@@ -24,7 +24,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", default="eval_outputs/chat_ui_smoke/company/outputs")
     parser.add_argument("--report-dir", default="eval_outputs/chat_ui_smoke/company/reports")
     parser.add_argument("--memory-root", default="eval_outputs/chat_ui_smoke/memory")
-    parser.add_argument("--raw-data-root", default="data/raw/real_data")
     parser.add_argument("--symbol", default="AAPL")
     parser.add_argument("--period", default="2025Q4")
     parser.add_argument("--skip-report-run", action="store_true")
@@ -36,7 +35,6 @@ def main(argv: list[str] | None = None) -> int:
         output_dir=args.output_dir,
         report_dir=args.report_dir,
         config_path=args.config_path,
-        raw_data_root=args.raw_data_root,
         memory_root=args.memory_root,
     )
     thread = Thread(target=server.serve_forever, daemon=True)

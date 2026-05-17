@@ -164,4 +164,4 @@ def _source_failures(search_meta: Any) -> List[str]:
 
 
 def _gap(gap_type: str, severity: str, message: str) -> Dict[str, Any]:
-    return {"gap_type": gap_type, "severity": severity, "message": message}
+    return {"gap_type": gap_type, "severity": severity, "message": message, "route": "final_answer"}

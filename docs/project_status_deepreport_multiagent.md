@@ -756,3 +756,15 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`python -m py_compile src/app/web_ui.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_web_ui.py`。
 - 质量结果：`9 passed`。
 - 剩余问题：还需要跑 Chat UI smoke 和任意公司样本验收，并补竞赛对齐文档。
+
+# 2026-05-17 Commit 26：Chat UI 与多 Agent 回归 Smoke
+
+- 修复 `scripts/run_chat_ui_smoke.py` 与当前 `run_ui_server()` 参数不一致的问题，移除已废弃的 `raw_data_root` 传参。
+- `GapResolverAgent` 的 gap trace 补回 `route` 字段，兼容既有 harness/test 对 `gap_resolution_trace` 的读取。
+- 回归结果：
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_chat_task_parser.py tests/test_web_ui.py tests/test_agent_chat.py`：`21 passed`
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_report_quality.py tests/test_delivery_gate.py tests/test_quality_remediation.py tests/test_gap_resolver_agent.py`：`13 passed`
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_multi_agent_workflow.py tests/test_react_tool_loop.py`：`29 passed`
+  - `python scripts/run_chat_ui_smoke.py --skip-report-run`：`passed=true`
+- 当前 smoke 覆盖普通 chat、RAG 路由、memory 写入和 trace 返回；完整报告 run 因耗时和本地模型状态留到最终验收样本执行。
+- 剩余问题：还需要补文档说明“多 Agent vs 普通 workflow”与竞赛三类报告差距，并可选跑完整腾讯/A 股/美股样本。
