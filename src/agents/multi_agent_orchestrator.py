@@ -19,6 +19,7 @@ from src.agents.deep_analyze_agent import DeepAnalyzeAgent
 from src.agents.deep_researcher_agent import DeepResearcherAgent
 from src.agents.durable_memory import DurableMemoryConfig, DurableMemoryStore
 from src.agents.final_answer_agent import FinalAnswerAgent
+from src.agents.gap_resolver_agent import GapResolverAgent
 from src.agents.gap_router import build_gap_resolution_trace
 from src.agents.planning_agent import PlanningAgent
 from src.agents.verifier_agent import VerifierAgent
@@ -137,6 +138,7 @@ class MultiAgentOrchestrator:
             "analyze": DeepAnalyzeAgent(model=self.model, tool_registry=self.tool_registry),
             "final_answer": FinalAnswerAgent(model=self.model),
             "verifier": VerifierAgent(model=self.model),
+            "gap_resolver": GapResolverAgent(),
         }
         self.trace: List[Dict[str, Any]] = []
 
@@ -708,6 +710,7 @@ class MultiAgentOrchestrator:
         route_context_path = self._write_json("task_route_context.json", build_task_route_context(tasks))
         results = self._execute_dynamic_tasks(tasks=tasks, state=state)
         self._run_verifier_rework_loop(state=state)
+        self._run_gap_resolver(state=state)
 
         evidence_records = state["evidence_records"]
         claims = state["claims"]
@@ -771,6 +774,8 @@ class MultiAgentOrchestrator:
         self._write_json("multimodal_consistency.json", multimodal_consistency)
         self._write_json("revision_history.json", state.get("revision_history", []))
         self._write_jsonl("gap_resolution_trace.jsonl", state.get("gap_resolution_trace", []))
+        gap_resolution_json_path = self._write_json("gap_resolution_trace.json", state.get("gap_resolution_trace", []))
+        data_repair_summary_path = self._write_json("data_repair_summary.json", state.get("data_repair_summary", {}))
         scorecard = build_company_report_scorecard(
             evidence_records=list(evidence_records) if isinstance(evidence_records, list) else [],
             financial_metrics=analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
@@ -882,6 +887,8 @@ class MultiAgentOrchestrator:
             "mcp_manifest": str(mcp_manifest_path),
             "revision_history": str(self.output_dir / "revision_history.json"),
             "gap_resolution_trace": str(self.output_dir / "gap_resolution_trace.jsonl"),
+            "gap_resolution_trace_json": str(gap_resolution_json_path),
+            "data_repair_summary": str(data_repair_summary_path),
             "company_report_scorecard": str(scorecard_path),
             "conversation_context": str(conversation_path),
             "durable_memory": durable_memory_artifacts.get("working_snapshot", ""),
@@ -1054,6 +1061,37 @@ class MultiAgentOrchestrator:
                     "passed_after_round": bool(state.get("verification_report", {}).get("passed", False)),
                 }
             )
+
+    def _run_gap_resolver(self, state: Dict[str, Any]) -> None:
+        result = self._execute(
+            "gap_resolver",
+            AgentTask(
+                task_id="task_gap_resolver_001",
+                task_type="gap_resolver",
+                description="Resolve data and delivery gaps for the generated report.",
+                parameters={
+                    "symbol": state.get("symbol", ""),
+                    "period": state.get("period", ""),
+                    "evidence_records": list(state.get("evidence_records", [])),
+                    "claims": list(state.get("claims", [])),
+                    "markdown": str(state.get("markdown", "")),
+                    "analysis_artifacts": dict(state.get("analysis_artifacts", {}))
+                    if isinstance(state.get("analysis_artifacts"), dict)
+                    else {},
+                    "search_meta": dict(state.get("search_meta", {})) if isinstance(state.get("search_meta"), dict) else {},
+                    "quality_remediation_plan": dict(state.get("quality_remediation_plan", {}))
+                    if isinstance(state.get("quality_remediation_plan"), dict)
+                    else {},
+                },
+                dependencies=[],
+                priority=4,
+            ),
+        )
+        output = result.output if isinstance(result.output, dict) else {}
+        state["gap_resolution_trace"] = list(output.get("gap_resolution_trace", []))
+        state["data_repair_summary"] = dict(output.get("data_repair_summary", {}))
+        state["repair_constraints"] = dict(output.get("repair_constraints", {}))
+        state["required_backfill_sections"] = list(output.get("required_backfill_sections", []))
 
     def _write_json(self, file_name: str, payload: Any) -> Path:
         path = self.output_dir / file_name

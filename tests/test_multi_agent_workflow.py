@@ -347,7 +347,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert summary["mcp_tool_count"] >= 1
     assert summary["skill_registry_enabled"] is True
     assert summary["skill_count"] >= 1
-    assert len(trace_lines) == 6
+    assert len(trace_lines) == 7
     assert result["report_md"].endswith("report.md")
     assert result["task_route_context"].endswith("task_route_context.json")
     assert result["citations"].endswith("citations.json")
@@ -359,6 +359,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert result["company_report_scorecard"].endswith("company_report_scorecard.json")
     assert result["agent_collaboration_trace"].endswith("agent_collaboration_trace.json")
     assert result["tool_trace"].endswith("tool_trace.json")
+    assert result["data_repair_summary"].endswith("data_repair_summary.json")
     assert result["mcp_manifest"].endswith("mcp_manifest.json")
     assert result["conversation_context"].endswith("conversation_context.json")
     assert (tmp_path / "outputs" / "citations.json").exists()
@@ -371,6 +372,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert (tmp_path / "outputs" / "company_report_scorecard.json").exists()
     assert (tmp_path / "outputs" / "agent_collaboration_trace.json").exists()
     assert (tmp_path / "outputs" / "tool_trace.json").exists()
+    assert (tmp_path / "outputs" / "data_repair_summary.json").exists()
     assert (tmp_path / "outputs" / "conversation_context.json").exists()
     assert (tmp_path / "outputs" / "mcp_manifest.json").exists()
     route_context = json.loads((tmp_path / "outputs" / "task_route_context.json").read_text(encoding="utf-8"))
@@ -384,6 +386,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     scorecard = json.loads((tmp_path / "outputs" / "company_report_scorecard.json").read_text(encoding="utf-8"))
     collaboration = json.loads((tmp_path / "outputs" / "agent_collaboration_trace.json").read_text(encoding="utf-8"))
     tool_trace = json.loads((tmp_path / "outputs" / "tool_trace.json").read_text(encoding="utf-8"))
+    repair_summary = json.loads((tmp_path / "outputs" / "data_repair_summary.json").read_text(encoding="utf-8"))
     assert scorecard["scores"]["numeric_lineage_score"] > 0
     assert "valuation_reproducibility_score" in scorecard["scores"]
     assert summary["company_report_overall_score"] == scorecard["overall_score"]
@@ -396,6 +399,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert tool_trace["schema_version"] == "tool_trace.v1"
     assert tool_trace["tool_call_count"] >= 1
     assert any(call["tool_name"] == "build_three_statement_view" for call in tool_trace["calls"])
+    assert "gap_count" in repair_summary
 
 
 def test_multi_agent_orchestrator_can_persist_durable_memory_without_quality_regression(tmp_path):

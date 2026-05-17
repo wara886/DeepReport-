@@ -706,3 +706,13 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`python -m py_compile src/agents/base_agent.py src/agents/multi_agent_orchestrator.py src/app/web_ui.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_agent_foundation.py tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph tests/test_web_ui.py::test_load_run_payload_reads_latest_artifacts`。
 - 质量结果：`8 passed`。
 - 剩余问题：还需要新增 GapResolver/DataRepairAgent，并让 delivery gate 失败后同轮返工。
+
+# 2026-05-17 Commit 21：新增通用 GapResolver/DataRepairAgent
+
+- 新增 `GapResolverAgent`，用于检测三表、估值、同行、敏感性、股权治理、PDF 消费和数据源失败缺口；规则按报告结构/数据源/质量问题触发，不按公司名称特判。
+- dynamic 多 Agent 链路新增 GapResolver 步骤，输出 `gap_resolution_trace.json`、`gap_resolution_trace.jsonl`、`data_repair_summary.json`、`repair_constraints` 和 `required_backfill_sections`。
+- `run_summary` 和后续 trace 可看到 gap count、blocker/warning 和待补正文章节，为 delivery gate 同轮返工做输入。
+- 新增单测覆盖三表缺失、估值不可用原因缺失、数据源失败和 artifacts 有三表但正文未消费的场景。
+- 验证命令：`python -m py_compile src/agents/gap_resolver_agent.py src/agents/multi_agent_orchestrator.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_gap_resolver_agent.py tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph`。
+- 质量结果：`3 passed`。
+- 剩余问题：GapResolver 已产出修复约束，但 delivery gate 失败后尚未自动触发同轮 rewrite。
