@@ -565,3 +565,21 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   - `$env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections`
 - 质量结果：11 passed。
 - 当前风险：600519 业务画像更完整，但估值、敏感性和同行对比仍未闭合；下一步修 AMD 业务线/同行对比。
+
+# 2026-05-17 Commit 12：AMD 业务线、同行对比和投资结论补强
+
+- 修复 AMD 报告中 BLS 宏观证据被写成 `Company` 业务概览的问题：无公司 symbol 的 trend row 不再生成公司业务画像 claim。
+- AMD 最低正文 claims 现在强制覆盖：
+  - Data Center、Client、Gaming、Embedded 四条业务线。
+  - AI GPU/EPYC、PC 周期、Gaming/Embedded 存量业务韧性等投资含义。
+  - NVIDIA、Intel、Broadcom 三组同行参照关系。
+  - 中性/审慎观察结论中的增长驱动、竞争压力、估值约束和现金流/分部收入证据缺口。
+- 同行对比仍保持证据边界：没有同业三表和估值倍数时不输出排名，只输出定性参照框架和待补数据。
+- 新增测试覆盖：
+  - AMD claims 必须包含 Data Center / Client / Gaming / Embedded、NVIDIA / Intel / Broadcom、增长驱动 / 竞争压力 / 估值约束。
+  - BLS 等宏观证据不得生成 `Company 的证据覆盖` 公司业务概览。
+- 验证命令：
+  - `python -m py_compile src/agents/deep_analyze_agent.py`
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_report_quality.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections`
+- 质量结果：15 passed。
+- 当前风险：AMD 业务线和同行框架已补强，但估值仍主要是不可用说明；下一步补最小估值与敏感性模块。

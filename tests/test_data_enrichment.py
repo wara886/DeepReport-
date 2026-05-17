@@ -206,7 +206,38 @@ def test_rule_claims_backfill_amd_peer_valuation_risk_and_conclusion():
 
     assert {"strategy_business", "ownership_governance", "peer_compare", "valuation", "valuation_sensitivity", "risks", "conclusion"}.issubset(sections)
     assert "NVIDIA" in text and "Intel" in text and "Broadcom" in text
+    assert "Data Center" in text and "Client" in text and "Gaming" in text and "Embedded" in text
+    assert "增长驱动" in text and "竞争压力" in text and "估值约束" in text
     assert "估值不可用原因" in text
+
+
+def test_macro_evidence_without_symbol_does_not_become_company_business_overview():
+    claims = build_rule_claims(
+        records=[
+            {
+                "evidence_id": "bls_cpi",
+                "source_type": "bls_series",
+                "content": "Consumer Price Index latest observation.",
+            },
+            {
+                "evidence_id": "sec_amd",
+                "symbol": "AMD",
+                "period": "2026Q1",
+                "source_type": "sec_companyfacts",
+                "content": "SEC companyfacts for AMD.",
+                "metadata": {"metrics": {"RevenueFromContractWithCustomerExcludingAssessedTax": {"value": 7438000000, "unit": "USD"}}},
+            },
+        ],
+        ratio_rows=[],
+        trend_rows=[
+            {"symbol": "Company", "evidence_count": 1, "unique_sources": 1, "sample_ids": "bls_cpi"},
+            {"symbol": "AMD", "evidence_count": 1, "unique_sources": 1, "sample_ids": "sec_amd"},
+        ],
+    )
+    text = "\n".join(claim.claim_text for claim in claims)
+
+    assert "Company 的证据覆盖" not in text
+    assert "AMD 的证据覆盖" in text
 
 
 def test_eastmoney_claims_use_professional_units_not_scientific_notation():
