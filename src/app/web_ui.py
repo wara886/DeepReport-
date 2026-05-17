@@ -14,7 +14,7 @@ from urllib.parse import unquote, urlparse
 
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.app.agent_chat import AgentChatService
-from src.app.chat_task_parser import parse_chat_task
+from src.app.chat_task_parser import llm_parse_chat_task
 from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
 from src.evaluation.llm_report_review import review_report_with_llm_from_paths, write_llm_review_outputs_for_paths
 from src.evaluation.quality_remediation import (
@@ -32,6 +32,7 @@ A_SHARE_ENGINES = (
     "eastmoney_financials,yahoo_finance,eastmoney,local_evidence"
 )
 US_ENGINES = "local_real_data,sec_edgar,yahoo_finance,independent_macro,local_evidence"
+HK_ENGINES = "local_real_data,yahoo_finance,tavily,local_evidence"
 
 
 def run_ui_server(
@@ -139,7 +140,7 @@ def create_ui_handler(
             period = str(payload.get("period") or "2025Q4").strip().upper()
             allow_report_run = bool(payload.get("allow_report_run", True))
             enable_remote_data = bool(payload.get("enable_remote_data", True))
-            parsed_task = parse_chat_task(message, current_symbol=symbol, current_period=period)
+            parsed_task = llm_parse_chat_task(message, current_symbol=symbol, current_period=period, config_path=config_path)
             if parsed_task.should_run:
                 symbol = parsed_task.symbol
                 period = parsed_task.period
@@ -204,7 +205,8 @@ def create_ui_handler(
                 enable_remote_data=enable_remote_data,
                 data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
             )
-            response["parsed_task"] = parsed_task.to_dict()
+            if parsed_task.should_run or parsed_task.needs_confirmation:
+                response["parsed_task"] = parsed_task.to_dict()
             if response.get("mode") == "report_run":
                 quality_result = run_delivery_quality_pipeline(
                     output_root,
@@ -630,6 +632,7 @@ def render_index_html() -> str:
     const DEFAULT_ENGINES = "__DEFAULT_ENGINES__";
     const A_SHARE_ENGINES = "__A_SHARE_ENGINES__";
     const US_ENGINES = "__US_ENGINES__";
+    const HK_ENGINES = "__HK_ENGINES__";
     const tabs = ["总览", "报告", "图表", "引用", "表格", "PDF章节", "公司画像", "Claims", "质量评测", "轨迹", "时间线", "原始数据"];
     let latest = {};
     let activeTab = "总览";
@@ -667,6 +670,8 @@ def render_index_html() -> str:
         $("engines").value = DEFAULT_ENGINES;
       } else if (symbol.endsWith(".SS") || symbol.endsWith(".SZ") || /^[0-9]{6}$/.test(symbol)) {
         $("engines").value = A_SHARE_ENGINES;
+      } else if (symbol.endsWith(".HK")) {
+        $("engines").value = HK_ENGINES;
       } else {
         $("engines").value = US_ENGINES;
       }
@@ -734,6 +739,13 @@ def render_index_html() -> str:
         const payload = { ...payloadBase(), message };
         const data = await postJson("/api/chat", payload);
         if (data.mode === "report_run") setStatus("Evaluating");
+        const parsed = asObj(data.parsed_task);
+        if (parsed.symbol) {
+          $("symbol").value = parsed.symbol;
+          if (parsed.period) $("period").value = parsed.period;
+          if (parsed.research_topic) $("topic").value = parsed.research_topic;
+          syncEnginesFromSwitch();
+        }
         if (data.latest) {
           latest = data.latest;
           syncFormFromLatest(latest);
@@ -758,7 +770,7 @@ def render_index_html() -> str:
         lines.push("事实仍以 evidence_id/citation/verifier 为准。");
       }
       const parsed = asObj(data.parsed_task);
-      if (parsed.symbol && parsed.period) {
+      if ((parsed.should_run || parsed.needs_confirmation) && parsed.symbol && parsed.period) {
         lines.push(`识别任务：${parsed.symbol} ${parsed.period}，置信度 ${parsed.confidence ?? "-"}`);
       }
       const remediation = asObj(data.result && data.result.remediation_plan);
@@ -961,6 +973,7 @@ def render_index_html() -> str:
         .replace("__DEFAULT_ENGINES__", escape(DEFAULT_ENGINES))
         .replace("__A_SHARE_ENGINES__", escape(A_SHARE_ENGINES))
         .replace("__US_ENGINES__", escape(US_ENGINES))
+        .replace("__HK_ENGINES__", escape(HK_ENGINES))
     )
 
 
@@ -970,6 +983,8 @@ def default_engines_for_symbol(symbol: str, realtime: bool = False) -> str:
     symbol_key = str(symbol or "").strip().upper()
     if symbol_key.endswith((".SS", ".SZ")) or (len(symbol_key) == 6 and symbol_key.isdigit()):
         return A_SHARE_ENGINES
+    if symbol_key.endswith(".HK"):
+        return HK_ENGINES
     return US_ENGINES
 
 

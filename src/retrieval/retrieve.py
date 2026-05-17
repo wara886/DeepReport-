@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Dict, List, Optional, Tuple
 
 from src.retrieval.bm25_index import BM25Index
@@ -9,6 +10,8 @@ from src.retrieval.chroma_index import ChromaIndex
 from src.retrieval.chunking import chunk_records
 from src.retrieval.evidence_store import EvidenceStore
 from src.training.infer_reranker import rerank_hits_with_meta
+
+logger = logging.getLogger(__name__)
 
 
 def retrieve_evidence(
@@ -160,9 +163,13 @@ def _bm25_hits(records: List[object], query: str, topk: int) -> List[Dict[str, o
 
 
 def _vector_hits(records: List[object], query: str, topk: int) -> Tuple[List[Dict[str, object]], Dict[str, object]]:
-    index = ChromaIndex()
-    index.add_records(records)
-    hits = index.search(query=query, topk=topk)
+    try:
+        index = ChromaIndex()
+        index.add_records(records)
+        hits = index.search(query=query, topk=topk)
+    except Exception as exc:
+        logger.warning("Chroma vector search failed, falling back to BM25-only: %s", exc)
+        return [], {"backend": "disabled", "error": str(exc)}
     output = []
     for item in hits:
         row = dict(item)

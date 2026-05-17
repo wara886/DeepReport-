@@ -238,27 +238,35 @@ def _build_final_prompt(
         f"Claims: {json.dumps(compact_claims, ensure_ascii=False)}",
         f"Evidence: {json.dumps(compact_evidence, ensure_ascii=False)}",
         (
-            "Write the report in Chinese. Use exactly these Markdown section headers: "
+            "Write the report in Chinese financial research prose. "
+            "Use exactly these Markdown section headers: "
             "执行摘要, 业务概览, 股权结构与公司治理, 战略与主营业务, 三表摘要, 财务分析, "
             "同行对比, 估值观察, 估值敏感性, 风险评估, 投资结论. "
-            "IMPORTANT: Use ALL claims provided. Map claim section_names to headers: "
+            "Map claim section_names to headers: "
             "valuation→估值观察, valuation_sensitivity→估值敏感性, conclusion→投资结论, "
             "peer_compare→同行对比, financial_statements→三表摘要, financial_analysis→财务分析, "
             "executive_summary→执行摘要, earnings_quality→财务分析. "
-            "Never write '本节暂无可验证结论' if a claim exists for that section. "
-            "业务概览 must describe the company's actual business profile, sector, industry, products/services, and business model; "
-            "do not use debug wording such as '证据覆盖 X 条' as the main business overview. "
-            "三表摘要 must include available key line items such as revenue, net income, operating cash flow, free cash flow, assets/equity; "
-            "do not leave it empty when these metrics are present in claims. "
-            "CRITICAL: The 投资结论 section must ONLY cite evidence from sections that have actual claims. "
-            "If the 同行对比 section has no verifiable claims, do NOT say '基于同行比较' in 投资结论. "
-            "Only reference dimensions (growth, margin, ROE, peer comparison) that are actually supported by claims in the report. "
-            "VALUATION SECTION REQUIREMENTS: "
-            "1) In 估值观察, explicitly state the valuation methodology used (e.g. P/B + DDM + P/E for banks, or P/E + P/S + DCF for tech). "
-            "2) If the company is a bank or financial institution, explain that P/S and FCF DCF have limited applicability and P/B / DDM are the primary methods. "
-            "3) Include the FCF methodology note (e.g. OCF - CapEx - finance lease payments) if present in claims. "
-            "4) If non-recurring items (tax benefits, restructuring, impairment) are present in claims, mention them in 财务分析 and note their impact on earnings quality. "
-            "5) For ROE, always note whether it is simplified-annualized or official company-disclosed, and that the two may differ by 1-2pct."
+            "For each section, synthesize the provided claims into coherent prose paragraphs "
+            "with specific data, analysis, and a conclusion. "
+            "Reference evidence_ids in brackets like [ev_123].\n"
+            "FORBIDDEN placeholder patterns — never use these: "
+            "框架性, 待补, 暂无结论, 暂无可验证结论, 无法判断, "
+            "仅给出框架性描述, 缺少可量化, 框架待补, N/A. "
+            "If a claim exists for a section, write it as substantive prose with context. "
+            "If no claim exists, skip the section entirely rather than writing a placeholder.\n"
+            "EXAMPLE of good prose:\n"
+            "## 财务分析\n"
+            "AMD 2025Q4 实现营收 76.6 亿美元，同比增长 24%，超出市场一致预期 2.3%。"
+            "数据中心业务收入 35.4 亿美元（占比 46%）首次超越客户端业务，成为最大收入来源。"
+            "毛利率提升至 52.1%（同比 +1.8pp），受益于高毛利的数据中心 GPU 出货占比提升。"
+            "经营现金流 12.3 亿美元，自由现金流 9.8 亿美元，均同比改善。[ev_amd_fin_001]\n"
+            "业务概览 must describe the company's actual business: sector, industry, products, "
+            "and business model, not debug wording like '证据覆盖 X 条'. "
+            "三表摘要 must present key line items (revenue, net income, operating cash flow, "
+            "free cash flow, assets/equity) in context. "
+            "估值观察 must state the methodology (e.g. P/E + P/S + DCF for tech) "
+            "and provide the computed valuation range. "
+            "The 投资结论 section must only reference dimensions actually supported by claims."
         ),
     ]
     artifact_context = _artifact_context_prompt(
@@ -269,33 +277,21 @@ def _build_final_prompt(
     )
     if artifact_context:
         prompt.append(artifact_context)
-    if conclusion_texts:
-        prompt.append(
-            f"The 投资结论 section MUST include this conclusion: {conclusion_texts[0]}"
-        )
-    if valuation_texts:
-        prompt.append(
-            f"CRITICAL: The 估值观察 section MUST include ALL of the following valuation claims verbatim: "
-            + " | ".join(valuation_texts)
-        )
-    if valuation_sensitivity_texts:
-        prompt.append(
-            f"CRITICAL: The 估值敏感性 section MUST include: {valuation_sensitivity_texts[0]}"
-        )
-    if risk_texts:
-        prompt.append(
-            f"CRITICAL: The 风险评估 section MUST include ALL of the following risk claims verbatim: "
-            + " | ".join(risk_texts)
-        )
-    if peer_texts:
-        prompt.append(
-            f"CRITICAL: The 同行对比 section MUST include ALL of the following peer comparison claims verbatim: "
-            + " | ".join(peer_texts)
-        )
-    if earnings_quality_texts:
-        prompt.append(
-            f"CRITICAL: The 财务分析 section MUST include this earnings quality note: {earnings_quality_texts[0]}"
-        )
+    section_claim_map = {
+        "投资结论": conclusion_texts,
+        "估值观察": valuation_texts,
+        "估值敏感性": valuation_sensitivity_texts,
+        "风险评估": risk_texts,
+        "同行对比": peer_texts,
+        "财务分析": earnings_quality_texts,
+    }
+    for section_name, texts in section_claim_map.items():
+        if texts:
+            excerpts = [t[:200] for t in texts if t]
+            if excerpts:
+                prompt.append(
+                    f"Reference material for {section_name}: {' | '.join(excerpts)}"
+                )
     if conversation_brief:
         prompt.insert(1, f"Conversation memory:\n{conversation_brief}")
     if skill_brief:

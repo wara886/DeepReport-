@@ -4,8 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from logging import getLogger
+from pathlib import Path
 import re
 from typing import Any, Dict
+
+from src.models.model_adapter import ModelAdapter
+
+logger = getLogger(__name__)
 
 
 REPORT_TERMS = ("研报", "财报", "报告", "research report", "company report")
@@ -92,6 +98,22 @@ def latest_completed_period(today: date | None = None) -> str:
 
 def _parse_symbol(text: str, fallback: str) -> tuple[str, float, str]:
     compact = text.upper().replace(" ", "")
+    # Chinese company name -> symbol mappings
+    cn_name_map = {
+        "英伟达": "NVDA",
+        "苹果": "AAPL",
+        "微软": "MSFT",
+        "谷歌": "GOOGL",
+        "亚马逊": "AMZN",
+        "特斯拉": "TSLA",
+        "meta": "META",
+        "脸书": "META",
+        "腾讯": "0700.HK",
+        "阿里巴巴": "BABA",
+    }
+    for cn_name, symbol in cn_name_map.items():
+        if cn_name in text.lower() or cn_name in text:
+            return symbol, 0.34, f"识别到中文名 {cn_name} -> {symbol}"
     if "贵州茅台" in text or "茅台" in text or "600519" in compact:
         return "600519.SS", 0.34, "识别到贵州茅台/600519"
     if re.search(r"\bAMD\b", text, flags=re.IGNORECASE):
@@ -116,6 +138,13 @@ def _parse_period(text: str, fallback: str, today: date) -> tuple[str, float, st
     if any(term.lower() in text.lower() for term in LATEST_TERMS):
         period = latest_completed_period(today)
         return period, 0.24, f"按当前日期选择最近已结束期间 {period}"
+    # Implicit latest: report+generation intent but no period specified
+    lowered = text.lower()
+    if any(term.lower() in lowered for term in REPORT_TERMS) and any(
+        term.lower() in lowered for term in GENERATION_TERMS
+    ):
+        period = latest_completed_period(today)
+        return period, 0.20, f"研报意图但未指定期间，默认最近已结束期间 {period}"
     fallback_period = str(fallback or latest_completed_period(today)).strip().upper()
     return fallback_period, 0.08, f"沿用当前期间 {fallback_period}"
 
@@ -128,3 +157,147 @@ def _has_report_intent(text: str) -> bool:
 def _has_generation_intent(text: str) -> bool:
     lowered = text.lower()
     return any(term.lower() in lowered for term in GENERATION_TERMS)
+
+
+def llm_parse_chat_task(
+    message: str,
+    current_symbol: str = "AAPL",
+    current_period: str = "2025Q4",
+    today: date | None = None,
+    config_path: str | Path = "configs/model_backends.yaml",
+) -> ParsedChatTask:
+    """Use the LLM to parse a chat message into a report task.
+
+    Falls back to the rule-based ``parse_chat_task`` when the LLM call fails
+    or returns incomplete results.
+    """
+    text = str(message or "").strip()
+    if not text:
+        return ParsedChatTask(
+            symbol=current_symbol,
+            period=current_period,
+            research_topic="",
+            confidence=0.0,
+            should_run=False,
+            needs_confirmation=False,
+            reason="empty message",
+            source="llm",
+        )
+
+    today = today or date.today()
+
+    # Fast path: skip LLM call if message clearly has no report intent at all
+    lowered = text.lower()
+    has_report_terms = any(t.lower() in lowered for t in REPORT_TERMS)
+    has_gen_terms = any(t.lower() in lowered for t in GENERATION_TERMS)
+    if not has_report_terms and not has_gen_terms:
+        return parse_chat_task(message, current_symbol, current_period, today)
+
+    system_prompt = (
+        "You are a precise intent parser for a financial report system. "
+        "Extract structured data from user messages about stock research reports.\n\n"
+        "Output a JSON object with:\n"
+        '- "symbol": stock ticker (e.g., "NVDA", "600519.SS", "AMD", "AAPL"). '
+        "For Chinese company names use the correct ticker. Empty string if unknown.\n"
+        '- "period": reporting period like "2025Q4" or "2026Q1". If user says a year like "2025年" without quarter, use the Q4 of that year (e.g. "2025年腾讯的财报" → "2025Q4"). Empty string if not specified.\n'
+        '- "wants_latest": boolean, true if user implies latest/most recent\n'
+        '- "generation_intent": boolean, true if user wants to GENERATE a report\n'
+        '- "report_intent": boolean, true if about financial reports\n'
+        '- "confidence": number 0.0-1.0 reflecting your certainty\n'
+        '- "reason": short explanation of your parsing'
+    )
+
+    user_prompt = (
+        f"Context: current_symbol={current_symbol}, current_period={current_period}, today={today.isoformat()}\n"
+        f"Message: {text}\n\n"
+        "Extract task parameters as JSON."
+    )
+
+    try:
+        adapter = ModelAdapter.from_config(config_path=config_path, section="agent_model")
+        adapter.max_tokens = 512
+        adapter.temperature = 0.0
+        adapter.timeout = 15.0
+
+        result = adapter.generate_json(prompt=user_prompt, system_prompt=system_prompt)
+        if not isinstance(result, dict):
+            raise RuntimeError(f"expected dict, got {type(result).__name__}")
+
+        # ── symbol ───────────────────────────────────────────────────────
+        raw_symbol = str(result.get("symbol") or "").strip().upper()
+        if not raw_symbol:
+            symbol = current_symbol
+            symbol_note = f"LLM未识别到公司，沿用当前标的 {current_symbol}"
+        else:
+            symbol = raw_symbol
+            # Normalise A-share codes: 600519 → 600519.SS
+            if re.match(r"^[036]\d{5}$", symbol):
+                symbol = f"{symbol}.SS"
+            symbol_note = f"LLM识别标的 {symbol}"
+
+        # ── period ───────────────────────────────────────────────────────
+        raw_period = str(result.get("period") or "").strip().upper()
+        wants_latest = bool(result.get("wants_latest", False))
+
+        if re.match(r"^20\d{2}Q[1-4]$", raw_period):
+            period = raw_period
+            period_note = f"LLM识别期间 {period}"
+        elif wants_latest:
+            period = latest_completed_period(today)
+            period_note = f"LLM识别到最新意图，使用最近期间 {period}"
+        else:
+            explicit = re.search(r"\b(20\d{2})\s*[Qq季]\s*([1-4])\b", text)
+            if explicit:
+                period = f"{explicit.group(1)}Q{explicit.group(2)}"
+                period_note = f"正则补充识别期间 {period}"
+            else:
+                # Year-only mention: "2025年腾讯的财报" → 2025Q4 (annual)
+                year_only = re.search(r"(20\d{2})\s*[年年内]", text)
+                if year_only:
+                    period = f"{year_only.group(1)}Q4"
+                    period_note = f"识别到年份{year_only.group(1)}年，默认完整财年Q4"
+                else:
+                    period = latest_completed_period(today)
+                    period_note = f"LLM未指定期间，默认最近期间 {period}"
+
+        # ── intent & confidence ──────────────────────────────────────────
+        generation_intent = bool(result.get("generation_intent", False))
+        report_intent = bool(result.get("report_intent", False))
+        confidence = min(0.99, float(result.get("confidence", 0.0)))
+        llm_reason = str(result.get("reason", "")).strip()
+
+        should_run = bool(generation_intent and report_intent and confidence >= 0.68)
+        needs_confirmation = bool(report_intent and not should_run and confidence >= 0.3)
+        topic = f"生成 {symbol} {period} 公司财报研报"
+
+        reason_parts = [symbol_note, period_note]
+        if should_run:
+            reason_parts.append(f"LLM意图识别为生成研报（置信度{confidence}）")
+        elif llm_reason:
+            reason_parts.append(llm_reason)
+        else:
+            reason_parts.append("LLM未识别到生成研报意图")
+
+        return ParsedChatTask(
+            symbol=symbol,
+            period=period,
+            research_topic=topic,
+            confidence=round(confidence, 4),
+            should_run=should_run,
+            needs_confirmation=needs_confirmation,
+            reason="；".join(reason_parts),
+            source="llm",
+        )
+
+    except Exception as exc:
+        parsed = parse_chat_task(message, current_symbol, current_period, today)
+        return ParsedChatTask(
+            symbol=parsed.symbol,
+            period=parsed.period,
+            research_topic=parsed.research_topic,
+            confidence=round(parsed.confidence * 0.85, 4),
+            should_run=parsed.should_run,
+            needs_confirmation=parsed.needs_confirmation,
+            reason=f"{parsed.reason}（LLM解析异常，规则兜底：{exc}）",
+            source="rule_fallback",
+        )

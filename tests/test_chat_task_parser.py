@@ -30,6 +30,24 @@ def test_parse_english_generate_latest_report_request():
     assert parsed.period == "2026Q1"
 
 
+def test_parse_nvidia_chinese_name_maps_to_nvda():
+    parsed = parse_chat_task("生成英伟达最新财报研报", today=date(2026, 5, 16))
+
+    assert parsed.should_run is True
+    assert parsed.symbol == "NVDA"
+    assert parsed.period == "2026Q1"
+    assert parsed.confidence >= 0.72
+
+
+def test_parse_nvidia_report_without_latest_term_infers_current_period():
+    parsed = parse_chat_task("生成一份英伟达公司的研报", current_period="2025Q4", today=date(2026, 5, 17))
+
+    assert parsed.should_run is True
+    assert parsed.needs_confirmation is False
+    assert parsed.symbol == "NVDA"
+    assert parsed.period == "2026Q1"
+
+
 def test_parse_report_question_without_generation_needs_confirmation():
     parsed = parse_chat_task("AMD 研报怎么样", current_symbol="AAPL", current_period="2025Q4", today=date(2026, 5, 16))
 

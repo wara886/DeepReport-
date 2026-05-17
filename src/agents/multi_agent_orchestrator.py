@@ -64,7 +64,7 @@ FAST_PROFILE = {
     "final_max_evidence": 8,
     "final_evidence_content_limit": 350,
     "final_max_tokens": 1600,
-    "verifier_max_rework_rounds": 1,
+    "verifier_max_rework_rounds": 2,
 }
 
 DEFAULT_PROFILE = {
@@ -75,7 +75,7 @@ DEFAULT_PROFILE = {
     "browser_skip_llm_extract": False,
     "browser_use_reader": True,
     "browser_use_playwright": False,
-    "browser_reader_max_records": 3,
+    "browser_reader_max_records": 6,
     "browser_reader_max_chars": 2500,
     "browser_max_llm_records": 6,
     "analyze_max_records": 12,
@@ -87,7 +87,7 @@ DEFAULT_PROFILE = {
     "final_max_evidence": 12,
     "final_evidence_content_limit": 600,
     "final_max_tokens": 2200,
-    "verifier_max_rework_rounds": 1,
+    "verifier_max_rework_rounds": 2,
 }
 
 
@@ -150,7 +150,7 @@ class MultiAgentOrchestrator:
         fast: bool = False,
         search_engines: List[str] | None = None,
         retrieval_ranking_mode: str = "hybrid_rerank",
-        enable_remote_data: bool = False,
+        enable_remote_data: bool = True,
         data_source_config_path: str = "configs/data_sources.yaml",
         quality_remediation_plan: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
@@ -195,7 +195,7 @@ class MultiAgentOrchestrator:
         fast: bool = False,
         search_engines: List[str] | None = None,
         retrieval_ranking_mode: str = "hybrid_rerank",
-        enable_remote_data: bool = False,
+        enable_remote_data: bool = True,
         data_source_config_path: str = "configs/data_sources.yaml",
         entity_resolution: Dict[str, Any] | None = None,
         quality_remediation_plan: Dict[str, Any] | None = None,
@@ -281,7 +281,7 @@ class MultiAgentOrchestrator:
                     "symbol": symbol,
                     "period": period,
                     "topk": 12,
-                    "engines": search_engines or ["local_real_data", "tavily", "local_evidence"],
+                    "engines": search_engines or ["local_real_data", "tavily", "yahoo_finance", "sec_edgar", "local_evidence"],
                     "raw_data_root": self.raw_data_root,
                     "ranking_mode": retrieval_ranking_mode,
                     "data_source_config_path": data_source_config_path,
@@ -563,7 +563,7 @@ class MultiAgentOrchestrator:
         fast: bool = False,
         search_engines: List[str] | None = None,
         retrieval_ranking_mode: str = "hybrid_rerank",
-        enable_remote_data: bool = False,
+        enable_remote_data: bool = True,
         data_source_config_path: str = "configs/data_sources.yaml",
         entity_resolution: Dict[str, Any] | None = None,
         quality_remediation_plan: Dict[str, Any] | None = None,
@@ -1062,7 +1062,7 @@ def prepare_dynamic_tasks(
     profile: Dict[str, Any] | None = None,
     search_engines: List[str] | None = None,
     retrieval_ranking_mode: str = "hybrid_rerank",
-    enable_remote_data: bool = False,
+    enable_remote_data: bool = True,
     data_source_config_path: str = "configs/data_sources.yaml",
     skill_registry: SkillRegistry | None = None,
     router_memory_brief: str = "",
@@ -1122,7 +1122,7 @@ def prepare_dynamic_tasks(
             params["symbol"] = symbol
             params["period"] = period
             params.setdefault("topk", int(profile["research_topk"]))
-            params.setdefault("engines", search_engines or ["local_real_data", "tavily", "local_evidence"])
+            params.setdefault("engines", search_engines or ["local_real_data", "tavily", "yahoo_finance", "sec_edgar", "local_evidence"])
             params.setdefault("raw_data_root", raw_data_root)
             params.setdefault("ranking_mode", retrieval_ranking_mode)
             params.setdefault("data_source_config_path", data_source_config_path)
@@ -1274,7 +1274,7 @@ def enrich_task_parameters(
         params.setdefault("use_react", bool(profile.get("research_use_react", False)))
         params.setdefault("react_max_steps", int(profile.get("research_react_max_steps", 3)))
         params.setdefault("use_chunks", bool(profile.get("research_use_chunks", True)))
-        params.setdefault("engines", ["local_real_data", "tavily", "local_evidence"])
+        params.setdefault("engines", ["local_real_data", "tavily", "yahoo_finance", "sec_edgar", "local_evidence"])
         params.setdefault("raw_data_root", raw_data_root)
         params.setdefault("ranking_mode", str(state.get("retrieval_ranking_mode", "hybrid_rerank")))
         params.setdefault("data_source_config_path", str(state.get("data_source_config_path", "configs/data_sources.yaml")))

@@ -17,7 +17,25 @@ _FALLBACK_COMPANIES: List[Dict[str, Any]] = [
         "profile_path": "",
         "period": "",
         "catalog_source": "builtin_fallback",
-    }
+    },
+    {
+        "symbol": "0700.HK",
+        "company_name": "Tencent Holdings Limited",
+        "sector": "Technology",
+        "industry": "Internet Services",
+        "profile_path": "",
+        "period": "",
+        "catalog_source": "builtin_fallback",
+    },
+    {
+        "symbol": "600519.SS",
+        "company_name": "Kweichow Moutai Co., Ltd.",
+        "sector": "Consumer Staples",
+        "industry": "Distillers & Vintners",
+        "profile_path": "",
+        "period": "",
+        "catalog_source": "builtin_fallback",
+    },
 ]
 
 

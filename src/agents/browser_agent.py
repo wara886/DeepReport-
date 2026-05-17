@@ -46,7 +46,7 @@ class BrowserAgent(BaseAgent):
         use_reader = bool(task.parameters.get("use_reader", False))
         use_playwright = bool(task.parameters.get("use_playwright", False))
         use_pdf_reader = bool(task.parameters.get("use_pdf_reader", True))
-        reader_max_records = int(task.parameters.get("reader_max_records", 3) or 3)
+        reader_max_records = int(task.parameters.get("reader_max_records", 6) or 6)
         reader_max_chars = int(task.parameters.get("reader_max_chars", 4000) or 4000)
         pdf_max_pages = int(task.parameters.get("pdf_max_pages", 12) or 12)
         if use_reader or use_playwright:
@@ -115,7 +115,7 @@ def normalize_evidence_candidates(candidates: List[Dict[str, Any]]) -> List[Dict
 
 def enrich_records_with_reader(
     records: List[Dict[str, Any]],
-    max_records: int = 3,
+    max_records: int = 6,
     max_chars: int = 4000,
     config_path: str = "configs/data_sources.yaml",
     prefer_playwright: bool = False,

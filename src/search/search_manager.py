@@ -15,7 +15,7 @@ import pandas as pd
 from src.data.company_universe import resolve_company_identifier, resolve_symbol
 from src.data.independent_sources import fetch_macro_evidence, fetch_sec_companyfacts_evidence
 from src.data.source_quality import apply_source_quality
-from src.data.yahoo_finance import yahoo_snapshot_to_evidence
+from src.data.yahoo_finance import yahoo_financials_to_evidence, yahoo_snapshot_to_evidence
 from src.retrieval.chunking import chunk_records
 from src.retrieval.retrieve import retrieve_evidence_with_mode
 from src.utils.config import load_config
@@ -214,7 +214,7 @@ def tavily_search(
 
     api_key = str(resolve_config_value(tavily_cfg, "api_key", "")).strip()
     if not api_key:
-        raise RuntimeError("missing Tavily API key: set TAVILY_API_KEY in DeepReport_plus/.env")
+        return {"hits": [], "meta": {"mode": "tavily", "query": query, "failure_reason": "missing_api_key"}}
 
     base_url = str(tavily_cfg.get("base_url") or "https://api.tavily.com/search").rstrip("/")
     search_depth = str(tavily_cfg.get("default_depth") or "basic")
@@ -530,20 +530,28 @@ def yahoo_finance_search(
             "hits": [],
             "meta": {"mode": "yahoo_finance", "error": "symbol is required for Yahoo Finance search"},
         }
-    evidence = yahoo_snapshot_to_evidence(
+    snapshot = yahoo_snapshot_to_evidence(
         symbol=resolved_symbol,
         period=period or "",
         range_=range_,
         interval=interval,
     )
+    hits = [snapshot]
+    try:
+        financials = yahoo_financials_to_evidence(symbol=resolved_symbol, period=period or "")
+        if financials:
+            hits.append(financials)
+    except Exception:
+        pass
     return {
-        "hits": [evidence][:topk],
+        "hits": hits[:topk],
         "meta": {
             "mode": "yahoo_finance",
             "symbol": resolved_symbol,
             "range": range_,
             "interval": interval,
-            "result_count": 1,
+            "result_count": len(hits),
+            "has_financials": len(hits) > 1,
         },
     }
 
@@ -1231,7 +1239,7 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
     ranked = sorted(deduped.values(), key=lambda item: (item.score + item.authority_score * 0.05), reverse=True)
     selected: List[SearchResult] = []
     source_counts: Dict[str, int] = {}
-    default_diversity_cap = 2
+    default_diversity_cap = 4
     source_diversity_caps = {"eastmoney_financials": 3}
     for hit in ranked:
         source_key = hit.source_type or hit.engine
