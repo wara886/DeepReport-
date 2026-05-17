@@ -45,7 +45,7 @@ from src.utils import MCPManager
 
 
 FAST_PROFILE = {
-    "research_topk": 8,
+    "research_topk": 6,
     "research_use_react": False,
     "research_react_max_steps": 2,
     "research_use_chunks": True,
@@ -152,7 +152,9 @@ class MultiAgentOrchestrator:
         retrieval_ranking_mode: str = "hybrid_rerank",
         enable_remote_data: bool = False,
         data_source_config_path: str = "configs/data_sources.yaml",
+        quality_remediation_plan: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
+        quality_remediation_plan = quality_remediation_plan or _read_existing_quality_remediation_plan(self.output_dir)
         entity_resolution = _resolve_run_identity(research_topic=research_topic, symbol=symbol, raw_data_root=self.raw_data_root)
         symbol = str(entity_resolution.get("resolved_symbol") or symbol).upper()
         if execution_mode == "dynamic":
@@ -167,6 +169,7 @@ class MultiAgentOrchestrator:
                 enable_remote_data=enable_remote_data,
                 data_source_config_path=data_source_config_path,
                 entity_resolution=entity_resolution,
+                quality_remediation_plan=quality_remediation_plan,
             )
         if execution_mode == "static":
             return self._run_static(
@@ -179,6 +182,7 @@ class MultiAgentOrchestrator:
                 enable_remote_data=enable_remote_data,
                 data_source_config_path=data_source_config_path,
                 entity_resolution=entity_resolution,
+                quality_remediation_plan=quality_remediation_plan,
             )
         raise ValueError(f"Unsupported execution_mode: {execution_mode}")
 
@@ -194,6 +198,7 @@ class MultiAgentOrchestrator:
         enable_remote_data: bool = False,
         data_source_config_path: str = "configs/data_sources.yaml",
         entity_resolution: Dict[str, Any] | None = None,
+        quality_remediation_plan: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
         self.trace = []
         run_started_at = time.perf_counter()
@@ -344,6 +349,7 @@ class MultiAgentOrchestrator:
             "valuation_sensitivity.json",
             analysis_artifacts.get("valuation_sensitivity", {}) if isinstance(analysis_artifacts, dict) else {},
         )
+        tables = analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else []
 
         final_result = self._execute(
             "final_answer",
@@ -357,6 +363,11 @@ class MultiAgentOrchestrator:
                     "evidence_records": evidence_records,
                     "conversation_brief": conversation_brief,
                     "skill_brief": self._skill_brief("report markdown citations charts", "final_answer", max_items=2),
+                    "tables": tables,
+                    "financial_metrics": analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
+                    "pdf_sections": analysis_artifacts.get("pdf_sections", []) if isinstance(analysis_artifacts, dict) else [],
+                    "company_profile": analysis_artifacts.get("company_profile", {}) if isinstance(analysis_artifacts, dict) else {},
+                    "quality_remediation_plan": quality_remediation_plan or {},
                 },
                 dependencies=["task_003_analyze"],
                 priority=4,
@@ -555,6 +566,7 @@ class MultiAgentOrchestrator:
         enable_remote_data: bool = False,
         data_source_config_path: str = "configs/data_sources.yaml",
         entity_resolution: Dict[str, Any] | None = None,
+        quality_remediation_plan: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
         self.trace = []
         run_started_at = time.perf_counter()
@@ -655,6 +667,7 @@ class MultiAgentOrchestrator:
             "enable_remote_data": bool(enable_remote_data),
             "data_source_config_path": data_source_config_path,
             "entity_resolution": entity_resolution,
+            "quality_remediation_plan": quality_remediation_plan or {},
         }
         tasks = prepare_dynamic_tasks(
             plan=plan,
@@ -956,6 +969,21 @@ class MultiAgentOrchestrator:
                         "verification_report": verification_report,
                         "prior_markdown": str(state.get("markdown", "")),
                         "conversation_brief": conversation_brief,
+                        "tables": dict(state.get("analysis_artifacts", {})).get("tables", [])
+                        if isinstance(state.get("analysis_artifacts"), dict)
+                        else [],
+                        "financial_metrics": dict(state.get("analysis_artifacts", {})).get("financial_metrics", {})
+                        if isinstance(state.get("analysis_artifacts"), dict)
+                        else {},
+                        "pdf_sections": dict(state.get("analysis_artifacts", {})).get("pdf_sections", [])
+                        if isinstance(state.get("analysis_artifacts"), dict)
+                        else [],
+                        "company_profile": dict(state.get("analysis_artifacts", {})).get("company_profile", {})
+                        if isinstance(state.get("analysis_artifacts"), dict)
+                        else {},
+                        "quality_remediation_plan": dict(state.get("quality_remediation_plan", {}))
+                        if isinstance(state.get("quality_remediation_plan"), dict)
+                        else {},
                         "max_claims": int(profile["final_max_claims"]),
                         "max_evidence": int(profile["final_max_evidence"]),
                         "evidence_content_limit": int(profile["final_evidence_content_limit"]),
@@ -1277,6 +1305,12 @@ def enrich_task_parameters(
             params["claims"] = list(state.get("claims", []))
         if not isinstance(params.get("evidence_records"), list) or not params.get("evidence_records"):
             params["evidence_records"] = list(state.get("evidence_records", []))
+        analysis_artifacts = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
+        params.setdefault("tables", analysis_artifacts.get("tables", []))
+        params.setdefault("financial_metrics", analysis_artifacts.get("financial_metrics", {}))
+        params.setdefault("pdf_sections", analysis_artifacts.get("pdf_sections", []))
+        params.setdefault("company_profile", analysis_artifacts.get("company_profile", {}))
+        params.setdefault("quality_remediation_plan", dict(state.get("quality_remediation_plan", {})) if isinstance(state.get("quality_remediation_plan"), dict) else {})
         params.setdefault("max_claims", int(profile["final_max_claims"]))
         params.setdefault("max_evidence", int(profile["final_max_evidence"]))
         params.setdefault("evidence_content_limit", int(profile["final_evidence_content_limit"]))
@@ -1625,6 +1659,17 @@ def _use_durable_memory_for_planner_router(context_scope: str) -> bool:
 
 def _share_durable_memory_with_agents(context_scope: str) -> bool:
     return _normalize_memory_context_scope(context_scope) == "all_agents"
+
+
+def _read_existing_quality_remediation_plan(output_dir: Path) -> Dict[str, Any]:
+    path = Path(output_dir) / "quality_remediation_plan.json"
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _join_context_briefs(primary: str, secondary: str, max_chars: int) -> str:

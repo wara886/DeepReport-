@@ -51,6 +51,15 @@ class FinalAnswerAgent(BaseAgent):
         skill_brief = str(task.parameters.get("skill_brief", "")).strip()
         rating = str(task.parameters.get("rating", "")).strip()
         symbol = str(task.parameters.get("symbol", "")).strip().upper()
+        tables = task.parameters.get("tables", [])
+        financial_metrics = task.parameters.get("financial_metrics", {})
+        pdf_sections = task.parameters.get("pdf_sections", [])
+        company_profile = task.parameters.get("company_profile", {})
+        quality_remediation_plan = _normalize_quality_remediation_plan(
+            task.parameters.get("quality_remediation_plan")
+            or task.parameters.get("remediation_plan")
+            or task.parameters.get("quality_feedback")
+        )
 
         prompt_claims, claim_pack_meta = pack_claims(
             all_claims,
@@ -73,6 +82,11 @@ class FinalAnswerAgent(BaseAgent):
             "revision_requested": bool(revision_request),
             "conversation_brief_chars": len(conversation_brief),
             "skill_brief_chars": len(skill_brief),
+            "quality_remediation_used": bool(quality_remediation_plan.get("quality_feedback_used")),
+            "table_context_count": len(tables) if isinstance(tables, list) else 0,
+            "financial_metric_context_count": len(financial_metrics) if isinstance(financial_metrics, dict) else 0,
+            "pdf_section_context_count": len(pdf_sections) if isinstance(pdf_sections, list) else 0,
+            "company_profile_context_used": bool(company_profile),
         }
 
         markdown = render_markdown_report(claims=all_claims, charts=[])
@@ -91,6 +105,11 @@ class FinalAnswerAgent(BaseAgent):
                         skill_brief=skill_brief,
                         rating=rating,
                         symbol=symbol,
+                        quality_remediation_plan=quality_remediation_plan,
+                        tables=tables,
+                        financial_metrics=financial_metrics,
+                        pdf_sections=pdf_sections,
+                        company_profile=company_profile,
                     ),
                     system_prompt=FINAL_ANSWER_SYSTEM_PROMPT,
                     extra_body={"max_tokens": int(task.parameters.get("max_tokens", 4000) or 4000)},
@@ -106,6 +125,7 @@ class FinalAnswerAgent(BaseAgent):
         markdown = normalize_report_headings(markdown)
         markdown = backfill_empty_sections_from_claims(markdown, all_claims)
         markdown = insert_missing_sections_from_claims(markdown, all_claims)
+        markdown = hard_backfill_quality_sections(markdown, all_claims, quality_remediation_plan)
         markdown = normalize_report_headings(markdown)
         html = _markdown_to_simple_html(markdown, title=topic)
         report_json = {
@@ -147,6 +167,11 @@ def _build_final_prompt(
     skill_brief: str = "",
     rating: str = "",
     symbol: str = "",
+    quality_remediation_plan: Dict[str, Any] | None = None,
+    tables: Any = None,
+    financial_metrics: Any = None,
+    pdf_sections: Any = None,
+    company_profile: Any = None,
 ) -> str:
     evidence = evidence_records if isinstance(evidence_records, list) else []
     compact_evidence = [
@@ -236,6 +261,14 @@ def _build_final_prompt(
             "5) For ROE, always note whether it is simplified-annualized or official company-disclosed, and that the two may differ by 1-2pct."
         ),
     ]
+    artifact_context = _artifact_context_prompt(
+        tables=tables,
+        financial_metrics=financial_metrics,
+        pdf_sections=pdf_sections,
+        company_profile=company_profile,
+    )
+    if artifact_context:
+        prompt.append(artifact_context)
     if conclusion_texts:
         prompt.append(
             f"The 投资结论 section MUST include this conclusion: {conclusion_texts[0]}"
@@ -267,6 +300,9 @@ def _build_final_prompt(
         prompt.insert(1, f"Conversation memory:\n{conversation_brief}")
     if skill_brief:
         prompt.insert(1, f"Relevant skill brief:\n{skill_brief}")
+    quality_guidance = _quality_remediation_prompt(quality_remediation_plan or {})
+    if quality_guidance:
+        prompt.insert(1, quality_guidance)
     if rating and symbol:
         prompt.append(
             f"Investment rating determined: {rating}. "
@@ -283,6 +319,100 @@ def _build_final_prompt(
     if prior_markdown.strip():
         prompt.append(f"Previous draft excerpt:\n{pack_markdown_excerpt(prior_markdown, max_chars=1800)}")
     return "\n".join(prompt)
+
+
+def _artifact_context_prompt(
+    tables: Any = None,
+    financial_metrics: Any = None,
+    pdf_sections: Any = None,
+    company_profile: Any = None,
+) -> str:
+    parts = []
+    compact_tables = _compact_list(tables, max_items=8)
+    compact_pdf = _compact_list(pdf_sections, max_items=6)
+    compact_metrics = _compact_mapping(financial_metrics, max_items=20)
+    compact_profile = _compact_mapping(company_profile, max_items=20)
+    if compact_tables:
+        parts.append(f"Structured table artifacts: {json.dumps(compact_tables, ensure_ascii=False)}")
+    if compact_metrics:
+        parts.append(f"Financial metrics artifact: {json.dumps(compact_metrics, ensure_ascii=False)}")
+    if compact_pdf:
+        parts.append(f"PDF-derived sections/artifacts: {json.dumps(compact_pdf, ensure_ascii=False)}")
+    if compact_profile:
+        parts.append(f"Company profile artifact: {json.dumps(compact_profile, ensure_ascii=False)}")
+    if not parts:
+        return ""
+    parts.append(
+        "Use these artifacts to decide which sections need concrete prose, but cite only evidence_id-backed claims or evidence records."
+    )
+    return "\n".join(parts)
+
+
+def _compact_list(raw: Any, max_items: int = 8) -> List[Any]:
+    if not isinstance(raw, list):
+        return []
+    return [_truncate_nested(item) for item in raw[:max_items]]
+
+
+def _compact_mapping(raw: Any, max_items: int = 20) -> Dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    output: Dict[str, Any] = {}
+    for index, (key, value) in enumerate(raw.items()):
+        if index >= max_items:
+            break
+        output[str(key)] = _truncate_nested(value)
+    return output
+
+
+def _truncate_nested(value: Any, limit: int = 360) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _truncate_nested(item, limit=limit) for key, item in list(value.items())[:16]}
+    if isinstance(value, list):
+        return [_truncate_nested(item, limit=limit) for item in value[:8]]
+    text = str(value)
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _normalize_quality_remediation_plan(raw: Any) -> Dict[str, Any]:
+    if isinstance(raw, dict):
+        return dict(raw)
+    if isinstance(raw, str) and raw.strip():
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return {
+                "quality_feedback_used": True,
+                "planner_constraints": [raw.strip()],
+                "boundary": "Quality feedback is planning context only; report facts still require evidence_id citations and verifier gates.",
+            }
+        return dict(payload) if isinstance(payload, dict) else {}
+    return {}
+
+
+def _quality_remediation_prompt(plan: Dict[str, Any]) -> str:
+    if not plan or not plan.get("quality_feedback_used"):
+        return ""
+    required_fixes = [str(item) for item in plan.get("required_fixes", []) if str(item).strip()]
+    failed_sections = [str(item) for item in plan.get("failed_sections", []) if str(item).strip()]
+    forbidden_patterns = [str(item) for item in plan.get("forbidden_patterns", []) if str(item).strip()]
+    constraints = [str(item) for item in plan.get("planner_constraints", []) if str(item).strip()]
+    parts = [
+        "Quality remediation constraints from the previous delivery gate:",
+        "These constraints are planning/writing guidance only; never cite them as evidence.",
+    ]
+    if failed_sections:
+        parts.append("Failed sections: " + ", ".join(failed_sections[:8]))
+    if required_fixes:
+        parts.append("Required fixes: " + " | ".join(required_fixes[:8]))
+    if forbidden_patterns:
+        parts.append("Forbidden weak wording: " + "、".join(forbidden_patterns[:8]))
+    if constraints:
+        parts.append("Planner constraints: " + " | ".join(constraints[:8]))
+    parts.append(
+        "Hard rule: if a claim exists for a failed section, write the claim into the corresponding report section instead of leaving a framework, placeholder, or weak conclusion."
+    )
+    return "\n".join(parts)
 
 
 def _collect_prioritized_evidence_ids(claims: List[Dict[str, Any]]) -> List[str]:
@@ -448,6 +578,143 @@ def insert_missing_sections_from_claims(markdown: str, claims: List[Dict[str, An
         return markdown
     insertion = "\n\n".join(missing_blocks).rstrip()
     return markdown.rstrip() + "\n\n" + insertion + "\n"
+
+
+def hard_backfill_quality_sections(
+    markdown: str,
+    claims: List[Dict[str, Any]],
+    quality_remediation_plan: Dict[str, Any] | None = None,
+) -> str:
+    """Replace weak framework sections with deterministic claim-backed prose."""
+    if not claims:
+        return markdown
+    plan = quality_remediation_plan or {}
+    target_sections = _quality_target_sections(plan)
+    by_section = _claims_by_outline_section(claims)
+    output = markdown
+
+    for section, section_claims in by_section.items():
+        title = _section_title(section)
+        if not title or not section_claims:
+            continue
+        body = _section_body(output, title)
+        if body is None:
+            continue
+        should_replace = section in target_sections or _section_needs_hard_backfill(title, body)
+        if not should_replace:
+            continue
+        replacement = _claims_to_markdown_bullets(section_claims)
+        if replacement:
+            output = _replace_section(output, title=title, replacement=replacement)
+    return output
+
+
+def _quality_target_sections(plan: Dict[str, Any]) -> set[str]:
+    failed = {str(item) for item in plan.get("failed_sections", []) if str(item)}
+    text = " ".join(
+        [str(item) for item in plan.get("required_fixes", [])]
+        + [str(item) for item in plan.get("planner_constraints", [])]
+        + [str(item) for item in plan.get("forbidden_patterns", [])]
+    )
+    mapping = {
+        "three_statement_analysis": "financial_statements",
+        "business_profile": "business_overview",
+        "peer_comparison": "peer_compare",
+        "valuation": "valuation",
+        "sensitivity": "valuation_sensitivity",
+        "risk": "risks",
+        "investment_conclusion": "conclusion",
+        "executive_summary": "executive_summary",
+    }
+    targets = {mapping[item] for item in failed if item in mapping}
+    if any(term in text for term in ["三表", "利润表", "资产负债表", "现金流量表"]):
+        targets.add("financial_statements")
+    if any(term in text for term in ["同行", "对比"]):
+        targets.add("peer_compare")
+    if any(term in text for term in ["估值", "P/E", "P/B", "P/S"]):
+        targets.add("valuation")
+    if any(term in text for term in ["敏感性", "情景"]):
+        targets.add("valuation_sensitivity")
+    if any(term in text for term in ["投资建议", "投资结论", "方向", "理由"]):
+        targets.add("conclusion")
+    if any(term in text for term in ["内容空洞", "暂无结论", "暂无可验证结论"]):
+        targets.update({"executive_summary", "business_overview", "risks", "conclusion"})
+    return targets
+
+
+def _claims_by_outline_section(claims: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    section_aliases = {
+        "company_valuation": "valuation",
+        "valuation_summary": "valuation",
+        "risk": "risks",
+        "risk_assessment": "risks",
+        "business_profile": "business_overview",
+        "business": "business_overview",
+        "strategy": "strategy_business",
+        "financial": "financial_analysis",
+        "financial_summary": "financial_analysis",
+        "investment_conclusion": "conclusion",
+    }
+    outline_sections = {item["section_name"] for item in default_company_outline()}
+    by_section: Dict[str, List[Dict[str, Any]]] = {}
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        section = str(claim.get("section_name") or "").strip()
+        section = section_aliases.get(section, section)
+        if section in outline_sections:
+            by_section.setdefault(section, []).append(claim)
+    return by_section
+
+
+def _section_title(section: str) -> str:
+    for item in default_company_outline():
+        if item["section_name"] == section:
+            return str(item["section_title"])
+    return ""
+
+
+def _section_body(markdown: str, title: str) -> str | None:
+    header_pattern = re.compile(rf"(?m)^##\s+{re.escape(title)}\s*$")
+    match = header_pattern.search(markdown)
+    if not match:
+        return None
+    next_header = re.search(r"(?m)^##\s+", markdown[match.end():])
+    section_end = match.end() + next_header.start() if next_header else len(markdown)
+    return markdown[match.end():section_end]
+
+
+def _section_needs_hard_backfill(title: str, body: str) -> bool:
+    cleaned = re.sub(r"\s+", "", body)
+    weak_markers = [
+        "暂无结论",
+        "暂无可验证结论",
+        "待补",
+        "框架待补",
+        "框架性",
+        "缺少可量化",
+        "缺少实质",
+        "无法判断",
+        "N/A",
+    ]
+    if any(marker in cleaned for marker in weak_markers):
+        return True
+    if title == "投资结论":
+        has_direction = any(term in cleaned for term in ["中性", "审慎", "买入", "增持", "持有", "卖出", "评级", "观察"])
+        has_reason = any(term in cleaned for term in ["因为", "基于", "理由", "驱动", "约束", "风险", "估值", "增长"])
+        return not (has_direction and has_reason)
+    return False
+
+
+def _replace_section(markdown: str, title: str, replacement: str) -> str:
+    header_pattern = re.compile(rf"(?m)^##\s+{re.escape(title)}\s*$")
+    match = header_pattern.search(markdown)
+    if not match:
+        return markdown.rstrip() + f"\n\n## {title}\n\n{replacement.rstrip()}\n"
+    next_header = re.search(r"(?m)^##\s+", markdown[match.end():])
+    section_end = match.end() + next_header.start() if next_header else len(markdown)
+    new_body = "\n\n" + replacement.rstrip() + "\n\n"
+    return markdown[:match.end()] + new_body + markdown[section_end:].lstrip("\n")
 
 
 def _replace_empty_section(markdown: str, title: str, replacement: str) -> str:

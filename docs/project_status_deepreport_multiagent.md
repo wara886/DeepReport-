@@ -617,3 +617,22 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   - `$env:PYTHONPATH='.'; pytest -q tests/test_report_quality.py tests/test_quality_remediation.py tests/test_delivery_gate.py`
 - 质量结果：9 passed。
 - 当前风险：客观评测已更严格，后续重跑可能暴露更多正文质量问题；下一步让 FinalAnswerAgent 消费质量修复约束并 hard backfill。
+
+# 2026-05-17 Commit 15：FinalAnswerAgent 消费质量修复约束并 hard backfill
+
+- `FinalAnswerAgent` 现在显式读取 `quality_remediation_plan` / `remediation_plan` / `quality_feedback`，并把失败章节、必须修复项、禁止空洞表达和 Planner 约束写入最终写作 prompt；该反馈仍只作为写作约束，不作为事实证据。
+- `FinalAnswerAgent` 新增结构化 artifact 上下文输入：`tables`、`financial_metrics`、`pdf_sections`、`company_profile`，用于提示正文必须覆盖三表、PDF-derived 业务画像和公司画像，但引用仍必须来自 evidence_id-backed claims/evidence。
+- 新增 deterministic hard backfill：当执行摘要、业务画像、三表、同行对比、估值、敏感性、风险或投资结论出现“暂无结论 / 待补 / 框架性 / 缺少可量化 / 弱投资结论”等表达，且对应 claims 已存在时，直接用 claim-backed bullets 覆盖该章节。
+- `MultiAgentOrchestrator` 会在 run 开始时读取已有 `quality_remediation_plan.json`，并将质量修复计划与 analysis artifacts 传给静态/动态 final task；verifier rework loop 也会继续携带这些约束。
+- 顺手将 fast profile 的 research `topk` 恢复为测试约定的 6，保持 fast mode 上下文预算稳定。
+- 新增测试覆盖：
+  - FinalAnswerAgent prompt 中包含质量修复约束。
+  - LLM 输出框架化同行/估值/敏感性/弱结论时，会被 hard backfill 替换为对应 claims。
+  - 独立 hard backfill helper 可替换框架正文。
+- 验证命令：
+  - `python -m py_compile src/agents/final_answer_agent.py src/agents/multi_agent_orchestrator.py src/app/web_ui.py`
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_multi_agent_workflow.py::test_final_answer_hard_backfills_quality_failed_sections tests/test_multi_agent_workflow.py::test_hard_backfill_quality_sections_replaces_framework_body tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_auto_reworks_failed_report`
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_agent_chat.py tests/test_web_ui.py tests/test_report_quality.py tests/test_delivery_gate.py tests/test_quality_remediation.py`
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_multi_agent_workflow.py tests/test_data_enrichment.py`
+- 质量结果：3 passed；22 passed；37 passed。
+- 当前风险：FinalAnswer 已能消费修复计划并做正文 hard backfill，但 600519/AMD 的真实 Chat-first 样本还未重跑；下一步进入 Commit 16，执行双样本网页验收并记录三层质量结果。

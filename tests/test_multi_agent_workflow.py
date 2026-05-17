@@ -4,7 +4,11 @@ import sys
 
 from src.agents import AgentStatus, AgentTask, BrowserAgent, DeepAnalyzeAgent, FinalAnswerAgent, VerifierAgent
 from src.agents.browser_agent import enrich_records_with_reader, read_pdf_content, read_url_content
-from src.agents.final_answer_agent import insert_missing_sections_from_claims, normalize_report_headings
+from src.agents.final_answer_agent import (
+    hard_backfill_quality_sections,
+    insert_missing_sections_from_claims,
+    normalize_report_headings,
+)
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator, enrich_task_parameters, prepare_dynamic_tasks
 from src.agents.verifier import Verifier
 from src.schemas.claim import ClaimItem
@@ -177,6 +181,27 @@ class RevisionFakeModel(FakeJsonModel):
                     "fix_recommendations": ["Add [evidence_id] citations to each factual sentence."],
                 }
             return {"passed": True, "errors": [], "warnings": [], "fix_recommendations": []}
+        return super().generate_json(prompt, system_prompt=system_prompt, **kwargs)
+
+
+class QualityRemediationFakeModel(FakeJsonModel):
+    def __init__(self):
+        self.last_prompt = ""
+
+    def generate_json(self, prompt, system_prompt=None, **kwargs):
+        if "FinalAnswerAgent" in system_prompt:
+            self.last_prompt = prompt
+            return {
+                "markdown": (
+                    "# Report\n\n"
+                    "## Peer Comparison\n\n- 同行对比框架待补，缺少可量化同行指标。\n\n"
+                    "## Valuation\n\n- 估值分析待补。\n\n"
+                    "## Valuation Sensitivity\n\n- 敏感性分析框架待补。\n\n"
+                    "## Conclusion\n\n- 维持观察。\n"
+                ),
+                "summary": "weak draft",
+                "citation_count": 0,
+            }
         return super().generate_json(prompt, system_prompt=system_prompt, **kwargs)
 
 
@@ -495,6 +520,107 @@ def test_final_answer_inserts_missing_claim_sections():
     assert "Sensitivity analysis was generated." in output
     assert "ev_fin" in output
     assert "ev_val" in output
+
+
+def test_final_answer_hard_backfills_quality_failed_sections():
+    model = QualityRemediationFakeModel()
+    final = FinalAnswerAgent(model=model)
+    claims = [
+        {
+            "claim_id": "cl_peer",
+            "section_name": "peer_compare",
+            "claim_text": "AMD 同行对比应落到 NVIDIA、Intel、Broadcom 三组竞争关系，并说明 AI 加速、CPU 和数据中心平台差异。[ev_peer]",
+            "evidence_ids": ["ev_peer"],
+            "confidence": 0.82,
+        },
+        {
+            "claim_id": "cl_val",
+            "section_name": "valuation",
+            "claim_text": "AMD 估值观察显示 P/E、P/B、P/S 需要同时受市值、净利润、权益和收入约束，缺口会限制目标价判断。[ev_val]",
+            "evidence_ids": ["ev_val"],
+            "confidence": 0.8,
+        },
+        {
+            "claim_id": "cl_sens",
+            "section_name": "valuation_sensitivity",
+            "claim_text": "AMD 敏感性分析应重点跟踪数据中心收入增速、毛利率和研发费用率，变量上行有利于利润弹性。[ev_sens]",
+            "evidence_ids": ["ev_sens"],
+            "confidence": 0.78,
+        },
+        {
+            "claim_id": "cl_conclusion",
+            "section_name": "conclusion",
+            "claim_text": "基于增长驱动、竞争压力和估值约束，AMD 维持中性/审慎观察结论，理由是上行弹性仍需现金流和分部收入证据确认。[ev_conclusion]",
+            "evidence_ids": ["ev_conclusion"],
+            "confidence": 0.8,
+        },
+    ]
+    plan = {
+        "quality_feedback_used": True,
+        "failed_sections": ["peer_comparison", "valuation", "sensitivity", "investment_conclusion"],
+        "required_fixes": ["补充同行对比表和可读结论，避免只输出框架。", "投资结论必须包含方向、理由、关键证据和风险约束。"],
+        "forbidden_patterns": ["暂无可验证结论", "框架性结论"],
+        "planner_constraints": ["所有事实和数值仍必须绑定 evidence_id/citation，并通过 verifier。"],
+    }
+
+    result = final.execute_task(
+        AgentTask(
+            task_id="task_final",
+            task_type="final_answer",
+            description="Write",
+            parameters={
+                "research_topic": "AMD company report",
+                "claims": claims,
+                "evidence_records": [{"evidence_id": "ev_peer", "title": "SEC filing"}],
+                "quality_remediation_plan": plan,
+            },
+        )
+    )
+
+    markdown = result.output["markdown"]
+    assert result.metadata["quality_remediation_used"] is True
+    assert "Quality remediation constraints" in model.last_prompt
+    assert "同行对比框架待补" not in markdown
+    assert "估值分析待补" not in markdown
+    assert "敏感性分析框架待补" not in markdown
+    assert "NVIDIA、Intel、Broadcom" in markdown
+    assert "P/E、P/B、P/S" in markdown
+    assert "增长驱动、竞争压力和估值约束" in markdown
+
+
+def test_hard_backfill_quality_sections_replaces_framework_body():
+    markdown = """# Report
+
+## 同行对比
+
+- 同行对比框架待补，缺少可量化同行指标。
+
+## 投资结论
+
+- 维持观察。
+"""
+    claims = [
+        {
+            "section_name": "peer_compare",
+            "claim_text": "同行对比结论：相对 NVIDIA 关注 AI 加速，相对 Intel 关注 CPU 竞争。[ev_peer]",
+            "evidence_ids": ["ev_peer"],
+        },
+        {
+            "section_name": "conclusion",
+            "claim_text": "基于估值约束和竞争风险，维持中性观察。[ev_conclusion]",
+            "evidence_ids": ["ev_conclusion"],
+        },
+    ]
+
+    updated = hard_backfill_quality_sections(
+        markdown,
+        claims,
+        {"quality_feedback_used": True, "failed_sections": ["peer_comparison", "investment_conclusion"]},
+    )
+
+    assert "同行对比框架待补" not in updated
+    assert "相对 NVIDIA" in updated
+    assert "基于估值约束和竞争风险" in updated
 
 
 def test_browser_reader_enriches_web_search_record(monkeypatch, tmp_path):

@@ -222,3 +222,29 @@ $env:PYTHONPATH='.'; pytest -q tests/test_chat_task_parser.py tests/test_agent_c
 下一步：
 
 - 下一轮应集中修复“内容空洞”而不是继续堆 UI：把三表表格行强制写入正文、补估值可计算路径、对 AMD 增加 SEC 10-Q/10-K 业务分部与现金流证据，对 600519 增加同行白酒对比和可复核估值。
+
+## 2026-05-17 Commit 15：FinalAnswerAgent 质量修复约束消费
+
+改动：
+
+- `FinalAnswerAgent` 已读取 `quality_remediation_plan`，把失败章节、必修项和禁止空洞表达写入写作 prompt。
+- `FinalAnswerAgent` 已接收 `tables`、`financial_metrics`、`pdf_sections`、`company_profile` artifact context，用于提示正文覆盖三表和业务画像；事实仍必须由 evidence_id-backed claims/evidence 支撑。
+- 新增 hard backfill：当模型输出同行/估值/敏感性/投资结论等框架化正文时，若对应 claims 存在，会确定性替换为 claim-backed bullets。
+- `MultiAgentOrchestrator` 会读取已有 `quality_remediation_plan.json`，并把质量修复约束传入静态/动态 final task 和 verifier rework loop。
+
+验证命令：
+
+```powershell
+python -m py_compile src/agents/final_answer_agent.py src/agents/multi_agent_orchestrator.py src/app/web_ui.py
+$env:PYTHONPATH='.'; pytest -q tests/test_agent_chat.py tests/test_web_ui.py tests/test_report_quality.py tests/test_delivery_gate.py tests/test_quality_remediation.py
+$env:PYTHONPATH='.'; pytest -q tests/test_multi_agent_workflow.py tests/test_data_enrichment.py
+```
+
+质量结果：
+
+- 22 passed。
+- 37 passed。
+
+下一步：
+
+- Commit 16：重跑 600519 与 AMD Chat-first 双样本，记录网页链接、三层质量结果、delivery gate 和剩余 blocker。
