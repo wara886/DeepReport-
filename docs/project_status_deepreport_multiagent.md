@@ -746,3 +746,13 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`python -m py_compile src/evaluation/report_quality.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_report_quality.py`。
 - 质量结果：`7 passed`。
 - 剩余问题：前端 Chat UI 仍需要重排为更紧凑的工作台，并展示 collaboration/tool/rework。
+
+# 2026-05-17 Commit 25：Chat UI 工作台化与协作可见化
+
+- 首屏 hero 高度从接近半屏收缩为紧凑工作台，输入框字号和高度降低，状态与输出路径合并为工作区状态条，减少大面积空白。
+- 修复首屏关键中文文案：标题“你今天在想些什么？”，输入占位“有问题，尽管问”，发送按钮 title“发送”。
+- 新增前端 tabs：`多智能体协作` 和 `工具调用`，分别展示 `agent_collaboration_trace`、`delivery_rework_history` 与 `tool_trace`。
+- 多智能体协作 tab 展示 Agent Timeline、handoff、memory 使用、quality feedback 使用和返工轮次；工具调用 tab 展示 tool call 总数、成功/失败和调用表。
+- 验证命令：`python -m py_compile src/app/web_ui.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_web_ui.py`。
+- 质量结果：`9 passed`。
+- 剩余问题：还需要跑 Chat UI smoke 和任意公司样本验收，并补竞赛对齐文档。

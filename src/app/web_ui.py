@@ -504,13 +504,13 @@ def render_index_html() -> str:
     button, input, textarea, select { font: inherit; }
     button { cursor: pointer; }
     .hero {
-      min-height: 48vh;
+      min-height: 210px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 28px 18px 16px;
-      gap: 28px;
+      justify-content: flex-end;
+      padding: 28px 18px 14px;
+      gap: 18px;
     }
     .hero h1 {
       margin: 0;
@@ -525,7 +525,7 @@ def render_index_html() -> str:
       display: grid;
       grid-template-columns: 1fr auto auto;
       align-items: center;
-      min-height: 74px;
+      min-height: 60px;
       padding: 8px 8px 8px 28px;
       gap: 14px;
     }
@@ -538,7 +538,7 @@ def render_index_html() -> str:
       outline: 0;
       background: transparent;
       color: var(--text);
-      font-size: 20px;
+      font-size: 17px;
       line-height: 1.4;
       padding: 6px 0;
     }
@@ -572,8 +572,12 @@ def render_index_html() -> str:
       gap: 12px;
       color: var(--muted);
       font-size: 14px;
-      padding: 0 4px 14px;
+      padding: 10px 12px;
       flex-wrap: wrap;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101010;
+      margin-bottom: 12px;
     }
     .chat-log {
       display: grid;
@@ -666,6 +670,10 @@ def render_index_html() -> str:
       background: #151515;
     }
     .item h3 { margin: 0 0 8px; font-size: 15px; }
+    .timeline { display: grid; gap: 10px; }
+    .timeline-step { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #151515; }
+    .timeline-step header { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; color: var(--muted); font-size: 12px; }
     .muted { color: var(--muted); }
     .ok { color: var(--ok); }
     .warn { color: var(--warn); }
@@ -682,7 +690,7 @@ def render_index_html() -> str:
     pre { overflow: auto; white-space: pre-wrap; word-break: break-word; }
     a { color: #ffffff; }
     @media (max-width: 760px) {
-      .hero { min-height: 42vh; }
+      .hero { min-height: 180px; }
       .chat-shell { grid-template-columns: 1fr auto; border-radius: 28px; padding-left: 18px; }
       .thinking { grid-column: 1 / -1; order: 3; text-align: left; padding-left: 2px; }
       .settings, .checks, .grid { grid-template-columns: 1fr; }
@@ -695,7 +703,7 @@ def render_index_html() -> str:
     <h1>你今天在想些什么？</h1>
     <div class="chat-shell">
       <textarea id="chatInput" rows="1" placeholder="有问题，尽管问"></textarea>
-      <div id="thinkingLabel" class="thinking">Thinking</div>
+      <div id="thinkingLabel" class="thinking">Ready</div>
       <button id="chatBtn" class="send" title="发送">↑</button>
     </div>
   </section>
@@ -738,7 +746,7 @@ def render_index_html() -> str:
     const A_SHARE_ENGINES = "__A_SHARE_ENGINES__";
     const US_ENGINES = "__US_ENGINES__";
     const HK_ENGINES = "__HK_ENGINES__";
-    const tabs = ["总览", "报告", "图表", "引用", "表格", "PDF章节", "公司画像", "Claims", "质量评测", "轨迹", "时间线", "原始数据"];
+    const tabs = ["总览", "报告", "多智能体协作", "工具调用", "质量评测", "图表", "引用", "表格", "PDF章节", "公司画像", "Claims", "轨迹", "时间线", "原始数据"];
     let latest = {};
     let activeTab = "总览";
 
@@ -925,13 +933,15 @@ def render_index_html() -> str:
       const map = {
         "总览": renderOverview,
         "报告": renderReport,
+        "多智能体协作": renderCollaboration,
+        "工具调用": renderToolTrace,
+        "质量评测": renderQuality,
         "图表": renderCharts,
         "引用": renderCitations,
         "表格": renderTables,
         "PDF章节": renderPdf,
         "公司画像": renderProfile,
         "Claims": renderClaims,
-        "质量评测": renderQuality,
         "轨迹": renderTrace,
         "时间线": renderTimeline,
         "原始数据": renderRaw
@@ -1035,6 +1045,41 @@ def render_index_html() -> str:
     function issueText(item) {
       if (typeof item === "string") return item;
       return [item.severity, item.category, item.message || item.detail || item.issue].filter(Boolean).join(" | ") || JSON.stringify(item);
+    }
+
+    function renderCollaboration(data) {
+      const trace = asObj(data.agent_collaboration_trace);
+      const agents = asList(trace.agents);
+      const rework = asList(data.delivery_rework_history);
+      if (!agents.length && !rework.length) return `<p class="muted">暂无多智能体协作记录。</p>`;
+      const steps = agents.map((item) => `<div class="timeline-step">
+        <header><strong>${esc(item.step || "")}. ${esc(item.agent || "")}</strong><span class="pill">${esc(item.status || "")}</span></header>
+        <div class="muted">${esc(item.task_type || "")} · ${esc(item.duration_sec ?? "-")}s</div>
+        <p>${esc(item.description || "")}</p>
+        <div>输入：<code>${esc(JSON.stringify(item.input_summary || {}))}</code></div>
+        <div>输出：${esc(asList(item.output_keys).join(", ") || "-")}</div>
+        <div>Memory：${esc(item.memory_used ? "used" : "no")} · Quality feedback：${esc(item.quality_feedback_used ? "used" : "no")}</div>
+        <div>Handoff：${esc(item.handoff_from || "start")} → ${esc(item.handoff_to || "end")}</div>
+      </div>`).join("");
+      const reworkHtml = rework.length ? `<h3>Delivery Rework</h3>${table(rework, ["round", "trigger", "delivery_pass_after_round"])}` : "";
+      const memory = asObj(trace.memory);
+      return `<div class="grid">
+        ${metric("Agent Steps", trace.step_count ?? agents.length)}
+        ${metric("Rework Rounds", rework.length)}
+        ${metric("Memory Scope", memory.context_scope || "-")}
+        ${metric("Fact Boundary", memory.fact_boundary || "facts require evidence")}
+      </div><h3>Agent Timeline</h3><div class="timeline">${steps}</div>${reworkHtml}`;
+    }
+
+    function renderToolTrace(data) {
+      const trace = asObj(data.tool_trace);
+      const calls = asList(trace.calls);
+      if (!calls.length) return `<p class="muted">暂无工具调用记录。</p>`;
+      return `<div class="grid">
+        ${metric("Tool Calls", trace.tool_call_count ?? calls.length)}
+        ${metric("Success", trace.successful_call_count ?? "-")}
+        ${metric("Failed", trace.failed_call_count ?? "-")}
+      </div>${table(calls, ["caller_agent", "tool_name", "success", "failure_reason", "duration_sec"])}`;
     }
 
     function renderTrace(data) {
