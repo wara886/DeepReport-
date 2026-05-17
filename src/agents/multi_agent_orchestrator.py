@@ -484,6 +484,21 @@ class MultiAgentOrchestrator:
             "\n".join(json.dumps(item, ensure_ascii=False) for item in self.trace) + "\n",
             encoding="utf-8",
         )
+        collaboration_trace = build_agent_collaboration_trace(
+            trace=self.trace,
+            state={
+                "research_topic": research_topic,
+                "symbol": symbol,
+                "period": period,
+                "verification_report": verification_report,
+                "revision_history": [],
+                "gap_resolution_trace": gap_resolution_trace,
+                "quality_remediation_plan": quality_remediation_plan or {},
+                "memory_enabled": self.memory_config.enabled,
+                "memory_context_scope": self.memory_config.context_scope,
+            },
+        )
+        collaboration_trace_path = self._write_json("agent_collaboration_trace.json", collaboration_trace)
 
         summary_path = self.output_dir / "run_summary.json"
         summary = {
@@ -529,6 +544,7 @@ class MultiAgentOrchestrator:
         return {
             "task_plan": str(self.output_dir / "task_plan.json"),
             "task_trace": str(trace_path),
+            "agent_collaboration_trace": str(collaboration_trace_path),
             "evidence": str(self.output_dir / "evidence.json"),
             "claims": str(self.output_dir / "claims.json"),
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
@@ -788,6 +804,8 @@ class MultiAgentOrchestrator:
             "\n".join(json.dumps(item, ensure_ascii=False) for item in self.trace) + "\n",
             encoding="utf-8",
         )
+        collaboration_trace = build_agent_collaboration_trace(trace=self.trace, state=state)
+        collaboration_trace_path = self._write_json("agent_collaboration_trace.json", collaboration_trace)
 
         summary_path = self.output_dir / "run_summary.json"
         summary = {
@@ -837,6 +855,7 @@ class MultiAgentOrchestrator:
             "task_plan": str(self.output_dir / "task_plan.json"),
             "task_route_context": str(route_context_path),
             "task_trace": str(trace_path),
+            "agent_collaboration_trace": str(collaboration_trace_path),
             "search_meta": str(self.output_dir / "search_meta.json"),
             "evidence": str(self.output_dir / "evidence.json"),
             "claims": str(self.output_dir / "claims.json"),
@@ -1051,6 +1070,125 @@ def _query_from_plan(plan: Dict[str, Any], research_topic: str, symbol: str, per
                 descriptions.append(str(task.get("description", "")))
     base = " ".join(descriptions[:2]).strip() or research_topic
     return f"{symbol} {period} {base}"
+
+
+def build_agent_collaboration_trace(trace: List[Dict[str, Any]], state: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a human-readable multi-agent handoff summary from raw task trace."""
+
+    agents: List[Dict[str, Any]] = []
+    previous_agent = ""
+    for index, item in enumerate(trace):
+        task = item.get("task", {}) if isinstance(item.get("task"), dict) else {}
+        params = task.get("parameters", {}) if isinstance(task.get("parameters"), dict) else {}
+        metadata = item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {}
+        output_keys = list(item.get("output_keys") or [])
+        agent_name = str(item.get("agent") or "")
+        agents.append(
+            {
+                "step": index + 1,
+                "agent": agent_name,
+                "task_id": task.get("task_id") or task.get("id") or "",
+                "task_type": task.get("task_type") or "",
+                "description": _shorten(task.get("description") or params.get("research_topic") or ""),
+                "status": item.get("status", ""),
+                "duration_sec": item.get("duration_sec", 0),
+                "input_summary": _task_input_summary(params),
+                "output_keys": output_keys,
+                "output_summary": _output_summary(output_keys=output_keys, metadata=metadata),
+                "memory_used": _memory_used(params=params, state=state),
+                "quality_feedback_used": bool(params.get("quality_remediation_plan") or params.get("quality_feedback")),
+                "tools_observed": _tools_from_metadata(metadata),
+                "handoff_from": previous_agent,
+                "handoff_to": "",
+                "error": item.get("error") or "",
+            }
+        )
+        if previous_agent and len(agents) >= 2:
+            agents[-2]["handoff_to"] = agent_name
+        previous_agent = agent_name
+
+    verification = state.get("verification_report", {}) if isinstance(state.get("verification_report"), dict) else {}
+    remediation = state.get("quality_remediation_plan", {}) if isinstance(state.get("quality_remediation_plan"), dict) else {}
+    revision_history = state.get("revision_history", []) if isinstance(state.get("revision_history"), list) else []
+    gap_trace = state.get("gap_resolution_trace", []) if isinstance(state.get("gap_resolution_trace"), list) else []
+    blockers = [
+        issue
+        for issue in (remediation.get("issues", []) if isinstance(remediation.get("issues"), list) else [])
+        if isinstance(issue, dict) and str(issue.get("severity", "")).lower() in {"fatal", "blocker"}
+    ]
+    return {
+        "schema_version": "agent_collaboration_trace.v1",
+        "symbol": state.get("symbol", ""),
+        "period": state.get("period", ""),
+        "research_topic": state.get("research_topic", ""),
+        "agent_count": len({item.get("agent") for item in agents if item.get("agent")}),
+        "step_count": len(agents),
+        "agents": agents,
+        "handoffs": [
+            {"from": item["agent"], "to": item["handoff_to"], "artifact_keys": item["output_keys"]}
+            for item in agents
+            if item.get("handoff_to")
+        ],
+        "memory": {
+            "enabled": bool(state.get("memory_enabled") or state.get("durable_memory_enabled") or state.get("durable_memory_brief")),
+            "context_scope": state.get("memory_context_scope") or state.get("durable_memory_context_scope") or "",
+            "used_by_agents": [item["agent"] for item in agents if item.get("memory_used")],
+            "fact_boundary": "Memory is routing/context only; facts require evidence/citation/verifier.",
+        },
+        "quality": {
+            "verification_passed": bool(verification.get("passed", False)),
+            "rework_rounds": len(revision_history),
+            "quality_feedback_used": bool(remediation.get("quality_feedback_used") or remediation),
+            "blockers": blockers[:8],
+            "remaining_gap_count": len(gap_trace),
+        },
+    }
+
+
+def _task_input_summary(params: Dict[str, Any]) -> Dict[str, Any]:
+    keys = ["symbol", "period", "query", "research_topic", "engines", "expected_symbol", "max_records", "max_claims"]
+    return {key: _shorten(params.get(key)) for key in keys if key in params}
+
+
+def _output_summary(output_keys: List[str], metadata: Dict[str, Any]) -> Dict[str, Any]:
+    summary: Dict[str, Any] = {"keys": output_keys[:12]}
+    for key in ["evidence_count", "claim_count", "chart_count", "react_used", "quality_remediation_used"]:
+        if key in metadata:
+            summary[key] = metadata[key]
+    return summary
+
+
+def _memory_used(params: Dict[str, Any], state: Dict[str, Any]) -> bool:
+    brief = str(params.get("conversation_brief") or "")
+    return "DurableMemory" in brief or bool(params.get("durable_memory_brief")) or bool(
+        state.get("durable_memory_brief") and params.get("research_topic")
+    )
+
+
+def _tools_from_metadata(metadata: Dict[str, Any]) -> List[str]:
+    tools: List[str] = []
+    for key in ["tool_calls", "tools", "react_trace"]:
+        value = metadata.get(key)
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    name = str(item.get("tool") or item.get("tool_name") or item.get("name") or "")
+                    if name:
+                        tools.append(name)
+                elif isinstance(item, str):
+                    tools.append(item)
+    return sorted(set(tools))
+
+
+def _shorten(value: Any, limit: int = 220) -> Any:
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        return [_shorten(item, limit=80) for item in value[:8]]
+    if isinstance(value, dict):
+        return {str(key): _shorten(val, limit=80) for key, val in list(value.items())[:8]}
+    text = str(value)
+    return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
 def prepare_dynamic_tasks(

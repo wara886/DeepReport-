@@ -686,3 +686,13 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`python -m py_compile src/agents/deep_analyze_agent.py src/agents/final_answer_agent.py src/evaluation/report_quality.py src/evaluation/quality_remediation.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_report_quality.py tests/test_quality_remediation.py`。
 - 质量结果：`19 passed`。
 - 剩余问题：还需要把多 Agent 协作、工具调用、GapResolver 和 delivery rework 做成可见 artifact。
+
+# 2026-05-17 Commit 19：多 Agent 协作 Trace 可见化
+
+- 新增 `agent_collaboration_trace.json`，从 `task_trace.jsonl` 汇总每个 Agent 的任务、输入摘要、输出 keys、handoff、memory 使用、质量反馈使用和返工/缺口状态。
+- `MultiAgentOrchestrator` 的 static/dynamic 两条链路都会写出该 artifact，并在 run result 中返回 `agent_collaboration_trace` 路径。
+- `/api/latest` 现在读取并返回 `agent_collaboration_trace`，为前端“多智能体协作”tab 做准备。
+- trace 明确写入 memory 边界：Memory 只作为 routing/context，事实仍必须来自 evidence/citation/verifier。
+- 验证命令：`python -m py_compile src/agents/multi_agent_orchestrator.py src/app/web_ui.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph tests/test_web_ui.py::test_load_run_payload_reads_latest_artifacts`。
+- 质量结果：`2 passed`。
+- 剩余问题：工具调用还未统一落到 `tool_trace.json`，GapResolver 和 delivery gate 同轮返工仍待实现。
