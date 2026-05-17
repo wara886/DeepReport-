@@ -716,3 +716,13 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`python -m py_compile src/agents/gap_resolver_agent.py src/agents/multi_agent_orchestrator.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_gap_resolver_agent.py tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph`。
 - 质量结果：`3 passed`。
 - 剩余问题：GapResolver 已产出修复约束，但 delivery gate 失败后尚未自动触发同轮 rewrite。
+
+# 2026-05-17 Commit 22：Delivery Gate 同轮返工闭环
+
+- Web UI `/api/run` 与 `/api/chat` 在首次生成报告并运行三层质量门禁后，如果 `delivery_pass=false`，会读取 `quality_remediation_plan.json` 并最多重跑 2 轮。
+- 每轮重跑会把 remediation plan 传回 `MultiAgentOrchestrator.run(quality_remediation_plan=...)`，使 Planner/Writer/GAP 约束在同一请求内生效。
+- 新增 `delivery_rework_history.json`，记录返工轮次、触发原因、top quality issues、required fixes 和返工后 delivery 状态；`/api/latest` 会返回该 history。
+- 新增测试覆盖 delivery gate fail 后触发重跑、传入 remediation plan、更新最终 quality result 和写出返工 history。
+- 验证命令：`python -m py_compile src/app/web_ui.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_web_ui.py::test_delivery_rework_loop_reruns_when_gate_fails tests/test_web_ui.py::test_load_run_payload_reads_latest_artifacts`。
+- 质量结果：`2 passed`。
+- 剩余问题：FinalAnswer 还需要显式消费 GapResolver 的 repair constraints，objective evaluator 也需要继续补通用质量门禁。

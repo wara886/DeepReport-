@@ -7,6 +7,7 @@ from src.app.web_ui import (
     default_engines_for_symbol,
     load_run_payload,
     render_index_html,
+    run_delivery_rework_loop,
     run_ui_server,
     validate_period_for_report,
 )
@@ -29,6 +30,7 @@ def test_load_run_payload_reads_latest_artifacts(tmp_path):
     (output_root / "quality_remediation_plan.json").write_text('{"quality_feedback_used":true}', encoding="utf-8")
     (output_root / "agent_collaboration_trace.json").write_text('{"step_count":1}', encoding="utf-8")
     (output_root / "tool_trace.json").write_text('{"tool_call_count":2}', encoding="utf-8")
+    (output_root / "delivery_rework_history.json").write_text('[{"round":1}]', encoding="utf-8")
     (output_root / "task_trace.jsonl").write_text(json.dumps({"agent": "PlanningAgent"}) + "\n", encoding="utf-8")
     (report_root / "report.md").write_text("# Report", encoding="utf-8")
     (report_root / "report.html").write_text("<html></html>", encoding="utf-8")
@@ -47,8 +49,53 @@ def test_load_run_payload_reads_latest_artifacts(tmp_path):
     assert payload["quality_remediation_plan"]["quality_feedback_used"] is True
     assert payload["agent_collaboration_trace"]["step_count"] == 1
     assert payload["tool_trace"]["tool_call_count"] == 2
+    assert payload["delivery_rework_history"][0]["round"] == 1
     assert payload["trace"][0]["agent"] == "PlanningAgent"
     assert payload["report_html_url"] == "/artifacts/report.html"
+
+
+def test_delivery_rework_loop_reruns_when_gate_fails(tmp_path, monkeypatch):
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    output_root.mkdir()
+    report_root.mkdir()
+    (output_root / "quality_remediation_plan.json").write_text(
+        '{"quality_feedback_used":true,"required_fixes":["fix tables"]}',
+        encoding="utf-8",
+    )
+
+    class FakeOrchestrator:
+        def __init__(self):
+            self.calls = 0
+
+        def run(self, **kwargs):
+            self.calls += 1
+            assert kwargs["quality_remediation_plan"]["quality_feedback_used"] is True
+            return {}
+
+    qualities = [
+        {"delivery_gate": {"delivery_pass": True}, "top_quality_issues": []},
+    ]
+
+    def fake_quality(*args, **kwargs):
+        return qualities.pop(0)
+
+    monkeypatch.setattr("src.app.web_ui.run_delivery_quality_pipeline", fake_quality)
+    orchestrator = FakeOrchestrator()
+    result = run_delivery_rework_loop(
+        orchestrator=orchestrator,
+        output_path=output_root,
+        report_path=report_root,
+        config_path="config.yaml",
+        initial_quality_result={"delivery_gate": {"delivery_pass": False}, "top_quality_issues": ["missing tables"]},
+        run_kwargs={"research_topic": "x", "symbol": "AAPL", "period": "2025Q4"},
+    )
+
+    assert orchestrator.calls == 1
+    assert result["reworked"] is True
+    assert result["quality_result"]["delivery_gate"]["delivery_pass"] is True
+    history = json.loads((output_root / "delivery_rework_history.json").read_text(encoding="utf-8"))
+    assert history[0]["delivery_pass_after_round"] is True
 
 
 def test_render_index_html_contains_chat_first_controls():

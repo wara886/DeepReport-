@@ -131,6 +131,28 @@ def create_ui_handler(
                 durable_memory_store=getattr(orchestrator, "durable_memory", None),
                 memory_enabled=bool(payload.get("memory_enabled", False)),
             )
+            rework_result = run_delivery_rework_loop(
+                orchestrator=orchestrator,
+                output_path=output_root,
+                report_path=report_root,
+                config_path=config_path,
+                initial_quality_result=quality_result,
+                run_kwargs={
+                    "research_topic": topic,
+                    "symbol": symbol,
+                    "period": period,
+                    "execution_mode": str(payload.get("execution_mode") or "dynamic"),
+                    "fast": bool(payload.get("fast", True)),
+                    "search_engines": engines,
+                    "enable_remote_data": enable_remote_data,
+                    "data_source_config_path": str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
+                },
+                durable_memory_store=getattr(orchestrator, "durable_memory", None),
+                memory_enabled=bool(payload.get("memory_enabled", False)),
+            )
+            if rework_result.get("quality_result"):
+                quality_result = rework_result["quality_result"]
+                result["delivery_rework"] = rework_result
             latest = load_run_payload(output_root, report_root)
             self._send_json({"result": {**result, **quality_result}, "latest": latest})
 
@@ -216,8 +238,31 @@ def create_ui_handler(
                     durable_memory_store=getattr(orchestrator, "durable_memory", None),
                     memory_enabled=bool(payload.get("memory_enabled", True)),
                 )
+                rework_result = run_delivery_rework_loop(
+                    orchestrator=orchestrator,
+                    output_path=output_root,
+                    report_path=report_root,
+                    config_path=config_path,
+                    initial_quality_result=quality_result,
+                    run_kwargs={
+                        "research_topic": str(payload.get("topic") or parsed_task.research_topic or message),
+                        "symbol": symbol,
+                        "period": period,
+                        "execution_mode": str(payload.get("execution_mode") or "dynamic"),
+                        "fast": bool(payload.get("fast", True)),
+                        "search_engines": engines,
+                        "enable_remote_data": enable_remote_data,
+                        "data_source_config_path": str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
+                    },
+                    durable_memory_store=getattr(orchestrator, "durable_memory", None) if orchestrator is not None else None,
+                    memory_enabled=bool(payload.get("memory_enabled", True)),
+                )
+                if rework_result.get("quality_result"):
+                    quality_result = rework_result["quality_result"]
                 if isinstance(response.get("result"), dict):
                     response["result"].update(quality_result)
+                    if rework_result.get("rounds"):
+                        response["result"]["delivery_rework"] = rework_result
                 response["latest"] = load_run_payload(output_root, report_root)
             self._send_json(response)
 
@@ -360,6 +405,7 @@ def load_run_payload(
         "quality_remediation_plan": _read_json(output_path / "quality_remediation_plan.json", default={}),
         "agent_collaboration_trace": _read_json(output_path / "agent_collaboration_trace.json", default={}),
         "tool_trace": _read_json(output_path / "tool_trace.json", default={}),
+        "delivery_rework_history": _read_json(output_path / "delivery_rework_history.json", default=[]),
         "trace": _read_jsonl(output_path / "task_trace.jsonl"),
         "report_markdown": _read_text(report_path / "report.md"),
         "report_html_url": "/artifacts/report.html" if report_html.exists() else "",
@@ -368,6 +414,59 @@ def load_run_payload(
     }
     payload["artifact_urls"] = _artifact_urls(output_path, report_path)
     return payload
+
+
+def run_delivery_rework_loop(
+    orchestrator: MultiAgentOrchestrator | None,
+    output_path: Path,
+    report_path: Path,
+    config_path: str,
+    initial_quality_result: Dict[str, Any],
+    run_kwargs: Dict[str, Any],
+    durable_memory_store: Any = None,
+    memory_enabled: bool = False,
+    max_rounds: int = 2,
+) -> Dict[str, Any]:
+    """Rerun the report in the same request when delivery gate fails."""
+
+    history: List[Dict[str, Any]] = []
+    current_quality = dict(initial_quality_result or {})
+    if orchestrator is None:
+        return {"rounds": history, "quality_result": current_quality, "reworked": False}
+    for round_index in range(1, max_rounds + 1):
+        gate = current_quality.get("delivery_gate", {}) if isinstance(current_quality.get("delivery_gate"), dict) else {}
+        if gate.get("delivery_pass") is True:
+            break
+        remediation = _read_json(Path(output_path) / "quality_remediation_plan.json", default={})
+        if not remediation:
+            break
+        round_record = {
+            "round": round_index,
+            "trigger": "delivery_gate_failed",
+            "top_quality_issues": current_quality.get("top_quality_issues", []),
+            "required_fixes": remediation.get("required_fixes", []),
+        }
+        rerun_kwargs = dict(run_kwargs)
+        rerun_kwargs["quality_remediation_plan"] = remediation
+        orchestrator.run(**rerun_kwargs)
+        current_quality = run_delivery_quality_pipeline(
+            output_path,
+            report_path,
+            config_path,
+            durable_memory_store=durable_memory_store,
+            memory_enabled=memory_enabled,
+        )
+        round_record["delivery_pass_after_round"] = current_quality.get("delivery_gate", {}).get("delivery_pass")
+        history.append(round_record)
+        _write_delivery_rework_history(Path(output_path), history)
+        if current_quality.get("delivery_gate", {}).get("delivery_pass") is True:
+            break
+    return {"rounds": history, "quality_result": current_quality, "reworked": bool(history)}
+
+
+def _write_delivery_rework_history(output_path: Path, history: List[Dict[str, Any]]) -> None:
+    path = output_path / "delivery_rework_history.json"
+    path.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def render_index_html() -> str:
