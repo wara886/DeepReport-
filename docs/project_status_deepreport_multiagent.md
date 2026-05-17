@@ -666,3 +666,12 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   - Chat-first 600519 重跑：`AgentChatService + MultiAgentOrchestrator + run_delivery_quality_pipeline`，config=`configs/model_backends_local_ollama.yaml`
   - Chat-first AMD 重跑：`AgentChatService + MultiAgentOrchestrator + run_delivery_quality_pipeline`，config=`configs/model_backends_local_ollama.yaml`
 - 当前结论：Commit 16 未达到 `delivery_pass=true`；但剩余问题已经从“泛化内容空洞”收敛为具体质量 blocker。下一轮优先修复同行对比正文判定、AMD 估值不可用原因写入和 verifier 空 message。
+# 2026-05-17 Commit 17：通用公司身份解析与数据源计划
+
+- 新增 `CompanyIdentity` 路由结构，统一输出 `symbol`、`canonical_symbol`、`market`、`exchange`、`currency`、`is_listed`、`resolution_confidence` 和 `data_source_plan`。
+- `resolve_company_identity()` 现在可根据 A 股代码、港股代码、美股 ticker 和本地公司宇宙生成免费公开数据源计划；该结果只用于路由，不作为事实证据。
+- Web UI 默认引擎选择改为读取身份解析的数据源计划：A 股走巨潮/交易所/东方财富/Yahoo，港股走 Yahoo/公开搜索，美股走 SEC/Yahoo/公开搜索，其他市场走 Yahoo/公开搜索并要求缺口说明。
+- 新增测试覆盖 A 股、港股、美股、未知非上市输入和 Web UI 默认引擎选择。
+- 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_company_identity.py tests/test_chat_task_parser.py tests/test_web_ui.py`。
+- 质量结果：`21 passed`。
+- 剩余问题：当前只是通用路由层，后续还需要移除公司级补齐硬编码、补 collaboration/tool trace、GapResolver 和 delivery gate 同轮返工。

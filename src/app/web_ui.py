@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlparse
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.app.agent_chat import AgentChatService
 from src.app.chat_task_parser import llm_parse_chat_task
+from src.data.company_universe import resolve_company_identity
 from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
 from src.evaluation.llm_report_review import review_report_with_llm_from_paths, write_llm_review_outputs_for_paths
 from src.evaluation.quality_remediation import (
@@ -980,12 +981,9 @@ def render_index_html() -> str:
 def default_engines_for_symbol(symbol: str, realtime: bool = False) -> str:
     if not realtime:
         return DEFAULT_ENGINES
-    symbol_key = str(symbol or "").strip().upper()
-    if symbol_key.endswith((".SS", ".SZ")) or (len(symbol_key) == 6 and symbol_key.isdigit()):
-        return A_SHARE_ENGINES
-    if symbol_key.endswith(".HK"):
-        return HK_ENGINES
-    return US_ENGINES
+    identity = resolve_company_identity(symbol, default=symbol)
+    engines = list(identity.data_source_plan.get("engines") or [])
+    return ",".join(engines or _parse_engines(DEFAULT_ENGINES))
 
 
 def validate_period_for_report(raw_period: str, today: date | None = None) -> Dict[str, Any]:
