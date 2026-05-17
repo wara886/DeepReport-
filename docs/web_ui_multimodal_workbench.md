@@ -248,3 +248,30 @@ $env:PYTHONPATH='.'; pytest -q tests/test_multi_agent_workflow.py tests/test_dat
 下一步：
 
 - Commit 16：重跑 600519 与 AMD Chat-first 双样本，记录网页链接、三层质量结果、delivery gate 和剩余 blocker。
+
+## 2026-05-17 Commit 16：双样本网页验收重跑
+
+改动：
+
+- 使用 `configs/model_backends_local_ollama.yaml` 和本机 `qwen3:8b` 重跑 Chat-first 双样本。
+- 中文 prompt 在 PowerShell 管道中出现编码损坏，已改用 ASCII prompt 并显式指定 `600519.SS / 2026Q1`、`AMD / 2026Q1`。
+- 更新 `eval_outputs/chat_first_delivery_summary.json`，新增 `eval_outputs/chat_first_delivery_summary.md`。
+
+质量结果：
+
+- `600519.SS / 2026Q1`
+  - verifier: `true`
+  - objective: `false`，score `0.992`
+  - LLM review: `false`，score `0.0`
+  - delivery: `false`
+  - top blocker: 同行对比只有框架或待补说明，缺少可读结论。
+- `AMD / 2026Q1`
+  - verifier: `true`
+  - objective: `false`，score `0.9415`
+  - LLM review: `false`，score `0.0`
+  - delivery: `false`
+  - top blockers: 同行对比仍偏框架化；估值缺失但没有明确估值不可用原因；delivery gate 中仍有 verifier blocker `None`。
+
+下一步：
+
+- Commit 17：修复同行对比正文有效性、AMD 估值不可用原因 hard backfill，以及 verifier 空 message 的 delivery gate 显示问题。

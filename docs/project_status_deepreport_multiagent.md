@@ -636,3 +636,33 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   - `$env:PYTHONPATH='.'; pytest -q tests/test_multi_agent_workflow.py tests/test_data_enrichment.py`
 - 质量结果：3 passed；22 passed；37 passed。
 - 当前风险：FinalAnswer 已能消费修复计划并做正文 hard backfill，但 600519/AMD 的真实 Chat-first 样本还未重跑；下一步进入 Commit 16，执行双样本网页验收并记录三层质量结果。
+
+# 2026-05-17 Commit 16：Chat-first 双样本重跑与剩余 blocker 记录
+
+- 使用 `configs/model_backends_local_ollama.yaml` 和本机 Ollama `qwen3:8b` 执行 Chat-first 双样本重跑；本机仍未设置 `DEEPSEEK_API_KEY`，因此本轮 LLM review 不伪装为 DeepSeek 通过。
+- PowerShell here-string 中文输入会在本机命令管道中被转成问号，已改用 ASCII prompt 并显式指定标的/期间，避免 600519 样本误落到默认 AAPL。
+- A 股样本：
+  - prompt: `generate 600519.SS latest company report`
+  - symbol/period: `600519.SS / 2026Q1`
+  - report: `eval_outputs/chat_first_delivery_600519SS_latest/company/reports/report.html`
+  - verifier: `true`
+  - objective: `false`，score `0.992`
+  - LLM review: `false`，score `0.0`
+  - delivery: `false`
+  - top blocker: 同行对比仍被 objective gate 判定为“只有框架或待补说明，缺少可读结论”。
+- 美股样本：
+  - prompt: `generate AMD latest company report`
+  - symbol/period: `AMD / 2026Q1`
+  - report: `eval_outputs/chat_first_delivery_AMD_latest/company/reports/report.html`
+  - verifier: `true`
+  - objective: `false`，score `0.9415`
+  - LLM review: `false`，score `0.0`
+  - delivery: `false`
+  - top blockers: 同行对比仍偏框架化；估值缺失但正文没有明确估值不可用原因；delivery gate 还记录一个 verifier blocker `None`，需要下一轮清理 verifier issue message。
+- 新增/更新重跑汇总：
+  - `eval_outputs/chat_first_delivery_summary.json`
+  - `eval_outputs/chat_first_delivery_summary.md`
+- 验证命令：
+  - Chat-first 600519 重跑：`AgentChatService + MultiAgentOrchestrator + run_delivery_quality_pipeline`，config=`configs/model_backends_local_ollama.yaml`
+  - Chat-first AMD 重跑：`AgentChatService + MultiAgentOrchestrator + run_delivery_quality_pipeline`，config=`configs/model_backends_local_ollama.yaml`
+- 当前结论：Commit 16 未达到 `delivery_pass=true`；但剩余问题已经从“泛化内容空洞”收敛为具体质量 blocker。下一轮优先修复同行对比正文判定、AMD 估值不可用原因写入和 verifier 空 message。
