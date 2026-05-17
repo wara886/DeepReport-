@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
+import time
 from typing import Any, Callable, Dict, List
 
 from src.models import ModelAdapter
@@ -104,6 +105,7 @@ class BaseAgent(ABC):
         self.model = model
         self.tools = tools or {}
         self.memory: List[Dict[str, Any]] = []
+        self.tool_trace: List[Dict[str, Any]] = []
 
     @abstractmethod
     def get_capabilities(self) -> List[str]:
@@ -122,7 +124,38 @@ class BaseAgent(ABC):
     def call_tool(self, name: str, **kwargs: Any) -> Any:
         if name not in self.tools:
             raise KeyError(f"tool not registered for {self.name}: {name}")
-        return self.tools[name](**kwargs)
+        started = time.perf_counter()
+        try:
+            result = self.tools[name](**kwargs)
+        except Exception as exc:
+            self.tool_trace.append(
+                {
+                    "caller_agent": self.name,
+                    "tool_name": name,
+                    "input_summary": _summarize_value(kwargs),
+                    "output_summary": {},
+                    "success": False,
+                    "failure_reason": str(exc),
+                    "duration_sec": round(time.perf_counter() - started, 3),
+                    "evidence_ids": [],
+                    "artifact_paths": [],
+                }
+            )
+            raise
+        self.tool_trace.append(
+            {
+                "caller_agent": self.name,
+                "tool_name": name,
+                "input_summary": _summarize_value(kwargs),
+                "output_summary": _summarize_value(result),
+                "success": True,
+                "failure_reason": "",
+                "duration_sec": round(time.perf_counter() - started, 3),
+                "evidence_ids": _extract_evidence_ids(result),
+                "artifact_paths": _extract_artifact_paths(result),
+            }
+        )
+        return result
 
     def success(
         self,
@@ -155,3 +188,66 @@ class BaseAgent(ABC):
         )
         self.remember({"task": task.to_dict(), "result": result.to_dict()})
         return result
+
+
+def _summarize_value(value: Any, limit: int = 180) -> Any:
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, str):
+        return value if len(value) <= limit else value[: limit - 3] + "..."
+    if isinstance(value, list):
+        return {"type": "list", "count": len(value), "sample": [_summarize_value(item, 80) for item in value[:3]]}
+    if isinstance(value, dict):
+        summary: Dict[str, Any] = {"type": "dict", "keys": sorted(str(key) for key in list(value.keys())[:12])}
+        for key in ["rows", "claims", "charts", "tables", "records", "evidence_records"]:
+            if isinstance(value.get(key), list):
+                summary[f"{key}_count"] = len(value[key])
+        for key in ["valuation_available", "peer_count", "symbol", "period"]:
+            if key in value:
+                summary[key] = _summarize_value(value[key], 80)
+        return summary
+    return _summarize_value(str(value), limit)
+
+
+def _extract_evidence_ids(value: Any) -> List[str]:
+    found: List[str] = []
+
+    def walk(item: Any) -> None:
+        if len(found) >= 20:
+            return
+        if isinstance(item, dict):
+            for key in ["evidence_id", "sample_id"]:
+                raw = item.get(key)
+                if raw:
+                    found.append(str(raw))
+            for raw in item.get("evidence_ids", []) if isinstance(item.get("evidence_ids"), list) else []:
+                if raw:
+                    found.append(str(raw))
+            for nested in item.values():
+                walk(nested)
+        elif isinstance(item, list):
+            for nested in item[:20]:
+                walk(nested)
+
+    walk(value)
+    return sorted(set(found))[:20]
+
+
+def _extract_artifact_paths(value: Any) -> List[str]:
+    paths: List[str] = []
+
+    def walk(item: Any) -> None:
+        if len(paths) >= 20:
+            return
+        if isinstance(item, dict):
+            for key, raw in item.items():
+                if isinstance(raw, str) and ("path" in str(key).lower() or raw.endswith((".json", ".md", ".html", ".png"))):
+                    paths.append(raw)
+                else:
+                    walk(raw)
+        elif isinstance(item, list):
+            for nested in item[:20]:
+                walk(nested)
+
+    walk(value)
+    return sorted(set(paths))[:20]

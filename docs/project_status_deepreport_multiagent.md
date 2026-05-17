@@ -696,3 +696,13 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`python -m py_compile src/agents/multi_agent_orchestrator.py src/app/web_ui.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph tests/test_web_ui.py::test_load_run_payload_reads_latest_artifacts`。
 - 质量结果：`2 passed`。
 - 剩余问题：工具调用还未统一落到 `tool_trace.json`，GapResolver 和 delivery gate 同轮返工仍待实现。
+
+# 2026-05-17 Commit 20：工具调用 Trace 统一记录
+
+- `BaseAgent.call_tool()` 现在记录 deterministic tool call，包含 caller agent、tool name、输入/输出摘要、成功/失败、耗时、evidence ids 和 artifact paths。
+- `MultiAgentOrchestrator` 新增 `tool_trace.json`，汇总 deterministic tools、ReAct metadata 和搜索引擎 meta。
+- static/dynamic run result 都返回 `tool_trace` 路径；`/api/latest` 读取并返回该 artifact。
+- 当前 trace 已能覆盖 `build_three_statement_view`、`build_peer_comparison`、`perform_company_valuation` 等分析工具，为前端展示“充分调用工具”打底。
+- 验证命令：`python -m py_compile src/agents/base_agent.py src/agents/multi_agent_orchestrator.py src/app/web_ui.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_agent_foundation.py tests/test_multi_agent_workflow.py::test_multi_agent_orchestrator_runs_dynamic_task_graph tests/test_web_ui.py::test_load_run_payload_reads_latest_artifacts`。
+- 质量结果：`8 passed`。
+- 剩余问题：还需要新增 GapResolver/DataRepairAgent，并让 delivery gate 失败后同轮返工。

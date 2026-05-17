@@ -499,6 +499,8 @@ class MultiAgentOrchestrator:
             },
         )
         collaboration_trace_path = self._write_json("agent_collaboration_trace.json", collaboration_trace)
+        tool_trace = build_tool_trace(agents=self.agents, trace=self.trace, state={"search_meta": {}})
+        tool_trace_path = self._write_json("tool_trace.json", tool_trace)
 
         summary_path = self.output_dir / "run_summary.json"
         summary = {
@@ -545,6 +547,7 @@ class MultiAgentOrchestrator:
             "task_plan": str(self.output_dir / "task_plan.json"),
             "task_trace": str(trace_path),
             "agent_collaboration_trace": str(collaboration_trace_path),
+            "tool_trace": str(tool_trace_path),
             "evidence": str(self.output_dir / "evidence.json"),
             "claims": str(self.output_dir / "claims.json"),
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
@@ -806,6 +809,8 @@ class MultiAgentOrchestrator:
         )
         collaboration_trace = build_agent_collaboration_trace(trace=self.trace, state=state)
         collaboration_trace_path = self._write_json("agent_collaboration_trace.json", collaboration_trace)
+        tool_trace = build_tool_trace(agents=self.agents, trace=self.trace, state=state)
+        tool_trace_path = self._write_json("tool_trace.json", tool_trace)
 
         summary_path = self.output_dir / "run_summary.json"
         summary = {
@@ -856,6 +861,7 @@ class MultiAgentOrchestrator:
             "task_route_context": str(route_context_path),
             "task_trace": str(trace_path),
             "agent_collaboration_trace": str(collaboration_trace_path),
+            "tool_trace": str(tool_trace_path),
             "search_meta": str(self.output_dir / "search_meta.json"),
             "evidence": str(self.output_dir / "evidence.json"),
             "claims": str(self.output_dir / "claims.json"),
@@ -1142,6 +1148,68 @@ def build_agent_collaboration_trace(trace: List[Dict[str, Any]], state: Dict[str
             "blockers": blockers[:8],
             "remaining_gap_count": len(gap_trace),
         },
+    }
+
+
+def build_tool_trace(agents: Dict[str, Any], trace: List[Dict[str, Any]], state: Dict[str, Any]) -> Dict[str, Any]:
+    """Collect deterministic, ReAct, and search/data-source tool observations."""
+
+    calls: List[Dict[str, Any]] = []
+    for agent in agents.values():
+        for item in getattr(agent, "tool_trace", []) or []:
+            if isinstance(item, dict):
+                calls.append(dict(item))
+
+    for item in trace:
+        metadata = item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {}
+        agent_name = str(item.get("agent") or "")
+        for react_item in metadata.get("react_trace", []) if isinstance(metadata.get("react_trace"), list) else []:
+            if not isinstance(react_item, dict):
+                continue
+            tool_name = str(react_item.get("tool") or react_item.get("tool_name") or react_item.get("name") or "")
+            if not tool_name:
+                continue
+            calls.append(
+                {
+                    "caller_agent": agent_name,
+                    "tool_name": tool_name,
+                    "input_summary": _shorten(react_item.get("arguments") or react_item.get("input") or {}),
+                    "output_summary": _shorten(react_item.get("observation") or react_item.get("output") or {}),
+                    "success": not bool(react_item.get("error")),
+                    "failure_reason": str(react_item.get("error") or ""),
+                    "duration_sec": react_item.get("duration_sec", 0),
+                    "evidence_ids": [],
+                    "artifact_paths": [],
+                    "source": "react",
+                }
+            )
+
+    search_meta = state.get("search_meta", {}) if isinstance(state.get("search_meta"), dict) else {}
+    engine_meta = search_meta.get("engine_meta", search_meta)
+    if isinstance(engine_meta, dict):
+        for engine, meta in engine_meta.items():
+            meta_dict = meta if isinstance(meta, dict) else {}
+            calls.append(
+                {
+                    "caller_agent": "SearchManager",
+                    "tool_name": str(engine),
+                    "input_summary": {"engine": engine},
+                    "output_summary": _shorten(meta_dict),
+                    "success": not bool(meta_dict.get("error") or meta_dict.get("failure_reason") in {"fetch_error", "missing_api_key"}),
+                    "failure_reason": str(meta_dict.get("error") or meta_dict.get("failure_reason") or ""),
+                    "duration_sec": meta_dict.get("duration_sec", 0),
+                    "evidence_ids": [],
+                    "artifact_paths": [],
+                    "source": "search_engine",
+                }
+            )
+
+    return {
+        "schema_version": "tool_trace.v1",
+        "tool_call_count": len(calls),
+        "successful_call_count": sum(1 for item in calls if item.get("success")),
+        "failed_call_count": sum(1 for item in calls if item.get("success") is False),
+        "calls": calls,
     }
 
 

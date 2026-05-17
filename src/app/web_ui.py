@@ -359,6 +359,7 @@ def load_run_payload(
         "delivery_gate": _read_json(output_path / "delivery_gate.json", default={}),
         "quality_remediation_plan": _read_json(output_path / "quality_remediation_plan.json", default={}),
         "agent_collaboration_trace": _read_json(output_path / "agent_collaboration_trace.json", default={}),
+        "tool_trace": _read_json(output_path / "tool_trace.json", default={}),
         "trace": _read_jsonl(output_path / "task_trace.jsonl"),
         "report_markdown": _read_text(report_path / "report.md"),
         "report_html_url": "/artifacts/report.html" if report_html.exists() else "",

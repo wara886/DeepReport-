@@ -358,6 +358,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert result["valuation_sensitivity"].endswith("valuation_sensitivity.json")
     assert result["company_report_scorecard"].endswith("company_report_scorecard.json")
     assert result["agent_collaboration_trace"].endswith("agent_collaboration_trace.json")
+    assert result["tool_trace"].endswith("tool_trace.json")
     assert result["mcp_manifest"].endswith("mcp_manifest.json")
     assert result["conversation_context"].endswith("conversation_context.json")
     assert (tmp_path / "outputs" / "citations.json").exists()
@@ -369,6 +370,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert (tmp_path / "outputs" / "valuation_sensitivity.json").exists()
     assert (tmp_path / "outputs" / "company_report_scorecard.json").exists()
     assert (tmp_path / "outputs" / "agent_collaboration_trace.json").exists()
+    assert (tmp_path / "outputs" / "tool_trace.json").exists()
     assert (tmp_path / "outputs" / "conversation_context.json").exists()
     assert (tmp_path / "outputs" / "mcp_manifest.json").exists()
     route_context = json.loads((tmp_path / "outputs" / "task_route_context.json").read_text(encoding="utf-8"))
@@ -381,6 +383,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert "dcf_model" in valuation_model
     scorecard = json.loads((tmp_path / "outputs" / "company_report_scorecard.json").read_text(encoding="utf-8"))
     collaboration = json.loads((tmp_path / "outputs" / "agent_collaboration_trace.json").read_text(encoding="utf-8"))
+    tool_trace = json.loads((tmp_path / "outputs" / "tool_trace.json").read_text(encoding="utf-8"))
     assert scorecard["scores"]["numeric_lineage_score"] > 0
     assert "valuation_reproducibility_score" in scorecard["scores"]
     assert summary["company_report_overall_score"] == scorecard["overall_score"]
@@ -390,6 +393,9 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert collaboration["step_count"] == len(trace_lines)
     assert any(item["handoff_to"] for item in collaboration["agents"])
     assert collaboration["memory"]["fact_boundary"].startswith("Memory is routing")
+    assert tool_trace["schema_version"] == "tool_trace.v1"
+    assert tool_trace["tool_call_count"] >= 1
+    assert any(call["tool_name"] == "build_three_statement_view" for call in tool_trace["calls"])
 
 
 def test_multi_agent_orchestrator_can_persist_durable_memory_without_quality_regression(tmp_path):
