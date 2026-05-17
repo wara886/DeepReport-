@@ -655,6 +655,16 @@ def build_rule_claims(
         )
         claim_index += 1
 
+    for valuation_claim in _minimum_valuation_claims(
+        records=records,
+        statement_rows=statement_rows,
+        financial_evidence_ids=financial_evidence_ids,
+        market_evidence_ids=market_evidence_ids,
+        start_index=claim_index,
+    ):
+        claims.append(valuation_claim)
+        claim_index += 1
+
     for row in trend_rows:
         symbol = str(row.get("symbol", "Company") or "Company")
         if symbol == "Company":
@@ -704,6 +714,140 @@ def _react_tool_result(payload: Dict[str, Any], tool_name: str, field: str | Non
     if isinstance(result, dict) and field in result:
         return result[field]
     return None
+
+
+def _minimum_valuation_claims(
+    records: List[Dict[str, Any]],
+    statement_rows: Any,
+    financial_evidence_ids: List[str],
+    market_evidence_ids: List[str],
+    start_index: int,
+) -> List[ClaimItem]:
+    if not financial_evidence_ids:
+        return []
+    rows = statement_rows if isinstance(statement_rows, list) else []
+    symbol = _first_symbol(records) or (str(rows[0].get("symbol") or "Company") if rows and isinstance(rows[0], dict) else "Company")
+    period = str(rows[0].get("period") or "") if rows and isinstance(rows[0], dict) else ""
+    revenue = _statement_value(rows, "income_statement", "revenue")
+    net_income = _statement_value(rows, "income_statement", "net_income")
+    equity = _statement_value(rows, "balance_sheet", "total_equity")
+    if equity is None:
+        equity = _statement_value(rows, "balance_sheet", "shareholders_equity")
+    market_cap, market_unit, market_source = _market_cap_from_records(records)
+    evidence_ids = list(dict.fromkeys(financial_evidence_ids + market_evidence_ids + ([market_source] if market_source else [])))
+    output: List[ClaimItem] = []
+    claim_index = start_index
+
+    multiples: List[str] = []
+    numeric_values: Dict[str, float] = {}
+    if market_cap and net_income and net_income > 0:
+        pe = market_cap / _align_market_denominator(net_income)
+        multiples.append(f"P/E 约为 {pe:.1f}x")
+        numeric_values["pe"] = pe
+    if market_cap and equity and equity > 0:
+        pb = market_cap / _align_market_denominator(equity)
+        multiples.append(f"P/B 约为 {pb:.1f}x")
+        numeric_values["pb"] = pb
+    if market_cap and revenue and revenue > 0:
+        ps = market_cap / _align_market_denominator(revenue)
+        multiples.append(f"P/S 约为 {ps:.1f}x")
+        numeric_values["ps"] = ps
+
+    if multiples:
+        unit_text = "人民币十亿元" if market_unit == "CNY_billion" else "十亿美元"
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="valuation",
+                claim_text=(
+                    f"{symbol} {period} 最小估值模型以公开行情市值（单位：{unit_text}）和三表数据为输入，"
+                    + "、".join(multiples)
+                    + "；该结果仅用于相对估值校验，不构成目标价。"
+                ),
+                evidence_ids=evidence_ids,
+                numeric_values=numeric_values,
+                risk_level="medium",
+                confidence=0.7,
+                notes="最小估值模型：market cap + net income/equity/revenue。",
+            )
+        )
+        claim_index += 1
+    else:
+        missing = []
+        if not market_cap:
+            missing.append("市值或股本口径")
+        if not net_income:
+            missing.append("净利润")
+        if not equity:
+            missing.append("净资产/股东权益")
+        if not revenue:
+            missing.append("收入")
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="valuation",
+                claim_text=(
+                    f"{symbol} {period} 估值不可用原因：当前公开证据缺少"
+                    + "、".join(missing)
+                    + "，因此不能正式计算 P/E、P/B、P/S；报告应把这些缺口列为下一轮检索任务。"
+                ),
+                evidence_ids=evidence_ids,
+                numeric_values={},
+                risk_level="medium",
+                confidence=0.68,
+                notes="最小估值模型缺口披露。",
+            )
+        )
+        claim_index += 1
+
+    if revenue and net_income:
+        net_margin = net_income / revenue
+        delta = abs(revenue) * 0.01
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name="valuation_sensitivity",
+                claim_text=(
+                    f"{symbol} {period} 敏感性分析显示，当前净利率约为 {net_margin:.1%}；"
+                    f"若净利率变动 1pct，净利润方向性影响约为 {_format_statement_number(delta)}。"
+                    "对 AMD 应重点跟踪数据中心收入增速、毛利率和研发费用率；对白酒公司应重点跟踪收入增速、净利率和渠道价格。"
+                ),
+                evidence_ids=financial_evidence_ids,
+                numeric_values={"net_margin": net_margin, "net_income_delta_1pct": delta},
+                risk_level="medium",
+                confidence=0.7,
+                notes="最小敏感性模型：收入 x 净利率变动。",
+            )
+        )
+    return output
+
+
+def _market_cap_from_records(records: List[Dict[str, Any]]) -> tuple[float | None, str, str]:
+    for record in records:
+        source_type = str(record.get("source_type") or "").lower()
+        if source_type not in {"market", "market_api", "eastmoney_quote"}:
+            continue
+        metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+        snapshot = metadata.get("snapshot") if isinstance(metadata.get("snapshot"), dict) else metadata
+        value = (
+            _safe_float(snapshot.get("market_cap_billion"))
+            or _safe_float(snapshot.get("market_cap_billion_cny"))
+            or _safe_float(snapshot.get("marketCapBillion"))
+            or _safe_float(snapshot.get("market_cap"))
+            or _safe_float(snapshot.get("marketCap"))
+        )
+        if value and value > 1_000_000:
+            value = value / 1_000_000_000
+        unit = "CNY_billion" if snapshot.get("market_cap_billion_cny") else "USD_billion"
+        if value:
+            return float(value), unit, str(record.get("evidence_id") or record.get("sample_id") or "")
+    return None, "", ""
+
+
+def _align_market_denominator(value: float) -> float:
+    if abs(value) >= 1_000_000:
+        return value / 1_000_000_000
+    return value
 
 
 def _add_minimum_company_report_claims(
@@ -1506,6 +1650,18 @@ def _first_number(row: Dict[str, Any], keys: List[str]) -> float | None:
         except (TypeError, ValueError):
             continue
     return None
+
+
+def _safe_float(value: Any) -> float | None:
+    try:
+        if value in {None, ""}:
+            return None
+        output = float(value)
+        if output != output:
+            return None
+        return output
+    except (TypeError, ValueError):
+        return None
 
 
 def _is_derived_claim_allowed(claim: ClaimItem) -> bool:

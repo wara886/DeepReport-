@@ -240,6 +240,44 @@ def test_macro_evidence_without_symbol_does_not_become_company_business_overview
     assert "AMD 的证据覆盖" in text
 
 
+def test_minimum_valuation_claims_compute_multiples_and_sensitivity():
+    claims = build_rule_claims(
+        records=[
+            {
+                "evidence_id": "sec_amd",
+                "symbol": "AMD",
+                "period": "2026Q1",
+                "source_type": "sec_companyfacts",
+                "content": "SEC companyfacts for AMD.",
+                "metadata": {"metrics": {"RevenueFromContractWithCustomerExcludingAssessedTax": {"value": 10_000_000_000, "unit": "USD"}}},
+            },
+            {
+                "evidence_id": "market_amd",
+                "symbol": "AMD",
+                "period": "2026Q1",
+                "source_type": "market_api",
+                "content": "AMD market snapshot.",
+                "metadata": {"snapshot": {"market_cap_billion": 100.0}},
+            },
+        ],
+        ratio_rows=[],
+        trend_rows=[],
+        statement_view={
+            "rows": [
+                {"symbol": "AMD", "period": "2026Q1", "statement": "income_statement", "line_item": "revenue", "value": 10_000_000_000.0},
+                {"symbol": "AMD", "period": "2026Q1", "statement": "income_statement", "line_item": "net_income", "value": 1_000_000_000.0},
+                {"symbol": "AMD", "period": "2026Q1", "statement": "balance_sheet", "line_item": "total_equity", "value": 25_000_000_000.0},
+            ]
+        },
+    )
+    text = "\n".join(claim.claim_text for claim in claims)
+
+    assert "P/E 约为 100.0x" in text
+    assert "P/B 约为 4.0x" in text
+    assert "P/S 约为 10.0x" in text
+    assert "敏感性分析显示" in text
+
+
 def test_eastmoney_claims_use_professional_units_not_scientific_notation():
     claims = build_rule_claims(
         records=[

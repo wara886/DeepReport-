@@ -583,3 +583,18 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   - `$env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_report_quality.py tests/test_multi_agent_workflow.py::test_final_answer_inserts_missing_claim_sections`
 - 质量结果：15 passed。
 - 当前风险：AMD 业务线和同行框架已补强，但估值仍主要是不可用说明；下一步补最小估值与敏感性模块。
+
+# 2026-05-17 Commit 13：最小估值模型和敏感性分析
+
+- `DeepAnalyzeAgent` 新增最小估值 claims：基于公开行情市值和标准化三表数据，能计算时输出 P/E、P/B、P/S；不能计算时明确列出缺少市值/股本、净利润、净资产/股东权益或收入。
+- 新增最小敏感性 claim：当收入和净利润可得时，计算当前净利率，并估算净利率变动 1pct 对净利润的方向性影响。
+- AMD 敏感性正文要求已写入 claim：重点跟踪数据中心收入增速、毛利率和研发费用率；白酒公司重点跟踪收入增速、净利率和渠道价格。
+- 估值 claims 仍绑定 market/financial evidence；没有市场市值或股本时不伪造 P/E/P/B/P/S。
+- 新增测试覆盖：
+  - market cap + revenue/net income/equity 可计算 P/E、P/B、P/S。
+  - 收入 + 净利润可生成敏感性分析。
+- 验证命令：
+  - `python -m py_compile src/agents/deep_analyze_agent.py`
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_report_quality.py tests/test_delivery_gate.py`
+- 质量结果：17 passed。
+- 当前风险：估值计算路径已具备最小版本，但 objective evaluator 仍可能对空洞正文放得过宽；下一步收紧客观质量评测。
