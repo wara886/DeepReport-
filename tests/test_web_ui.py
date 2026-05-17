@@ -26,6 +26,7 @@ def test_load_run_payload_reads_latest_artifacts(tmp_path):
     (output_root / "quality_report.json").write_text('{"objective_pass":true}', encoding="utf-8")
     (output_root / "llm_quality_review.json").write_text('{"llm_review_pass":false}', encoding="utf-8")
     (output_root / "delivery_gate.json").write_text('{"delivery_pass":false}', encoding="utf-8")
+    (output_root / "quality_remediation_plan.json").write_text('{"quality_feedback_used":true}', encoding="utf-8")
     (output_root / "task_trace.jsonl").write_text(json.dumps({"agent": "PlanningAgent"}) + "\n", encoding="utf-8")
     (report_root / "report.md").write_text("# Report", encoding="utf-8")
     (report_root / "report.html").write_text("<html></html>", encoding="utf-8")
@@ -41,6 +42,7 @@ def test_load_run_payload_reads_latest_artifacts(tmp_path):
     assert payload["quality_report"]["objective_pass"] is True
     assert payload["llm_quality_review"]["llm_review_pass"] is False
     assert payload["delivery_gate"]["delivery_pass"] is False
+    assert payload["quality_remediation_plan"]["quality_feedback_used"] is True
     assert payload["trace"][0]["agent"] == "PlanningAgent"
     assert payload["report_html_url"] == "/artifacts/report.html"
 

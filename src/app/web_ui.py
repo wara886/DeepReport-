@@ -17,6 +17,10 @@ from src.app.agent_chat import AgentChatService
 from src.app.chat_task_parser import parse_chat_task
 from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
 from src.evaluation.llm_report_review import review_report_with_llm_from_paths, write_llm_review_outputs_for_paths
+from src.evaluation.quality_remediation import (
+    build_quality_remediation_plan_from_outputs,
+    write_quality_remediation_plan_for_outputs,
+)
 from src.evaluation.report_quality import evaluate_report_quality_from_paths, write_quality_outputs_for_paths
 
 
@@ -118,7 +122,13 @@ def create_ui_handler(
                 enable_remote_data=enable_remote_data,
                 data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
             )
-            quality_result = run_delivery_quality_pipeline(output_root, report_root, config_path)
+            quality_result = run_delivery_quality_pipeline(
+                output_root,
+                report_root,
+                config_path,
+                durable_memory_store=getattr(orchestrator, "durable_memory", None),
+                memory_enabled=bool(payload.get("memory_enabled", False)),
+            )
             latest = load_run_payload(output_root, report_root)
             self._send_json({"result": {**result, **quality_result}, "latest": latest})
 
@@ -196,7 +206,13 @@ def create_ui_handler(
             )
             response["parsed_task"] = parsed_task.to_dict()
             if response.get("mode") == "report_run":
-                quality_result = run_delivery_quality_pipeline(output_root, report_root, config_path)
+                quality_result = run_delivery_quality_pipeline(
+                    output_root,
+                    report_root,
+                    config_path,
+                    durable_memory_store=getattr(orchestrator, "durable_memory", None),
+                    memory_enabled=bool(payload.get("memory_enabled", True)),
+                )
                 if isinstance(response.get("result"), dict):
                     response["result"].update(quality_result)
                 response["latest"] = load_run_payload(output_root, report_root)
@@ -261,6 +277,8 @@ def run_delivery_quality_pipeline(
     output_root: str | Path = DEFAULT_OUTPUT_DIR,
     report_root: str | Path = DEFAULT_REPORT_DIR,
     config_path: str = "configs/model_backends.yaml",
+    durable_memory_store: Any | None = None,
+    memory_enabled: bool = False,
 ) -> Dict[str, Any]:
     output_path = Path(output_root)
     report_path = Path(report_root)
@@ -270,6 +288,12 @@ def run_delivery_quality_pipeline(
     write_llm_review_outputs_for_paths(output_path, report_path, llm_review)
     delivery_gate = build_delivery_gate_from_outputs(output_path, run_dir=output_path)
     write_delivery_gate_for_outputs(output_path, delivery_gate)
+    remediation_plan = build_quality_remediation_plan_from_outputs(output_path, run_dir=output_path)
+    write_quality_remediation_plan_for_outputs(output_path, remediation_plan)
+    memory_quality_feedback = {}
+    if memory_enabled and durable_memory_store is not None and remediation_plan.get("quality_feedback_used"):
+        memory_quality_feedback = durable_memory_store.persist_quality_feedback(remediation_plan)
+        _update_summary_quality_feedback(output_path / "run_summary.json", memory_quality_feedback)
     return {
         "quality_report": {
             "objective_pass": quality_report.get("objective_pass"),
@@ -286,7 +310,23 @@ def run_delivery_quality_pipeline(
             "objective_pass": delivery_gate.get("objective_pass"),
             "llm_review_pass": delivery_gate.get("llm_review_pass"),
         },
-    }
+        "remediation_plan": {
+            "quality_feedback_used": remediation_plan.get("quality_feedback_used"),
+            "required_fixes": remediation_plan.get("required_fixes", [])[:5],
+            "failed_sections": remediation_plan.get("failed_sections", []),
+            "memory_quality_feedback_used": bool(memory_quality_feedback),
+        },
+        "top_quality_issues": delivery_gate.get("top_issues", []),
+}
+
+
+def _update_summary_quality_feedback(summary_path: Path, memory_quality_feedback: Dict[str, Any]) -> None:
+    summary = _read_json(summary_path, default={})
+    if not isinstance(summary, dict):
+        return
+    summary["memory_quality_feedback_used"] = bool(memory_quality_feedback)
+    summary["memory_quality_feedback"] = memory_quality_feedback
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def load_run_payload(
@@ -314,6 +354,7 @@ def load_run_payload(
         "quality_report": _read_json(output_path / "quality_report.json", default={}),
         "llm_quality_review": _read_json(output_path / "llm_quality_review.json", default={}),
         "delivery_gate": _read_json(output_path / "delivery_gate.json", default={}),
+        "quality_remediation_plan": _read_json(output_path / "quality_remediation_plan.json", default={}),
         "trace": _read_jsonl(output_path / "task_trace.jsonl"),
         "report_markdown": _read_text(report_path / "report.md"),
         "report_html_url": "/artifacts/report.html" if report_html.exists() else "",
@@ -720,6 +761,11 @@ def render_index_html() -> str:
       if (parsed.symbol && parsed.period) {
         lines.push(`识别任务：${parsed.symbol} ${parsed.period}，置信度 ${parsed.confidence ?? "-"}`);
       }
+      const remediation = asObj(data.result && data.result.remediation_plan);
+      if (remediation.quality_feedback_used) {
+        lines.push("已读取上一轮质量反馈，并生成本轮修复约束。");
+        lines.push("事实仍以 evidence_id/citation/verifier 为准。");
+      }
       if (data.latest) lines.push(buildResultText(data.result || {}, data.latest));
       return lines.join("\n");
     }
@@ -836,6 +882,7 @@ def render_index_html() -> str:
       const quality = asObj(data.quality_report);
       const llm = asObj(data.llm_quality_review);
       const gate = asObj(data.delivery_gate);
+      const remediation = asObj(data.quality_remediation_plan);
       if (!Object.keys(quality).length && !Object.keys(llm).length && !Object.keys(gate).length) {
         return `<p class="muted">尚未运行质量评测。</p>`;
       }
@@ -846,9 +893,11 @@ def render_index_html() -> str:
         ${metric("LLM Review Score", llm.total_score ?? llm.score ?? "未运行")}
         ${metric("LLM Review Pass", llm.llm_review_pass ?? llm.passed ?? "未运行")}
         ${metric("Delivery Pass", gate.delivery_pass ?? "未运行")}
+        ${metric("质量反馈", remediation.quality_feedback_used ?? "未运行")}
       </div>
       <h3>质量问题</h3>
       ${issues.length ? `<ul>${issues.map((item) => `<li>${esc(issueText(item))}</li>`).join("")}</ul>` : `<p class="ok">暂无问题。</p>`}
+      <h3>修复计划</h3><pre>${esc(JSON.stringify(remediation, null, 2))}</pre>
       <h3>Objective</h3><pre>${esc(JSON.stringify(quality, null, 2))}</pre>
       <h3>LLM/Codex Review</h3><pre>${esc(JSON.stringify(llm, null, 2))}</pre>`;
     }
@@ -1023,6 +1072,7 @@ def _artifact_urls(output_path: Path, report_path: Path) -> Dict[str, str]:
         "quality_report.json",
         "llm_quality_review.json",
         "delivery_gate.json",
+        "quality_remediation_plan.json",
         "task_trace.jsonl",
     ]
     urls: Dict[str, str] = {}

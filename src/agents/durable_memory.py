@@ -70,7 +70,11 @@ class DurableMemoryStore:
                 metrics = episode.get("quality_metrics", {}) if isinstance(episode.get("quality_metrics"), dict) else {}
                 metric_text = ", ".join(f"{key}={value}" for key, value in sorted(metrics.items()) if value is not None)
                 note = _clean_text(str(episode.get("summary", "")), 220)
-                parts = [part for part in [decision, metric_text, note] if part]
+                constraints = episode.get("planner_constraints", [])
+                constraint_text = ""
+                if isinstance(constraints, list) and constraints:
+                    constraint_text = "constraints=" + " | ".join(_clean_text(str(item), 120) for item in constraints[:3])
+                parts = [part for part in [decision, metric_text, note, constraint_text] if part]
                 if parts:
                     lines.append(f"- {'; '.join(parts)}")
 
@@ -101,6 +105,52 @@ class DurableMemoryStore:
             "run_id": run_id,
             "working_snapshot": str(working_path),
             "episodic_snapshot": str(episodic_path),
+            "domain_memory": str(domain_path),
+            "domain_item_count": str(len(domain_payload.get("items", []))),
+        }
+
+    def persist_quality_feedback(
+        self,
+        remediation_plan: Dict[str, Any],
+        report_type: str = "company_stock_report",
+    ) -> Dict[str, str]:
+        """Persist quality gate feedback for the next Planner/Router run."""
+
+        symbol = str(remediation_plan.get("symbol") or "").upper()
+        period = str(remediation_plan.get("period") or "")
+        run_id = self._run_id(symbol=symbol, period=period, topic="quality_feedback")
+        snapshot = {
+            "run_id": run_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "report_type": report_type,
+            "symbol": symbol,
+            "period": period,
+            "summary": _clean_text(str(remediation_plan.get("memory_note", "")), 420),
+            "decision": "quality_feedback",
+            "quality_metrics": {
+                "delivery_pass": remediation_plan.get("delivery_pass"),
+                "fatal": dict(remediation_plan.get("issue_counts") or {}).get("fatal"),
+                "blocker": dict(remediation_plan.get("issue_counts") or {}).get("blocker"),
+            },
+            "planner_constraints": remediation_plan.get("planner_constraints", []),
+            "boundary": remediation_plan.get(
+                "boundary",
+                "Quality feedback is planning context only; facts still require evidence_id citations.",
+            ),
+        }
+
+        working_path = self.root / "working" / run_id / "quality_feedback.json"
+        episodic_path = self.root / "episodic" / _key(symbol) / _key(period) / f"{run_id}_quality.json"
+        domain_path = self._domain_path(_key(symbol))
+
+        self._write_json(working_path, snapshot)
+        self._write_json(episodic_path, snapshot)
+        domain_payload = self._update_domain_memory(domain_path=domain_path, snapshot=snapshot)
+
+        return {
+            "run_id": run_id,
+            "working_quality_feedback": str(working_path),
+            "episodic_quality_feedback": str(episodic_path),
             "domain_memory": str(domain_path),
             "domain_item_count": str(len(domain_payload.get("items", []))),
         }

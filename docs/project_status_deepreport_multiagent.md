@@ -520,3 +520,16 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_chat_task_parser.py tests/test_agent_chat.py tests/test_data_enrichment.py tests/test_report_quality.py tests/test_llm_report_review.py tests/test_delivery_gate.py tests/test_web_ui.py`。
 - 质量结果：33 passed。
 - 当前结论：Chat-first + memory + 多 Agent + 双层质量门禁已经打通；两份样本都未达到“可交付”，原因已由 `delivery_gate.json` 明确记录。下一轮应优先修复内容空洞、三表正文写入、估值可计算路径和同行对比。
+
+# 2026-05-17 Commit 9：质量失败反馈进入 Memory 和下一轮规划
+
+- 新增 `src/evaluation/quality_remediation.py`，从 `delivery_gate.json`、`quality_report.json`、`llm_quality_review.json` 汇总 fatal/blocker/warning，写出 `quality_remediation_plan.json`。
+- `quality_remediation_plan.json` 现在包含 `required_fixes`、`failed_sections`、`forbidden_patterns`、`planner_constraints` 和 memory 边界声明；该反馈只作为下一轮规划上下文，不作为事实证据。
+- `run_delivery_quality_pipeline` 已在生成 delivery gate 后自动写出 remediation plan，并把 `quality_remediation_plan_path`、`quality_feedback_used`、`memory_quality_feedback_used` 写回 `run_summary.json`。
+- Memory 开启时，质量失败摘要会通过 `DurableMemoryStore.persist_quality_feedback()` 写入 working / episodic / domain memory；Planner/Router 下一轮 brief 可读取“补三表、补估值、禁止暂无结论”等约束。
+- Web UI “质量评测”tab 新增修复计划展示；Chat 报告结果会提示“已读取上一轮质量反馈，并生成本轮修复约束”，同时继续提示事实以 evidence/citation/verifier 为准。
+- 验证命令：
+  - `python -m py_compile src/evaluation/quality_remediation.py src/agents/durable_memory.py src/app/web_ui.py`
+  - `$env:PYTHONPATH='.'; pytest -q tests/test_quality_remediation.py tests/test_durable_memory.py tests/test_delivery_gate.py tests/test_web_ui.py`
+- 质量结果：14 passed。
+- 当前风险：质量反馈已经能进入 memory，但还没有强制 FinalAnswerAgent 按约束补正文；下一步优先修复 AMD 三表正文缺失。
