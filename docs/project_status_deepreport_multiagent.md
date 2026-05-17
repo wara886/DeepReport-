@@ -768,3 +768,11 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
   - `python scripts/run_chat_ui_smoke.py --skip-report-run`：`passed=true`
 - 当前 smoke 覆盖普通 chat、RAG 路由、memory 写入和 trace 返回；完整报告 run 因耗时和本地模型状态留到最终验收样本执行。
 - 剩余问题：还需要补文档说明“多 Agent vs 普通 workflow”与竞赛三类报告差距，并可选跑完整腾讯/A 股/美股样本。
+
+# 2026-05-17 Commit 27：竞赛对齐与多 Agent 证据说明
+
+- 新增 `docs/multi_agent_competition_alignment.md`，集中说明当前能证明的多 Agent 能力、与普通可编排 workflow 的差异、距离竞赛要求的差距和后续优先级。
+- 文档明确当前多 Agent 证据来自 `agent_collaboration_trace.json`、`tool_trace.json`、`delivery_rework_history.json`、quality gates 和 memory fact boundary。
+- 文档同时保留边界：行业/宏观链路尚未达到公司主链同等深度，MCP/A2A 目前主要是工具 manifest 与 artifact/state handoff，完整外部协议化仍待后续。
+- 验证命令：文档新增，无需运行测试；本轮上一 commit 已完成主要回归。
+- 剩余问题：完整腾讯/A 股/美股报告验收和行业/宏观深扩仍待下一轮。
