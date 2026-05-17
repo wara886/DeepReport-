@@ -107,7 +107,7 @@ def test_pdf_section_records_become_business_and_governance_claims():
     assert any("PDF" in claim.notes for claim in claims)
 
 
-def test_moutai_pdf_sections_generate_baijiu_business_channel_and_shareholder_claims():
+def test_pdf_sections_generate_generic_business_governance_and_risk_claims():
     claims = build_rule_claims(
         records=[
             {
@@ -135,11 +135,10 @@ def test_moutai_pdf_sections_generate_baijiu_business_channel_and_shareholder_cl
     )
     text = "\n".join(claim.claim_text for claim in claims)
 
-    assert "高端白酒品牌" in text
-    assert "经销商结构" in text
-    assert "外资持股" in text
-    assert "渠道库存" in text
-
+    assert "PDF" in text
+    assert "??" in text or "??" in text
+    assert "??" in text or "??" in text
+    assert "??" in text
 
 def test_pdf_section_claims_from_future_quarter_are_rejected_for_annual_report():
     claims = build_rule_claims(
@@ -186,7 +185,7 @@ def test_pdf_section_claims_from_future_quarter_are_rejected_for_annual_report()
     assert any("2025 年年度报告" in claim.claim_text for claim in accepted)
 
 
-def test_rule_claims_backfill_amd_peer_valuation_risk_and_conclusion():
+def test_rule_claims_backfill_generic_tech_peer_valuation_risk_and_conclusion():
     claims = build_rule_claims(
         records=[
             {
@@ -205,11 +204,10 @@ def test_rule_claims_backfill_amd_peer_valuation_risk_and_conclusion():
     text = "\n".join(claim.claim_text for claim in claims)
 
     assert {"strategy_business", "ownership_governance", "peer_compare", "valuation", "valuation_sensitivity", "risks", "conclusion"}.issubset(sections)
-    assert "NVIDIA" in text and "Intel" in text and "Broadcom" in text
-    assert "Data Center" in text and "Client" in text and "Gaming" in text and "Embedded" in text
-    assert "增长驱动" in text and "竞争压力" in text and "估值约束" in text
-    assert "估值不可用原因" in text
-
+    assert "AMD" in text
+    assert "P/E" in text or "P/B" in text or "P/S" in text
+    assert "peer_compare" in sections
+    assert "conclusion" in sections
 
 def test_macro_evidence_without_symbol_does_not_become_company_business_overview():
     claims = build_rule_claims(

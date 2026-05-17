@@ -256,7 +256,7 @@ def _build_final_prompt(
             "If no claim exists, skip the section entirely rather than writing a placeholder.\n"
             "EXAMPLE of good prose:\n"
             "## 财务分析\n"
-            "AMD 2025Q4 实现营收 76.6 亿美元，同比增长 24%，超出市场一致预期 2.3%。"
+            "???????????????????????????????????????? evidence_id?"
             "数据中心业务收入 35.4 亿美元（占比 46%）首次超越客户端业务，成为最大收入来源。"
             "毛利率提升至 52.1%（同比 +1.8pp），受益于高毛利的数据中心 GPU 出货占比提升。"
             "经营现金流 12.3 亿美元，自由现金流 9.8 亿美元，均同比改善。[ev_amd_fin_001]\n"

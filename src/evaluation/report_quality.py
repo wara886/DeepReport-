@@ -270,7 +270,7 @@ def _score_professional_depth(artifacts: Dict[str, Any], issues: List[Dict[str, 
     profile = artifacts["profile"]
     checks = {
         "business_profile": bool(profile) or _contains_any(text, ("主营业务", "业务画像", "产品", "渠道", "business")),
-        "peer_compare": _contains_any(text, ("同行", "可比公司", "NVIDIA", "Intel", "Broadcom", "竞品", "peer")),
+        "peer_compare": _contains_any(text, ("同行", "可比公司", "竞品", "peer")),
         "valuation": _contains_any(text, ("估值", "P/E", "P/B", "市盈率", "市净率", "valuation")),
         "sensitivity": _contains_any(text, ("敏感性", "情景", "scenario", "sensitivity")),
         "risk": _contains_any(text, ("风险", "risk")),

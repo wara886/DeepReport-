@@ -810,7 +810,7 @@ def _minimum_valuation_claims(
                 claim_text=(
                     f"{symbol} {period} 敏感性分析显示，当前净利率约为 {net_margin:.1%}；"
                     f"若净利率变动 1pct，净利润方向性影响约为 {_format_statement_number(delta)}。"
-                    "对 AMD 应重点跟踪数据中心收入增速、毛利率和研发费用率；对白酒公司应重点跟踪收入增速、净利率和渠道价格。"
+                    "??????????????????????????/????????????????????????"
                 ),
                 evidence_ids=financial_evidence_ids,
                 numeric_values={"net_margin": net_margin, "net_income_delta_1pct": delta},
@@ -850,12 +850,13 @@ def _align_market_denominator(value: float) -> float:
     return value
 
 
+
 def _add_minimum_company_report_claims(
     claims: List[ClaimItem],
     records: List[Dict[str, Any]],
     start_index: int,
 ) -> List[ClaimItem]:
-    """Backfill non-empty company-report sections with evidence-scoped claims."""
+    """Backfill company-report sections with market/industry rules, not symbol rules."""
 
     output = list(claims)
     claim_index = start_index
@@ -863,215 +864,169 @@ def _add_minimum_company_report_claims(
     evidence_ids = _fallback_evidence_ids(records)
     if not evidence_ids:
         return output
+    profile = _infer_company_analysis_profile(symbol=symbol, records=records, claims=output)
+
+    def add_claim(section: str, text: str, risk: str = "medium", confidence: float = 0.64, notes: str = "") -> None:
+        nonlocal claim_index
+        output.append(
+            ClaimItem(
+                claim_id=f"cl_{claim_index:04d}",
+                section_name=section,
+                claim_text=text,
+                evidence_ids=evidence_ids[:3],
+                numeric_values={},
+                risk_level=risk,
+                confidence=confidence,
+                notes=notes,
+            )
+        )
+        claim_index += 1
 
     if not _has_claim_section(output, "executive_summary"):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="executive_summary",
-                claim_text=f"{symbol} 本次研报已形成可审计证据链，核心结论应围绕业务画像、三表摘要、估值可用性、风险提示和投资结论展开。",
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.7,
-                notes="最低研报结构补全：基于已检索证据形成执行摘要，不替代事实审计。",
-            )
+        add_claim(
+            "executive_summary",
+            f"{symbol} ??????????????????????????????????????????????????????? evidence_id?citation ? verifier ???",
+            confidence=0.7,
+            notes="???????????????????",
         )
-        claim_index += 1
 
-    if symbol.upper() == "AMD" and not _has_claim_section(output, "strategy_business"):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="strategy_business",
-                claim_text="AMD 业务画像应覆盖 CPU、GPU/加速卡、数据中心、客户端、游戏与嵌入式等板块；正式结论需继续以 SEC filings、公司公告或官网业务描述交叉验证。",
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.64,
-                notes="AMD 业务画像框架补全，作为写作结构，不作为无证据事实扩展。",
-            )
+    if not _has_claim_section(output, "strategy_business"):
+        axes = "?".join(profile["business_axes"])
+        add_claim(
+            "strategy_business",
+            f"{symbol} ???????{profile['label']}??????????{axes}????????/??????????????????????????????????????????????????????????",
+            confidence=0.66,
+            notes="???/?????????????????????",
         )
-        claim_index += 1
-
-    if symbol.upper() == "AMD" and not _claims_text_contains(output, ["Data Center", "Client", "Gaming", "Embedded"]):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="strategy_business",
-                claim_text=(
-                    "AMD 业务线分析应按 Data Center、Client、Gaming、Embedded 四条主线组织："
-                    "Data Center/AI GPU 和 EPYC 决定中期成长弹性，Client CPU 反映 PC 周期修复，"
-                    "Gaming 与 Embedded 决定存量业务韧性。当前证据链已取得 SEC 财务事实和市场快照，"
-                    "但仍缺少分部收入表，正文应明确这一数据缺口。"
-                ),
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.66,
-                notes="AMD 业务线分析补强：用于正文结构和投资含义，不伪造分部收入。",
-            )
-        )
-        claim_index += 1
-
-    if symbol.upper() != "AMD" and not _has_claim_section(output, "strategy_business"):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="strategy_business",
-                claim_text=f"{symbol} 战略与主营业务章节应优先结合已抽取的公告、PDF 片段和三表数据，说明收入结构、渠道变化、地区分布和经营策略；若证据不足，应显式列为待补资料而不留空。",
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.62,
-                notes="战略与主营业务章节缺口补全，避免空章节。",
-            )
-        )
-        claim_index += 1
 
     if not _has_claim_section(output, "ownership_governance"):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="ownership_governance",
-                claim_text=f"{symbol} 股权结构与公司治理信息当前未在已抽取证据中形成完整表格，报告应将其列为待补数据项，并优先补充年报、10-K、股东名册或公司治理章节。",
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.6,
-                notes="治理章节缺口显式披露，避免空章节。",
-            )
+        add_claim(
+            "ownership_governance",
+            f"{symbol} ????????????????????????????????????????????SEC filing??????????????????????????????????????????",
+            confidence=0.6,
+            notes="?????????",
         )
-        claim_index += 1
 
-    if symbol.upper() == "AMD" and not _has_claim_section(output, "peer_compare"):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="peer_compare",
-                claim_text="AMD 同行对比框架应至少跟踪 NVIDIA、Intel、Broadcom，并分别关注 AI 加速、CPU、数据中心和半导体平台化能力差异；当前缺少可量化同行指标时应显式标注为框架性分析。",
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.62,
-                notes="同行框架补全；缺少量化同行表时不输出排名结论。",
-            )
+    if not _has_claim_section(output, "peer_compare"):
+        peer_axes = "?".join(profile["peer_axes"])
+        add_claim(
+            "peer_compare",
+            f"{symbol} ????????{profile['label']}??????????????????????ROE????????????????????????{peer_axes}??????????????????????????????????????????",
+            confidence=0.63,
+            notes="??????????????????????",
         )
-        claim_index += 1
-
-    if symbol.upper() == "AMD" and not _claims_text_contains(output, ["NVIDIA", "Intel", "Broadcom", "AI 加速器"]):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="peer_compare",
-                claim_text=(
-                    "AMD 同行对比结论应落到三组竞争关系：相对 NVIDIA，重点比较 AI 加速器和数据中心生态；"
-                    "相对 Intel，重点比较 CPU、PC 周期和服务器份额；相对 Broadcom，重点比较数据中心半导体平台化和客户集中度。"
-                    "在缺少同业三表和估值倍数前，本轮只能给出定性同行框架，不输出排名。"
-                ),
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.64,
-                notes="AMD 同行分析补强：要求正文覆盖 NVIDIA/Intel/Broadcom 三个参照系。",
-            )
-        )
-        claim_index += 1
-
-    if symbol.upper() != "AMD" and not _has_claim_section(output, "peer_compare"):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="peer_compare",
-                claim_text=f"{symbol} 同行对比当前缺少可复核的同业量化表，报告应优先补充同行收入增速、毛利率、ROE、估值倍数和渠道结构指标；在补齐前仅保留框架性比较，不输出排名结论。",
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.6,
-                notes="同行对比缺口显式披露，避免空章节。",
-            )
-        )
-        claim_index += 1
 
     if not _has_claim_section(output, "valuation"):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="valuation",
-                claim_text="估值不可用原因：当前证据链尚未同时取得可复核的市值、净利润、净资产或自由现金流完整口径，因此不能给出正式 P/E、P/B 或 DCF 目标价，只能保留估值框架和待补数据清单。",
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.68,
-                notes="估值缺口显式披露，避免伪造估值结论。",
-            )
+        add_claim(
+            "valuation",
+            "??????????????????????????????????????????????????????? P/E?P/B?P/S?DCF ???????????????????????????????????",
+            confidence=0.68,
+            notes="?????????????????",
         )
-        claim_index += 1
 
     if not _has_claim_section(output, "valuation_sensitivity"):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="valuation_sensitivity",
-                claim_text="敏感性分析待补：在估值关键变量尚未完整可复核前，应优先跟踪收入增速、毛利率/净利率、现金流转换率和折现率变化对估值结果的影响。",
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.62,
-                notes="敏感性框架补全，不输出无证据目标价。",
-            )
+        sens_axes = "?".join(profile["sensitivity_axes"])
+        add_claim(
+            "valuation_sensitivity",
+            f"????????{sens_axes}??????????????????????????????????????????????????????????????????",
+            confidence=0.63,
+            notes="???????????????",
         )
-        claim_index += 1
 
     if not _has_claim_section(output, "risks"):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="risks",
-                claim_text=f"{symbol} 风险提示至少应覆盖数据口径、披露时点、行业竞争、需求波动和估值假设变化；若后续证据不足，应在报告中继续保留为待验证风险。",
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="high",
-                confidence=0.66,
-                notes="风险章节最低补全，确保报告不出现空风险段落。",
-            )
+        add_claim(
+            "risks",
+            f"{symbol} ??????????????????????????????????????????????????????????????????????",
+            risk="high",
+            confidence=0.66,
+            notes="?????????",
         )
-        claim_index += 1
 
     if not _has_claim_section(output, "conclusion"):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="conclusion",
-                claim_text=f"基于当前可验证证据，{symbol} 暂维持“中性/审慎观察”投资结论；在三表、估值和同行量化证据进一步补齐前，不上调为积极评级。",
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.66,
-                notes="投资结论兜底，避免空结论；不构成投资建议。",
-            )
+        add_claim(
+            "conclusion",
+            f"??????????{symbol} ????????????????{profile['growth_driver']}???????{profile['competition_pressure']}?????????????????????????????????????????????????????????",
+            confidence=0.66,
+            notes="??????????????????????????",
         )
-        claim_index += 1
 
-    if symbol.upper() == "AMD" and not _claims_text_contains(output, ["增长驱动", "竞争压力", "估值约束"]):
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="conclusion",
-                claim_text=(
-                    "AMD 投资结论应维持中性/审慎观察：增长驱动来自数据中心和 AI 加速器预期，"
-                    "竞争压力来自 NVIDIA 在 AI 生态、Intel 在 CPU 领域及 Broadcom 在数据中心半导体平台的对比，"
-                    "估值约束来自股价快速上涨后市场预期抬升，而现金流和分部收入证据仍待补齐。"
-                ),
-                evidence_ids=evidence_ids[:3],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.65,
-                notes="AMD 投资结论补强：把增长驱动、竞争压力和估值约束写入正文。",
-            )
-        )
     return output
 
+
+def _infer_company_analysis_profile(symbol: str, records: List[Dict[str, Any]], claims: List[ClaimItem]) -> Dict[str, Any]:
+    text_parts = [symbol]
+    for record in records:
+        text_parts.extend([
+            str(record.get("title") or ""),
+            str(record.get("content") or "")[:800],
+            str((record.get("metadata") or {}).get("industry") if isinstance(record.get("metadata"), dict) else ""),
+            str((record.get("metadata") or {}).get("sector") if isinstance(record.get("metadata"), dict) else ""),
+        ])
+    text_parts.extend(str(claim.claim_text) for claim in claims[:20])
+    text = " ".join(text_parts).lower()
+
+    profiles = [
+        (
+            "semiconductor",
+            ["semiconductor", "chip", "gpu", "cpu", "accelerator", "data center", "ai", "eda", "foundry", "fabless", "???", "??", "??", "????"],
+            "???/????",
+            ["?????", "????/????", "????", "??????", "????"],
+            ["????", "??/????", "??????", "???", "????"],
+            ["????", "???", "?????", "????"],
+            "?????????/AI ???????",
+            "?????????????????????",
+        ),
+        (
+            "internet_platform",
+            ["internet", "platform", "online", "cloud", "advertising", "game", "fintech", "???", "??", "??", "??", "?", "??"],
+            "?????",
+            ["????", "??/??/??????", "?????", "???????", "????"],
+            ["????", "ARPU", "????", "?????", "????"],
+            ["????", "?????", "?/????", "?????"],
+            "????????????/??/??????",
+            "???????????????????/????",
+        ),
+        (
+            "consumer",
+            ["consumer", "staples", "retail", "beverage", "food", "spirits", "??", "??", "??", "??", "??", "??", "???"],
+            "???",
+            ["????", "????", "????", "???", "????"],
+            ["????", "????", "?????", "???", "????"],
+            ["????", "???", "????", "????"],
+            "???????????????",
+            "???????????????????",
+        ),
+        (
+            "financial",
+            ["bank", "insurance", "broker", "asset management", "??", "??", "??", "??", "???"],
+            "??",
+            ["????", "???/??", "????", "??", "????"],
+            ["?????", "???", "????", "ROE", "????"],
+            ["???", "???", "?????", "????"],
+            "??????????????????",
+            "???????????????????",
+        ),
+    ]
+    for category, keywords, label, business_axes, peer_axes, sensitivity_axes, growth, pressure in profiles:
+        if any(keyword in text for keyword in keywords):
+            return {
+                "category": category,
+                "label": label,
+                "business_axes": business_axes,
+                "peer_axes": peer_axes,
+                "sensitivity_axes": sensitivity_axes,
+                "growth_driver": growth,
+                "competition_pressure": pressure,
+            }
+    return {
+        "category": "general",
+        "label": "??????",
+        "business_axes": ["????", "????", "??/??", "????", "????"],
+        "peer_axes": ["????", "????", "?????", "????", "????"],
+        "sensitivity_axes": ["????", "???/???", "??????", "???"],
+        "growth_driver": "???????????????????",
+        "competition_pressure": "?????????????????????",
+    }
 
 def _statement_summary_claims(
     rows: Any,
@@ -1724,144 +1679,58 @@ def _build_pdf_section_claims(records: List[Dict[str, Any]], start_index: int, e
             )
         )
         claim_index += 1
-    for claim in _build_moutai_pdf_insight_claims(buckets=buckets, start_index=claim_index):
+    for claim in _build_generic_pdf_insight_claims(buckets=buckets, start_index=claim_index):
         claims.append(claim)
         claim_index += 1
     return claims, claim_index
 
 
-def _build_moutai_pdf_insight_claims(buckets: Dict[str, List[Dict[str, Any]]], start_index: int) -> List[ClaimItem]:
-    business_rows = buckets.get("business_overview", [])
-    governance_rows = buckets.get("ownership_governance", [])
-    risk_rows = buckets.get("risk_factors", [])
-    all_text = " ".join(str(row.get("content") or "") for row in business_rows + governance_rows + risk_rows)
-    if "贵州茅台" not in all_text and "茅台酒" not in all_text:
-        return []
+
+def _build_generic_pdf_insight_claims(buckets: Dict[str, List[Dict[str, Any]]], start_index: int) -> List[ClaimItem]:
+    """Create generic PDF-derived insights without company-specific templates."""
+
     output: List[ClaimItem] = []
     claim_index = start_index
-
-    business = _first_row_with_terms(business_rows, ["茅台酒", "系列酒", "直销", "批发代理"])
-    if business:
-        evidence_id = str(business.get("evidence_id") or business.get("sample_id") or "")
-        text = str(business.get("content") or "")
+    specs = [
+        (
+            "strategy_business",
+            buckets.get("business_overview", []),
+            ["product", "segment", "revenue", "channel", "customer", "region", "??", "??", "??", "??", "??", "??", "??", "??"],
+            "PDF ??????????????/?????????????????????????????????????????????????",
+        ),
+        (
+            "ownership_governance",
+            buckets.get("ownership_governance", []),
+            ["shareholder", "board", "governance", "dividend", "repurchase", "??", "??", "??", "??", "??", "??"],
+            "PDF ??????????????????????????????????????????????????",
+        ),
+        (
+            "risks",
+            buckets.get("risk_factors", []),
+            ["risk", "uncertain", "competition", "demand", "price", "??", "???", "??", "??", "??", "??"],
+            "PDF ???????????????????????????????????????????????",
+        ),
+    ]
+    for section_name, rows, keywords, prefix in specs:
+        row = _first_row_with_terms(rows, keywords)
+        if not row:
+            continue
+        evidence_id = str(row.get("evidence_id") or row.get("sample_id") or "")
+        content = str(row.get("content") or "")
         output.append(
             ClaimItem(
                 claim_id=f"cl_{claim_index:04d}",
-                section_name="strategy_business",
-                claim_text=(
-                    "贵州茅台销售结构显示，主营业务可拆为茅台酒、系列酒、直销、批发代理、国内和国外市场；"
-                    "其中公告片段披露“i 茅台”数字营销平台酒类不含税收入，说明直营与数字化渠道已是观察渠道质量的重要抓手。"
-                    f"原始片段：{_compact_snippet(text, 180)}"
-                ),
+                section_name=section_name,
+                claim_text=f"{prefix} ?????{_compact_snippet(content, 220)}",
                 evidence_ids=[evidence_id] if evidence_id else [],
                 numeric_values={},
-                risk_level="low",
-                confidence=0.78,
-                notes="白酒业务画像：由销售结构 PDF 片段生成，强调产品档次、渠道和地区维度。",
-            )
-        )
-        claim_index += 1
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="business_overview",
-                claim_text=(
-                    "贵州茅台的业务画像应围绕高端白酒品牌、茅台酒/系列酒产品结构、直营与批发代理渠道、"
-                    "国内为主且国外补充的地区结构展开；渠道库存、批价稳定性和数字化直销收入是后续跟踪重点。"
-                ),
-                evidence_ids=[evidence_id] if evidence_id else [],
-                numeric_values={},
-                risk_level="medium",
+                risk_level="high" if section_name == "risks" else "medium",
                 confidence=0.72,
-                notes="白酒行业语境补强：由 PDF 销售结构片段派生，不替代正式渠道数据审计。",
+                notes="?? PDF insight?? section type ????????????????",
             )
         )
         claim_index += 1
-
-    dealer = _first_row_with_terms(business_rows, ["经销商", "国内", "国外"])
-    if dealer:
-        evidence_id = str(dealer.get("evidence_id") or dealer.get("sample_id") or "")
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="strategy_business",
-                claim_text=(
-                    "经销商结构片段显示，公司披露国内、国外经销商数量及增减变化；"
-                    "对白酒研报而言，这应进入渠道质量分析，重点解释经销商净减少、系列酒渠道调整和直营占比变化。"
-                    f"原始片段：{_compact_snippet(str(dealer.get('content') or ''), 180)}"
-                ),
-                evidence_ids=[evidence_id] if evidence_id else [],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.76,
-                notes="渠道/经销商 claim：由 PDF 经销商表格片段生成。",
-            )
-        )
-        claim_index += 1
-
-    shareholder = _first_row_with_terms(governance_rows, ["中国贵州茅台酒厂", "香港中央结算", "前10"])
-    if shareholder:
-        evidence_id = str(shareholder.get("evidence_id") or shareholder.get("sample_id") or "")
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="ownership_governance",
-                claim_text=(
-                    "股东结构片段显示控股股东、香港中央结算有限公司及国资股东位列主要股东；"
-                    "治理分析应关注控股股东稳定性、外资持股变化、回购注销和分红政策对股东回报的影响。"
-                    f"原始片段：{_compact_snippet(str(shareholder.get('content') or ''), 180)}"
-                ),
-                evidence_ids=[evidence_id] if evidence_id else [],
-                numeric_values={},
-                risk_level="low",
-                confidence=0.75,
-                notes="股东结构 claim：由 PDF 股东表片段生成。",
-            )
-        )
-        claim_index += 1
-
-    payout = _first_row_with_terms(governance_rows, ["现金红利", "利润分配", "回购"])
-    if payout:
-        evidence_id = str(payout.get("evidence_id") or payout.get("sample_id") or "")
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="conclusion",
-                claim_text=(
-                    "分红/回购片段显示，公司以现金分红和股份回购注销强化股东回报；"
-                    "投资结论应把稳定现金流、分红能力和回购价格约束一起纳入，而不能只停留在品牌叙事。"
-                    f"原始片段：{_compact_snippet(str(payout.get('content') or ''), 180)}"
-                ),
-                evidence_ids=[evidence_id] if evidence_id else [],
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.74,
-                notes="股东回报 claim：由年报/季报 PDF 分红和回购片段生成。",
-            )
-        )
-        claim_index += 1
-
-    risk = _first_row_with_terms(risk_rows, ["风险", "不确定性"])
-    if risk:
-        evidence_id = str(risk.get("evidence_id") or risk.get("sample_id") or "")
-        output.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="risks",
-                claim_text=(
-                    "风险提示片段明确要求关注公司未来发展讨论中的风险；对白酒公司，应重点跟踪高端消费需求、"
-                    "渠道库存、批价波动、系列酒渠道调整和分红/回购执行不确定性。"
-                    f"原始片段：{_compact_snippet(str(risk.get('content') or ''), 180)}"
-                ),
-                evidence_ids=[evidence_id] if evidence_id else [],
-                numeric_values={},
-                risk_level="high",
-                confidence=0.72,
-                notes="风险 claim：由 PDF 风险提示片段和白酒行业风险框架生成。",
-            )
-        )
     return output
-
 
 def _first_row_with_terms(rows: List[Dict[str, Any]], terms: List[str]) -> Dict[str, Any] | None:
     for row in rows:

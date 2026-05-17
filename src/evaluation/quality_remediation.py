@@ -107,7 +107,7 @@ def _required_fixes(issues: List[Dict[str, Any]], quality: Dict[str, Any], llm_r
         fixes.append("补齐利润表、资产负债表、现金流量表三表摘要，并写入正文财务分析章节。")
     if any(term in text for term in ["估值", "P/E", "P/B", "P/S"]):
         fixes.append("补充最小估值路径；若不可用，写明缺失数据源、缺口和对投资判断的影响。")
-    if any(term in text for term in ["同行", "对比", "NVIDIA", "Intel", "Broadcom"]):
+    if any(term in text for term in ["同行", "对比"]):
         fixes.append("补充同行对比表和可读结论，避免只输出框架。")
     if any(term in text for term in ["内容空洞", "框架", "暂无结论", "投资洞察"]):
         fixes.append("重写空洞章节，给出业务含义、投资判断和关键风险，不得大量使用暂无结论。")

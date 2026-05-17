@@ -675,3 +675,14 @@ python -m pytest tests/test_config_loader.py tests/test_schemas.py tests/test_ge
 - 验证命令：`$env:PYTHONPATH='.'; pytest -q tests/test_company_identity.py tests/test_chat_task_parser.py tests/test_web_ui.py`。
 - 质量结果：`21 passed`。
 - 剩余问题：当前只是通用路由层，后续还需要移除公司级补齐硬编码、补 collaboration/tool trace、GapResolver 和 delivery gate 同轮返工。
+
+# 2026-05-17 Commit 18：移除公司级硬编码补齐
+
+- `DeepAnalyzeAgent` 的最低研报补齐逻辑已从 AMD/600519 等 symbol 特判改为通用行业画像：半导体/硬件科技、互联网平台、消费品、金融和通用上市公司。
+- 业务画像、同行对比、估值、敏感性、风险和投资结论现在基于行业关键词、市场/证据文本和数据缺口生成写作约束，不再按单个公司名称生成专属段落。
+- PDF insight 从茅台专用业务/渠道/股东模板改为通用 PDF section + 关键词触发，覆盖业务、治理和风险片段。
+- `FinalAnswerAgent` 示例和 objective/remediation 的同行关键词去除了固定竞品名单，避免质量规则绑定特定公司。
+- 更新测试：公司专用断言改为通用 PDF 消费、科技行业画像和章节补齐断言。
+- 验证命令：`python -m py_compile src/agents/deep_analyze_agent.py src/agents/final_answer_agent.py src/evaluation/report_quality.py src/evaluation/quality_remediation.py`；`$env:PYTHONPATH='.'; pytest -q tests/test_data_enrichment.py tests/test_report_quality.py tests/test_quality_remediation.py`。
+- 质量结果：`19 passed`。
+- 剩余问题：还需要把多 Agent 协作、工具调用、GapResolver 和 delivery rework 做成可见 artifact。
