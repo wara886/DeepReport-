@@ -49,6 +49,7 @@ def retrieve_evidence_with_mode(
     log: bool = True,
 ) -> Tuple[List[Dict[str, object]], Dict[str, object]]:
     store = EvidenceStore.from_curated_parquet(curated_dir=curated_dir)
+    store_meta = dict(getattr(store, "load_meta", {}) or {})
     records = store.filter(symbol=symbol, period=period)
     source_record_count = len(records)
     if use_chunks:
@@ -125,6 +126,9 @@ def retrieve_evidence_with_mode(
 
     meta["returned_hit_count"] = len(ranked[:topk])
     meta["failure_reason"] = _failure_reason(records=records, ranked=ranked[:topk], symbol=symbol, period=period)
+    meta["loaded_file_count"] = store_meta.get("loaded_file_count", 0)
+    meta["skipped_files"] = store_meta.get("skipped_files", [])
+    meta["load_errors"] = store_meta.get("load_errors", [])
 
     if log:
         print(

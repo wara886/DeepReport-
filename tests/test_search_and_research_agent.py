@@ -87,6 +87,25 @@ def test_deep_researcher_agent_uses_search_manager():
     assert result.output["evidence_candidates"][0]["authority_score"] == 1.0
 
 
+def test_deep_researcher_agent_splits_comma_separated_engines():
+    manager = SearchManager()
+    manager.register_engine("engine_a", _engine_a)
+    manager.register_engine("engine_b", _engine_b)
+    agent = DeepResearcherAgent(search_manager=manager)
+    task = AgentTask(
+        task_id="task_001",
+        task_type="deep_researcher",
+        description="Find AAPL evidence.",
+        parameters={"query": "AAPL revenue", "engines": "engine_a,engine_b", "topk": 3},
+    )
+
+    result = agent.execute_task(task)
+
+    assert result.status == AgentStatus.COMPLETED
+    assert result.output["search_meta"]["engines"] == ["engine_a", "engine_b"]
+    assert len(result.output["evidence_candidates"]) == 2
+
+
 def test_financial_query_adapter_expands_chinese_finance_terms():
     info = adapt_financial_query(
         query="分析 Nvda 2025Q4 营收 毛利率 现金流 风险",

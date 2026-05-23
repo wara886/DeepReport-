@@ -18,7 +18,6 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)
     parser.add_argument("--config-path", default="configs/model_backends.yaml")
-    parser.add_argument("--raw-data-root", default="data/raw/real_data")
     parser.add_argument("--output-dir", default="data/outputs/multi_agent")
     parser.add_argument("--report-dir", default="data/reports/multi_agent")
     parser.add_argument("--memory-root", default="memory/chat")
@@ -30,7 +29,6 @@ def main() -> int:
         output_dir=args.output_dir,
         report_dir=args.report_dir,
         config_path=args.config_path,
-        raw_data_root=args.raw_data_root,
         memory_root=args.memory_root,
     )
     print(f"DeepReport+ UI running at {url}")

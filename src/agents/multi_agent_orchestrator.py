@@ -8,6 +8,13 @@ import time
 from typing import Any, Dict, List
 
 from src.agents.base_agent import AgentStatus, AgentTask, TaskResult
+from src.agents.analysis_role_agents import (
+    IdentityAgent,
+    PeerAgent,
+    RiskAgent,
+    StatementAgent,
+    ValuationAgent,
+)
 from src.agents.browser_agent import BrowserAgent
 from src.agents.context_packer import build_revision_brief
 from src.agents.conversation_memory import (
@@ -15,6 +22,7 @@ from src.agents.conversation_memory import (
     build_initial_conversation_state,
     refresh_conversation_brief,
 )
+from src.agents.critic_agent import CriticAgent
 from src.agents.deep_analyze_agent import DeepAnalyzeAgent
 from src.agents.deep_researcher_agent import DeepResearcherAgent
 from src.agents.durable_memory import DurableMemoryConfig, DurableMemoryStore
@@ -22,6 +30,11 @@ from src.agents.final_answer_agent import FinalAnswerAgent
 from src.agents.gap_resolver_agent import GapResolverAgent
 from src.agents.gap_router import build_gap_resolution_trace
 from src.agents.planning_agent import PlanningAgent
+from src.agents.research_blackboard import (
+    apply_pre_write_critic,
+    initialize_research_blackboard,
+    update_blackboard_for_task,
+)
 from src.agents.verifier_agent import VerifierAgent
 from src.data.company_universe import resolve_company_identifier, resolve_company_identifier_with_diagnostics
 from src.data.pdf_artifacts import build_pdf_artifacts
@@ -65,7 +78,7 @@ FAST_PROFILE = {
     "final_max_evidence": 8,
     "final_evidence_content_limit": 350,
     "final_max_tokens": 1600,
-    "verifier_max_rework_rounds": 2,
+    "verifier_max_rework_rounds": 1,
 }
 
 DEFAULT_PROFILE = {
@@ -88,7 +101,7 @@ DEFAULT_PROFILE = {
     "final_max_evidence": 12,
     "final_evidence_content_limit": 600,
     "final_max_tokens": 2200,
-    "verifier_max_rework_rounds": 2,
+    "verifier_max_rework_rounds": 1,
 }
 
 
@@ -136,7 +149,13 @@ class MultiAgentOrchestrator:
             "research": DeepResearcherAgent(model=self.model, search_manager=self.search_manager),
             "browser": BrowserAgent(model=self.model),
             "analyze": DeepAnalyzeAgent(model=self.model, tool_registry=self.tool_registry),
+            "identity": IdentityAgent(),
+            "statement": StatementAgent(),
+            "peer": PeerAgent(),
+            "valuation": ValuationAgent(),
+            "risk": RiskAgent(),
             "final_answer": FinalAnswerAgent(model=self.model),
+            "critic": CriticAgent(),
             "verifier": VerifierAgent(model=self.model),
             "gap_resolver": GapResolverAgent(),
         }
@@ -172,6 +191,37 @@ class MultiAgentOrchestrator:
                 data_source_config_path=data_source_config_path,
                 entity_resolution=entity_resolution,
                 quality_remediation_plan=quality_remediation_plan,
+            )
+        if execution_mode == "collaborative":
+            return self._run_dynamic(
+                research_topic=research_topic,
+                symbol=symbol,
+                period=period,
+                requirements=requirements,
+                fast=fast,
+                search_engines=search_engines,
+                retrieval_ranking_mode=retrieval_ranking_mode,
+                enable_remote_data=enable_remote_data,
+                data_source_config_path=data_source_config_path,
+                entity_resolution=entity_resolution,
+                quality_remediation_plan=quality_remediation_plan,
+                collaborative=True,
+            )
+        if execution_mode == "diagnostic_full":
+            return self._run_dynamic(
+                research_topic=research_topic,
+                symbol=symbol,
+                period=period,
+                requirements=requirements,
+                fast=fast,
+                search_engines=search_engines,
+                retrieval_ranking_mode=retrieval_ranking_mode,
+                enable_remote_data=enable_remote_data,
+                data_source_config_path=data_source_config_path,
+                entity_resolution=entity_resolution,
+                quality_remediation_plan=quality_remediation_plan,
+                collaborative=True,
+                diagnostic_full=True,
             )
         if execution_mode == "static":
             return self._run_static(
@@ -270,6 +320,13 @@ class MultiAgentOrchestrator:
         )
         plan = planning_result.output.get("plan", {})
         self._write_json("task_plan.json", plan)
+        research_blackboard = initialize_research_blackboard(
+            symbol=symbol,
+            period=period,
+            entity_resolution=entity_resolution,
+            search_engines=search_engines or [],
+            raw_data_root=self.raw_data_root,
+        )
 
         research_query = _query_from_plan(plan=plan, research_topic=research_topic, symbol=symbol, period=period)
         research_result = self._execute(
@@ -295,6 +352,24 @@ class MultiAgentOrchestrator:
             ),
         )
         evidence_candidates = research_result.output.get("evidence_candidates", [])
+        static_state: Dict[str, Any] = {
+            "research_topic": research_topic,
+            "symbol": symbol,
+            "period": period,
+            "entity_resolution": entity_resolution,
+            "search_engines": search_engines or [],
+            "search_meta": research_result.output.get("search_meta", {}),
+            "evidence_candidates": evidence_candidates,
+            "evidence_records": [],
+            "claims": [],
+            "analysis_artifacts": {},
+        }
+        research_blackboard = update_blackboard_for_task(
+            research_blackboard,
+            "deep_researcher",
+            static_state,
+            research_result.output,
+        )
 
         browser_result = self._execute(
             "browser",
@@ -309,6 +384,13 @@ class MultiAgentOrchestrator:
         )
         evidence_records = browser_result.output.get("evidence_records", [])
         self._write_json("evidence.json", evidence_records)
+        static_state["evidence_records"] = evidence_records
+        research_blackboard = update_blackboard_for_task(
+            research_blackboard,
+            "browser",
+            static_state,
+            browser_result.output,
+        )
 
         analyze_result = self._execute(
             "analyze",
@@ -329,11 +411,29 @@ class MultiAgentOrchestrator:
         )
         claims = analyze_result.output.get("claims", [])
         analysis_artifacts = analyze_result.output.get("analysis_artifacts", {})
+        static_state["claims"] = claims
+        static_state["analysis_artifacts"] = analysis_artifacts
+        research_blackboard = update_blackboard_for_task(
+            research_blackboard,
+            "deep_analyze",
+            static_state,
+            analyze_result.output,
+        )
         self._write_json("claims.json", claims)
         self._write_json("analysis_artifacts.json", analysis_artifacts)
         financial_metrics_path = self._write_json(
             "financial_metrics.json",
             analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
+        rejected_metrics_path = self._write_json(
+            "rejected_metrics.json",
+            dict(analysis_artifacts.get("financial_metrics", {})).get("rejected_metrics", [])
+            if isinstance(analysis_artifacts, dict) and isinstance(analysis_artifacts.get("financial_metrics", {}), dict)
+            else [],
+        )
+        claim_rejection_path = self._write_json(
+            "claim_rejection_report.json",
+            analysis_artifacts.get("claim_rejection_report", {}) if isinstance(analysis_artifacts, dict) else {},
         )
         tables_path = self._write_json(
             "tables.json",
@@ -352,6 +452,27 @@ class MultiAgentOrchestrator:
             analysis_artifacts.get("valuation_sensitivity", {}) if isinstance(analysis_artifacts, dict) else {},
         )
         tables = analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else []
+        critic_result = self._execute(
+            "critic",
+            AgentTask(
+                task_id="task_003a_pre_write_critic",
+                task_type="pre_write_critic",
+                description="Review the shared research blackboard before final writing.",
+                parameters={
+                    "research_blackboard": research_blackboard,
+                    "state_snapshot": {
+                        "symbol": symbol,
+                        "period": period,
+                        "evidence_count": len(evidence_records) if isinstance(evidence_records, list) else 0,
+                        "claim_count": len(claims) if isinstance(claims, list) else 0,
+                    },
+                },
+                dependencies=["task_003_analyze"],
+                priority=5,
+            ),
+        )
+        pre_write_critic = critic_result.output.get("pre_write_critic", {})
+        research_blackboard = apply_pre_write_critic(research_blackboard, pre_write_critic)
 
         final_result = self._execute(
             "final_answer",
@@ -361,6 +482,8 @@ class MultiAgentOrchestrator:
                 description="Write final report.",
                 parameters={
                     "research_topic": research_topic,
+                    "symbol": symbol,
+                    "period": period,
                     "claims": claims,
                     "evidence_records": evidence_records,
                     "conversation_brief": conversation_brief,
@@ -370,6 +493,8 @@ class MultiAgentOrchestrator:
                     "pdf_sections": analysis_artifacts.get("pdf_sections", []) if isinstance(analysis_artifacts, dict) else [],
                     "company_profile": analysis_artifacts.get("company_profile", {}) if isinstance(analysis_artifacts, dict) else {},
                     "quality_remediation_plan": quality_remediation_plan or {},
+                    "research_blackboard": research_blackboard,
+                    "pre_write_critic": pre_write_critic,
                 },
                 dependencies=["task_003_analyze"],
                 priority=4,
@@ -378,6 +503,17 @@ class MultiAgentOrchestrator:
         markdown = str(final_result.output.get("markdown", ""))
         html = str(final_result.output.get("html", ""))
         report_json = final_result.output.get("report_json", {})
+        static_state["markdown"] = markdown
+        static_state["html"] = html
+        static_state["report_json"] = report_json
+        static_state["research_blackboard"] = research_blackboard
+        static_state["pre_write_critic"] = pre_write_critic
+        research_blackboard = update_blackboard_for_task(
+            research_blackboard,
+            "final_answer",
+            static_state,
+            final_result.output,
+        )
         charts = generate_report_charts(
             claims=claims,
             evidence_records=evidence_records,
@@ -408,6 +544,7 @@ class MultiAgentOrchestrator:
             report_json["charts"] = charts
             report_json["compliance_disclosure"] = {"included": True, "rating_definition": "未评级"}
             report_json["analysis_artifacts"] = analysis_artifacts
+            report_json["research_blackboard"] = research_blackboard
         self._write_json("citations.json", citations)
         self._write_json("charts.json", charts)
         chart_consistency = audit_chart_consistency(
@@ -461,6 +598,14 @@ class MultiAgentOrchestrator:
             ),
         )
         verification_report = verifier_result.output.get("verification_report", {})
+        static_state["verification_report"] = verification_report
+        research_blackboard = update_blackboard_for_task(
+            research_blackboard,
+            "verifier",
+            static_state,
+            verifier_result.output,
+        )
+        research_blackboard_path = self._write_json("research_blackboard.json", research_blackboard)
         gap_resolution_trace = build_gap_resolution_trace(
             verification_report.get("evidence_gaps", []) if isinstance(verification_report, dict) else []
         )
@@ -498,10 +643,11 @@ class MultiAgentOrchestrator:
                 "quality_remediation_plan": quality_remediation_plan or {},
                 "memory_enabled": self.memory_config.enabled,
                 "memory_context_scope": self.memory_config.context_scope,
+                "research_blackboard": research_blackboard,
             },
         )
         collaboration_trace_path = self._write_json("agent_collaboration_trace.json", collaboration_trace)
-        tool_trace = build_tool_trace(agents=self.agents, trace=self.trace, state={"search_meta": {}})
+        tool_trace = build_tool_trace(agents=self.agents, trace=self.trace, state=static_state)
         tool_trace_path = self._write_json("tool_trace.json", tool_trace)
 
         summary_path = self.output_dir / "run_summary.json"
@@ -524,6 +670,18 @@ class MultiAgentOrchestrator:
             "evidence_gap_count": len(verification_report.get("evidence_gaps", [])) if isinstance(verification_report, dict) else 0,
             "company_report_overall_score": scorecard["overall_score"],
             "entity_resolution": entity_resolution,
+            "research_blackboard": {
+                "pre_write_critic_passed": bool(
+                    research_blackboard.get("critic", {}).get("pre_write_passed", False)
+                )
+                if isinstance(research_blackboard.get("critic"), dict)
+                else False,
+                "industry_profile_confidence": dict(research_blackboard.get("industry_profile", {})).get(
+                    "confidence", 0.0
+                )
+                if isinstance(research_blackboard.get("industry_profile"), dict)
+                else 0.0,
+            },
             "conversation_brief_chars": len(conversation_brief),
             "durable_memory_enabled": self.memory_config.enabled,
             "durable_memory_context_scope": self.memory_config.context_scope,
@@ -554,6 +712,8 @@ class MultiAgentOrchestrator:
             "claims": str(self.output_dir / "claims.json"),
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
             "financial_metrics": str(financial_metrics_path),
+            "rejected_metrics": str(rejected_metrics_path),
+            "claim_rejection_report": str(claim_rejection_path),
             "tables": str(tables_path),
             "valuation_model": str(valuation_model_path),
             "valuation_assumptions": str(valuation_assumptions_path),
@@ -571,6 +731,7 @@ class MultiAgentOrchestrator:
             "conversation_context": str(conversation_path),
             "durable_memory": durable_memory_artifacts.get("working_snapshot", ""),
             "gap_resolution_trace": str(self.output_dir / "gap_resolution_trace.jsonl"),
+            "research_blackboard": str(research_blackboard_path),
             "company_report_scorecard": str(scorecard_path),
             "run_summary": str(summary_path),
         }
@@ -588,6 +749,8 @@ class MultiAgentOrchestrator:
         data_source_config_path: str = "configs/data_sources.yaml",
         entity_resolution: Dict[str, Any] | None = None,
         quality_remediation_plan: Dict[str, Any] | None = None,
+        collaborative: bool = False,
+        diagnostic_full: bool = False,
     ) -> Dict[str, str]:
         self.trace = []
         run_started_at = time.perf_counter()
@@ -689,6 +852,16 @@ class MultiAgentOrchestrator:
             "data_source_config_path": data_source_config_path,
             "entity_resolution": entity_resolution,
             "quality_remediation_plan": quality_remediation_plan or {},
+            "collaborative_mode": bool(collaborative),
+            "diagnostic_full_mode": bool(diagnostic_full),
+            "research_blackboard": initialize_research_blackboard(
+                symbol=symbol,
+                period=period,
+                entity_resolution=entity_resolution,
+                search_engines=search_engines or [],
+                raw_data_root=self.raw_data_root,
+            ),
+            "pre_write_critic": {},
         }
         tasks = prepare_dynamic_tasks(
             plan=plan,
@@ -707,6 +880,8 @@ class MultiAgentOrchestrator:
             else "",
             router_context_max_chars=self.memory_config.max_context_chars,
         )
+        if diagnostic_full:
+            tasks = prepare_collaborative_tasks(tasks)
         route_context_path = self._write_json("task_route_context.json", build_task_route_context(tasks))
         results = self._execute_dynamic_tasks(tasks=tasks, state=state)
         self._run_verifier_rework_loop(state=state)
@@ -736,6 +911,16 @@ class MultiAgentOrchestrator:
         financial_metrics_path = self._write_json(
             "financial_metrics.json",
             analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
+        rejected_metrics_path = self._write_json(
+            "rejected_metrics.json",
+            dict(analysis_artifacts.get("financial_metrics", {})).get("rejected_metrics", [])
+            if isinstance(analysis_artifacts, dict) and isinstance(analysis_artifacts.get("financial_metrics", {}), dict)
+            else [],
+        )
+        claim_rejection_path = self._write_json(
+            "claim_rejection_report.json",
+            analysis_artifacts.get("claim_rejection_report", {}) if isinstance(analysis_artifacts, dict) else {},
         )
         tables_path = self._write_json(
             "tables.json",
@@ -772,11 +957,14 @@ class MultiAgentOrchestrator:
             require_files=True,
         )
         self._write_json("multimodal_consistency.json", multimodal_consistency)
+        if state.get("revision_history") and not state.get("gap_resolution_trace"):
+            state["gap_resolution_trace"] = _revision_history_to_gap_trace(state.get("revision_history", []))
         self._write_json("revision_history.json", state.get("revision_history", []))
         self._write_jsonl("gap_resolution_trace.jsonl", state.get("gap_resolution_trace", []))
         gap_resolution_json_path = self._write_json("gap_resolution_trace.json", state.get("gap_resolution_trace", []))
         data_repair_summary_path = self._write_json("data_repair_summary.json", state.get("data_repair_summary", {}))
         repair_constraints_path = self._write_json("repair_constraints.json", state.get("repair_constraints", {}))
+        research_blackboard_path = self._write_json("research_blackboard.json", state.get("research_blackboard", {}))
         scorecard = build_company_report_scorecard(
             evidence_records=list(evidence_records) if isinstance(evidence_records, list) else [],
             financial_metrics=analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
@@ -824,7 +1012,7 @@ class MultiAgentOrchestrator:
             "symbol": symbol,
             "period": period,
             "model": self.model.model_name,
-            "execution_mode": "dynamic",
+            "execution_mode": "diagnostic_full" if diagnostic_full else "collaborative" if collaborative else "dynamic",
             "performance_profile": "fast" if fast else "default",
             "agent_count": len(self.agents),
             "planned_task_count": len(tasks),
@@ -846,6 +1034,20 @@ class MultiAgentOrchestrator:
             else 0,
             "company_report_overall_score": scorecard["overall_score"],
             "entity_resolution": entity_resolution,
+            "research_blackboard": {
+                "pre_write_critic_passed": bool(
+                    dict(state.get("research_blackboard", {}))
+                    .get("critic", {})
+                    .get("pre_write_passed", False)
+                )
+                if isinstance(state.get("research_blackboard"), dict)
+                else False,
+                "industry_profile_confidence": dict(
+                    dict(state.get("research_blackboard", {})).get("industry_profile", {})
+                ).get("confidence", 0.0)
+                if isinstance(state.get("research_blackboard"), dict)
+                else 0.0,
+            },
             "conversation_brief_chars": len(str(state.get("conversation_brief", ""))),
             "durable_memory_enabled": self.memory_config.enabled,
             "durable_memory_context_scope": self.memory_config.context_scope,
@@ -873,6 +1075,8 @@ class MultiAgentOrchestrator:
             "claims": str(self.output_dir / "claims.json"),
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
             "financial_metrics": str(financial_metrics_path),
+            "rejected_metrics": str(rejected_metrics_path),
+            "claim_rejection_report": str(claim_rejection_path),
             "pdf_manifest": str(pdf_manifest_path),
             "pdf_sections": str(pdf_sections_path),
             "company_profile_extracted": str(company_profile_extracted_path),
@@ -891,6 +1095,7 @@ class MultiAgentOrchestrator:
             "gap_resolution_trace_json": str(gap_resolution_json_path),
             "data_repair_summary": str(data_repair_summary_path),
             "repair_constraints": str(repair_constraints_path),
+            "research_blackboard": str(research_blackboard_path),
             "company_report_scorecard": str(scorecard_path),
             "conversation_context": str(conversation_path),
             "durable_memory": durable_memory_artifacts.get("working_snapshot", ""),
@@ -916,6 +1121,39 @@ class MultiAgentOrchestrator:
 
             ready.sort(key=lambda task: (_task_type_order(task.task_type), -task.priority, task.task_id))
             task = ready[0]
+            if (
+                task.task_type == "final_answer"
+                and state.get("diagnostic_full_mode")
+                and not state.get("pre_write_critic")
+            ):
+                critic_task = AgentTask(
+                    task_id=f"{task.task_id}_pre_write_critic",
+                    task_type="pre_write_critic",
+                    description="Review the shared research blackboard before final writing.",
+                    parameters={
+                        "research_blackboard": dict(state.get("research_blackboard", {}))
+                        if isinstance(state.get("research_blackboard"), dict)
+                        else {},
+                        "state_snapshot": {
+                            "symbol": state.get("symbol", ""),
+                            "period": state.get("period", ""),
+                            "evidence_count": len(state.get("evidence_records", []))
+                            if isinstance(state.get("evidence_records"), list)
+                            else 0,
+                            "claim_count": len(state.get("claims", [])) if isinstance(state.get("claims"), list) else 0,
+                        },
+                    },
+                    dependencies=[],
+                    priority=5,
+                )
+                critic_result = self._execute("critic", critic_task)
+                state["pre_write_critic"] = critic_result.output.get("pre_write_critic", {})
+                state["research_blackboard"] = apply_pre_write_critic(
+                    state.get("research_blackboard", {}),
+                    state.get("pre_write_critic", {}),
+                )
+                if state.get("diagnostic_full_mode"):
+                    self._resolve_pre_write_objections(state)
             enriched = enrich_task_parameters(
                 task=task,
                 state=state,
@@ -925,12 +1163,118 @@ class MultiAgentOrchestrator:
             result = self._execute(agent_key_for_task(enriched.task_type), enriched)
             results[enriched.task_id] = result
             merge_task_result(state=state, task_type=enriched.task_type, result=result)
+            state["research_blackboard"] = update_blackboard_for_task(
+                state.get("research_blackboard", {}),
+                enriched.task_type,
+                state,
+                result.output,
+            )
             if enriched.task_type == "browser":
                 attach_pdf_artifacts_to_state(state=state)
+                state["research_blackboard"] = update_blackboard_for_task(
+                    state.get("research_blackboard", {}),
+                    enriched.task_type,
+                    state,
+                    result.output,
+                )
             if enriched.task_type == "verifier":
                 absorb_verifier_feedback(state)
             del pending[enriched.task_id]
         return results
+
+    def _resolve_pre_write_objections(self, state: Dict[str, Any], max_rounds: int = 2) -> None:
+        """Route blocking critic objections back to the responsible role agents."""
+
+        history: List[Dict[str, Any]] = []
+        for round_index in range(1, max_rounds + 1):
+            objections = _blocking_objections(state.get("pre_write_critic", {}))
+            if not objections:
+                break
+            target_agents = _ordered_targets(objections)
+            for target_agent in target_agents:
+                task_type = _role_task_type_for_agent(target_agent)
+                if not task_type:
+                    continue
+                role_result = self._execute(
+                    agent_key_for_task(task_type),
+                    AgentTask(
+                        task_id=f"task_prewrite_rework_{round_index}_{task_type}",
+                        task_type=task_type,
+                        description=f"Revise {task_type} after pre-write critic objection.",
+                        parameters={
+                            "symbol": state.get("symbol", ""),
+                            "period": state.get("period", ""),
+                            "evidence_records": list(state.get("evidence_records", [])),
+                            "claims": list(state.get("claims", [])),
+                            "analysis_artifacts": dict(state.get("analysis_artifacts", {}))
+                            if isinstance(state.get("analysis_artifacts"), dict)
+                            else {},
+                            "research_blackboard": dict(state.get("research_blackboard", {}))
+                            if isinstance(state.get("research_blackboard"), dict)
+                            else {},
+                            "critic_objections": [item for item in objections if item.get("target_agent") == target_agent],
+                        },
+                        dependencies=[],
+                        priority=6,
+                    ),
+                )
+                merge_task_result(state=state, task_type=task_type, result=role_result)
+                state["research_blackboard"] = update_blackboard_for_task(
+                    state.get("research_blackboard", {}),
+                    task_type,
+                    state,
+                    role_result.output,
+                )
+                history.append(
+                    {
+                        "round": round_index,
+                        "target_agent": target_agent,
+                        "task_type": task_type,
+                        "field": [item.get("field", "") for item in objections if item.get("target_agent") == target_agent],
+                        "action": "revise_role_output",
+                    }
+                )
+            critic_result = self._execute(
+                "critic",
+                AgentTask(
+                    task_id=f"task_prewrite_recheck_{round_index}",
+                    task_type="pre_write_critic",
+                    description="Re-check shared blackboard after responsible role revisions.",
+                    parameters={
+                        "research_blackboard": dict(state.get("research_blackboard", {}))
+                        if isinstance(state.get("research_blackboard"), dict)
+                        else {},
+                        "state_snapshot": {
+                            "symbol": state.get("symbol", ""),
+                            "period": state.get("period", ""),
+                            "evidence_count": len(state.get("evidence_records", []))
+                            if isinstance(state.get("evidence_records"), list)
+                            else 0,
+                            "claim_count": len(state.get("claims", [])) if isinstance(state.get("claims"), list) else 0,
+                        },
+                    },
+                    dependencies=[],
+                    priority=6,
+                ),
+            )
+            state["pre_write_critic"] = critic_result.output.get("pre_write_critic", {})
+            state["research_blackboard"] = apply_pre_write_critic(
+                state.get("research_blackboard", {}),
+                state.get("pre_write_critic", {}),
+            )
+            if not _blocking_objections(state.get("pre_write_critic", {})):
+                break
+
+        remaining = _blocking_objections(state.get("pre_write_critic", {}))
+        state["pre_write_rework_history"] = history
+        if remaining:
+            state["collaborative_degraded_report"] = True
+            blackboard = dict(state.get("research_blackboard", {})) if isinstance(state.get("research_blackboard"), dict) else {}
+            critic = dict(blackboard.get("critic", {})) if isinstance(blackboard.get("critic"), dict) else {}
+            critic["degraded_report"] = True
+            critic["remaining_blocking_objections"] = remaining
+            blackboard["critic"] = critic
+            state["research_blackboard"] = blackboard
 
     def _execute(self, agent_key: str, task: AgentTask) -> TaskResult:
         agent = self.agents[agent_key]
@@ -987,6 +1331,11 @@ class MultiAgentOrchestrator:
             revision_request = build_revision_brief(verification_report)
             if not revision_request:
                 break
+            if not state.get("gap_resolution_trace"):
+                seed_trace = _verifier_report_to_gap_trace(verification_report)
+                if not seed_trace:
+                    seed_trace = _revision_request_to_gap_trace(revision_request)
+                state["gap_resolution_trace"] = seed_trace
             conversation_brief = refresh_conversation_brief(state)
 
             final_result = self._execute(
@@ -997,6 +1346,8 @@ class MultiAgentOrchestrator:
                     description="Revise report using verifier feedback.",
                     parameters={
                         "research_topic": state.get("research_topic", ""),
+                        "symbol": str(state.get("symbol", "")),
+                        "period": str(state.get("period", "")),
                         "claims": list(state.get("claims", [])),
                         "evidence_records": list(state.get("evidence_records", [])),
                         "revision_request": revision_request,
@@ -1014,6 +1365,12 @@ class MultiAgentOrchestrator:
                         else [],
                         "company_profile": dict(state.get("analysis_artifacts", {})).get("company_profile", {})
                         if isinstance(state.get("analysis_artifacts"), dict)
+                        else {},
+                        "research_blackboard": dict(state.get("research_blackboard", {}))
+                        if isinstance(state.get("research_blackboard"), dict)
+                        else {},
+                        "pre_write_critic": dict(state.get("pre_write_critic", {}))
+                        if isinstance(state.get("pre_write_critic"), dict)
                         else {},
                         "quality_remediation_plan": dict(state.get("quality_remediation_plan", {}))
                         if isinstance(state.get("quality_remediation_plan"), dict)
@@ -1094,6 +1451,12 @@ class MultiAgentOrchestrator:
         state["data_repair_summary"] = dict(output.get("data_repair_summary", {}))
         state["repair_constraints"] = dict(output.get("repair_constraints", {}))
         state["required_backfill_sections"] = list(output.get("required_backfill_sections", []))
+        state["research_blackboard"] = update_blackboard_for_task(
+            state.get("research_blackboard", {}),
+            "gap_resolver",
+            state,
+            output,
+        )
 
     def _write_json(self, file_name: str, payload: Any) -> Path:
         path = self.output_dir / file_name
@@ -1144,6 +1507,8 @@ def build_agent_collaboration_trace(trace: List[Dict[str, Any]], state: Dict[str
                 "memory_used": _memory_used(params=params, state=state),
                 "quality_feedback_used": bool(params.get("quality_remediation_plan") or params.get("quality_feedback")),
                 "tools_observed": _tools_from_metadata(metadata),
+                "blackboard_writes": _blackboard_writes_for_agent(agent_name, state),
+                "objections": _objections_for_agent(agent_name, state),
                 "handoff_from": previous_agent,
                 "handoff_to": "",
                 "error": item.get("error") or "",
@@ -1157,6 +1522,7 @@ def build_agent_collaboration_trace(trace: List[Dict[str, Any]], state: Dict[str
     remediation = state.get("quality_remediation_plan", {}) if isinstance(state.get("quality_remediation_plan"), dict) else {}
     revision_history = state.get("revision_history", []) if isinstance(state.get("revision_history"), list) else []
     gap_trace = state.get("gap_resolution_trace", []) if isinstance(state.get("gap_resolution_trace"), list) else []
+    blackboard = state.get("research_blackboard", {}) if isinstance(state.get("research_blackboard"), dict) else {}
     blockers = [
         issue
         for issue in (remediation.get("issues", []) if isinstance(remediation.get("issues"), list) else [])
@@ -1187,6 +1553,18 @@ def build_agent_collaboration_trace(trace: List[Dict[str, Any]], state: Dict[str
             "quality_feedback_used": bool(remediation.get("quality_feedback_used") or remediation),
             "blockers": blockers[:8],
             "remaining_gap_count": len(gap_trace),
+        },
+        "pre_write_rework_history": list(state.get("pre_write_rework_history", []))
+        if isinstance(state.get("pre_write_rework_history"), list)
+        else [],
+        "research_blackboard": {
+            "schema_version": blackboard.get("schema_version", ""),
+            "market_route": blackboard.get("market_route", {}),
+            "company_identity": blackboard.get("company_identity", {}),
+            "industry_profile": blackboard.get("industry_profile", {}),
+            "period_state": blackboard.get("period_state", {}),
+            "role_outputs": blackboard.get("role_outputs", {}),
+            "critic": blackboard.get("critic", {}),
         },
     }
 
@@ -1286,6 +1664,24 @@ def _tools_from_metadata(metadata: Dict[str, Any]) -> List[str]:
                 elif isinstance(item, str):
                     tools.append(item)
     return sorted(set(tools))
+
+
+def _blackboard_writes_for_agent(agent_name: str, state: Dict[str, Any]) -> List[str]:
+    blackboard = state.get("research_blackboard", {}) if isinstance(state.get("research_blackboard"), dict) else {}
+    writes: List[str] = []
+    for item in blackboard.get("agent_writes", []) if isinstance(blackboard.get("agent_writes"), list) else []:
+        if not isinstance(item, dict) or str(item.get("agent") or "") != agent_name:
+            continue
+        writes.extend(str(field) for field in item.get("writes", []) if str(field))
+    return sorted(set(writes))
+
+
+def _objections_for_agent(agent_name: str, state: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if agent_name != "CriticAgent":
+        return []
+    blackboard = state.get("research_blackboard", {}) if isinstance(state.get("research_blackboard"), dict) else {}
+    critic = blackboard.get("critic", {}) if isinstance(blackboard.get("critic"), dict) else {}
+    return [item for item in critic.get("objections", []) if isinstance(item, dict)]
 
 
 def _shorten(value: Any, limit: int = 220) -> Any:
@@ -1404,6 +1800,61 @@ def build_task_route_context(tasks: List[AgentTask]) -> Dict[str, Any]:
             for task in tasks
         ]
     }
+
+
+def prepare_collaborative_tasks(tasks: List[AgentTask]) -> List[AgentTask]:
+    """Insert dedicated role-agent tasks between analysis and final writing."""
+
+    output = list(tasks)
+    existing = {task.task_type for task in output}
+    analyze_ids = [task.task_id for task in output if task.task_type == "deep_analyze"]
+    final_ids = [task.task_id for task in output if task.task_type == "final_answer"]
+    role_specs = [
+        ("task_role_identity", "identity_profile", "Resolve company identity and business profile."),
+        ("task_role_statement", "three_statement_analysis", "Analyze three-statement coverage and period basis."),
+        ("task_role_peer", "peer_analysis", "Analyze peer coverage and comparison limits."),
+        ("task_role_valuation", "valuation_analysis", "Analyze valuation inputs and missing assumptions."),
+        ("task_role_risk", "risk_analysis", "Analyze risk evidence and disclosure limits."),
+    ]
+    role_ids: List[str] = []
+    for task_id, task_type, description in role_specs:
+        if task_type in existing:
+            role_ids.extend(task.task_id for task in output if task.task_type == task_type)
+            continue
+        role_ids.append(task_id)
+        output.append(
+            AgentTask(
+                task_id=task_id,
+                task_type=task_type,
+                description=description,
+                parameters={},
+                dependencies=list(analyze_ids),
+                priority=5,
+            )
+        )
+    final_id_set = set(final_ids)
+    rewritten: List[AgentTask] = []
+    for task in output:
+        deps = list(task.dependencies)
+        if task.task_id in final_id_set:
+            deps = [dep for dep in deps if dep not in analyze_ids]
+            deps.extend(role_ids)
+        deduped: List[str] = []
+        for dep in deps:
+            if dep != task.task_id and dep not in deduped:
+                deduped.append(dep)
+        rewritten.append(
+            AgentTask(
+                task_id=task.task_id,
+                task_type=task.task_type,
+                description=task.description,
+                parameters=dict(task.parameters),
+                dependencies=deduped,
+                priority=task.priority,
+                metadata=dict(task.metadata),
+            )
+        )
+    return apply_implicit_dependencies(rewritten)
 
 
 def ensure_minimum_task_graph(
@@ -1545,8 +1996,31 @@ def enrich_task_parameters(
         params.setdefault("max_tokens", int(profile["analyze_max_tokens"]))
         params.setdefault("use_react", bool(profile.get("analyze_use_react", False)))
         params.setdefault("react_max_steps", int(profile.get("analyze_react_max_steps", 3)))
+    elif task.task_type in {
+        "identity_profile",
+        "three_statement_analysis",
+        "peer_analysis",
+        "valuation_analysis",
+        "risk_analysis",
+    }:
+        params.setdefault("symbol", state["symbol"])
+        params.setdefault("period", state["period"])
+        params.setdefault("evidence_records", list(state.get("evidence_records", [])))
+        params.setdefault("claims", list(state.get("claims", [])))
+        params.setdefault(
+            "analysis_artifacts",
+            dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {},
+        )
+        params.setdefault(
+            "research_blackboard",
+            dict(state.get("research_blackboard", {})) if isinstance(state.get("research_blackboard"), dict) else {},
+        )
+        critic = state.get("pre_write_critic", {}) if isinstance(state.get("pre_write_critic"), dict) else {}
+        params.setdefault("critic_objections", list(critic.get("objections", [])) if isinstance(critic.get("objections"), list) else [])
     elif task.task_type == "final_answer":
         params.setdefault("research_topic", state["research_topic"])
+        params.setdefault("symbol", state["symbol"])
+        params.setdefault("period", state["period"])
         if not isinstance(params.get("claims"), list) or not params.get("claims"):
             params["claims"] = list(state.get("claims", []))
         if not isinstance(params.get("evidence_records"), list) or not params.get("evidence_records"):
@@ -1558,6 +2032,10 @@ def enrich_task_parameters(
         params.setdefault("company_profile", analysis_artifacts.get("company_profile", {}))
         params.setdefault("quality_remediation_plan", dict(state.get("quality_remediation_plan", {})) if isinstance(state.get("quality_remediation_plan"), dict) else {})
         params.setdefault("repair_constraints", dict(state.get("repair_constraints", {})) if isinstance(state.get("repair_constraints"), dict) else {})
+        params.setdefault("research_blackboard", dict(state.get("research_blackboard", {})) if isinstance(state.get("research_blackboard"), dict) else {})
+        params.setdefault("pre_write_critic", dict(state.get("pre_write_critic", {})) if isinstance(state.get("pre_write_critic"), dict) else {})
+        params.setdefault("degraded_report", bool(state.get("collaborative_degraded_report", False)))
+        params.setdefault("pre_write_rework_history", list(state.get("pre_write_rework_history", [])) if isinstance(state.get("pre_write_rework_history"), list) else [])
         params.setdefault("max_claims", int(profile["final_max_claims"]))
         params.setdefault("max_evidence", int(profile["final_max_evidence"]))
         params.setdefault("evidence_content_limit", int(profile["final_evidence_content_limit"]))
@@ -1613,6 +2091,22 @@ def merge_task_result(state: Dict[str, Any], task_type: str, result: TaskResult)
             key_names=["claim_id", "claim_text"],
         )
         state["analysis_artifacts"] = result.output.get("analysis_artifacts", {})
+    elif task_type in {
+        "identity_profile",
+        "three_statement_analysis",
+        "peer_analysis",
+        "valuation_analysis",
+        "risk_analysis",
+    }:
+        artifacts = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
+        role_outputs = dict(artifacts.get("role_outputs", {})) if isinstance(artifacts.get("role_outputs"), dict) else {}
+        incoming = result.output.get("role_outputs", {}) if isinstance(result.output.get("role_outputs"), dict) else {}
+        for key, value in incoming.items():
+            if isinstance(value, dict):
+                role_outputs[key] = dict(value)
+                artifacts[key] = dict(value)
+        artifacts["role_outputs"] = role_outputs
+        state["analysis_artifacts"] = artifacts
     elif task_type == "final_answer":
         markdown = str(result.output.get("markdown", ""))
         html = str(result.output.get("html", ""))
@@ -1680,10 +2174,15 @@ def attach_pdf_artifacts_to_state(state: Dict[str, Any]) -> None:
         symbol=str(state.get("symbol", "")),
         period=str(state.get("period", "")),
     )
-    if section_records:
+    table_records = _pdf_tables_as_evidence_records(
+        tables=pdf_artifacts.get("pdf_tables", []),
+        symbol=str(state.get("symbol", "")),
+        period=str(state.get("period", "")),
+    )
+    if section_records or table_records:
         state["evidence_records"] = _merge_records(
             records,
-            section_records,
+            section_records + table_records,
             key_names=["evidence_id", "sample_id", "source_url"],
         )
 
@@ -1726,6 +2225,53 @@ def _pdf_sections_as_evidence_records(sections: Any, symbol: str, period: str) -
     return output
 
 
+def _pdf_tables_as_evidence_records(tables: Any, symbol: str, period: str) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    if not isinstance(tables, list):
+        return output
+    for table in tables:
+        if not isinstance(table, dict):
+            continue
+        table_id = str(table.get("table_id") or "")
+        table_type = str(table.get("table_type") or "")
+        rows = table.get("rows") if isinstance(table.get("rows"), list) else []
+        if not table_id or not table_type or not rows:
+            continue
+        evidence_id = f"pdf_table_{table_id}"
+        summary = "; ".join(
+            f"{row.get('line_item')}={row.get('value')}"
+            for row in rows[:8]
+            if isinstance(row, dict) and row.get("line_item")
+        )
+        output.append(
+            {
+                "evidence_id": evidence_id,
+                "sample_id": evidence_id,
+                "source_type": "pdf_statement_table",
+                "title": f"PDF table: {table_type}",
+                "source_url": str(table.get("source_url") or ""),
+                "publish_time": "",
+                "content": f"{table_type} extracted from PDF page {table.get('page')}: {summary}",
+                "symbol": symbol,
+                "period": period,
+                "trust_level": "high",
+                "metadata": {
+                    "table_id": table_id,
+                    "table_type": table_type,
+                    "rows": rows,
+                    "raw_rows": table.get("raw_rows", []),
+                    "unit": table.get("unit", "raw"),
+                    "currency": table.get("currency", ""),
+                    "page": table.get("page", ""),
+                    "source_evidence_id": table.get("evidence_id", ""),
+                    "extraction_method": table.get("extraction_method", ""),
+                    "confidence": table.get("confidence", 0.0),
+                },
+            }
+        )
+    return output
+
+
 def _update_gap_trace_after_rework(state: Dict[str, Any], round_index: int) -> None:
     latest_gaps = {
         str(gap.get("gap_id", ""))
@@ -1750,11 +2296,113 @@ def _update_gap_trace_after_rework(state: Dict[str, Any], round_index: int) -> N
     state["gap_resolution_trace"] = updated
 
 
+def _verifier_report_to_gap_trace(report: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if not isinstance(report, dict):
+        return []
+    gaps = [gap for gap in report.get("evidence_gaps", []) if isinstance(gap, dict)]
+    if gaps:
+        return build_gap_resolution_trace(gaps)
+    synthetic: List[Dict[str, Any]] = []
+    for index, message in enumerate(list(report.get("llm_errors", []) or []) + list(report.get("errors", []) or []), start=1):
+        text = str(message or "").strip()
+        if not text:
+            continue
+        synthetic.append(
+            {
+                "gap_id": f"verifier_feedback_{index:04d}",
+                "gap_type": "verifier_feedback",
+                "claim_id": "",
+                "route": "final_answer",
+                "action": "revise_language",
+                "attempt": 0,
+                "max_attempts": 1,
+                "status": "queued",
+                "message": text,
+            }
+        )
+    return synthetic
+
+
+def _revision_request_to_gap_trace(revision_request: str) -> List[Dict[str, Any]]:
+    text = str(revision_request or "").strip()
+    if not text:
+        return []
+    return [
+        {
+            "gap_id": "verifier_feedback_0001",
+            "gap_type": "verifier_feedback",
+            "claim_id": "",
+            "route": "final_answer",
+            "action": "revise_language",
+            "attempt": 0,
+            "max_attempts": 1,
+            "status": "queued",
+            "message": text[:500],
+        }
+    ]
+
+
+def _revision_history_to_gap_trace(history: Any) -> List[Dict[str, Any]]:
+    rows = history if isinstance(history, list) else []
+    output: List[Dict[str, Any]] = []
+    for index, item in enumerate(rows, start=1):
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("revision_request") or "").strip()
+        if not text:
+            continue
+        output.append(
+            {
+                "gap_id": f"revision_round_{index:04d}",
+                "gap_type": "verifier_feedback",
+                "claim_id": "",
+                "route": "final_answer",
+                "action": "revise_language",
+                "attempt": int(item.get("round", index) or index),
+                "max_attempts": 1,
+                "status": "resolved_or_downgraded" if item.get("passed_after_round") else "still_open",
+                "message": text[:500],
+            }
+        )
+    return output
+
+
+def _blocking_objections(critic: Any) -> List[Dict[str, Any]]:
+    if not isinstance(critic, dict):
+        return []
+    return [
+        item
+        for item in critic.get("objections", [])
+        if isinstance(item, dict) and (item.get("blocking") is True or str(item.get("severity", "")).lower() in {"fatal", "blocker"})
+    ]
+
+
+def _ordered_targets(objections: List[Dict[str, Any]]) -> List[str]:
+    order = ["IdentityAgent", "StatementAgent", "PeerAgent", "ValuationAgent", "RiskAgent", "FinalAnswerAgent"]
+    present = {str(item.get("target_agent") or "") for item in objections if item.get("target_agent")}
+    return [name for name in order if name in present]
+
+
+def _role_task_type_for_agent(agent_name: str) -> str:
+    return {
+        "IdentityAgent": "identity_profile",
+        "StatementAgent": "three_statement_analysis",
+        "PeerAgent": "peer_analysis",
+        "ValuationAgent": "valuation_analysis",
+        "RiskAgent": "risk_analysis",
+    }.get(str(agent_name or ""), "")
+
+
 def agent_key_for_task(task_type: str) -> str:
     mapping = {
         "deep_researcher": "research",
         "browser": "browser",
         "deep_analyze": "analyze",
+        "identity_profile": "identity",
+        "three_statement_analysis": "statement",
+        "peer_analysis": "peer",
+        "valuation_analysis": "valuation",
+        "risk_analysis": "risk",
         "final_answer": "final_answer",
         "verifier": "verifier",
     }
@@ -1768,6 +2416,11 @@ def _task_type_order(task_type: str) -> int:
         "deep_researcher": 10,
         "browser": 20,
         "deep_analyze": 30,
+        "identity_profile": 35,
+        "three_statement_analysis": 35,
+        "peer_analysis": 35,
+        "valuation_analysis": 35,
+        "risk_analysis": 35,
         "final_answer": 40,
         "verifier": 50,
     }

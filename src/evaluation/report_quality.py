@@ -9,6 +9,8 @@ from pathlib import Path
 import re
 from typing import Any, Dict, Iterable, List
 
+from src.agents.research_blackboard import quality_generalization_checks
+
 
 GROUP_WEIGHTS = {
     "structure": 0.18,
@@ -56,6 +58,8 @@ def evaluate_report_quality_from_paths(
         "compliance": _score_compliance(artifacts, issues),
     }
     _check_delivery_policy(artifacts, issues)
+    generalization_checks = quality_generalization_checks(artifacts)
+    _check_generalization_policy(generalization_checks, issues)
     total = round(sum(scores[key] * GROUP_WEIGHTS[key] for key in GROUP_WEIGHTS), 4)
     required = _required_gate_checks(artifacts, issues)
     fatal_count = sum(1 for issue in issues if issue["severity"] == "fatal")
@@ -78,6 +82,7 @@ def evaluate_report_quality_from_paths(
             "info": sum(1 for issue in issues if issue["severity"] == "info"),
         },
         "required_checks": required,
+        "generalization_checks": generalization_checks,
         "top_issues": _top_issues(issues),
         "issues": issues,
         "artifact_counts": {
@@ -138,6 +143,10 @@ def render_quality_markdown(report: Dict[str, Any]) -> str:
     for key, value in dict(report.get("required_checks", {})).items():
         if key != "details":
             lines.append(f"- {key}: `{value}`")
+    lines.extend(["", "## Generalization Checks", ""])
+    for key, value in dict(report.get("generalization_checks", {})).items():
+        if isinstance(value, dict):
+            lines.append(f"- {key}: `{value.get('passed')}`")
     lines.extend(["", "## Top Issues", ""])
     issues = report.get("top_issues", []) or []
     if not issues:
@@ -169,6 +178,8 @@ def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
         "citations": _as_list(_read_json(paths.outputs_dir / "citations.json", [])),
         "tables": _as_list(_read_json(paths.outputs_dir / "tables.json", [])),
         "financial_metrics": _read_json(paths.outputs_dir / "financial_metrics.json", {}),
+        "valuation_model": _read_json(paths.outputs_dir / "valuation_model.json", {}),
+        "valuation_sensitivity": _read_json(paths.outputs_dir / "valuation_sensitivity.json", {}),
         "charts": _as_list(_read_json(paths.outputs_dir / "charts.json", [])),
         "pdf_sections": _as_list(_read_json(paths.outputs_dir / "pdf_sections.json", [])),
         "profile": _read_json(paths.outputs_dir / "company_profile_extracted.json", {}),
@@ -176,6 +187,7 @@ def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
         "scorecard": _read_json(paths.outputs_dir / "company_report_scorecard.json", {}),
         "search_meta": _read_json(paths.outputs_dir / "search_meta.json", {}),
         "agent_collaboration_trace": _read_json(paths.outputs_dir / "agent_collaboration_trace.json", {}),
+        "research_blackboard": _read_json(paths.outputs_dir / "research_blackboard.json", {}),
         "report_md": _read_text(paths.reports_dir / "report.md"),
         "report_html": _read_text(paths.reports_dir / "report.html"),
         "report_json": _read_json(paths.reports_dir / "report.json", {}),
@@ -287,7 +299,7 @@ def _score_professional_depth(artifacts: Dict[str, Any], issues: List[Dict[str, 
         _issue(issues, "blocker", "professional_depth", "同行对比只有框架或待补说明，缺少可读结论")
     if _section_is_framework_only(text, ("估值敏感性", "敏感性分析")):
         _issue(issues, "blocker", "professional_depth", "敏感性分析只有框架或待补说明，缺少变量方向和影响")
-    if _valuation_is_unusable_without_reason(text):
+    if _valuation_is_unusable_without_reason(text) and not _blackboard_valuation_gap_is_explained(artifacts):
         _issue(issues, "blocker", "professional_depth", "估值缺失但没有明确估值不可用原因")
     if not _investment_conclusion_has_direction_and_reason(text):
         _issue(issues, "blocker", "professional_depth", "投资结论缺少明确方向和理由")
@@ -337,6 +349,15 @@ def _check_delivery_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any
         report_text, ("因为", "理由", "增长驱动", "竞争压力", "估值约束", "risk")
     ):
         _issue(issues, "blocker", "delivery_policy", "投资结论方向存在但缺少理由、增长驱动、竞争压力或估值约束")
+
+
+def _check_generalization_policy(checks: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    for key, payload in checks.items():
+        row = payload if isinstance(payload, dict) else {}
+        if row.get("passed") is True:
+            continue
+        severity = "blocker" if key in {"identity_consistency", "period_consistency", "pre_write_critic_passed"} else "warning"
+        _issue(issues, severity, "generalization", f"泛化质量检查未通过：{key}")
 
 
 def _search_engines_used(search_meta: Any, summary: Dict[str, Any]) -> List[str]:
@@ -419,6 +440,16 @@ def _statement_names_from_tables(tables: List[Any]) -> set[str]:
 
 
 def _has_cashflow_gap_explained(text: str) -> bool:
+    if _contains_any(
+        text,
+        (
+            "cash flow data gap explained",
+            "cash flow statement data gap",
+            "no verifiable cash flow statement rows",
+            "cash conversion",
+        ),
+    ):
+        return True
     return _contains_any(text, ("现金流量表缺口", "现金流量表数据不足", "经营现金流或自由现金流字段", "现金转化率判断"))
 
 
@@ -445,6 +476,17 @@ def _valuation_is_unusable_without_reason(text: str) -> bool:
     has_multiple = bool(re.search(r"(P/E|P/B|P/S|市盈率|市净率)\s*(约为|为|:|：)?\s*\d", text, flags=re.I))
     has_reason = _contains_any(text, ("估值不可用原因", "估值暂不可用", "缺少市值", "缺少股本", "缺少净利润", "缺少净资产"))
     return not has_multiple and not has_reason
+
+
+def _blackboard_valuation_gap_is_explained(artifacts: Dict[str, Any]) -> bool:
+    valuation_model = artifacts.get("valuation_model", {}) if isinstance(artifacts.get("valuation_model"), dict) else {}
+    if valuation_model.get("relative_valuation") or valuation_model.get("dcf_model"):
+        return True
+    bb = artifacts.get("research_blackboard", {}) if isinstance(artifacts.get("research_blackboard"), dict) else {}
+    role_outputs = bb.get("role_outputs", {}) if isinstance(bb.get("role_outputs"), dict) else {}
+    valuation = role_outputs.get("valuation_analysis", {}) if isinstance(role_outputs.get("valuation_analysis"), dict) else {}
+    status = str(valuation.get("status") or "")
+    return status in {"missing", "partial"} and bool(valuation.get("missing_inputs")) and bool(valuation.get("impact_on_report"))
 
 
 def _investment_conclusion_has_direction_and_reason(text: str) -> bool:
@@ -482,7 +524,51 @@ def _period_alignment_score(artifacts: Dict[str, Any], issues: List[Dict[str, An
     if mismatches:
         _issue(issues, "warning", "financial", f"claim period 与 summary period 可能不一致：{mismatches[:5]}")
         return 0.55
+    data_periods = _collect_data_periods(artifacts)
+    other_periods = sorted(period for period in data_periods if period and period != summary_period)
+    if other_periods:
+        report_text = _report_text(artifacts)
+        has_delay_note = _contains_any(
+            report_text,
+            (
+                "数据滞后",
+                "最新可得",
+                "可得数据",
+                "截至",
+                "披露期",
+                "source period",
+                "data cutoff",
+                "latest available",
+            ),
+        )
+        severity = "warning" if has_delay_note else "blocker"
+        _issue(
+            issues,
+            severity,
+            "financial",
+            f"target period {summary_period} differs from available data periods {other_periods[:5]}; report must disclose data lag",
+        )
+        return 0.7 if has_delay_note else 0.45
     return 1.0
+
+
+def _collect_data_periods(artifacts: Dict[str, Any]) -> set[str]:
+    periods: set[str] = set()
+    for key in ["evidence", "tables"]:
+        for item in artifacts.get(key, []):
+            if isinstance(item, dict):
+                period = str(item.get("period") or "").upper()
+                if re.match(r"^20\d{2}Q[1-4]$", period):
+                    periods.add(period)
+    metrics = artifacts.get("financial_metrics", {})
+    metric_rows = metrics if isinstance(metrics, list) else metrics.get("metrics", []) if isinstance(metrics, dict) else []
+    if isinstance(metric_rows, list):
+        for item in metric_rows:
+            if isinstance(item, dict):
+                period = str(item.get("period") or "").upper()
+                if re.match(r"^20\d{2}Q[1-4]$", period):
+                    periods.add(period)
+    return periods
 
 
 def _section_is_empty(text: str, headings: Iterable[str]) -> bool:

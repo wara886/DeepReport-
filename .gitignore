@@ -13,12 +13,23 @@ build/
 
 artifacts/
 reports/
+eval_outputs/post_fix*/
+eval_outputs/chat_*/
+eval_outputs/runtime_source_health*
+eval_outputs/*summary*
+eval_outputs/key_and_source_smoke*
+eval_outputs/web_link_test_*/
+eval_outputs/next_data_review*/
+memory/
+references/DeepReport_ref/
 data/outputs/
 data/outputs_real/
 data/reports/
 data/reports_real/
 data/evaluation/
 data/evaluation/**/runs/
+data/curated_real/
+data/features_real/
 
 *.zip
 *.tgz

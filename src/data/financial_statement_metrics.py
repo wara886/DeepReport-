@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Dict, Iterable, List
+
+from src.utils.periods import parse_iso_date, parse_quarter, period_match, period_target_date
+from src.data.financial_quality import build_net_income_quality_fields
 
 
 CORE_METRICS = ("revenue", "net_income", "gross_margin", "free_cash_flow")
@@ -12,23 +16,41 @@ def build_standard_financial_metrics(records: Iterable[Dict[str, Any]]) -> Dict[
     """Build canonical metric rows from local summaries and structured filings."""
 
     metrics: List[Dict[str, Any]] = []
+    rejected_metrics: List[Dict[str, Any]] = []
     for record in [item for item in records if isinstance(item, dict)]:
         source_type = str(record.get("source_type", "")).lower()
         if source_type == "eastmoney_financials":
-            metrics.extend(_eastmoney_metric_rows(record))
+            rows, rejected = _partition_period_rows(_eastmoney_metric_rows(record), record)
+            metrics.extend(rows)
+            rejected_metrics.extend(rejected)
         elif source_type == "sec_companyfacts":
-            metrics.extend(_sec_companyfacts_metric_rows(record))
+            rows, rejected = _partition_period_rows(_sec_companyfacts_metric_rows(record), record)
+            metrics.extend(rows)
+            rejected_metrics.extend(rejected)
+        elif source_type == "pdf_statement_table":
+            rows, rejected = _partition_period_rows(_pdf_statement_metric_rows(record), record)
+            metrics.extend(rows)
+            rejected_metrics.extend(rejected)
+        elif source_type in {"market_api", "market_data"}:
+            rows, rejected = _partition_period_rows(_market_api_metric_rows(record), record)
+            metrics.extend(rows)
+            rejected_metrics.extend(rejected)
         elif source_type == "financials":
-            metrics.extend(_local_financial_metric_rows(record))
+            rows, rejected = _partition_period_rows(_local_financial_metric_rows(record), record)
+            metrics.extend(rows)
+            rejected_metrics.extend(rejected)
 
     present = {str(item.get("metric_name", "")) for item in metrics}
     return {
         "metrics": metrics,
         "metric_count": len(metrics),
+        "rejected_metrics": rejected_metrics,
+        "rejected_metric_count": len(rejected_metrics),
         "coverage": {
             "required_metrics": list(CORE_METRICS),
             "present_metrics": sorted(present),
             "has_core_metric_lineage": set(CORE_METRICS).issubset(present),
+            "rejected_metric_count": len(rejected_metrics),
         },
     }
 
@@ -42,7 +64,16 @@ def build_standard_statement_rows(records: Iterable[Dict[str, Any]]) -> List[Dic
         if source_type == "eastmoney_financials":
             rows.extend(_eastmoney_statement_rows(record))
         elif source_type == "sec_companyfacts":
-            rows.extend(_sec_companyfacts_statement_rows(record))
+            accepted, _rejected = _partition_period_rows(_sec_companyfacts_statement_rows(record), record)
+            rows.extend(accepted)
+        elif source_type == "pdf_statement_table":
+            accepted, _rejected = _partition_period_rows(_pdf_statement_rows(record), record)
+            rows.extend(accepted)
+        elif source_type in {"market_api", "market_data"}:
+            accepted, _rejected = _partition_period_rows(_market_api_statement_rows(record), record)
+            rows.extend(accepted)
+    priority = {"sec_companyfacts": 0, "sec_filing": 1, "pdf_statement_table": 2, "eastmoney_financials": 3, "market_api": 4, "market_data": 4}
+    rows.sort(key=lambda row: priority.get(str(row.get("source_type") or "").lower(), 99))
     return rows
 
 
@@ -133,6 +164,16 @@ def _sec_companyfacts_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]
         ("net_income", ["NetIncomeLoss"], "reported SEC net income"),
         ("total_assets", ["Assets"], "reported SEC assets"),
         ("cash_and_equivalents", ["CashAndCashEquivalentsAtCarryingValue"], "reported SEC cash and equivalents"),
+        (
+            "operating_cash_flow",
+            ["NetCashProvidedByUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"],
+            "reported SEC operating cash flow",
+        ),
+        (
+            "capex",
+            ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],
+            "reported SEC cash paid for capital assets",
+        ),
     ]
     for metric_name, keys, formula in mapping:
         fact = _first_fact(facts, keys)
@@ -155,6 +196,29 @@ def _sec_companyfacts_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]
                 raw=fact,
             )
         )
+    ocf = _first_fact(facts, ["NetCashProvidedByUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"])
+    capex = _first_fact(facts, ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"])
+    ocf_value = _safe_float(ocf.get("value")) if ocf else None
+    capex_value = _safe_float(capex.get("value")) if capex else None
+    if ocf_value is not None and capex_value is not None:
+        raw = dict(ocf)
+        raw["capex_value"] = capex_value
+        rows.append(
+            _metric_row(
+                metric_name="free_cash_flow",
+                value=ocf_value - capex_value,
+                unit=str(ocf.get("unit") or "USD"),
+                period=period,
+                source_table_id=table_id,
+                source_evidence_id=evidence_id,
+                calculation_formula="operating_cash_flow - capex",
+                confidence=0.72,
+                symbol=symbol,
+                report_date=str(ocf.get("end") or ""),
+                notice_date=str(ocf.get("filed") or record.get("publish_time") or ""),
+                raw=raw,
+            )
+        )
     return rows
 
 
@@ -170,6 +234,8 @@ def _sec_companyfacts_statement_rows(record: Dict[str, Any]) -> List[Dict[str, A
         ("income_statement", "net_income", ["NetIncomeLoss"]),
         ("balance_sheet", "total_assets", ["Assets"]),
         ("balance_sheet", "cash_and_equivalents", ["CashAndCashEquivalentsAtCarryingValue"]),
+        ("cash_flow_statement", "operating_cash_flow", ["NetCashProvidedByUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"]),
+        ("cash_flow_statement", "capex", ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"]),
     ]
     rows: List[Dict[str, Any]] = []
     for statement, line_item, keys in mapping:
@@ -190,8 +256,37 @@ def _sec_companyfacts_statement_rows(record: Dict[str, Any]) -> List[Dict[str, A
                 "source_evidence_id": evidence_id,
                 "source_table_id": table_id,
                 "report_date": str(fact.get("end") or ""),
+                "notice_date": str(fact.get("filed") or record.get("publish_time") or ""),
+                "source_period": str(fact.get("fy") or fact.get("fp") or period),
+                "period_match": _period_match(period=period, report_date=str(fact.get("end") or ""), raw=fact),
                 "source_type": "sec_companyfacts",
                 "provider": "SEC EDGAR",
+            }
+        )
+    ocf = _first_fact(facts, ["NetCashProvidedByUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"])
+    capex = _first_fact(facts, ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"])
+    ocf_value = _safe_float(ocf.get("value")) if ocf else None
+    capex_value = _safe_float(capex.get("value")) if capex else None
+    if ocf_value is not None and capex_value is not None:
+        rows.append(
+            {
+                "symbol": symbol,
+                "period": period,
+                "statement": "cash_flow_statement",
+                "line_item": "free_cash_flow",
+                "value": ocf_value - capex_value,
+                "unit": str(ocf.get("unit") or "USD"),
+                "estimated": False,
+                "evidence_id": evidence_id,
+                "source_evidence_id": evidence_id,
+                "source_table_id": table_id,
+                "report_date": str(ocf.get("end") or ""),
+                "notice_date": str(ocf.get("filed") or record.get("publish_time") or ""),
+                "source_period": str(ocf.get("fy") or ocf.get("fp") or period),
+                "period_match": _period_match(period=period, report_date=str(ocf.get("end") or ""), raw=ocf),
+                "source_type": "sec_companyfacts",
+                "provider": "SEC EDGAR",
+                "calculation_formula": "operating_cash_flow - capex",
             }
         )
     return rows
@@ -272,6 +367,8 @@ def _local_financial_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]
     metric_map = [
         ("revenue", "revenue_billion", "USD_billion", "reported revenue"),
         ("net_income", "net_income_billion", "USD_billion", "reported net income"),
+        ("adjusted_net_income", "adjusted_net_income_billion", "USD_billion", "adjusted or normalized net income"),
+        ("non_recurring_gain", "non_recurring_gain_billion", "USD_billion", "non-recurring gain"),
         ("gross_margin", "gross_margin_pct", "pct", "reported gross margin"),
         ("free_cash_flow", "free_cash_flow_billion", "USD_billion", "reported free cash flow"),
     ]
@@ -281,6 +378,250 @@ def _local_financial_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]
         if value is not None:
             rows.append(_metric_row(metric_name, value, unit, period, table_id, evidence_id, formula, 0.95, symbol, "", str(record.get("publish_time") or ""), metadata))
     return rows
+
+
+def _market_api_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    metadata = _dict(record.get("metadata"))
+    financials = _dict(metadata.get("financials"))
+    evidence_id = _evidence_id(record)
+    symbol = str(record.get("symbol") or "")
+    period = str(record.get("period") or "")
+    table_id = _table_id(symbol, period, evidence_id, "yahoo_financials")
+    income = _latest_statement_row(financials, "income", period)
+    balance = _latest_statement_row(financials, "balance", period)
+    cashflow = _latest_statement_row(financials, "cashflow", period)
+    rows: List[Dict[str, Any]] = []
+
+    revenue = _first_number(income, ["Total Revenue", "totalRevenue", "Operating Revenue"])
+    net_income = _first_number(income, ["Net Income", "netIncome", "Net Income Common Stockholders"])
+    quality = build_net_income_quality_fields(financials, income, net_income=net_income, revenue=revenue)
+    adjusted_net_income = quality.get("adjusted_net_income")
+    gross_profit = _first_number(income, ["Gross Profit", "grossProfit"])
+    total_assets = _first_number(balance, ["Total Assets", "totalAssets"])
+    total_liabilities = _first_number(balance, ["Total Liabilities Net Minority Interest", "totalLiabilities", "Total Liabilities"])
+    equity = _first_number(balance, ["Total Equity Gross Minority Interest", "Stockholders Equity", "totalStockholderEquity"])
+    operating_cash_flow = _first_number(cashflow, ["Operating Cash Flow", "totalCashFromOperatingActivities", "Cash Flow From Continuing Operating Activities"])
+    capex = _first_number(cashflow, ["Capital Expenditure", "capitalExpenditures"])
+    free_cash_flow = _first_number(cashflow, ["Free Cash Flow", "freeCashFlow"])
+
+    report_date = str(income.get("end_date") or balance.get("end_date") or cashflow.get("end_date") or "")
+    raw = {
+        "period": period,
+        "end": report_date,
+        "net_income_quality_flag": quality.get("net_income_quality_flag"),
+        "valuation_input_usable": quality.get("valuation_input_usable"),
+        "valuation_input_rejection_reason": quality.get("valuation_input_rejection_reason"),
+        "non_recurring_gain_ratio": quality.get("non_recurring_gain_ratio"),
+    }
+    for metric_name, value, formula in [
+        ("revenue", revenue, "Yahoo Finance reported revenue"),
+        (
+            "net_income",
+            adjusted_net_income if adjusted_net_income is not None else net_income,
+            "Yahoo Finance adjusted/normalized net income"
+            if adjusted_net_income is not None and adjusted_net_income != net_income
+            else "Yahoo Finance reported net income",
+        ),
+        ("adjusted_net_income", adjusted_net_income, "Yahoo Finance normalized income or net income less non-recurring gain"),
+        ("non_recurring_gain", quality.get("non_recurring_gain"), "Yahoo Finance unusual item or gain on sale of securities"),
+        ("total_assets", total_assets, "Yahoo Finance reported total assets"),
+        ("total_liabilities", total_liabilities, "Yahoo Finance reported total liabilities"),
+        ("equity", equity, "Yahoo Finance reported equity"),
+        ("operating_cash_flow", operating_cash_flow, "Yahoo Finance reported operating cash flow"),
+        ("capex", abs(capex) if capex is not None else None, "Yahoo Finance reported capital expenditure"),
+        ("free_cash_flow", free_cash_flow, "Yahoo Finance reported free cash flow"),
+    ]:
+        if value is None:
+            continue
+        rows.append(_metric_row(metric_name, value, "USD", period, table_id, evidence_id, formula, 0.62, symbol, report_date, str(record.get("publish_time") or ""), raw))
+    if gross_profit is not None and revenue not in (None, 0):
+        rows.append(_metric_row("gross_margin", float(gross_profit) / float(revenue) * 100.0, "pct", period, table_id, evidence_id, "gross_profit / revenue", 0.62, symbol, report_date, str(record.get("publish_time") or ""), raw))
+    return rows
+
+
+def _market_api_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    metadata = _dict(record.get("metadata"))
+    financials = _dict(metadata.get("financials"))
+    evidence_id = _evidence_id(record)
+    symbol = str(record.get("symbol") or "")
+    period = str(record.get("period") or "")
+    table_id = _table_id(symbol, period, evidence_id, "yahoo_financials")
+    income = _latest_statement_row(financials, "income", period)
+    balance = _latest_statement_row(financials, "balance", period)
+    cashflow = _latest_statement_row(financials, "cashflow", period)
+    specs = [
+        ("income_statement", "revenue", _first_number(income, ["Total Revenue", "totalRevenue", "Operating Revenue"]), income),
+        (
+            "income_statement",
+            "net_income",
+            build_net_income_quality_fields(
+                financials,
+                income,
+                net_income=_first_number(income, ["Net Income", "netIncome", "Net Income Common Stockholders"]),
+                revenue=_first_number(income, ["Total Revenue", "totalRevenue", "Operating Revenue"]),
+            ).get("adjusted_net_income")
+            or _first_number(income, ["Net Income", "netIncome", "Net Income Common Stockholders"]),
+            income,
+        ),
+        (
+            "income_statement",
+            "adjusted_net_income",
+            build_net_income_quality_fields(
+                financials,
+                income,
+                net_income=_first_number(income, ["Net Income", "netIncome", "Net Income Common Stockholders"]),
+                revenue=_first_number(income, ["Total Revenue", "totalRevenue", "Operating Revenue"]),
+            ).get("adjusted_net_income"),
+            income,
+        ),
+        (
+            "income_statement",
+            "non_recurring_gain",
+            build_net_income_quality_fields(
+                financials,
+                income,
+                net_income=_first_number(income, ["Net Income", "netIncome", "Net Income Common Stockholders"]),
+                revenue=_first_number(income, ["Total Revenue", "totalRevenue", "Operating Revenue"]),
+            ).get("non_recurring_gain"),
+            income,
+        ),
+        ("balance_sheet", "total_assets", _first_number(balance, ["Total Assets", "totalAssets"]), balance),
+        ("balance_sheet", "total_liabilities", _first_number(balance, ["Total Liabilities Net Minority Interest", "totalLiabilities", "Total Liabilities"]), balance),
+        ("balance_sheet", "equity", _first_number(balance, ["Total Equity Gross Minority Interest", "Stockholders Equity", "totalStockholderEquity"]), balance),
+        ("cash_flow_statement", "operating_cash_flow", _first_number(cashflow, ["Operating Cash Flow", "totalCashFromOperatingActivities", "Cash Flow From Continuing Operating Activities"]), cashflow),
+        ("cash_flow_statement", "capex", _abs_or_none(_first_number(cashflow, ["Capital Expenditure", "capitalExpenditures"])), cashflow),
+        ("cash_flow_statement", "free_cash_flow", _first_number(cashflow, ["Free Cash Flow", "freeCashFlow"]), cashflow),
+    ]
+    rows: List[Dict[str, Any]] = []
+    for statement, line_item, value, source_row in specs:
+        if value is None:
+            continue
+        report_date = str(source_row.get("end_date") or "")
+        rows.append(
+            {
+                "symbol": symbol,
+                "period": period,
+                "statement": statement,
+                "line_item": line_item,
+                "value": value,
+                "unit": "USD",
+                "estimated": False,
+                "evidence_id": evidence_id,
+                "source_evidence_id": evidence_id,
+                "source_table_id": table_id,
+                "report_date": report_date,
+                "notice_date": str(record.get("publish_time") or ""),
+                "source_period": period,
+                "period_match": _period_match(period=period, report_date=report_date, raw={"period": period, "end": report_date}),
+                "source_type": str(record.get("source_type") or "market_api"),
+                "provider": "Yahoo Finance",
+            }
+        )
+    return rows
+
+
+def _pdf_statement_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    metadata = _dict(record.get("metadata"))
+    evidence_id = _evidence_id(record)
+    symbol = str(record.get("symbol") or "")
+    period = str(record.get("period") or "")
+    table_type = str(metadata.get("table_type") or "")
+    table_id = str(metadata.get("table_id") or _table_id(symbol, period, evidence_id, table_type or "pdf_statement_table"))
+    currency = str(metadata.get("currency") or "USD")
+    unit = _pdf_unit(currency, str(metadata.get("unit") or "raw"))
+    report_date = str(metadata.get("report_date") or record.get("publish_time") or "")
+    notice_date = str(metadata.get("notice_date") or record.get("publish_time") or "")
+    rows = metadata.get("rows") if isinstance(metadata.get("rows"), list) else []
+    by_item = {
+        str(row.get("line_item") or ""): _safe_float(row.get("value"))
+        for row in rows
+        if isinstance(row, dict) and _safe_float(row.get("value")) is not None
+    }
+    output: List[Dict[str, Any]] = []
+    mapping = {
+        "revenue": ("revenue", "reported PDF revenue"),
+        "net_income": ("net_income", "reported PDF net income"),
+        "gross_profit": ("gross_profit", "reported PDF gross profit"),
+        "operating_cash_flow": ("operating_cash_flow", "reported PDF operating cash flow"),
+        "free_cash_flow": ("free_cash_flow", "reported PDF free cash flow"),
+        "total_assets": ("total_assets", "reported PDF total assets"),
+        "total_liabilities": ("total_liabilities", "reported PDF total liabilities"),
+        "equity": ("equity", "reported PDF equity"),
+    }
+    for source_item, (metric_name, formula) in mapping.items():
+        value = by_item.get(source_item)
+        if value is None:
+            continue
+        output.append(_metric_row(metric_name, value, unit, period, table_id, evidence_id, formula, 0.86, symbol, report_date, notice_date, {"period": period}))
+    if by_item.get("gross_profit") is not None and by_item.get("revenue") not in (None, 0):
+        output.append(
+            _metric_row(
+                "gross_margin",
+                float(by_item["gross_profit"]) / float(by_item["revenue"]) * 100.0,
+                "pct",
+                period,
+                table_id,
+                evidence_id,
+                "gross_profit / revenue",
+                0.78,
+                symbol,
+                report_date,
+                notice_date,
+                {"period": period},
+            )
+        )
+    return output
+
+
+def _pdf_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    metadata = _dict(record.get("metadata"))
+    evidence_id = _evidence_id(record)
+    symbol = str(record.get("symbol") or "")
+    period = str(record.get("period") or "")
+    table_type = str(metadata.get("table_type") or "financial_statement")
+    table_id = str(metadata.get("table_id") or _table_id(symbol, period, evidence_id, table_type))
+    currency = str(metadata.get("currency") or "USD")
+    unit = _pdf_unit(currency, str(metadata.get("unit") or "raw"))
+    report_date = str(metadata.get("report_date") or record.get("publish_time") or "")
+    rows = metadata.get("rows") if isinstance(metadata.get("rows"), list) else []
+    output: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        value = _safe_float(row.get("value"))
+        line_item = str(row.get("line_item") or "")
+        if value is None or not line_item:
+            continue
+        output.append(
+            {
+                "symbol": symbol,
+                "period": period,
+                "statement": table_type,
+                "line_item": line_item,
+                "value": value,
+                "unit": unit,
+                "estimated": False,
+                "evidence_id": evidence_id,
+                "source_evidence_id": evidence_id,
+                "source_table_id": table_id,
+                "report_date": report_date,
+                "notice_date": str(record.get("publish_time") or ""),
+                "source_period": period,
+                "period_match": True,
+                "source_type": "pdf_statement_table",
+                "provider": "PDF",
+            }
+        )
+    return output
+
+
+def _pdf_unit(currency: str, unit: str) -> str:
+    base = currency or "USD"
+    if unit == "millions":
+        return f"{base}_million"
+    if unit == "thousands":
+        return f"{base}_thousand"
+    return base
 
 
 def _metric_row(
@@ -298,10 +639,13 @@ def _metric_row(
     raw: Dict[str, Any],
 ) -> Dict[str, Any]:
     return {
+        "metric_lineage_id": _metric_lineage_id(symbol, period, metric_name, source_table_id, source_evidence_id, report_date),
         "metric_name": metric_name,
         "value": round(float(value), 6),
         "unit": unit,
         "period": period,
+        "source_period": str(raw.get("fy") or raw.get("fp") or raw.get("period") or period),
+        "period_match": _period_match(period=period, report_date=report_date, raw=raw),
         "source_table_id": source_table_id,
         "source_evidence_id": source_evidence_id,
         "calculation_formula": calculation_formula,
@@ -313,6 +657,62 @@ def _metric_row(
     }
 
 
+def _partition_period_rows(rows: List[Dict[str, Any]], record: Dict[str, Any]) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    accepted: List[Dict[str, Any]] = []
+    rejected: List[Dict[str, Any]] = []
+    for row in rows:
+        if row.get("period_match") is False:
+            rejected.append(
+                {
+                    "metric_name": row.get("metric_name") or row.get("line_item"),
+                    "value": row.get("value"),
+                    "unit": row.get("unit"),
+                    "target_period": row.get("period") or record.get("period"),
+                    "source_period": row.get("source_period", ""),
+                    "report_date": row.get("report_date", ""),
+                    "notice_date": row.get("notice_date", record.get("publish_time", "")),
+                    "source_table_id": row.get("source_table_id", ""),
+                    "source_evidence_id": row.get("source_evidence_id") or row.get("evidence_id", ""),
+                    "reason": "period_mismatch",
+                }
+            )
+            continue
+        accepted.append(row)
+    return accepted, rejected
+
+
+def _period_match(period: str, report_date: str, raw: Dict[str, Any]) -> bool | None:
+    return period_match(period=period, report_date=report_date, raw=raw)
+
+
+def _parse_quarter(value: str) -> tuple[str, str] | None:
+    return parse_quarter(value)
+
+
+def _quarter_from_date(value: str) -> tuple[str, str] | None:
+    import re
+
+    match = re.match(r"(\d{4})-(\d{1,2})-\d{1,2}", str(value or ""))
+    if not match:
+        return None
+    month = int(match.group(2))
+    quarter = ((month - 1) // 3) + 1
+    return match.group(1), f"Q{quarter}"
+
+
+def _period_target_date(period: str) -> date | None:
+    return period_target_date(period)
+
+
+def _parse_iso_date(raw: Any) -> date | None:
+    return parse_iso_date(raw)
+
+
+def _metric_lineage_id(symbol: str, period: str, metric_name: str, table_id: str, evidence_id: str, report_date: str) -> str:
+    parts = [symbol or "unknown", period or "unknown", metric_name, table_id or evidence_id or "noev", report_date or "nodate"]
+    return "_".join(str(part).lower().replace(" ", "_").replace("/", "_") for part in parts if str(part).strip())
+
+
 def _first_number(raw: Dict[str, Any], keys: List[str]) -> float | None:
     for key in keys:
         value = raw.get(key)
@@ -322,12 +722,56 @@ def _first_number(raw: Dict[str, Any], keys: List[str]) -> float | None:
     return None
 
 
+def _latest_statement_row(financials: Dict[str, Any], statement: str, period: str) -> Dict[str, Any]:
+    quarterly = {
+        "income": "quarterly_income_history",
+        "balance": "quarterly_balance_history",
+        "cashflow": "quarterly_cashflow_history",
+    }
+    annual = {
+        "income": "income_history",
+        "balance": "balance_history",
+        "cashflow": "cashflow_history",
+    }
+    prefer_quarter = _parse_quarter(period) is not None
+    keys = [quarterly[statement]] if prefer_quarter else [annual[statement], quarterly[statement]]
+    for key in keys:
+        rows = financials.get(key)
+        if not (isinstance(rows, list) and rows and isinstance(rows[0], dict)):
+            continue
+        if prefer_quarter:
+            target_row = _statement_row_for_period(rows, period)
+            if target_row:
+                return target_row
+            continue
+        return rows[0]
+    return {}
+
+
+def _statement_row_for_period(rows: List[Any], period: str) -> Dict[str, Any]:
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        report_date = str(row.get("end_date") or row.get("report_date") or row.get("date") or row.get("asOfDate") or "")
+        if _period_match(period=period, report_date=report_date, raw={"period": period, "end": report_date}) is True:
+            return row
+    return {}
+
+
+def _abs_or_none(value: float | None) -> float | None:
+    return abs(float(value)) if value is not None else None
+
+
 def _first_fact(raw: Dict[str, Any], keys: List[str]) -> Dict[str, Any]:
+    candidates: List[Dict[str, Any]] = []
     for key in keys:
         value = raw.get(key)
         if isinstance(value, dict) and _safe_float(value.get("value")) is not None:
-            return value
-    return {}
+            candidates.append(value)
+    if not candidates:
+        return {}
+    candidates.sort(key=lambda item: str(item.get("end") or item.get("filed") or ""), reverse=True)
+    return candidates[0]
 
 
 def _safe_float(value: Any) -> float | None:

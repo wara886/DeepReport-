@@ -16,6 +16,7 @@ import re
 from typing import Any, Dict, List
 
 from src.models.model_adapter import ModelAdapter
+from src.app.chat_task_parser import latest_completed_period, parse_chat_task
 from src.retrieval.chroma_index import cosine_similarity, embed_texts
 
 
@@ -280,7 +281,7 @@ class AgentChatService:
         orchestrator: Any | None = None,
         engines: List[str] | None = None,
         fast: bool = True,
-        execution_mode: str = "dynamic",
+        execution_mode: str = "collaborative",
         enable_remote_data: bool = False,
         data_source_config_path: str = "configs/data_sources.yaml",
     ) -> Dict[str, Any]:
@@ -305,7 +306,7 @@ class AgentChatService:
             result_payload = orchestrator.run(
                 research_topic=text,
                 symbol=symbol or "AAPL",
-                period=period or "2025Q4",
+                period=period or latest_completed_period(),
                 execution_mode=execution_mode,
                 fast=fast,
                 search_engines=engines or [],
@@ -361,7 +362,8 @@ class AgentChatService:
         generation_terms = ["生成", "写", "撰写", "出一份", "最新", "generate", "create", "run", "write"]
         rag_terms = ["根据报告", "引用", "证据", "检索", "知识库", "复盘", "评测", "rag", "source", "citation"]
         tool_terms = ["天气", "时间", "search_web", "工具", "tool"]
-        if allow_report_run and any(term in lowered for term in report_terms) and any(term in lowered for term in generation_terms):
+        parsed = parse_chat_task(text)
+        if allow_report_run and (parsed.should_run or (any(term in lowered for term in report_terms) and any(term in lowered for term in generation_terms))):
             return {"mode": "report_run", "reason": "report generation intent"}
         if any(term in lowered for term in rag_terms):
             return {"mode": "rag", "reason": "knowledge/evidence retrieval intent"}

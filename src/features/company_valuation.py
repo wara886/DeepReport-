@@ -9,6 +9,8 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
+from src.data.financial_quality import build_net_income_quality_fields
+
 
 def build_peer_comparison(
     symbol: str,
@@ -63,15 +65,53 @@ def perform_company_valuation(
         return {"symbol": symbol, "period": period, "valuation_available": False, "error": "target financials not found"}
 
     revenue = _safe_float(target.get("revenue_billion")) or 0.0
-    net_income = _safe_float(target.get("net_income_billion"))
+    net_income = _safe_float(target.get("adjusted_net_income_billion")) or _safe_float(target.get("net_income_billion"))
+    if target.get("valuation_input_usable") is False:
+        return _valuation_unavailable(
+            symbol=symbol,
+            period=period,
+            error="non_recurring_gain_unadjusted",
+            peer_payload=peer_payload,
+            input_summary={
+                "revenue_billion": revenue,
+                "net_income_billion": _safe_float(target.get("net_income_billion")),
+                "adjusted_net_income_billion": _safe_float(target.get("adjusted_net_income_billion")),
+                "non_recurring_gain_billion": _safe_float(target.get("non_recurring_gain_billion")),
+                "net_income_quality_flag": target.get("net_income_quality_flag"),
+            },
+            missing_inputs=["adjusted_or_normalized_net_income"],
+        )
     if net_income is None:
         net_margin = _safe_float(target.get("net_margin_pct")) or 0.0
         net_income = revenue * net_margin / 100
-    free_cash_flow = _safe_float(target.get("free_cash_flow_billion")) or max(net_income * 0.75, 0.0)
+    free_cash_flow = _safe_float(target.get("free_cash_flow_billion"))
+    if free_cash_flow is None:
+        return _valuation_unavailable(
+            symbol=symbol,
+            period=period,
+            error="valuation_input_invalid",
+            peer_payload=peer_payload,
+            input_summary={"revenue_billion": revenue, "net_income_billion": net_income, "free_cash_flow_billion": None},
+            missing_inputs=["annual_or_ttm_free_cash_flow"],
+        )
+    if not _fcf_basis_is_usable(target=target, period=period):
+        return _valuation_unavailable(
+            symbol=symbol,
+            period=period,
+            error="valuation_input_invalid",
+            peer_payload=peer_payload,
+            input_summary={
+                "revenue_billion": revenue,
+                "net_income_billion": net_income,
+                "free_cash_flow_billion": free_cash_flow,
+                "free_cash_flow_period_basis": target.get("free_cash_flow_period_basis") or target.get("period_basis") or "quarterly",
+            },
+            missing_inputs=["annual_or_ttm_free_cash_flow"],
+        )
     market_context = _market_context_from_records(records=records or [], symbol=symbol, period=period)
     shares_outstanding = _safe_float(market_context.get("shares_outstanding_billion"))
     revenue_growth = _safe_float(target.get("revenue_growth_pct")) or 0.0
-    net_margin = _safe_float(target.get("net_margin_pct")) or 0.0
+    net_margin = _safe_float(target.get("adjusted_net_margin_pct")) or _safe_float(target.get("net_margin_pct")) or 0.0
     roe = _safe_float(target.get("roe_pct")) or 0.0
 
     peer_rows = [row for row in peer_payload.get("peer_rows", []) if row.get("symbol") != symbol]
@@ -91,6 +131,32 @@ def perform_company_valuation(
     dcf_value = _dcf_value(free_cash_flow=free_cash_flow, growth_rate=fcf_growth, discount_rate=discount_rate, terminal_growth=terminal_growth)
     values = [value for value in [pe_value, ps_value, dcf_value] if value > 0]
     blended_value = sum(values) / len(values) if values else 0.0
+    guardrail = _valuation_guardrail(
+        revenue=revenue,
+        net_income=net_income,
+        free_cash_flow=free_cash_flow,
+        pe_value=pe_value,
+        ps_value=ps_value,
+        dcf_value=dcf_value,
+        blended_value=blended_value,
+        market_context=market_context,
+        shares_outstanding_billion=shares_outstanding,
+    )
+    if not guardrail["passed"]:
+        return {
+            "symbol": symbol,
+            "period": period,
+            "valuation_available": False,
+            "error": "valuation_guardrail_failed",
+            "guardrail": guardrail,
+            "market_context": market_context,
+            "peer_context": peer_payload,
+            "input_summary": {
+                "revenue_billion": revenue,
+                "net_income_billion": net_income,
+                "free_cash_flow_billion": free_cash_flow,
+            },
+        }
     relative_valuation = _relative_valuation_model(
         symbol=symbol,
         period=period,
@@ -192,7 +258,11 @@ def _load_company_financial_rows(raw_data_root: str | Path, period: str) -> List
             row["industry"] = profile.get("industry", "")
             revenue = _safe_float(row.get("revenue_billion")) or 0.0
             net_margin = _safe_float(row.get("net_margin_pct")) or 0.0
-            row["net_income_billion"] = round(revenue * net_margin / 100, 4)
+            if _safe_float(row.get("net_income_billion")) is None:
+                row["net_income_billion"] = round(revenue * net_margin / 100, 4)
+            if _safe_float(row.get("adjusted_net_income_billion")) is not None:
+                adjusted = float(row["adjusted_net_income_billion"])
+                row["net_margin_pct"] = (adjusted / revenue * 100.0) if revenue else row.get("net_margin_pct")
             rows.append(row)
     return rows
 
@@ -211,6 +281,14 @@ def _peer_row(row: Dict[str, Any], target_symbol: str) -> Dict[str, Any]:
         "roe_pct": _safe_float(row.get("roe_pct")),
         "free_cash_flow_billion": _safe_float(row.get("free_cash_flow_billion")),
         "net_income_billion": _safe_float(row.get("net_income_billion")),
+        "adjusted_net_income_billion": _safe_float(row.get("adjusted_net_income_billion")),
+        "adjusted_net_margin_pct": _safe_float(row.get("adjusted_net_margin_pct")),
+        "non_recurring_gain_billion": _safe_float(row.get("non_recurring_gain_billion")),
+        "non_recurring_gain_ratio": _safe_float(row.get("non_recurring_gain_ratio")),
+        "net_income_quality_flag": str(row.get("net_income_quality_flag") or "reported"),
+        "valuation_input_usable": _bool_or_default(row.get("valuation_input_usable"), True),
+        "valuation_input_rejection_reason": str(row.get("valuation_input_rejection_reason") or ""),
+        "free_cash_flow_period_basis": str(row.get("free_cash_flow_period_basis") or row.get("fcf_period_basis") or row.get("period_basis") or ""),
     }
     return metrics
 
@@ -231,13 +309,23 @@ def _rank_target(peer_rows: List[Dict[str, Any]], symbol: str) -> Dict[str, Any]
 
 
 def _target_from_records(records: List[Dict[str, Any]], symbol: str, period: str) -> Dict[str, Any]:
-    for record in records:
+    priority = {"sec_companyfacts": 0, "sec_filing": 1, "financials": 2, "market_api": 3, "market_data": 3}
+    candidates = [
+        record
+        for record in records
+        if str(record.get("symbol", "")).upper() == symbol
+        and str(record.get("source_type", "")).lower() in priority
+    ]
+    candidates.sort(key=lambda item: priority.get(str(item.get("source_type", "")).lower(), 99))
+    for record in candidates:
         if str(record.get("symbol", "")).upper() != symbol:
             continue
-        if str(record.get("source_type", "")).lower() != "financials":
+        if str(record.get("source_type", "")).lower() not in {"financials", "market_api", "market_data", "sec_companyfacts"}:
             continue
         metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-        row = dict(metadata)
+        row = _normalize_record_financials(record)
+        if not row.get("revenue_billion") and not row.get("net_income_billion"):
+            continue
         row["symbol"] = symbol
         row["period"] = period
         return _peer_row(row, target_symbol=symbol)
@@ -252,7 +340,10 @@ def _market_context_from_records(records: List[Dict[str, Any]], symbol: str, per
             continue
         metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
         snapshot = metadata.get("snapshot") if isinstance(metadata.get("snapshot"), dict) else metadata
+        if isinstance(metadata.get("financials"), dict):
+            snapshot = {**snapshot, **metadata["financials"]}
         last_close = _safe_float(snapshot.get("last_close") or snapshot.get("close"))
+        current_price = _safe_float(snapshot.get("currentPrice") or snapshot.get("regularMarketPrice"))
         market_cap = _safe_float(
             snapshot.get("market_cap_billion")
             or snapshot.get("marketCapBillion")
@@ -262,18 +353,172 @@ def _market_context_from_records(records: List[Dict[str, Any]], symbol: str, per
         shares = _safe_float(snapshot.get("shares_outstanding_billion") or snapshot.get("sharesOutstandingBillion"))
         if market_cap and market_cap > 1_000_000:
             market_cap = market_cap / 1_000_000_000
+        if not shares:
+            raw_shares = _safe_float(snapshot.get("sharesOutstanding") or snapshot.get("impliedSharesOutstanding"))
+            if raw_shares:
+                shares = raw_shares / 1_000_000_000 if raw_shares > 1_000_000 else raw_shares
+        if not shares and market_cap and current_price:
+            shares = market_cap / current_price
         if not market_cap and last_close and shares:
             market_cap = last_close * shares
         return {
             "symbol": symbol,
             "period": period,
-            "last_close": last_close,
+            "last_close": last_close or current_price,
             "market_cap_billion": market_cap,
             "shares_outstanding_billion": shares,
             "source_evidence_id": str(record.get("evidence_id") or record.get("sample_id") or ""),
             "source_url": str(record.get("source_url") or ""),
         }
     return {}
+
+
+def _normalize_record_financials(record: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    source_type = str(record.get("source_type", "")).lower()
+    if source_type == "sec_companyfacts":
+        metrics = metadata.get("metrics") if isinstance(metadata.get("metrics"), dict) else {}
+        revenue = _first_fact_value(metrics, ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues"])
+        net_income = _first_fact_value(metrics, ["NetIncomeLoss"])
+        assets = _first_fact_value(metrics, ["Assets"])
+        equity = _first_fact_value(metrics, ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"])
+        return {
+            "revenue_billion": _to_billion(revenue) if revenue is not None else None,
+            "net_income_billion": _to_billion(net_income) if net_income is not None else None,
+            "adjusted_net_income_billion": _to_billion(net_income) if net_income is not None else None,
+            "net_income_quality_flag": "sec_reported",
+            "valuation_input_usable": True,
+            "net_margin_pct": (float(net_income) / float(revenue) * 100.0) if revenue not in (None, 0) and net_income is not None else None,
+            "roe_pct": (float(net_income) / float(equity) * 100.0) if equity not in (None, 0) and net_income is not None else None,
+            "roa_pct": (float(net_income) / float(assets) * 100.0) if assets not in (None, 0) and net_income is not None else None,
+        }
+    raw = metadata.get("financials") if isinstance(metadata.get("financials"), dict) else metadata
+    latest_income = _first_dict(raw.get("income_history")) or _first_dict(raw.get("quarterly_income_history"))
+    latest_cashflow = _first_dict(raw.get("cashflow_history")) or _first_dict(raw.get("quarterly_cashflow_history"))
+    revenue = _first_number(raw, ["totalRevenue", "revenue", "Total Revenue"])
+    if revenue is None:
+        revenue = _first_number(latest_income, ["Total Revenue", "Operating Revenue", "revenue"])
+    net_income = _first_number(raw, ["netIncome", "Net Income"])
+    if net_income is None:
+        net_income = _first_number(latest_income, ["Net Income", "Net Income Common Stockholders"])
+    quality = build_net_income_quality_fields(raw, latest_income, net_income=net_income, revenue=revenue)
+    free_cash_flow = _first_number(raw, ["freeCashflow", "free_cash_flow_billion"])
+    if free_cash_flow is None:
+        free_cash_flow = _first_number(latest_cashflow, ["Free Cash Flow"])
+    adjusted_net_income = quality.get("adjusted_net_income")
+    adjusted_net_margin = quality.get("adjusted_net_margin_pct")
+    return {
+        "revenue_billion": _to_billion(revenue) if revenue is not None else _safe_float(raw.get("revenue_billion")),
+        "net_income_billion": _to_billion(net_income) if net_income is not None else _safe_float(raw.get("net_income_billion")),
+        "adjusted_net_income_billion": _to_billion(float(adjusted_net_income)) if adjusted_net_income is not None else _safe_float(raw.get("adjusted_net_income_billion")),
+        "non_recurring_gain_billion": _to_billion(float(quality["non_recurring_gain"])) if quality.get("non_recurring_gain") is not None else _safe_float(raw.get("non_recurring_gain_billion")),
+        "non_recurring_gain_ratio": quality.get("non_recurring_gain_ratio") if quality.get("non_recurring_gain_ratio") is not None else _safe_float(raw.get("non_recurring_gain_ratio")),
+        "net_income_quality_flag": quality.get("net_income_quality_flag", raw.get("net_income_quality_flag", "reported")),
+        "valuation_input_usable": bool(quality.get("valuation_input_usable", raw.get("valuation_input_usable", True))),
+        "valuation_input_rejection_reason": str(quality.get("valuation_input_rejection_reason") or raw.get("valuation_input_rejection_reason") or ""),
+        "revenue_growth_pct": _ratio_to_pct(_first_number(raw, ["revenueGrowth", "revenue_growth_pct"]) or 0.0),
+        "gross_margin_pct": _ratio_to_pct(_first_number(raw, ["grossMargins", "gross_margin_pct"]) or 0.0),
+        "net_margin_pct": float(adjusted_net_margin) if adjusted_net_margin is not None and quality.get("net_income_quality_flag") == "adjusted_for_non_recurring_gain" else _ratio_to_pct(_first_number(raw, ["profitMargins", "net_margin_pct"]) or 0.0),
+        "adjusted_net_margin_pct": float(adjusted_net_margin) if adjusted_net_margin is not None else None,
+        "roe_pct": _ratio_to_pct(_first_number(raw, ["returnOnEquity", "roe_pct"]) or 0.0),
+        "free_cash_flow_billion": _to_billion(free_cash_flow) if free_cash_flow is not None else _safe_float(raw.get("free_cash_flow_billion")),
+        "free_cash_flow_period_basis": _period_basis_from_source(raw=raw, latest_cashflow=latest_cashflow),
+    }
+
+
+def _valuation_unavailable(
+    *,
+    symbol: str,
+    period: str,
+    error: str,
+    peer_payload: Dict[str, Any],
+    input_summary: Dict[str, Any],
+    missing_inputs: List[str],
+) -> Dict[str, Any]:
+    return {
+        "symbol": symbol,
+        "period": period,
+        "valuation_available": False,
+        "error": error,
+        "missing_inputs": missing_inputs,
+        "peer_context": peer_payload,
+        "input_summary": input_summary,
+        "valuation_input_usable": False,
+        "valuation_input_rejection_reason": error,
+    }
+
+
+def _fcf_basis_is_usable(target: Dict[str, Any], period: str) -> bool:
+    basis = str(
+        target.get("free_cash_flow_period_basis")
+        or target.get("fcf_period_basis")
+        or target.get("period_basis")
+        or ""
+    ).strip().lower()
+    if basis in {"annual", "annualized", "ttm", "trailing_twelve_months", "forecast", "projected"}:
+        return True
+    if _is_quarterly_period(period):
+        return False
+    return True
+
+
+def _period_basis_from_source(raw: Dict[str, Any], latest_cashflow: Dict[str, Any]) -> str:
+    for source in (raw, latest_cashflow):
+        for key in ["free_cash_flow_period_basis", "fcf_period_basis", "period_basis", "timeframe"]:
+            value = source.get(key)
+            if value:
+                return str(value)
+    return "quarterly" if latest_cashflow else ""
+
+
+def _is_quarterly_period(period: str) -> bool:
+    return "Q" in str(period or "").upper()
+
+
+def _bool_or_default(value: Any, default: bool) -> bool:
+    if value is None or str(value).strip() == "":
+        return default
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"true", "1", "yes", "y"}:
+        return True
+    if text in {"false", "0", "no", "n"}:
+        return False
+    return default
+
+
+def _first_fact_value(raw: Dict[str, Any], keys: List[str]) -> float | None:
+    for key in keys:
+        value = raw.get(key)
+        if isinstance(value, dict):
+            parsed = _safe_float(value.get("value"))
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def _first_dict(value: Any) -> Dict[str, Any]:
+    if isinstance(value, list):
+        return next((item for item in value if isinstance(item, dict)), {})
+    return value if isinstance(value, dict) else {}
+
+
+def _first_number(raw: Dict[str, Any], keys: List[str]) -> float | None:
+    for key in keys:
+        value = _safe_float(raw.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _to_billion(value: float) -> float:
+    return float(value) / 1_000_000_000 if abs(float(value)) > 1_000_000 else float(value)
+
+
+def _ratio_to_pct(value: float) -> float:
+    value = float(value)
+    return value * 100.0 if abs(value) <= 1.0 else value
 
 
 def _market_gap(blended_value: float, market_context: Dict[str, Any]) -> Dict[str, Any]:
@@ -442,6 +687,71 @@ def _median_numeric(rows: List[Dict[str, Any]], key: str, fallback: float) -> fl
 
 def _bounded(value: float, lower: float, upper: float) -> float:
     return max(lower, min(value, upper))
+
+
+def _valuation_guardrail(
+    revenue: float,
+    net_income: float,
+    free_cash_flow: float,
+    pe_value: float,
+    ps_value: float,
+    dcf_value: float,
+    blended_value: float,
+    market_context: Dict[str, Any],
+    shares_outstanding_billion: float | None,
+) -> Dict[str, Any]:
+    """Block obviously unusable valuation outputs before they reach claims."""
+
+    errors: List[str] = []
+    warnings: List[str] = []
+    method_values = {"pe": pe_value, "ps": ps_value, "dcf": dcf_value, "blended": blended_value}
+    for name, value in method_values.items():
+        if not _is_finite_positive(value):
+            errors.append(f"{name}_value_not_positive_or_finite")
+
+    if revenue <= 0:
+        errors.append("revenue_not_positive")
+    else:
+        value_to_revenue = blended_value / revenue if blended_value > 0 else 0.0
+        dcf_to_revenue = dcf_value / revenue if dcf_value > 0 else 0.0
+        if value_to_revenue > 80:
+            errors.append("blended_value_to_revenue_above_guardrail")
+        if dcf_to_revenue > 120:
+            errors.append("dcf_value_to_revenue_above_guardrail")
+
+    if net_income < 0 and pe_value > 0:
+        errors.append("pe_value_positive_with_negative_net_income")
+
+    if free_cash_flow > 0 and dcf_value / free_cash_flow > 100:
+        errors.append("dcf_value_to_fcf_above_guardrail")
+
+    market_cap = _safe_float(market_context.get("market_cap_billion"))
+    if market_cap and blended_value > 0:
+        market_gap_abs = abs((blended_value - market_cap) / market_cap)
+        if market_gap_abs > 10:
+            warnings.append("valuation_market_gap_above_1000pct")
+
+    last_close = _safe_float(market_context.get("last_close"))
+    if last_close and shares_outstanding_billion and blended_value > 0:
+        target_price = blended_value / shares_outstanding_billion
+        if target_price / last_close > 10 or target_price / last_close < 0.1:
+            warnings.append("target_price_to_last_close_outside_guardrail")
+
+    return {
+        "passed": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "limits": {
+            "max_blended_value_to_revenue": 80,
+            "max_dcf_value_to_revenue": 120,
+            "max_dcf_value_to_fcf": 100,
+        },
+    }
+
+
+def _is_finite_positive(value: Any) -> bool:
+    parsed = _safe_float(value)
+    return parsed is not None and parsed > 0
 
 
 def _safe_float(value: Any) -> float | None:

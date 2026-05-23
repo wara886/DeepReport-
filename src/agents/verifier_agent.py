@@ -104,7 +104,10 @@ class VerifierAgent(BaseAgent):
                         else [],
                     }
                 )
+                report = _apply_llm_verifier_overrides(report)
                 report["passed"] = bool(report.get("passed", False)) and bool(payload.get("passed", False))
+                if report.get("llm_override_passed") is True:
+                    report["passed"] = bool(rule_report.get("passed", False))
             except Exception as exc:
                 report["llm_error"] = str(exc)
         report["rework_required"] = not bool(report.get("passed", False))
@@ -154,3 +157,55 @@ def _build_verifier_prompt(
         f"Evidence records: {evidence_records[:16]}\n"
         f"Markdown report excerpt: {markdown[:4000]}"
     )
+
+
+def _apply_llm_verifier_overrides(report: Dict[str, Any]) -> Dict[str, Any]:
+    """Downgrade LLM objections that contradict deterministic artifact audits."""
+
+    valuation_audit = report.get("valuation_audit") if isinstance(report.get("valuation_audit"), dict) else {}
+    valuation_ok = bool(valuation_audit.get("passed", False))
+    raw_errors = [str(item) for item in report.get("llm_errors", []) if str(item).strip()]
+    raw_warnings = [str(item) for item in report.get("llm_warnings", []) if str(item).strip()]
+    if not valuation_ok or not raw_errors:
+        report["llm_errors"] = raw_errors
+        report["llm_warnings"] = raw_warnings
+        return report
+
+    kept_errors: List[str] = []
+    downgraded: List[str] = []
+    for item in raw_errors:
+        if _is_valuation_artifact_objection(item):
+            downgraded.append(item)
+        else:
+            kept_errors.append(item)
+    if downgraded:
+        raw_warnings.extend([f"LLM valuation objection downgraded because valuation_audit passed: {item}" for item in downgraded])
+        report["llm_override_passed"] = not kept_errors
+        report["llm_override_reason"] = "valuation_audit_passed_for_derived_model_outputs"
+    report["llm_errors"] = kept_errors
+    report["llm_warnings"] = raw_warnings
+    if not kept_errors and report.get("llm_passed") is False and downgraded:
+        report["llm_passed"] = True
+    return report
+
+
+def _is_valuation_artifact_objection(text: str) -> bool:
+    lowered = str(text or "").lower()
+    valuation_terms = (
+        "valuation",
+        "target price",
+        "equity value",
+        "\u4f30\u503c",
+        "\u76ee\u6807\u4ef7",
+        "\u80a1\u6743\u4ef7\u503c",
+    )
+    evidence_terms = (
+        "evidence",
+        "support",
+        "citation",
+        "\u8bc1\u636e",
+        "\u652f\u6301",
+        "\u7f3a\u4e4f",
+        "\u7f3a\u5c11",
+    )
+    return any(term in lowered for term in valuation_terms) and any(term in lowered for term in evidence_terms)

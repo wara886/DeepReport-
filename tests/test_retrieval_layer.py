@@ -89,6 +89,28 @@ def test_evidence_store_filter(tmp_path: Path):
     aapl_only = store.filter(symbol="AAPL")
     assert len(aapl_only) == 1
     assert aapl_only[0].symbol == "AAPL"
+    assert store.load_meta["loaded_file_count"] == 1
+
+
+def test_retrieve_evidence_skips_corrupt_parquet_file(tmp_path: Path):
+    curated = tmp_path / "curated"
+    _write_curated_inputs(curated)
+    (curated / "broken.parquet").write_text("not a parquet file", encoding="utf-8")
+
+    hits, meta = retrieve_evidence_with_mode(
+        query="gross margin revenue",
+        topk=3,
+        curated_dir=str(curated),
+        ranking_mode="bm25",
+        log=False,
+    )
+
+    assert hits
+    assert hits[0]["symbol"] == "AAPL"
+    assert meta["loaded_file_count"] == 1
+    assert len(meta["skipped_files"]) == 1
+    assert "broken.parquet" in meta["skipped_files"][0]
+    assert meta["load_errors"]
 
 
 def test_retrieve_evidence_vector_mode_from_curated_dir(tmp_path: Path):

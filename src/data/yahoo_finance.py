@@ -7,13 +7,20 @@ audited filings source.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
 import json
-from typing import Any, Dict, List
+import re
+from logging import getLogger
+from typing import Any, Dict
 from urllib import error, parse, request
 
 import pandas as pd
+
+from src.data.financial_quality import build_net_income_quality_fields
+from src.utils.periods import latest_completed_period
+
+logger = getLogger(__name__)
 
 
 YAHOO_CHART_BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
@@ -109,10 +116,18 @@ def yahoo_snapshot_to_evidence(
     change_text = "unknown"
     if snapshot.get("change_pct") is not None:
         change_text = f"{float(snapshot['change_pct']):.2f}%"
+    target_period = str(period or "").strip().upper()
+    current_context_note = ""
+    if target_period and target_period != latest_completed_period():
+        current_context_note = (
+            " This is a current market snapshot used for valuation context, "
+            f"not target-period statement evidence for {target_period}."
+        )
     content = (
         f"{snapshot['symbol']} Yahoo Finance market snapshot: latest close {snapshot.get('last_close')} "
         f"{snapshot.get('currency')}, previous close {snapshot.get('previous_close')}, "
         f"{range_} price change {change_text}, latest volume {snapshot.get('latest_volume')}."
+        f"{current_context_note}"
     )
     digest = hashlib.sha1(f"{symbol}|{period}|{snapshot.get('latest_date')}|{content}".encode("utf-8")).hexdigest()[:10]
     return {
@@ -127,7 +142,14 @@ def yahoo_snapshot_to_evidence(
         "publish_time": str(snapshot.get("latest_date") or ""),
         "trust_level": "medium",
         "score": 6.0,
-        "metadata": {"provider": "yahoo_finance", "snapshot": snapshot},
+        "metadata": {
+            "provider": "yahoo_finance",
+            "snapshot": snapshot,
+            "context_type": "current_market_snapshot",
+            "target_period": target_period,
+            "as_of_date": str(snapshot.get("latest_date") or ""),
+            "historical_report_context": bool(current_context_note),
+        },
     }
 
 
@@ -161,13 +183,18 @@ def _fetch_via_yfinance(symbol: str, timeout: int = 12) -> Dict[str, Any]:
     try:
         import yfinance as yf  # type: ignore
     except ImportError:
+        logger.warning("yfinance not installed, skipping financials fetch for %s", symbol)
         return {}
 
     try:
         ticker = yf.Ticker(symbol)
-        financial_data: Dict[str, Any] = {}
+    except Exception as exc:
+        logger.warning("yfinance Ticker(%s) failed: %s", symbol, exc)
+        return {}
+    financial_data: Dict[str, Any] = {}
 
-        # ── info (key financial metrics) ──
+    # ── info (key financial metrics) ──
+    try:
         info = ticker.info or {}
         for key in (
             "currentPrice", "totalRevenue", "operatingCashflow", "freeCashflow",
@@ -178,39 +205,56 @@ def _fetch_via_yfinance(symbol: str, timeout: int = 12) -> Dict[str, Any]:
             value = info.get(key)
             if value is not None:
                 financial_data[key] = value
+    except Exception as exc:
+        logger.warning("yfinance Ticker(%s).info failed: %s", symbol, exc)
 
-        # ── income statement ──
+    # ── income statement ──
+    try:
         fin = ticker.financials
         if fin is not None and not fin.empty:
             financial_data["income_history"] = _yfinance_df_to_rows(fin, max_rows=2)
+    except Exception as exc:
+        logger.warning("yfinance Ticker(%s).financials failed: %s", symbol, exc)
 
-        # ── balance sheet ──
+    # ── balance sheet ──
+    try:
         bs = ticker.balance_sheet
         if bs is not None and not bs.empty:
             financial_data["balance_history"] = _yfinance_df_to_rows(bs, max_rows=2)
+    except Exception as exc:
+        logger.warning("yfinance Ticker(%s).balance_sheet failed: %s", symbol, exc)
 
-        # ── cash flow statement ──
+    # ── cash flow statement ──
+    try:
         cf = ticker.cashflow
         if cf is not None and not cf.empty:
             financial_data["cashflow_history"] = _yfinance_df_to_rows(cf, max_rows=2)
+    except Exception as exc:
+        logger.warning("yfinance Ticker(%s).cashflow failed: %s", symbol, exc)
 
-        # ── quarterly financials (more recent data) ──
+    # ── quarterly financials (more recent data) ──
+    try:
         q_fin = ticker.quarterly_financials
         if q_fin is not None and not q_fin.empty:
             financial_data["quarterly_income_history"] = _yfinance_df_to_rows(q_fin, max_rows=2)
+    except Exception as exc:
+        logger.warning("yfinance Ticker(%s).quarterly_financials failed: %s", symbol, exc)
 
+    try:
         q_bs = ticker.quarterly_balance_sheet
         if q_bs is not None and not q_bs.empty:
             financial_data["quarterly_balance_history"] = _yfinance_df_to_rows(q_bs, max_rows=2)
+    except Exception as exc:
+        logger.warning("yfinance Ticker(%s).quarterly_balance_sheet failed: %s", symbol, exc)
 
+    try:
         q_cf = ticker.quarterly_cashflow
         if q_cf is not None and not q_cf.empty:
             financial_data["quarterly_cashflow_history"] = _yfinance_df_to_rows(q_cf, max_rows=2)
+    except Exception as exc:
+        logger.warning("yfinance Ticker(%s).quarterly_cashflow failed: %s", symbol, exc)
 
-        return financial_data
-
-    except Exception:
-        return {}
+    return financial_data
 
 
 def _yfinance_df_to_rows(df: Any, max_rows: int = 2) -> list[Dict[str, Any]]:
@@ -313,29 +357,44 @@ def yahoo_financials_to_evidence(
     if metrics:
         content_parts.append(" | ".join(metrics))
 
-    income = financials.get("income_history") or financials.get("quarterly_income_history", [])
+    income = _yf_statement_rows_for_period(financials, "income", period)
     if income:
         latest = income[0]
         rev = _yf_find_key(latest, ("Total Revenue", "totalRevenue", "Reconciled Cost of Revenue")) or "N/A"
         ni = _yf_find_key(latest, ("Net Income", "netIncome")) or "N/A"
         gp = _yf_find_key(latest, ("Gross Profit", "grossProfit")) or "N/A"
-        content_parts.append(f"Latest income: revenue={rev}, netIncome={ni}, grossProfit={gp}")
+        quality = build_net_income_quality_fields(
+            financials,
+            latest,
+            net_income=_yf_number(ni),
+            revenue=_yf_number(rev),
+        )
+        end_date = latest.get("end_date") or latest.get("report_date") or ""
+        label = f"{period} income" if str(period or "").strip() else "Latest income"
+        content_parts.append(
+            f"{label}: end_date={end_date}, revenue={rev}, netIncome={ni}, "
+            f"adjustedNetIncome={quality.get('adjusted_net_income') or 'N/A'}, "
+            f"nonRecurringGain={quality.get('non_recurring_gain') or 'N/A'}, "
+            f"netIncomeQuality={quality.get('net_income_quality_flag')}, grossProfit={gp}"
+        )
 
-    balance = financials.get("balance_history") or financials.get("quarterly_balance_history", [])
+    balance = _yf_statement_rows_for_period(financials, "balance", period)
     if balance:
         latest = balance[0]
         ta = _yf_find_key(latest, ("Total Assets", "totalAssets")) or "N/A"
         tl = _yf_find_key(latest, ("Total Liabilities Net Minority Interest", "totalLiabilities", "Total Liabilities")) or "N/A"
         te = _yf_find_key(latest, ("Total Equity Gross Minority Interest", "totalStockholderEquity", "Stockholders Equity")) or "N/A"
-        content_parts.append(f"Balance: assets={ta}, liabilities={tl}, equity={te}")
+        end_date = latest.get("end_date") or latest.get("report_date") or ""
+        content_parts.append(f"Balance: end_date={end_date}, assets={ta}, liabilities={tl}, equity={te}")
 
-    cashflow = financials.get("cashflow_history") or financials.get("quarterly_cashflow_history", [])
+    cashflow = _yf_statement_rows_for_period(financials, "cashflow", period)
     if cashflow:
         latest = cashflow[0]
         ocf = _yf_find_key(latest, ("Operating Cash Flow", "totalCashFromOperatingActivities", "Cash From Operating Activities")) or "N/A"
         capex = _yf_find_key(latest, ("Capital Expenditure", "capitalExpenditures")) or "N/A"
         fcf = _yf_find_key(latest, ("Free Cash Flow", "freeCashFlow")) or "N/A"
-        content_parts.append(f"Cash flow: operating={ocf}, capex={capex}, freeCashFlow={fcf}")
+        end_date = latest.get("end_date") or latest.get("report_date") or ""
+        content_parts.append(f"Cash flow: end_date={end_date}, operating={ocf}, capex={capex}, freeCashFlow={fcf}")
 
     content = " | ".join(content_parts)
     digest = hashlib.sha1(f"{symbol}|{period}|financials|{content}".encode("utf-8")).hexdigest()[:10]
@@ -363,6 +422,81 @@ def _yf_find_key(row: Dict[str, Any], candidates: tuple[str, ...]) -> Any:
         if value is not None:
             return value
     return None
+
+
+def _yf_number(value: Any) -> float | None:
+    try:
+        if value in (None, "N/A"):
+            return None
+        output = float(value)
+        if output != output:
+            return None
+        return output
+    except (TypeError, ValueError):
+        return None
+
+
+def _yf_statement_rows_for_period(financials: Dict[str, Any], statement: str, period: str) -> list[Dict[str, Any]]:
+    quarterly = {
+        "income": "quarterly_income_history",
+        "balance": "quarterly_balance_history",
+        "cashflow": "quarterly_cashflow_history",
+    }
+    annual = {
+        "income": "income_history",
+        "balance": "balance_history",
+        "cashflow": "cashflow_history",
+    }
+    prefer_quarter = bool(_yf_parse_quarter(period))
+    keys = [quarterly[statement]] if prefer_quarter else [annual[statement], quarterly[statement]]
+    for key in keys:
+        rows = financials.get(key)
+        if not isinstance(rows, list):
+            continue
+        clean_rows = [row for row in rows if isinstance(row, dict)]
+        if not clean_rows:
+            continue
+        if prefer_quarter:
+            matched = _yf_row_for_period(clean_rows, period)
+            if matched:
+                return [matched]
+            continue
+        return clean_rows
+    return []
+
+
+def _yf_row_for_period(rows: list[Dict[str, Any]], period: str) -> Dict[str, Any]:
+    target = _yf_period_target_date(period)
+    if not target:
+        return {}
+    for row in rows:
+        row_date = _yf_parse_date(row.get("end_date") or row.get("report_date") or row.get("date") or row.get("asOfDate"))
+        if row_date and abs((row_date - target).days) <= 45:
+            return row
+    return {}
+
+
+def _yf_parse_quarter(value: str | None) -> tuple[int, int] | None:
+    match = re.search(r"(20\d{2})\s*Q([1-4])", str(value or ""), flags=re.I)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _yf_period_target_date(period: str | None) -> date | None:
+    parsed = _yf_parse_quarter(period)
+    if not parsed:
+        return None
+    year, quarter = parsed
+    month_day = {1: (3, 31), 2: (6, 30), 3: (9, 30), 4: (12, 31)}[quarter]
+    return date(year, month_day[0], month_day[1])
+
+
+def _yf_parse_date(value: Any) -> date | None:
+    try:
+        return datetime.strptime(str(value or "")[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
 
 
 def _safe_extract(container: Dict[str, Any], key: str) -> Any:

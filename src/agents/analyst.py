@@ -20,7 +20,13 @@ class Analyst:
         path = self.features_root / name
         if not path.exists():
             return pd.DataFrame()
-        return pd.read_parquet(path)
+        try:
+            return pd.read_parquet(path)
+        except (OSError, ValueError, ImportError):
+            # Local feature/parquet caches can be corrupted by interrupted
+            # runs or incompatible pyarrow versions. Stage 4 should still
+            # complete a minimal report instead of crashing.
+            return pd.DataFrame()
 
     @staticmethod
     def _parse_evidence_ids(raw: object) -> List[str]:

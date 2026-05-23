@@ -36,3 +36,86 @@ def test_delivery_gate_passes_when_all_gates_pass(tmp_path):
 
     assert gate["delivery_pass"] is True
     assert gate["issue_counts"]["fatal"] == 0
+
+
+def test_delivery_gate_relaxes_llm_score_when_review_passes_without_blockers(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    for name, payload in {
+        "verification_report.json": {"passed": True},
+        "quality_report.json": {"objective_pass": True, "total_score": 0.96, "issues": []},
+        "llm_quality_review.json": {
+            "llm_review_pass": True,
+            "total_score": 0.72,
+            "issues": [{"severity": "warning", "category": "valuation", "message": "model output needs clearer citation"}],
+        },
+    }.items():
+        (outputs / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["delivery_pass"] is True
+    assert gate["gate_requirements"]["llm_review_strict_score_pass"] is False
+    assert gate["gate_requirements"]["llm_review_relaxed_score_pass"] is True
+
+
+def test_delivery_gate_treats_nonblocking_evidence_gap_as_warning(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    for name, payload in {
+        "verification_report.json": {
+            "passed": True,
+            "evidence_gaps": [
+                {
+                    "description": "period-matched structured financial data fallback",
+                    "blocking": False,
+                }
+            ],
+        },
+        "quality_report.json": {"objective_pass": True, "total_score": 0.96, "issues": []},
+        "llm_quality_review.json": {"llm_review_pass": True, "total_score": 0.82, "issues": []},
+    }.items():
+        (outputs / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["delivery_pass"] is True
+    assert gate["issue_counts"]["blocker"] == 0
+    assert gate["issue_counts"]["warning"] == 1
+
+
+def test_delivery_gate_never_emits_none_message_and_enforces_llm_score(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    (outputs / "verification_report.json").write_text(
+        json.dumps({"passed": True, "evidence_gaps": [{"claim_id": "cl_1", "message": None}]}),
+        encoding="utf-8",
+    )
+    (outputs / "quality_report.json").write_text(json.dumps({"objective_pass": True, "total_score": 0.9}), encoding="utf-8")
+    (outputs / "llm_quality_review.json").write_text(
+        json.dumps({"llm_review_pass": True, "total_score": 0.79, "issues": []}),
+        encoding="utf-8",
+    )
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["delivery_pass"] is False
+    assert gate["llm_review_pass"] is False
+    assert gate["gate_requirements"]["llm_review_score_pass"] is False
+    assert all(item["message"] and item["message"] != "None" for item in gate["issues"])
+
+
+def test_delivery_gate_write_sanitizes_control_chars_and_nan(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    gate = {
+        "delivery_pass": False,
+        "scores": {"llm_total_score": float("nan")},
+        "issues": [{"severity": "fatal", "category": "llm_review", "message": "bad\x01message"}],
+    }
+
+    paths = write_delivery_gate(tmp_path / "run", gate)
+    parsed = json.loads(open(paths["delivery_gate"], encoding="utf-8").read())
+
+    assert parsed["scores"]["llm_total_score"] is None
+    assert "\x01" not in parsed["issues"][0]["message"]

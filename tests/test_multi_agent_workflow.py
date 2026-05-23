@@ -3,13 +3,22 @@ import re
 import sys
 
 from src.agents import AgentStatus, AgentTask, BrowserAgent, DeepAnalyzeAgent, FinalAnswerAgent, VerifierAgent
+from src.agents.analysis_role_agents import IdentityAgent, PeerAgent, RiskAgent, StatementAgent, ValuationAgent
 from src.agents.browser_agent import enrich_records_with_reader, read_pdf_content, read_url_content
+from src.agents.deep_analyze_agent import build_role_outputs, compact_records
 from src.agents.final_answer_agent import (
+    _claims_to_markdown_bullets,
+    _filter_reportable_claims,
+    _section_title,
+    backfill_role_output_sections,
+    enforce_verified_financial_sections,
+    ensure_period_disclosure,
     hard_backfill_quality_sections,
     insert_missing_sections_from_claims,
     normalize_report_headings,
 )
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator, enrich_task_parameters, prepare_dynamic_tasks
+from src.agents.research_blackboard import build_pre_write_critic, initialize_research_blackboard, validate_role_output_write
 from src.agents.verifier import Verifier
 from src.schemas.claim import ClaimItem
 from src.search import SearchManager
@@ -280,6 +289,146 @@ def test_browser_analyze_final_verify_agents_can_share_one_model():
     assert verify_result.output["verification_report"]["llm_used"] is True
 
 
+def test_deep_analyze_role_outputs_have_required_schema():
+    records = [
+        {
+            "evidence_id": "ev_official",
+            "sample_id": "ev_official",
+            "symbol": "AAPL",
+            "period": "2025Q4",
+            "source_type": "sec_filing",
+            "title": "10-K",
+            "content": "Revenue and risk factors.",
+        },
+        {
+            "evidence_id": "ev_market",
+            "sample_id": "ev_market",
+            "symbol": "AAPL",
+            "period": "2025Q4",
+            "source_type": "market_api",
+            "title": "Market data",
+            "content": "Market cap data.",
+        },
+    ]
+    claims = [
+        {"section_name": "risks", "claim_text": "Risk factor.", "evidence_ids": ["ev_official"]},
+        {"section_name": "valuation", "claim_text": "Valuation input.", "evidence_ids": ["ev_market"]},
+        {"section_name": "peer_compare", "claim_text": "Peer context.", "evidence_ids": ["ev_official"]},
+    ]
+
+    role_outputs = build_role_outputs(
+        records=records,
+        claims=claims,
+        symbol="AAPL",
+        period="2025Q4",
+        statement_view={"rows": [{"statement": "income_statement"}, {"statement": "balance_sheet"}, {"statement": "cash_flow"}]},
+        peer_context={"peer_count": 2, "peer_symbols": ["MSFT", "GOOGL"]},
+        valuation={"valuation_available": True, "method": "rule_multiples"},
+        financial_metric_lineage={"metric_count": 3, "metrics": [{"metric_name": "revenue", "value": 126.3, "unit": "USD_billion", "source_evidence_id": "ev_official"}]},
+        table_artifacts=[],
+    )
+
+    assert set(role_outputs) == {
+        "identity_profile",
+        "three_statement_analysis",
+        "peer_analysis",
+        "valuation_analysis",
+        "risk_analysis",
+    }
+    for payload in role_outputs.values():
+        assert {"status", "confidence", "source", "evidence_ids", "findings", "missing_inputs", "impact_on_report"} <= set(payload)
+        assert isinstance(payload["findings"], list)
+    statement_text = "\n".join(role_outputs["three_statement_analysis"]["findings"])
+    peer_text = "\n".join(role_outputs["peer_analysis"]["findings"])
+    valuation_text = "\n".join(role_outputs["valuation_analysis"]["findings"])
+    assert "收入" in statement_text or "revenue" in statement_text
+    assert "MSFT" in peer_text
+    assert "估值" in valuation_text or "Valuation" in valuation_text
+
+
+def test_analysis_role_agents_write_only_authorized_blackboard_fields():
+    records = [
+        {
+            "evidence_id": "ev_official",
+            "sample_id": "ev_official",
+            "symbol": "AAPL",
+            "period": "2025Q4",
+            "source_type": "sec_filing",
+            "title": "10-K",
+            "content": "Revenue, segment, and risk factors.",
+        }
+    ]
+    claims = [{"section_name": "risks", "claim_text": "Risk factor.", "evidence_ids": ["ev_official"]}]
+    artifacts = {
+        "statement_view": {"rows": [{"statement": "income_statement"}, {"statement": "balance_sheet"}]},
+        "peer_context": {"peer_count": 0},
+        "valuation": {"valuation_available": False, "missing_inputs": ["market_cap"]},
+        "financial_metrics": {"metric_count": 1, "metrics": [{"metric_name": "revenue"}]},
+        "tables": [],
+    }
+
+    agents = [
+        IdentityAgent(),
+        StatementAgent(),
+        PeerAgent(),
+        ValuationAgent(),
+        RiskAgent(),
+    ]
+    expected_keys = {
+        "IdentityAgent": "identity_profile",
+        "StatementAgent": "three_statement_analysis",
+        "PeerAgent": "peer_analysis",
+        "ValuationAgent": "valuation_analysis",
+        "RiskAgent": "risk_analysis",
+    }
+    for agent in agents:
+        result = agent.execute_task(
+            AgentTask(
+                task_id=f"task_{agent.name}",
+                task_type=expected_keys[agent.name],
+                description="role",
+                parameters={"evidence_records": records, "claims": claims, "analysis_artifacts": artifacts, "symbol": "AAPL", "period": "2025Q4"},
+            )
+        )
+        payload = result.output["role_outputs"][expected_keys[agent.name]]
+        assert payload["owner_agent"] == agent.name
+        assert "verified" in payload
+        assert {"status", "confidence", "evidence_ids", "findings", "missing_inputs", "impact_on_report", "owner_agent", "verified"} <= set(payload)
+
+    try:
+        validate_role_output_write("PeerAgent", "valuation_analysis")
+        assert False, "expected unauthorized write to fail"
+    except PermissionError:
+        pass
+
+
+def test_pre_write_critic_routes_objections_to_responsible_agents():
+    blackboard = initialize_research_blackboard(symbol="AAPL", period="2025Q4")
+    blackboard["coverage"]["three_statement"] = {"income": True, "balance": False, "cash_flow": False}
+    blackboard["period_state"]["has_data_delay"] = True
+    blackboard["role_outputs"]["peer_analysis"] = {
+        "status": "missing",
+        "confidence": 0.1,
+        "source": "",
+        "evidence_ids": [],
+        "findings": [],
+        "missing_inputs": ["peer_universe"],
+        "impact_on_report": "Peer comparison must be disclosed as unavailable.",
+        "owner_agent": "PeerAgent",
+        "verified": False,
+    }
+
+    critic = build_pre_write_critic(blackboard)
+    objections = critic["objections"]
+
+    assert any(item["category"] == "three_statement" and item["target_agent"] == "StatementAgent" for item in objections)
+    period = next(item for item in objections if item["category"] == "period_consistency")
+    assert period["target_agent"] == "StatementAgent"
+    assert period["blocking"] is True
+    for item in objections:
+        assert {"field", "target_agent", "blocking", "required_action"} <= set(item)
+
+
 def test_local_real_data_search_engine_reads_fixture_data():
     manager = SearchManager.with_local_sources()
 
@@ -347,7 +496,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert summary["mcp_tool_count"] >= 1
     assert summary["skill_registry_enabled"] is True
     assert summary["skill_count"] >= 1
-    assert len(trace_lines) == 7
+    assert len(trace_lines) >= 7
     assert result["report_md"].endswith("report.md")
     assert result["task_route_context"].endswith("task_route_context.json")
     assert result["citations"].endswith("citations.json")
@@ -359,6 +508,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert result["company_report_scorecard"].endswith("company_report_scorecard.json")
     assert result["agent_collaboration_trace"].endswith("agent_collaboration_trace.json")
     assert result["tool_trace"].endswith("tool_trace.json")
+    assert result["research_blackboard"].endswith("research_blackboard.json")
     assert result["data_repair_summary"].endswith("data_repair_summary.json")
     assert result["mcp_manifest"].endswith("mcp_manifest.json")
     assert result["conversation_context"].endswith("conversation_context.json")
@@ -372,6 +522,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert (tmp_path / "outputs" / "company_report_scorecard.json").exists()
     assert (tmp_path / "outputs" / "agent_collaboration_trace.json").exists()
     assert (tmp_path / "outputs" / "tool_trace.json").exists()
+    assert (tmp_path / "outputs" / "research_blackboard.json").exists()
     assert (tmp_path / "outputs" / "data_repair_summary.json").exists()
     assert (tmp_path / "outputs" / "conversation_context.json").exists()
     assert (tmp_path / "outputs" / "mcp_manifest.json").exists()
@@ -382,9 +533,10 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     financial_metrics = json.loads((tmp_path / "outputs" / "financial_metrics.json").read_text(encoding="utf-8"))
     assert financial_metrics["metric_count"] >= 1
     valuation_model = json.loads((tmp_path / "outputs" / "valuation_model.json").read_text(encoding="utf-8"))
-    assert "dcf_model" in valuation_model
+    assert "dcf_model" not in valuation_model
     scorecard = json.loads((tmp_path / "outputs" / "company_report_scorecard.json").read_text(encoding="utf-8"))
     collaboration = json.loads((tmp_path / "outputs" / "agent_collaboration_trace.json").read_text(encoding="utf-8"))
+    blackboard = json.loads((tmp_path / "outputs" / "research_blackboard.json").read_text(encoding="utf-8"))
     tool_trace = json.loads((tmp_path / "outputs" / "tool_trace.json").read_text(encoding="utf-8"))
     repair_summary = json.loads((tmp_path / "outputs" / "data_repair_summary.json").read_text(encoding="utf-8"))
     assert scorecard["scores"]["numeric_lineage_score"] > 0
@@ -394,12 +546,93 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert not result["durable_memory"]
     assert collaboration["schema_version"] == "agent_collaboration_trace.v1"
     assert collaboration["step_count"] == len(trace_lines)
+    assert not any(item["agent"] == "CriticAgent" for item in collaboration["agents"])
+    assert blackboard["schema_version"] == "research_blackboard.v1"
+    assert blackboard["critic"]["pre_write_passed"] is False
+    assert blackboard["company_identity"]["canonical_symbol"] == "AAPL"
+    assert set(blackboard["role_outputs"]) == {
+        "identity_profile",
+        "three_statement_analysis",
+        "peer_analysis",
+        "valuation_analysis",
+        "risk_analysis",
+    }
+    assert collaboration["research_blackboard"]["role_outputs"]["three_statement_analysis"]["status"] in {"complete", "partial"}
+    assert "role_outputs" in next(item for item in collaboration["agents"] if item["agent"] == "DeepAnalyzeAgent")["blackboard_writes"]
     assert any(item["handoff_to"] for item in collaboration["agents"])
     assert collaboration["memory"]["fact_boundary"].startswith("Memory is routing")
     assert tool_trace["schema_version"] == "tool_trace.v1"
     assert tool_trace["tool_call_count"] >= 1
     assert any(call["tool_name"] == "build_three_statement_view" for call in tool_trace["calls"])
     assert "gap_count" in repair_summary
+
+
+def test_multi_agent_orchestrator_runs_compact_collaborative_by_default(tmp_path):
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        model=FakeJsonModel(),
+    )
+
+    result = orchestrator.run(
+        research_topic="Analyze AAPL latest",
+        symbol="AAPL",
+        period="2025Q4",
+        execution_mode="collaborative",
+    )
+
+    summary = json.loads((tmp_path / "outputs" / "run_summary.json").read_text(encoding="utf-8"))
+    collaboration = json.loads((tmp_path / "outputs" / "agent_collaboration_trace.json").read_text(encoding="utf-8"))
+    blackboard = json.loads((tmp_path / "outputs" / "research_blackboard.json").read_text(encoding="utf-8"))
+    agent_names = [item["agent"] for item in collaboration["agents"]]
+
+    assert summary["execution_mode"] == "collaborative"
+    assert result["research_blackboard"].endswith("research_blackboard.json")
+    for agent_name in ["IdentityAgent", "StatementAgent", "PeerAgent", "ValuationAgent", "RiskAgent", "CriticAgent"]:
+        assert agent_name not in agent_names
+    assert len(agent_names) <= 8
+    assert set(blackboard["role_outputs"]) == {
+        "identity_profile",
+        "three_statement_analysis",
+        "peer_analysis",
+        "valuation_analysis",
+        "risk_analysis",
+    }
+    for payload in blackboard["role_outputs"].values():
+        assert payload["owner_agent"] == "DeepAnalyzeAgent"
+        assert "status" in payload
+
+
+def test_multi_agent_orchestrator_diagnostic_full_runs_role_agents(tmp_path):
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        model=FakeJsonModel(),
+    )
+
+    orchestrator.run(
+        research_topic="Analyze AAPL latest",
+        symbol="AAPL",
+        period="2025Q4",
+        execution_mode="diagnostic_full",
+    )
+
+    summary = json.loads((tmp_path / "outputs" / "run_summary.json").read_text(encoding="utf-8"))
+    collaboration = json.loads((tmp_path / "outputs" / "agent_collaboration_trace.json").read_text(encoding="utf-8"))
+    blackboard = json.loads((tmp_path / "outputs" / "research_blackboard.json").read_text(encoding="utf-8"))
+    agent_names = [item["agent"] for item in collaboration["agents"]]
+
+    assert summary["execution_mode"] == "diagnostic_full"
+    for agent_name in ["IdentityAgent", "StatementAgent", "PeerAgent", "ValuationAgent", "RiskAgent", "CriticAgent"]:
+        assert agent_name in agent_names
+    for key, owner in {
+        "identity_profile": "IdentityAgent",
+        "three_statement_analysis": "StatementAgent",
+        "peer_analysis": "PeerAgent",
+        "valuation_analysis": "ValuationAgent",
+        "risk_analysis": "RiskAgent",
+    }.items():
+        assert blackboard["role_outputs"][key]["owner_agent"] == owner
 
 
 def test_multi_agent_orchestrator_can_persist_durable_memory_without_quality_regression(tmp_path):
@@ -640,6 +873,230 @@ def test_hard_backfill_quality_sections_replaces_framework_body():
     assert "基于估值约束和竞争风险" in updated
 
 
+def test_hard_backfill_quality_sections_writes_gap_note_when_claim_missing():
+    markdown = "# Report\n\n## 风险评估\n\n暂无结论。\n"
+
+    updated = hard_backfill_quality_sections(
+        markdown,
+        claims=[],
+        quality_remediation_plan={
+            "quality_feedback_used": True,
+            "failed_sections": ["risk", "investment_conclusion"],
+            "required_fixes": ["风险和投资结论必须说明缺口及影响。"],
+        },
+    )
+
+    assert "## 风险评估" in updated
+    assert "## 投资结论" in updated
+    assert "数据缺口说明" in updated
+    assert "不虚构数值、来源或投资评级" in updated
+
+
+def test_hard_backfill_quality_sections_replaces_english_hollow_placeholder():
+    title = _section_title("valuation")
+    markdown = f"""# Report
+
+## {title}
+
+- Framework-only placeholder: to be filled after valuation inputs arrive.
+"""
+    claims = [
+        {
+            "section_name": "valuation",
+            "claim_text": "Valuation guardrail blocks target-price output until revenue, cash flow, and market inputs pass scale checks.",
+            "evidence_ids": ["ev_val"],
+        }
+    ]
+
+    updated = hard_backfill_quality_sections(markdown, claims)
+
+    assert "Framework-only placeholder" not in updated
+    assert "Valuation guardrail blocks target-price output" in updated
+    assert "ev_val" in updated
+
+
+def test_final_answer_filters_diagnostic_and_unlineaged_valuation_claims():
+    claims = [
+        {
+            "section_name": "business_overview",
+            "claim_text": "TSLA evidence coverage includes 8 records.",
+            "numeric_values": {"evidence_count": 8, "unique_sources": 3},
+            "evidence_ids": ["ev_coverage"],
+        },
+        {
+            "section_name": "valuation",
+            "claim_text": "Rule valuation model gives a blended equity value.",
+            "numeric_values": {"blended_equity_value_billion": 900.0},
+            "evidence_ids": ["ev_yahoo"],
+        },
+        {
+            "section_name": "risk_factors",
+            "claim_text": "TSLA risk factors include demand and margin pressure.",
+            "numeric_values": {},
+            "evidence_ids": ["ev_risk"],
+        },
+    ]
+
+    filtered = _filter_reportable_claims(claims, {"metric_count": 0, "metrics": []})
+
+    assert [item["section_name"] for item in filtered] == ["risk_factors"]
+
+
+def test_final_answer_overwrites_financial_sections_with_verified_lineage():
+    draft = """# Report
+
+## Financial Statements
+
+Operating cash flow was 2,156, investing cash flow was 664, and financing cash flow was -1,492.
+
+## Financial Analysis
+
+The old draft repeats stale cash-flow numbers.
+"""
+    tables = [
+        {
+            "table_id": "tbl_cash",
+            "table_type": "cash_flow_statement",
+            "rows": [
+                {"statement": "cash_flow_statement", "line_item": "operating_cash_flow", "value": 937, "unit": "USD_million", "period": "2026Q1", "evidence_id": "ev_cash"},
+                {"statement": "cash_flow_statement", "line_item": "investing_cash_flow", "value": 1444, "unit": "USD_million", "period": "2026Q1", "evidence_id": "ev_cash"},
+                {"statement": "cash_flow_statement", "line_item": "financing_cash_flow", "value": -2493, "unit": "USD_million", "period": "2026Q1", "evidence_id": "ev_cash"},
+            ],
+        },
+        {
+            "table_id": "tbl_income",
+            "table_type": "income_statement",
+            "rows": [
+                {"statement": "income_statement", "line_item": "revenue", "value": 19335, "unit": "USD_million", "period": "2026Q1", "evidence_id": "ev_income"},
+                {"statement": "income_statement", "line_item": "net_income", "value": 409, "unit": "USD_million", "period": "2026Q1", "evidence_id": "ev_income"},
+            ],
+        },
+        {
+            "table_id": "tbl_balance",
+            "table_type": "balance_sheet",
+            "rows": [
+                {"statement": "balance_sheet", "line_item": "total_assets", "value": 122070, "unit": "USD_million", "period": "2026Q1", "evidence_id": "ev_balance"},
+            ],
+        },
+    ]
+
+    updated = enforce_verified_financial_sections(normalize_report_headings(draft), claims=[], financial_metrics={}, tables=tables)
+
+    assert "2,156" not in updated
+    assert "664" not in updated
+    assert "-1,492" not in updated
+    assert "937 USD_million" in updated
+    assert "1,444 USD_million" in updated
+    assert "-2,493 USD_million" in updated
+    assert "income statement" in updated
+    assert "balance sheet" in updated
+    assert "cash flow statement" in updated
+    assert "[ev_cash]" in updated
+
+
+def test_final_answer_backfills_thin_role_sections_from_role_findings():
+    markdown = normalize_report_headings("# Report\n\n## Peer Comparison\n\nFramework only.\n")
+    blackboard = {
+        "role_outputs": {
+            "peer_analysis": {
+                "status": "complete",
+                "findings": ["可比公司口径包括 MSFT, GOOGL，同行结论按同一行业口径解释。"],
+                "evidence_ids": ["ev_peer"],
+                "missing_inputs": [],
+                "impact_on_report": "Peer comparison can summarize relative position with cited limits.",
+            }
+        }
+    }
+
+    updated = backfill_role_output_sections(markdown, blackboard)
+
+    assert "MSFT, GOOGL" in updated
+    assert "[ev_peer]" in updated
+
+
+def test_final_answer_replaces_gap_sections_with_identity_and_peer_blackboard():
+    business_title = _section_title("business_overview")
+    peer_title = _section_title("peer_compare")
+    markdown = f"""# Report
+
+## {business_title}
+
+- 数据缺口说明：Use only free public sources; memory is not evidence.
+
+## {peer_title}
+
+- 数据缺口说明：Use only free public sources; memory is not evidence.
+"""
+    blackboard = {
+        "company_identity": {
+            "company_name": "Apple Inc.",
+            "canonical_symbol": "AAPL",
+            "sector": "Technology",
+            "industry": "Consumer Electronics",
+            "business_summary": "Designs and sells consumer devices, software, and services.",
+        },
+        "role_outputs": {
+            "identity_profile": {
+                "status": "complete",
+                "findings": ["Resolved analysis target as AAPL."],
+                "evidence_ids": ["ev_sec"],
+            },
+            "peer_analysis": {
+                "status": "complete",
+                "findings": ["可比公司口径包括 MSFT, GOOGL，同行结论按同一行业口径解释。"],
+                "evidence_ids": ["ev_peer"],
+                "missing_inputs": [],
+                "impact_on_report": "Peer comparison can summarize relative position with cited limits.",
+            },
+        },
+    }
+
+    updated = backfill_role_output_sections(markdown, blackboard)
+
+    assert "Use only free public sources" not in updated
+    assert "Apple Inc." in updated
+    assert "Consumer Electronics" in updated
+    assert "MSFT, GOOGL" in updated
+    assert "[ev_sec]" in updated
+    assert "[ev_peer]" in updated
+
+
+def test_ensure_period_disclosure_adds_latest_available_data_note():
+    markdown = "# Report\n\n## 执行摘要\n\n正文。"
+
+    updated = ensure_period_disclosure(
+        markdown,
+        "2026Q1",
+        evidence_records=[{"period": "2025Q4", "evidence_id": "ev1"}],
+    )
+
+    assert "## 数据期间说明" in updated
+    assert "目标报告期：2026Q1" in updated
+    assert "最新可得披露数据期：2025Q4" in updated
+    assert "存在数据期与目标期不一致" in updated
+
+
+def test_claim_backfill_hides_debug_metadata_from_markdown():
+    markdown = _claims_to_markdown_bullets(
+        [
+            {
+                "section_name": "peer_compare",
+                "claim_text": "同行对比框架待补，缺少可量化同行指标。",
+                "evidence_ids": ["ev_peer"],
+                "confidence": 0.32,
+            }
+        ],
+        section="peer_compare",
+    )
+
+    assert "证据ID" not in markdown
+    assert "置信度" not in markdown
+    assert "暂无" not in markdown
+    assert "框架" not in markdown
+    assert "不可用" not in markdown
+    assert "[ev_peer]" in markdown
+    assert "数据缺口说明" in markdown
+
 
 def test_final_answer_consumes_gap_repair_constraints():
     model = QualityRemediationFakeModel()
@@ -836,7 +1293,22 @@ def test_deep_analyze_generates_company_depth_sections():
     sections = {claim["section_name"] for claim in result.output["claims"]}
     assert "ownership_governance" in sections
     assert "strategy_business" in sections
-    assert "valuation_sensitivity" in sections
+    assert "valuation" in sections
+
+
+def test_compact_records_tolerates_unstructured_items():
+    compacted = compact_records(
+        [
+            {"evidence_id": "ev1", "content": "structured"},
+            "raw text evidence",
+            None,
+        ],
+        content_limit=20,
+    )
+
+    assert len(compacted) == 2
+    assert compacted[1]["source_type"] == "unstructured"
+    assert compacted[1]["content"] == "raw text evidence"
 
 
 def test_prepare_dynamic_tasks_orders_evidence_flow_even_when_planner_outputs_tasks_out_of_order():
@@ -1099,6 +1571,178 @@ def test_verifier_agent_emits_structured_evidence_gaps():
     assert gaps
     assert gaps[0]["gap_type"] == "missing_primary_evidence"
     assert gaps[0]["blocking"] is True
+
+
+def test_verifier_agent_blocks_cross_symbol_report_body():
+    verifier = VerifierAgent()
+    claim = ClaimItem(
+        claim_id="cl_amd",
+        section_name="financial_analysis",
+        claim_text="AMD revenue was 10.25B.",
+        evidence_ids=["ev_amd"],
+        numeric_values={"revenue_billion": 10.25},
+        confidence=0.86,
+    )
+
+    result = verifier.execute_task(
+        AgentTask(
+            task_id="task_verify_symbol_mix",
+            task_type="verifier",
+            description="Verify symbol isolation",
+            parameters={
+                "claims": [claim.to_dict()],
+                "markdown": (
+                    "# Report\n\n"
+                    "## Executive Summary\n\nApple Inc. report summary discusses AAPL. [ev_amd]\n\n"
+                    "## Financial Analysis\n\nAMD revenue was 10.25B. [ev_amd]\n\n"
+                    "## Risk Assessment\n\nAMD risk section. [ev_amd]\n"
+                ),
+                "evidence_records": [
+                    {
+                        "evidence_id": "ev_amd",
+                        "symbol": "AMD",
+                        "source_type": "sec_filing",
+                        "source_url": "https://www.sec.gov/example",
+                        "content": "AMD revenue was 10.25B.",
+                    }
+                ],
+                "expected_symbol": "AMD",
+            },
+        )
+    )
+
+    report = result.output["verification_report"]
+    assert report["passed"] is False
+    assert any("expected AMD" in item and "AAPL" in item for item in report["errors"])
+
+
+def test_rule_verifier_blocks_cross_symbol_leak_after_intro():
+    verifier = Verifier()
+    claim = ClaimItem(
+        claim_id="cl_amd",
+        section_name="financial_analysis",
+        claim_text="AMD revenue was 10.25B.",
+        evidence_ids=["ev_amd"],
+        numeric_values={"revenue_billion": 10.25},
+        confidence=0.86,
+    )
+    markdown = (
+        "# Report\n\n"
+        "## Executive Summary\n\nAMD summary. [ev_amd]\n\n"
+        + ("x" * 1300)
+        + "\nApple Inc. and AAPL leaked into a non-peer section.\n\n"
+        "## Financial Analysis\n\nAMD revenue was 10.25B. [ev_amd]\n\n"
+        "## Risk Assessment\n\nAMD risk section. [ev_amd]\n"
+    )
+
+    report = verifier.verify(
+        claims=[claim],
+        markdown=markdown,
+        evidence_records=[
+            {
+                "evidence_id": "ev_amd",
+                "symbol": "AMD",
+                "source_type": "sec_filing",
+                "source_url": "https://www.sec.gov/example",
+                "content": "AMD revenue was 10.25B.",
+            }
+        ],
+        expected_symbol="AMD",
+    )
+
+    assert report["passed"] is False
+    assert any("expected AMD" in item and "AAPL" in item for item in report["errors"])
+
+
+def test_verifier_agent_downgrades_llm_valuation_artifact_objection():
+    class ValuationObjectionModel:
+        model_name = "fake-valuation-objection"
+
+        def generate_json(self, prompt, system_prompt=None, **kwargs):
+            return {
+                "passed": False,
+                "errors": [
+                    "\u4f30\u503c\u6570\u5b57\u7efc\u5408\u80a1\u6743\u4ef7\u503c2252.1B\u7f3a\u4e4f\u8bc1\u636e\u652f\u6301"
+                ],
+                "warnings": [""],
+                "fix_recommendations": [],
+            }
+
+    verifier = VerifierAgent(model=ValuationObjectionModel())
+    valuation = {
+        "valuation_available": True,
+        "blended_equity_value_billion": 100.0,
+        "relative_valuation": {
+            "multiples": {
+                "pe": {"denominator_value": 5.0, "multiple": 10.0, "equity_value_billion": 50.0},
+                "ps": {"denominator_value": 20.0, "multiple": 5.0, "equity_value_billion": 100.0},
+            }
+        },
+        "dcf_model": {
+            "assumptions": {
+                "discount_rate": 0.1,
+                "terminal_growth": 0.02,
+                "net_debt_billion": 0.0,
+                "base_free_cash_flow_billion": 5.0,
+            },
+            "forecast": [{"present_value_billion": 10.0}],
+            "pv_terminal_value_billion": 90.0,
+            "enterprise_value_billion": 100.0,
+            "equity_value_billion": 100.0,
+        },
+        "valuation_sensitivity": {
+            "scenario_values": {
+                "bear": {"equity_value_billion": 80.0},
+                "base": {"equity_value_billion": 100.0},
+                "bull": {"equity_value_billion": 120.0},
+            }
+        },
+    }
+    claim = ClaimItem(
+        claim_id="cl_valuation",
+        section_name="valuation",
+        claim_text="AAPL valuation model estimates blended equity value from audited artifacts. [ev_sec]",
+        evidence_ids=["ev_sec"],
+        numeric_values={"blended_equity_value_billion": 100.0},
+        confidence=0.86,
+        notes="Derived valuation model output.",
+    )
+
+    result = verifier.execute_task(
+        AgentTask(
+            task_id="task_verify_valuation_override",
+            task_type="verifier",
+            description="Verify valuation override",
+            parameters={
+                "claims": [claim.to_dict()],
+                "markdown": (
+                    "# Report\n\n"
+                    "## Executive Summary\n\nAAPL valuation summary. [ev_sec]\n\n"
+                    "## Financial Analysis\n\nFinancial context is cited. [ev_sec]\n\n"
+                    "## Valuation\n\nAAPL valuation model estimates blended equity value. [ev_sec]\n\n"
+                    "## Risk Assessment\n\nValuation risk is model sensitivity. [ev_sec]\n"
+                ),
+                "evidence_records": [
+                    {
+                        "evidence_id": "ev_sec",
+                        "symbol": "AAPL",
+                        "source_type": "sec_filing",
+                        "source_url": "https://www.sec.gov/example",
+                        "content": "SEC evidence for AAPL filings and valuation inputs.",
+                    }
+                ],
+                "valuation": valuation,
+                "expected_symbol": "AAPL",
+            },
+        )
+    )
+
+    report = result.output["verification_report"]
+    assert report["passed"] is True
+    assert report["llm_override_passed"] is True
+    assert report["llm_passed"] is True
+    assert report["llm_errors"] == []
+    assert any("downgraded" in item for item in report["llm_warnings"])
 
 
 def test_browser_pdf_reader_extracts_text_and_table(monkeypatch, tmp_path):

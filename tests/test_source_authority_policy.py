@@ -100,6 +100,43 @@ def test_verifier_blocks_core_financial_claim_without_primary_evidence():
     assert any("no primary evidence source" in error for error in result["errors"])
 
 
+def test_verifier_warns_for_period_matched_structured_financial_fallback():
+    claim = ClaimItem(
+        claim_id="cl_revenue",
+        section_name="financial_statements",
+        claim_text="NVDA 2026Q1 revenue was 81.615B. [yahoo_quarter]",
+        evidence_ids=["yahoo_quarter"],
+        numeric_values={"revenue": 81615000000.0},
+        confidence=0.8,
+        metric_lineage_ids=["lineage_revenue"],
+    )
+    evidence = [
+        {
+            "evidence_id": "yahoo_quarter",
+            "source_type": "market_api",
+            "source_url": "https://finance.yahoo.com/quote/NVDA/financials",
+            "content": "Latest income: revenue=81615000000, netIncome=58321000000",
+            "metadata": {
+                "financials": {
+                    "quarterly_income_history": [
+                        {"end_date": "2026-04-30", "Total Revenue": 81615000000.0, "Net Income": 58321000000.0}
+                    ]
+                }
+            },
+        }
+    ]
+
+    result = Verifier().verify(
+        claims=[claim],
+        markdown="# Executive Summary\n\n## Financial Analysis\n\n## Financial Statements\n\nNVDA 2026Q1 revenue was 81.615B. [yahoo_quarter]\n\n## Risk Assessment\n",
+        evidence_records=evidence,
+    )
+
+    assert result["passed"] is True
+    assert not result["errors"]
+    assert any("structured financial data as a fallback" in warning for warning in result["warnings"])
+
+
 def test_verifier_accepts_core_financial_claim_with_primary_evidence():
     claim = ClaimItem(
         claim_id="cl_revenue",

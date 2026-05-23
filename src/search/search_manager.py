@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import json
+from logging import getLogger
+import re
 import socket
 from pathlib import Path
 from typing import Any, Callable, Dict, List
@@ -16,6 +18,8 @@ from src.data.company_universe import resolve_company_identifier, resolve_symbol
 from src.data.independent_sources import fetch_macro_evidence, fetch_sec_companyfacts_evidence
 from src.data.source_quality import apply_source_quality
 from src.data.yahoo_finance import yahoo_financials_to_evidence, yahoo_snapshot_to_evidence
+
+logger = getLogger(__name__)
 from src.retrieval.chunking import chunk_records
 from src.retrieval.retrieve import retrieve_evidence_with_mode
 from src.utils.config import load_config
@@ -83,6 +87,7 @@ class SearchManager:
         manager.register_engine("cninfo_announcements", cninfo_announcement_search)
         manager.register_engine("exchange_announcements", exchange_announcement_search)
         manager.register_engine("eastmoney_financials", eastmoney_financials_search)
+        manager.register_engine("hkex_announcements", hkex_announcement_search)
         manager.register_engine("serper", serper_search)
         manager.register_engine("tavily", tavily_search)
         manager.register_engine("metaso", metaso_search)
@@ -291,6 +296,51 @@ def tavily_search(
             "result_count": len(hits),
         },
     }
+
+
+def hkex_announcement_search(
+    query: str,
+    topk: int = 5,
+    data_source_config_path: str = "configs/data_sources.yaml",
+    symbol: str | None = None,
+    period: str | None = None,
+    raw_data_root: str = "data/raw/real_data",
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Best-effort free HKEX disclosure search via configured public search."""
+
+    hk_query = f"site:hkexnews.hk {symbol or ''} {period or ''} annual report announcement {query}".strip()
+    payload = tavily_search(
+        query=hk_query,
+        topk=topk,
+        data_source_config_path=data_source_config_path,
+        symbol=symbol,
+        period=period,
+        raw_data_root=raw_data_root,
+        **kwargs,
+    )
+    hits = []
+    rejected_identity_count = 0
+    for item in payload.get("hits", []) if isinstance(payload, dict) else []:
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        row["source_type"] = "hkex_announcement"
+        row["trust_level"] = "high"
+        row.setdefault("metadata", {})
+        if isinstance(row["metadata"], dict):
+            row["metadata"]["engine"] = "hkex_announcements"
+        if not _record_matches_requested_company(row, symbol=symbol, raw_data_root=raw_data_root):
+            rejected_identity_count += 1
+            continue
+        hits.append(apply_source_quality(row))
+    meta = dict(payload.get("meta", {})) if isinstance(payload, dict) else {}
+    original_mode = meta.get("mode", "tavily")
+    meta["mode"] = "hkex_announcements"
+    meta["via"] = original_mode
+    meta["result_count"] = len(hits)
+    meta["identity_rejected_count"] = rejected_identity_count
+    return {"hits": hits[:topk], "meta": meta}
 
 
 def serper_search(
@@ -541,8 +591,10 @@ def yahoo_finance_search(
         financials = yahoo_financials_to_evidence(symbol=resolved_symbol, period=period or "")
         if financials:
             hits.append(financials)
-    except Exception:
-        pass
+        else:
+            logger.warning("yahoo_financials_to_evidence returned None for %s", resolved_symbol)
+    except Exception as exc:
+        logger.warning("yahoo_financials_to_evidence failed for %s: %s", resolved_symbol, exc)
     return {
         "hits": hits[:topk],
         "meta": {
@@ -678,7 +730,7 @@ def cninfo_announcement_search(
     org_id = _cninfo_org_id(code=code, config=cninfo_cfg, timeout=timeout)
     column = "sse" if _is_sh_symbol(resolved_symbol or code) else "szse"
     start_date, end_date = _announcement_date_range(period)
-    categories = ";".join(str(item) for item in cninfo_cfg.get("categories", []) if str(item).strip()) or "category_ndbg_szsh;category_bndbg_szsh;category_yjdbg_szsh;category_sjdbg_szsh"
+    categories = ";".join(_cninfo_categories_for_period(period, cninfo_cfg))
     form = {
         "stock": f"{code},{org_id}" if org_id else code,
         "searchkey": "",
@@ -738,7 +790,7 @@ def cninfo_announcement_search(
                 "metadata": {"provider": "CNINFO", "sec_code": sec_code, "sec_name": sec_name, "raw": item},
             }
         )
-    hits = [apply_source_quality(hit) for hit in hits]
+    hits = _filter_period_announcement_hits([apply_source_quality(hit) for hit in hits], period)
     return {
         "hits": hits[:topk],
         "meta": {
@@ -857,7 +909,7 @@ def eastmoney_financials_search(
                 "source_url": f"https://data.eastmoney.com/bbsj/{code}.html",
                 "publish_time": str(row.get("NOTICE_DATE") or row.get("REPORT_DATE") or ""),
                 "trust_level": "high",
-                "score": 6.8,
+                "score": 8.6,
                 "metadata": {"provider": "Eastmoney", "table_type": table_type, "report_name": report_name, "raw": row},
             }
         )
@@ -997,6 +1049,67 @@ def _announcement_date_range(period: str | None) -> tuple[str, str]:
     return f"{year}-01-01", f"{next_year}-12-31"
 
 
+def _cninfo_categories_for_period(period: str | None, config: Dict[str, Any]) -> List[str]:
+    text = str(period or "").strip().upper()
+    if "Q4" in text or "FY" in text or "ANNUAL" in text:
+        return ["category_ndbg_szsh"]
+    configured = [str(item) for item in config.get("categories", []) if str(item).strip()]
+    return configured or ["category_ndbg_szsh", "category_bndbg_szsh", "category_yjdbg_szsh", "category_sjdbg_szsh"]
+
+
+def _filter_period_announcement_hits(hits: List[Dict[str, Any]], period: str | None) -> List[Dict[str, Any]]:
+    text = str(period or "").strip().upper()
+    if not hits or not ("Q4" in text or "FY" in text or "ANNUAL" in text):
+        return hits
+    annual_terms = ("年度报告", "年报")
+    exclude_terms = ("第一季度", "半年度", "第三季度", "一季度", "半年报", "三季度")
+    filtered = [
+        hit
+        for hit in hits
+        if any(term in str(hit.get("title") or "") for term in annual_terms)
+        and not any(term in str(hit.get("title") or "") for term in exclude_terms)
+    ]
+    return filtered or hits
+
+
+def _record_matches_requested_company(record: Dict[str, Any], symbol: str | None, raw_data_root: str = "data/raw/real_data") -> bool:
+    requested = str(symbol or record.get("symbol") or "").strip()
+    if not requested:
+        return True
+    profile = resolve_company_identifier(requested, raw_data_root=raw_data_root) or {}
+    terms = _company_identity_terms(requested, str(profile.get("company_name") or ""))
+    if not terms:
+        return True
+    text = " ".join(
+        [
+            str(record.get("title") or ""),
+            str(record.get("content") or ""),
+            str(record.get("source_url") or ""),
+        ]
+    ).lower()
+    return any(term in text for term in terms)
+
+
+def _company_identity_terms(symbol: str, company_name: str) -> List[str]:
+    terms: List[str] = []
+    symbol_text = str(symbol or "").strip().lower()
+    if symbol_text:
+        terms.append(symbol_text)
+        if "." in symbol_text:
+            terms.append(symbol_text.split(".", 1)[0].lstrip("0") or symbol_text.split(".", 1)[0])
+    name = str(company_name or "").strip().lower()
+    if name:
+        terms.append(name)
+        simplified = re.sub(r"\b(holdings|holding|limited|ltd|inc|corp|corporation|company|co)\b\.?", "", name, flags=re.I)
+        simplified = " ".join(simplified.split())
+        if len(simplified) >= 4:
+            terms.append(simplified)
+        for token in re.split(r"[^a-z0-9]+", name):
+            if len(token) >= 5:
+                terms.append(token)
+    return list(dict.fromkeys(term for term in terms if len(term) >= 3))
+
+
 def _target_report_date(period: str | None) -> str:
     text = str(period or "").strip().upper()
     year = text[:4] if len(text) >= 4 and text[:4].isdigit() else ""
@@ -1102,7 +1215,7 @@ def _sse_announcement_search(code: str, period: str, topk: int, query: str, conf
                 "metadata": {"provider": "SSE", "raw": row},
             }
         )
-    hits = [apply_source_quality(hit) for hit in hits]
+    hits = _filter_period_announcement_hits([apply_source_quality(hit) for hit in hits], period)
     return {"hits": hits[:topk], "meta": {"mode": "exchange_announcements", "exchange": "sse", "symbol": code, "record_count": len(hits), "failure_reason": "" if hits else "no_announcements", "query": query}}
 
 
@@ -1151,7 +1264,7 @@ def _szse_announcement_search(code: str, period: str, topk: int, query: str, con
                 "metadata": {"provider": "SZSE", "raw": row},
             }
         )
-    hits = [apply_source_quality(hit) for hit in hits]
+    hits = _filter_period_announcement_hits([apply_source_quality(hit) for hit in hits], period)
     return {"hits": hits[:topk], "meta": {"mode": "exchange_announcements", "exchange": "szse", "symbol": code, "record_count": len(hits), "failure_reason": "" if hits else "no_announcements", "query": query}}
 
 

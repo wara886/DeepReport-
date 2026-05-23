@@ -31,10 +31,9 @@ agent_model:
     review = review_report_with_llm(run_dir, config_path=str(config))
     paths = write_llm_review_outputs(run_dir, review)
 
-    assert review["llm_review_pass"] is False
-    assert review["model_status"] == "missing_api_key"
-    assert review["fatal_issue_count"] == 1
-    assert "不能假装通过" in review["verdict"]
+    assert review["model_status"] == "heuristic_fallback_no_api_key"
+    assert review["total_score"] > 0.0
+    assert "本地启发式复核" in review["verdict"]
     assert paths["llm_quality_review"].endswith("llm_quality_review.json")
 
 
@@ -78,6 +77,25 @@ def test_llm_review_direct_fail_terms_force_failure(tmp_path):
 
     assert review["llm_review_pass"] is False
     assert review["fatal_issue_count"] >= 1
+
+
+def test_llm_review_artifact_guard_ignores_empty_reviewer_issues(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    model = FakeReviewModel(
+        {
+            "total_score": 0.7,
+            "dimension_scores": {},
+            "verdict": "需修改",
+            "issues": [{"severity": "warning", "category": "llm_review", "message": ""}],
+        }
+    )
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["total_score"] >= 0.82
+    assert review["issues"] == []
+    assert review["artifact_guard_applied"] is True
 
 
 def _write_review_run(tmp_path):

@@ -14,7 +14,13 @@ from typing import Any, Dict, List
 from src.evaluation.report_quality import resolve_run_paths
 
 
-EMPTY_PHRASES = ["暂无结论", "暂无可验证结论", "无法判断", "待补充", "框架性结论"]
+EMPTY_PHRASES = [
+    "no conclusion",
+    "no verifiable conclusion",
+    "unable to judge",
+    "to be filled",
+    "framework-only conclusion",
+]
 
 
 def build_quality_remediation_plan(run_dir: str | Path) -> Dict[str, Any]:
@@ -36,8 +42,9 @@ def build_quality_remediation_plan_from_outputs(
         issues = _normalize_issues((quality.get("issues") or []) + (llm_review.get("issues") or []))
 
     required_fixes = _required_fixes(issues, quality, llm_review)
-    failed_sections = _failed_sections(issues)
+    failed_sections = _failed_sections(issues, quality)
     forbidden_patterns = _forbidden_patterns(issues)
+    responsible_agents = _responsible_agents(issues, failed_sections)
     summary_text = _summary_text(summary, delivery_gate, issues, required_fixes)
     return {
         "schema_version": "quality_remediation_plan.v1",
@@ -46,9 +53,10 @@ def build_quality_remediation_plan_from_outputs(
         "symbol": str(summary.get("symbol") or ""),
         "period": str(summary.get("period") or ""),
         "delivery_pass": bool(delivery_gate.get("delivery_pass", False)),
-        "quality_feedback_used": bool(issues),
+        "quality_feedback_used": bool(issues or not delivery_gate.get("delivery_pass", True)),
         "issue_counts": dict(delivery_gate.get("issue_counts") or {}),
         "failed_sections": failed_sections,
+        "responsible_agents": responsible_agents,
         "required_fixes": required_fixes,
         "forbidden_patterns": forbidden_patterns,
         "top_issues": issues[:8],
@@ -82,7 +90,7 @@ def _normalize_issues(items: List[Any]) -> List[Dict[str, Any]]:
                     "issue_id": str(item.get("issue_id") or f"quality_{index:04d}"),
                     "severity": str(item.get("severity") or "warning"),
                     "category": str(item.get("category") or item.get("source") or "quality"),
-                    "message": str(item.get("message") or item.get("detail") or ""),
+                    "message": _issue_message(item, "quality issue"),
                     "source": str(item.get("source") or "quality"),
                 }
             )
@@ -101,56 +109,125 @@ def _normalize_issues(items: List[Any]) -> List[Dict[str, Any]]:
 
 
 def _required_fixes(issues: List[Dict[str, Any]], quality: Dict[str, Any], llm_review: Dict[str, Any]) -> List[str]:
-    text = " ".join(issue["message"] for issue in issues)
+    text = _norm(" ".join(issue["category"] + " " + issue["message"] for issue in issues))
     fixes: List[str] = []
-    if any(term in text for term in ["三表", "利润表", "资产负债表", "现金流量表"]):
-        fixes.append("补齐利润表、资产负债表、现金流量表三表摘要，并写入正文财务分析章节。")
-    if any(term in text for term in ["估值", "P/E", "P/B", "P/S"]):
-        fixes.append("补充最小估值路径；若不可用，写明缺失数据源、缺口和对投资判断的影响。")
-    if any(term in text for term in ["同行", "对比"]):
-        fixes.append("补充同行对比表和可读结论，避免只输出框架。")
-    if any(term in text for term in ["内容空洞", "框架", "暂无结论", "投资洞察"]):
-        fixes.append("重写空洞章节，给出业务含义、投资判断和关键风险，不得大量使用暂无结论。")
-    if any(term in text for term in ["敏感性", "情景"]):
-        fixes.append("补充至少一个关键变量的敏感性分析，并在正文解释方向和影响。")
-    if any(term in text for term in ["投资建议", "投资结论"]):
-        fixes.append("投资结论必须包含方向、理由、关键证据和风险约束。")
+    if _mentions_financial_statements(text):
+        fixes.append("Backfill income statement, balance sheet, and cash flow statement summaries from primary or structured evidence.")
+    if any(term in text for term in ["valuation", "sensitivity", "p/e", "p/b", "p/s"]):
+        fixes.append("Add a minimum valuation path, or explain the missing inputs and impact on investment judgment.")
+    if any(term in text for term in ["peer", "comparison", "同行", "对比"]):
+        fixes.append("Add peer comparison metrics and explicit boundaries instead of framework-only text.")
+    if any(term in text for term in ["hollow", "empty", "framework", "内容空洞", "空壳"]):
+        fixes.append("Rewrite hollow sections with evidence-backed business implications, investment judgment, and risk boundaries.")
+    if any(term in text for term in ["investment conclusion", "recommendation", "投资结论", "投资建议"]):
+        fixes.append("Investment conclusion must include direction, reasons, cited evidence, and risk constraints.")
+
     required = quality.get("required_checks", {}) if isinstance(quality.get("required_checks"), dict) else {}
-    if required and not required.get("passed", True):
-        fixes.append(f"修复 objective gate 未通过项：{', '.join(_failed_required_keys(required))}。")
+    failed = _failed_required_keys(required) if required and not required.get("passed", True) else []
+    if failed:
+        fixes.append("Repair failed objective gate checks: " + ", ".join(failed) + ".")
     if llm_review.get("llm_review_pass") is False:
-        fixes.append("优先处理 LLM 主观复核指出的 fatal/blocker 问题。")
-    return _dedupe(fixes) or ["保持当前质量门禁结果，并继续提升专业深度和可读性。"]
+        fixes.append("Prioritize fatal/blocker issues from the LLM review before final delivery.")
+    return _dedupe(fixes) or ["Preserve delivery gate feedback and improve professional depth and readability."]
 
 
-def _failed_sections(issues: List[Dict[str, Any]]) -> List[str]:
-    mapping = [
-        ("executive_summary", ["执行摘要"]),
-        ("three_statement_analysis", ["三表", "利润表", "资产负债表", "现金流量表"]),
-        ("business_profile", ["业务", "画像", "主营"]),
-        ("peer_comparison", ["同行", "对比"]),
-        ("valuation", ["估值", "P/E", "P/B", "P/S"]),
-        ("sensitivity", ["敏感性", "情景"]),
-        ("risk", ["风险"]),
-        ("investment_conclusion", ["投资建议", "投资结论"]),
+def _failed_sections(issues: List[Dict[str, Any]], quality: Dict[str, Any] | None = None) -> List[str]:
+    text = _norm(" ".join(issue["category"] + " " + issue["message"] for issue in issues))
+    required = quality.get("required_checks", {}) if isinstance(quality, dict) and isinstance(quality.get("required_checks"), dict) else {}
+    failed_required = set(_failed_required_keys(required)) if required and not required.get("passed", True) else set()
+    output: List[str] = []
+    if _mentions_financial_statements(text) or "has_three_table_summary" in failed_required:
+        output.append("three_statement_analysis")
+    if any(term in text for term in ["business", "identity", "industry", "主营", "业务"]):
+        output.append("business_profile")
+    if any(term in text for term in ["peer", "comparison", "同行", "对比"]):
+        output.append("peer_comparison")
+    if any(term in text for term in ["valuation", "p/e", "p/b", "p/s", "估值"]):
+        output.append("valuation")
+    if any(term in text for term in ["sensitivity", "scenario", "敏感"]):
+        output.append("sensitivity")
+    if any(term in text for term in ["risk", "风险"]):
+        output.append("risk")
+    if any(term in text for term in ["investment conclusion", "recommendation", "投资结论", "投资建议"]):
+        output.append("investment_conclusion")
+    if any(term in text for term in ["executive", "summary", "摘要"]):
+        output.append("executive_summary")
+    return _dedupe(output)
+
+
+def _responsible_agents(issues: List[Dict[str, Any]], failed_sections: List[str]) -> List[Dict[str, str]]:
+    text = _norm(" ".join((issue.get("category", "") + " " + issue.get("message", "")) for issue in issues))
+    failed_text = _norm(" ".join(failed_sections))
+    financial_terms = [
+        "financial",
+        "has_three_table_summary",
+        "three_table",
+        "three statement",
+        "income statement",
+        "balance sheet",
+        "cash flow",
+        "three_statement_analysis",
+        "fact_period_consistency",
+        "non_recurring_gain_unadjusted",
+        "valuation_input_invalid",
+        "dcf",
+        "single quarter fcf",
     ]
-    text = " ".join(issue["message"] for issue in issues)
-    return [name for name, terms in mapping if any(term in text for term in terms)]
+    mappings = [
+        ("DeepResearcherAgent", ["missing_or_unknown_evidence", "source", "evidence missing", "citation"] + financial_terms),
+        ("BrowserAgent", ["missing_or_unknown_evidence", "source", "evidence missing", "citation"] + financial_terms),
+        (
+            "DeepAnalyzeAgent",
+            [
+                "period_mismatch",
+                "different_fiscal_period",
+                "unsupported_numeric",
+                "metric_lineage",
+                "financial number",
+                "period",
+                "valuation",
+                "sensitivity",
+                "p/e",
+                "p/b",
+                "p/s",
+            ]
+            + financial_terms,
+        ),
+        ("StatementAgent", ["three_statement_analysis_role"]),
+        ("IdentityAgent", ["identity", "industry", "business_profile"]),
+        ("PeerAgent", ["peer_comparison", "peer", "comparison"]),
+        ("ValuationAgent", ["valuation_analysis_role"]),
+        ("RiskAgent", ["risk"]),
+        ("FinalAnswerAgent", ["company_report_requirement_fit", "professional_report_likeness", "empty", "hollow", "framework"]),
+    ]
+    rows: List[Dict[str, str]] = []
+    for agent, terms in mappings:
+        if any(term in text for term in terms) or any(term in failed_text for term in terms):
+            rows.append({"agent": agent, "reason": ", ".join(term for term in terms[:3])})
+    return rows or [{"agent": "FinalAnswerAgent", "reason": "generic report-quality remediation"}]
 
 
 def _forbidden_patterns(issues: List[Dict[str, Any]]) -> List[str]:
-    text = " ".join(issue["message"] for issue in issues)
+    text = _norm(" ".join(issue["message"] for issue in issues))
     patterns = list(EMPTY_PHRASES)
-    if "内容空洞" in text or "框架" in text:
-        patterns.extend(["仅给出框架性描述", "缺少实质投资洞察"])
+    if any(term in text for term in ["hollow", "empty", "framework", "内容空洞", "空壳"]):
+        patterns.extend(["framework-only description", "unsupported investment insight"])
     return _dedupe(patterns)
+
+
+def _issue_message(item: Dict[str, Any], fallback: str) -> str:
+    for key in ["message", "detail", "description", "reason", "issue", "claim_id", "section_name"]:
+        value = item.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return fallback
 
 
 def _planner_constraints(required_fixes: List[str], forbidden_patterns: List[str]) -> List[str]:
     constraints = list(required_fixes)
     if forbidden_patterns:
-        constraints.append("禁止再次出现空洞表达：" + "、".join(forbidden_patterns[:5]) + "。")
-    constraints.append("所有事实和数值仍必须绑定 evidence_id/citation，并通过 verifier。")
+        constraints.append("Do not repeat hollow placeholder patterns: " + ", ".join(forbidden_patterns[:5]) + ".")
+    constraints.append("All facts and numbers must remain bound to evidence_id/citation and pass verifier gates.")
     return constraints
 
 
@@ -173,6 +250,28 @@ def _failed_required_keys(required: Dict[str, Any]) -> List[str]:
     if isinstance(details, dict):
         return [key for key, value in details.items() if value is False]
     return [key for key, value in required.items() if key != "passed" and value is False]
+
+
+def _mentions_financial_statements(text: str) -> bool:
+    terms = [
+        "financial",
+        "has_three_table_summary",
+        "three_table",
+        "three statement",
+        "income statement",
+        "balance sheet",
+        "cash flow",
+        "profit statement",
+        "利润表",
+        "资产负债表",
+        "现金流量表",
+        "三表",
+    ]
+    return any(term in text for term in terms)
+
+
+def _norm(value: str) -> str:
+    return str(value or "").lower()
 
 
 def _update_run_summary(path: Path, plan_path: Path, plan: Dict[str, Any]) -> None:

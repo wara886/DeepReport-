@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 import hashlib
 import json
 import os
@@ -41,6 +41,10 @@ DEFAULT_COMPANY_FACTS = [
     "NetIncomeLoss",
     "Assets",
     "CashAndCashEquivalentsAtCarryingValue",
+    "NetCashProvidedByUsedInOperatingActivities",
+    "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
+    "PaymentsToAcquirePropertyPlantAndEquipment",
+    "PaymentsToAcquireProductiveAssets",
 ]
 
 
@@ -336,7 +340,7 @@ def fetch_sec_companyfacts_evidence(
         )
 
     facts = payload.get("facts", {}).get("us-gaap", {})
-    metrics = _latest_sec_metrics(facts=facts)
+    metrics = _latest_sec_metrics(facts=facts, period=period)
     if not metrics:
         return SourcePayload(hits=[], meta={"mode": "sec_companyfacts", "symbol": symbol, "cik": cik, "record_count": 0, "failure_reason": "no_supported_facts"})
     latest_dates = [str(item.get("filed") or item.get("end") or "") for item in metrics.values() if isinstance(item, dict)]
@@ -356,7 +360,7 @@ def fetch_sec_companyfacts_evidence(
     return SourcePayload(hits=[hit], meta={"mode": "sec_companyfacts", "symbol": symbol, "cik": cik, "record_count": 1, "failure_reason": ""})
 
 
-def _latest_sec_metrics(facts: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+def _latest_sec_metrics(facts: Dict[str, Any], period: str = "") -> Dict[str, Dict[str, Any]]:
     output: Dict[str, Dict[str, Any]] = {}
     for metric in DEFAULT_COMPANY_FACTS:
         item = facts.get(metric)
@@ -375,8 +379,7 @@ def _latest_sec_metrics(facts: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
                         rows.append(row)
         if not rows:
             continue
-        rows.sort(key=lambda row: str(row.get("filed") or row.get("end") or ""), reverse=True)
-        latest = rows[0]
+        latest = _select_sec_metric_row(rows, period=period)
         output[metric] = {
             "value": latest.get("val"),
             "unit": latest.get("unit", ""),
@@ -385,7 +388,78 @@ def _latest_sec_metrics(facts: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             "form": latest.get("form", ""),
             "frame": latest.get("frame", ""),
         }
+    output = _drop_stale_duplicate_revenue_metric(output)
     return output
+
+
+def _drop_stale_duplicate_revenue_metric(metrics: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    legacy = metrics.get("Revenues")
+    contract = metrics.get("RevenueFromContractWithCustomerExcludingAssessedTax")
+    if not legacy or not contract:
+        return metrics
+    legacy_end = _parse_iso_date(legacy.get("end"))
+    contract_end = _parse_iso_date(contract.get("end"))
+    if legacy_end and contract_end and (contract_end - legacy_end).days > 370:
+        metrics = dict(metrics)
+        metrics.pop("Revenues", None)
+    elif legacy_end and contract_end and (legacy_end - contract_end).days > 370:
+        metrics = dict(metrics)
+        metrics.pop("RevenueFromContractWithCustomerExcludingAssessedTax", None)
+    return metrics
+
+
+def _select_sec_metric_row(rows: List[Dict[str, Any]], period: str = "") -> Dict[str, Any]:
+    target = _period_target_date(period)
+    if not target:
+        rows.sort(key=lambda row: str(row.get("filed") or row.get("end") or ""), reverse=True)
+        return rows[0]
+
+    upper_bound = target + timedelta(days=10)
+    usable = []
+    for row in rows:
+        end_date = _parse_iso_date(row.get("end"))
+        if not end_date or end_date > upper_bound:
+            continue
+        usable.append((row, end_date))
+    if not usable:
+        rows.sort(key=lambda row: str(row.get("filed") or row.get("end") or ""), reverse=True)
+        return rows[0]
+
+    prefer_annual = "Q4" in str(period or "").upper()
+    usable.sort(
+        key=lambda pair: (
+            abs((pair[1] - target).days),
+            0 if (prefer_annual and str(pair[0].get("form") or "").upper() == "10-K") else 1,
+            str(pair[0].get("filed") or ""),
+        )
+    )
+    return usable[0][0]
+
+
+def _period_target_date(period: str | None) -> date | None:
+    text = str(period or "").strip().upper()
+    if len(text) < 6 or not text[:4].isdigit():
+        return None
+    year = int(text[:4])
+    if "Q1" in text:
+        return date(year, 3, 31)
+    if "Q2" in text:
+        return date(year, 6, 30)
+    if "Q3" in text:
+        return date(year, 9, 30)
+    if "Q4" in text or "FY" in text or "ANNUAL" in text:
+        return date(year, 12, 31)
+    return None
+
+
+def _parse_iso_date(raw: Any) -> date | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
 
 
 def _record(

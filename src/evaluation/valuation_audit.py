@@ -21,6 +21,7 @@ def audit_valuation_model(valuation: Dict[str, Any]) -> Dict[str, Any]:
     _audit_relative(relative if isinstance(relative, dict) else {}, errors)
     _audit_dcf(dcf if isinstance(dcf, dict) else {}, errors, warnings)
     _audit_sensitivity(sensitivity if isinstance(sensitivity, dict) else {}, errors)
+    _audit_scale_guardrails(valuation, relative if isinstance(relative, dict) else {}, dcf if isinstance(dcf, dict) else {}, errors, warnings)
 
     return {
         "passed": not errors,
@@ -92,6 +93,36 @@ def _audit_sensitivity(sensitivity: Dict[str, Any], errors: List[str]) -> None:
     bull = _float((scenarios.get("bull") or {}).get("equity_value_billion"))
     if None not in (bear, base, bull) and not (bull >= base >= bear):
         errors.append("valuation_scenario_direction_error")
+
+
+def _audit_scale_guardrails(
+    valuation: Dict[str, Any],
+    relative: Dict[str, Any],
+    dcf: Dict[str, Any],
+    errors: List[str],
+    warnings: List[str],
+) -> None:
+    """Catch reproducible formulas that still produce unusable scales."""
+
+    revenue = _float(
+        ((relative.get("multiples") or {}).get("ps") or {}).get("denominator_value")
+        if isinstance(relative.get("multiples"), dict)
+        else None
+    )
+    blended = _float(valuation.get("blended_equity_value_billion"))
+    dcf_value = _float(dcf.get("equity_value_billion") or dcf.get("enterprise_value_billion"))
+    fcf = _float((dcf.get("assumptions") or {}).get("base_free_cash_flow_billion")) if isinstance(dcf.get("assumptions"), dict) else None
+    if revenue and blended and blended / revenue > 80:
+        errors.append("blended_value_to_revenue_above_guardrail")
+    if revenue and dcf_value and dcf_value / revenue > 120:
+        errors.append("dcf_value_to_revenue_above_guardrail")
+    if fcf and dcf_value and dcf_value / fcf > 100:
+        errors.append("dcf_value_to_fcf_above_guardrail")
+
+    market_context = valuation.get("market_context") if isinstance(valuation.get("market_context"), dict) else {}
+    market_cap = _float(market_context.get("market_cap_billion"))
+    if market_cap and blended and abs((blended - market_cap) / market_cap) > 10:
+        warnings.append("valuation_market_gap_above_1000pct")
 
 
 def _float(value: Any) -> float | None:

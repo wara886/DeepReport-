@@ -57,6 +57,11 @@ class CompanyIdentity:
     match_type: str = "none"
     needs_confirmation: bool = False
     reason: str = ""
+    sector: str = ""
+    industry: str = ""
+    business_summary: str = ""
+    official_sources: List[str] | None = None
+    latest_disclosure_period: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -221,6 +226,10 @@ def resolve_company_identity(
     resolved = resolve_company_identifier_with_diagnostics(query, raw_data_root=raw_data_root)
     symbol = str(resolved.get("symbol") or "").upper()
     company_name = str(resolved.get("company_name") or "")
+    sector = str(resolved.get("sector") or "")
+    industry = str(resolved.get("industry") or "")
+    business_summary = str(resolved.get("business_summary") or resolved.get("description") or "")
+    latest_disclosure_period = str(resolved.get("period") or "")
     match_type = str(resolved.get("match_type") or "none")
     confidence = float(resolved.get("confidence") or 0.0)
     reason = str(resolved.get("reason") or "")
@@ -252,6 +261,11 @@ def resolve_company_identity(
         match_type=match_type,
         needs_confirmation=needs_confirmation,
         reason=reason or ("resolved" if is_listed else "unable_to_confirm_listed_company"),
+        sector=sector,
+        industry=industry,
+        business_summary=business_summary,
+        official_sources=list(plan.get("primary_sources") or []),
+        latest_disclosure_period=latest_disclosure_period,
     )
 
 
@@ -320,8 +334,8 @@ def build_data_source_plan(symbol: str, market: str, exchange: str = "") -> Dict
         ]
         primary = ["cninfo_announcements", "exchange_announcements", "eastmoney_financials"]
     elif market == "hk":
-        engines = ["local_real_data", "yahoo_finance", "tavily", "serper", "local_evidence"]
-        primary = ["yahoo_finance", "tavily", "serper"]
+        engines = ["local_real_data", "hkex_announcements", "yahoo_finance", "tavily", "serper", "local_evidence"]
+        primary = ["hkex_announcements", "yahoo_finance", "tavily", "serper"]
     elif market == "us":
         engines = ["local_real_data", "sec_edgar", "yahoo_finance", "independent_macro", "tavily", "local_evidence"]
         primary = ["sec_edgar", "yahoo_finance"]
@@ -348,6 +362,10 @@ def _resolution_payload(item: Dict[str, Any], query: str, match_type: str, confi
         "match_type": match_type,
         "confidence": round(float(confidence), 3),
         "profile_path": str(item.get("profile_path", "")),
+        "sector": str(item.get("sector", "")),
+        "industry": str(item.get("industry", "")),
+        "business_summary": str(item.get("business_summary") or item.get("description") or ""),
+        "period": str(item.get("period", "")),
         "ambiguous": False,
     }
 

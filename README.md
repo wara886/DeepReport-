@@ -1,335 +1,212 @@
-# Open DeepReport++ Core
+# Open DeepReport++：证据驱动的公司研报多智能体系统
 
-本仓库当前保留的是金融多 Agent 系统的核心工程组件，不再把历史评测、竞赛实验和 shadow/grounded 产物混在主目录里。
+> 本项目受开源项目 `DeepReport` 的工程组织方式启发，复用的是模块职责拆分、配置方式与运行入口思路，不直接复制其业务逻辑。
 
-目标不是继续做固定流水线脚本，而是借鉴 `DeepReport` 的多智能体骨架，接入我们自己的金融数据 API、模型 API 和工具/MCP 服务，重建一个真正的金融研究多 Agent：
-
-```text
-Planning Agent
-  -> DeepResearcher Agent
-  -> Browser Agent
-  -> DeepAnalyze Agent
-  -> FinalAnswer Agent
-  -> Verifier/Critic Agent
-```
-
-## 当前保留内容
+Open DeepReport++ 面向公司与个股研究报告生成场景。它解决的核心问题不是“让大模型写一篇看起来像研报的文章”，而是让报告中的关键事实、财务数字、估值输入和图表结论都能够追溯来源，并在证据不足或质量不达标时拒绝交付。
 
 ```text
-configs/       配置
-data/raw/      mock 原始样例数据
-docs/          少量必要文档
-scripts/       核心 smoke / ingestion / pipeline 脚本
-src/app/       当前入口
-src/agents/    Agent 基类、DeepSeek PlanningAgent、旧规则模块兼容层
-src/models/    DeepSeek/OpenAI-compatible 模型适配层
-src/tools/     本地金融工具注册表和 function/tool schema
-src/search/    SearchManager，本地/远程搜索引擎聚合接口
-src/data/      数据读取、标准化、manifest
-src/features/  财务指标、趋势、风险、peer 特征
-src/retrieval/ 本地 evidence store、BM25、reranker fallback
-src/generation writer backend 抽象
-src/schemas/   Evidence/Claim/Chart/Report/Task 数据契约
-src/charts/    图表生成
-src/templates/ Markdown/HTML/JSON 导出
-src/training/  reranker/verifier/rewriter 轻量训练占位
-tests/         核心组件测试
+公司 / 报告期输入
+  -> 资料搜集与标准化
+  -> 检索筛选与来源管理
+  -> 结构化结论与财务分析
+  -> 中文研报写作与图表导出
+  -> 事实 / 数值 / 估值 / 图表核验
+  -> 客观质量评分 + 模型复核
+  -> 交付判定、返工记录与运行追踪
 ```
 
-## 当前可运行链路
+当前最成熟的范围是公司/个股研报主链，输出 Markdown、HTML 与结构化报告产物；行业与宏观研究、训练增强能力仍属于扩展方向。
 
-当前默认链仍然是核心组件验证用的 claim-first pipeline：
+## 项目亮点
+
+### 1. 证据优先，而不是自由生成
+
+研报场景容易出现无来源结论、财务期间混用、数字口径错误和估值不可复算等问题。本项目先将资料转成标准化证据，再生成可引用的结构化结论，最后组织成报告正文。这样一来，报告错误可以定位到资料、检索、分析、写作或校验环节，而不是只能重新提示模型“写得更可靠一点”。
+
+### 2. 受控多智能体协作，而不是角色名称堆叠
+
+系统包含规划、研究、资料整理、财务分析、写作、校验、写前质疑与缺口修复等职责。不同角色通过共享研究状态传递公司主体、报告期、三表覆盖、同行比较、估值可用性和风险缺口，并保留协作与工具调用轨迹。
+
+默认流程优先保证稳定与可复核；需要诊断时，再展开更细的身份、三表、同行、估值和风险视角。
+
+### 3. 可切换检索与本地降级
+
+检索层支持关键词检索、向量检索、融合排序与重排等模式，并保留命中来源、报告期和数值来源关系。向量组件、网页读取或外部模型不可用时，系统会回退到本地可运行路径，并在产物中记录降级原因，而不是静默降低报告质量。
+
+### 4. 三层质量门禁与失败可定位
+
+报告交付需要同时经过：
+
+1. **规则核验**：事实引用、数值支撑、报告期、图表来源和估值输入检查。
+2. **客观质量评估**：结构、证据、财务深度、多模态一致性、专业表达与合规披露评分。
+3. **模型复核**：识别规则较难覆盖的空洞章节、逻辑断裂与表达质量问题。
+
+质量不达标时，系统输出问题清单、修复约束和返工记录，便于复盘究竟是资料不够、分析不完整，还是写作没有正确消费已有证据。
+
+## 架构概览
+
+```mermaid
+flowchart LR
+    A[公司与报告期] --> B[规划与来源路由]
+    B --> C[资料检索与标准化]
+    C --> D[证据库与检索排序]
+    D --> E[财务分析与结构化结论]
+    E --> F[报告写作与图表导出]
+    F --> G[规则核验]
+    G --> H[客观质量评估]
+    H --> I[模型复核与交付门禁]
+    I -->|通过| J[Markdown / HTML / JSON]
+    I -->|不通过| K[缺口修复与返工记录]
+    K --> F
+    E -.共享研究状态.-> F
+    C -.运行轨迹.-> I
+```
+
+## 给代码审阅者与 ChatGPT 的阅读路径
+
+如果你想在较短时间理解这个项目，建议按下面顺序阅读：
+
+| 优先级 | 阅读目标 | 入口文件 |
+| --- | --- | --- |
+| 1 | 理解多角色如何编排、如何输出协作轨迹 | [`src/agents/multi_agent_orchestrator.py`](src/agents/multi_agent_orchestrator.py) |
+| 2 | 理解共享研究状态、写前质疑和角色责任边界 | [`src/agents/research_blackboard.py`](src/agents/research_blackboard.py) |
+| 3 | 理解最终交付为什么通过或失败 | [`src/evaluation/delivery_gate.py`](src/evaluation/delivery_gate.py) |
+| 4 | 理解客观质量评分覆盖哪些维度 | [`src/evaluation/report_quality.py`](src/evaluation/report_quality.py) |
+| 5 | 理解证据如何转成结构化财务结论 | [`src/agents/deep_analyze_agent.py`](src/agents/deep_analyze_agent.py) |
+| 6 | 理解事实与数值核验逻辑 | [`src/agents/verifier_agent.py`](src/agents/verifier_agent.py) |
+| 7 | 理解关键词、向量、融合和重排切换路径 | [`src/retrieval/retrieve.py`](src/retrieval/retrieve.py) |
+| 8 | 理解数值来源追踪与可复算关系 | [`src/features/financial_metric_lineage.py`](src/features/financial_metric_lineage.py) |
+| 9 | 理解自然语言入口与网页工作台 | [`src/app/agent_chat.py`](src/app/agent_chat.py)、[`src/app/web_ui.py`](src/app/web_ui.py) |
+
+进一步阅读：
+
+- [`docs/financial_multi_agent_detailed_guide.md`](docs/financial_multi_agent_detailed_guide.md)：系统能力与实现说明。
+- [`docs/multi_agent_competition_alignment.md`](docs/multi_agent_competition_alignment.md)：多智能体证据、差距与边界。
+- [`docs/cloud_training.md`](docs/cloud_training.md)：离线训练与本地回退约束。
+
+## 核心模块
 
 ```text
-src/app/main.py
-  -> src/app/pipeline.py
-  -> src/agents/orchestrator.py
-  -> Planner
-  -> Analyst
-  -> optional Retrieval
-  -> Writer
-  -> Verifier
+configs/        模型、数据源、报告、校验与训练配置
+scripts/        本地演示、评估、回归和服务启动脚本
+src/agents/     规划、研究、分析、写作、校验、缺口修复与协作状态
+src/app/        命令行流水线、自然语言入口与网页工作台
+src/data/       数据获取、标准化、来源策略与财务质量处理
+src/features/   三表、指标来源、同行、估值和风险特征
+src/retrieval/  证据存储、分块、关键词/向量/融合/重排检索
+src/evaluation/ 规则核验、质量评分、交付门禁和回归评估
+src/report/     引用、图表、合规说明与报告导出
+src/schemas/    证据、结论、报告、图表和任务数据契约
+tests/          核心流程与质量规则测试
 ```
 
-这条链路不是最终多 Agent 形态，只是保留现有数据/报告能力的基础闭环。
+## 可运行能力
 
-## DeepSeek 模型配置
+| 能力 | 当前状态 |
+| --- | --- |
+| 公司/个股研报生成，输出 Markdown / HTML / JSON | 可运行 |
+| 证据记录、结构化结论、引用表、图表与验证报告导出 | 可运行 |
+| 关键词、向量、融合排序与重排检索切换 | 可运行，部分能力为可选依赖 |
+| 规划、研究、分析、写作、校验与缺口修复协作链路 | 可运行 |
+| 共享研究状态、工具调用、协作与返工轨迹 | 可运行 |
+| 规则核验、客观质量评分、模型复核和最终交付判定 | 可运行 |
+| 本地网页工作台与自然语言任务入口 | 可运行 |
+| 训练增强模块 | 仅面向离线训练与回退接入，不是本地主链依赖 |
+| 任意公司稳定高质量交付 | 尚未完成，仍受数据覆盖与泛化质量影响 |
 
-当前已经预留 DeepSeek 作为金融多 Agent 的第一版底层模型后端。你只需要填：
+## 质量证据与诚实边界
 
-```text
-DeepReport_plus/.env
-```
+本项目刻意保留“能证明什么”和“仍不能证明什么”的边界。
 
-把第一行改成：
+| 验证类型 | 当前结果 | 结论 |
+| --- | --- | --- |
+| 三公司运行记忆消融 | AAPL、GOOGL、MSFT 各进行开启/关闭对照；检查表均值 `86.77% -> 89.51%`，平均耗时 `123.80s -> 118.79s`，规则核验通过率两侧均为 `66.67%` | 记忆在小样本中改善检查表表现与耗时，不能据此声称事实准确率或最终通过率提高 |
+| AMD 单样本修复验收 | 修复后的样本通过三层交付门禁，客观质量评分 `0.9667` | 可证明该样本满足当前交付条件，仍有正文深度和权威来源覆盖警告 |
+| 跨市场泛化回归 | 一轮 8 个跨行业/跨市场案例中，最终交付通过数为 `0/8` | 已建立泛化检查，但系统尚不具备稳定跨市场交付能力 |
+
+## 快速开始
+
+### 1. 安装
 
 ```bash
-DEEPSEEK_API_KEY=你的 DeepSeek API Key
+python -m venv .venv
+pip install -e .
 ```
 
-默认配置在：
-
-```text
-configs/model_backends.yaml
-```
-
-默认模型是 `deepseek-v4-flash`。如果要换成更强但可能更慢的模型，可以改 `.env` 里的：
+可选能力：
 
 ```bash
-DEEPSEEK_MODEL=deepseek-v4-pro
-```
-
-Agent 侧统一通过下面的适配层调用模型：
-
-```text
-src/models/model_adapter.py
-```
-
-填好 key 后可以先跑：
-
-```bash
-python scripts/run_deepseek_smoke.py
-```
-
-## Tavily Search 配置
-
-Tavily 的 key 填在本地 secrets 文件：
-
-```text
-DeepReport_plus/.env
-```
-
-新增这一行：
-
-```bash
-TAVILY_API_KEY=你的 Tavily API Key
-```
-
-非密钥配置在：
-
-```text
-configs/data_sources.yaml
-```
-
-填好后可以先跑：
-
-```bash
-python scripts/run_tavily_smoke.py
-```
-
-生成第一版多 Agent 任务规划：
-
-```bash
-python scripts/run_planning_agent_smoke.py
-```
-
-运行完整多 Agent 协作 demo：
-
-```bash
-python scripts/run_multi_agent_demo.py --symbol AAPL --period 2025Q4 --execution-mode dynamic
-```
-
-启动本地可视化 UI：
-
-```bash
-python scripts/run_financial_agent_ui.py --host 127.0.0.1 --port 8787
-```
-
-浏览器打开：
-
-```text
-http://127.0.0.1:8787
-```
-
-推荐第一轮输入：
-
-```text
-研究任务: 分析 AAPL 2025Q4 财务表现，并生成带引用、图表和验证报告的研究报告
-股票代码: AAPL
-期间: 2025Q4
-搜索/数据源: local_real_data,yahoo_finance,tavily,local_evidence
-执行模式: dynamic
-Fast profile: 勾选
-```
-
-点击 `生成多智能体研究报告` 后，正常会在 40-120 秒左右看到：
-
-```text
-Overview: agent_count=6, evidence_count≈6, claim_count>0, citation_count>0, chart_count=3, verification_passed=true
-报告: 可阅读的中文 HTML/Markdown 研报，含图表和参考来源
-图表: key_metrics_bar、claim_confidence_bar、evidence_source_mix
-引用: evidence_id、来源、claim_ids、source_url
-轨迹: Planning/Research/Browser/Analyze/FinalAnswer/Verifier 每步耗时
-原始数据: 完整 JSON 调试 payload
-```
-
-启动本地 MCP-style 工具服务：
-
-```bash
-python scripts/run_mcp_server.py --host 127.0.0.1 --port 8765
-```
-
-检查工具清单：
-
-```bash
-curl http://127.0.0.1:8765/mcp/manifest
-```
-
-调用一个工具：
-
-```bash
-curl -X POST http://127.0.0.1:8765/mcp/rpc \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fetch_yahoo_market_snapshot","arguments":{"symbol":"AAPL","period":"2025Q4"}}}'
-```
-
-正常会返回一个 `market_api` evidence，其中包含 Yahoo Finance 来源 URL、latest close、previous close、1mo price change 等字段。
-
-如果已经申请 Serper，可以在 `.env` 填：
-
-```bash
-SERPER_API_KEY=你的 Serper API Key
-```
-
-然后把 UI 或 CLI 的搜索源改成：
-
-```text
-local_real_data,yahoo_finance,serper,tavily,local_evidence
-```
-
-如果要启用 BrowserAgent 的真实浏览器读取，需要安装 Playwright 和浏览器内核：
-
-```bash
-pip install '.[browser]'
+pip install -e ".[browser,local_rag,pdf,docx]"
 python -m playwright install chromium
 ```
 
-未安装 Playwright 时系统会自动回退到 Jina Reader，不会中断报告生成。
+### 2. 配置
 
-如果要启用本地小模型 RAG 组合，可以安装可选依赖：
-
-```bash
-pip install '.[local_rag]'
-```
-
-它会为 `local_evidence` 打开 `ChromaIndex + small embedding + small reranker` 这条路径；如果这些依赖缺失，系统会自动回退到内存向量召回和启发式 rerank。
-
-可复用的本地模型预热脚本：
+复制环境变量示例文件，在本地填写需要使用的模型或搜索服务密钥：
 
 ```bash
-python scripts/setup_local_rag_models.py
+copy .env.example .env
 ```
 
-默认配置在：
+密钥文件不会被提交到仓库。没有远程密钥时，仍可使用本地样例与降级链路完成基础调试。
 
-```text
-configs/local_rag.yaml
-```
-
-如果要把无 key 的 Yahoo Finance 行情 API 也加入证据搜索，可以显式指定 engines：
-
-```bash
-python scripts/run_multi_agent_demo.py \
-  --symbol AAPL \
-  --period 2025Q4 \
-  --execution-mode dynamic \
-  --retrieval-ranking-mode hybrid_rerank \
-  --engines local_real_data,yahoo_finance,tavily,local_evidence
-```
-
-更快的联网 demo：
+### 3. 运行多智能体报告演示
 
 ```bash
 python scripts/run_multi_agent_demo.py --symbol AAPL --period 2025Q4 --execution-mode dynamic --fast
 ```
 
-`--fast` 会减少搜索结果和传给模型的上下文，并跳过 BrowserAgent 的可选 LLM 摘要抽取；适合反复调试。
-`task_trace.jsonl` 会记录每个 Agent 的 `duration_sec`，`run_summary.json` 会记录 `total_duration_sec`。
-当前 multi-agent 主链默认会对 `local_evidence` 使用 `hybrid_rerank`，也就是 `BM25 + vector recall + rerank/fallback rerank`；如果想退回老行为，可以显式传 `--retrieval-ranking-mode bm25`。
-
-输出会落在：
-
-```text
-data/outputs/multi_agent/
-data/reports/multi_agent/
-```
-
-其中 `data/outputs/multi_agent/search_meta.json` 会记录本轮 ResearchAgent 调用了哪些搜索源，例如 `local_real_data`、`tavily`、`local_evidence`。
-默认动态模式还会让 BrowserAgent 对部分 Tavily URL 调用 Jina Reader（`https://r.jina.ai/`）抽取网页正文；`--fast` 会跳过这一步以节省时间。
-最终报告前会经过 CitationManager 整理，额外输出：
-
-```text
-data/outputs/multi_agent/citations.json
-data/outputs/multi_agent/citations.md
-data/outputs/multi_agent/charts.json
-data/outputs/multi_agent/mcp_manifest.json
-data/outputs/multi_agent/revision_history.json
-```
-
-`citations.json` 会把 `evidence_id`、来源 URL、标题、证据类型、支持的 `claim_id` 统一成引用表；`report.md` 和 `report.html` 末尾会自动追加中文 `参考来源`。
-`charts.json` 会记录本轮由 claims/evidence 生成的图表，图片位于 `data/outputs/multi_agent/charts/`；`mcp_manifest.json` 会导出当前可用的本地金融工具清单和参数 schema。
-`revision_history.json` 会记录 `VerifierAgent -> FinalAnswerAgent` 的自动返工轮次、返工指令和返工后是否通过。
-`report.html` 现在由 `HTMLReportGenerator` 生成，并内嵌 Chart.js 交互图表；如果浏览器不能访问 Chart.js CDN，Markdown 报告和 PNG 图表仍可正常查看。
-
-`dynamic` 是默认模式：它会读取 `PlanningAgent` 生成的 `task_plan.json`，按依赖关系动态分发给 `DeepResearcherAgent`、`BrowserAgent`、`DeepAnalyzeAgent`、`FinalAnswerAgent`、`VerifierAgent`。如果要对比上一版固定链路，可以用：
+### 4. 启动网页工作台
 
 ```bash
-python scripts/run_multi_agent_demo.py --execution-mode static
+python scripts/run_financial_agent_ui.py --host 127.0.0.1 --port 8787
 ```
 
-## 快速运行
+网页端可输入类似任务：
+
+```text
+生成 AMD 最新财报研报，并检查数值来源、估值依据和风险结论。
+```
+
+网页工作台支持选择协作模式与完整诊断模式，用于查看共享研究状态、角色协作、工具调用和返工轨迹。
+
+### 5. 运行核心测试
 
 ```bash
-python scripts/run_stage2_data_smoke.py
-python scripts/run_stage3_feature_smoke.py
-python scripts/run_stage4_pipeline_smoke.py
-python scripts/run_stage5_chart_smoke.py
-python scripts/run_stage10_export_smoke.py
+pytest -q tests/test_multi_agent_workflow.py tests/test_delivery_gate.py tests/test_report_quality.py tests/test_web_ui.py
 ```
 
-真实本地样例数据闭环：
+## 输出产物
 
-```bash
-python scripts/run_stage11a_real_data_smoke.py
-```
+一次完整公司报告运行会生成以下类型的产物：
 
-## 改造说明
+| 产物类型 | 用途 |
+| --- | --- |
+| 报告正文与网页版本 | 阅读与展示最终研报 |
+| 标准化证据与结构化结论 | 追踪事实依据与分析来源 |
+| 财务指标、估值和图表元数据 | 复核数值、图表与估值链路 |
+| 引用表与验证报告 | 检查结论是否得到来源支持 |
+| 质量报告与交付判定 | 判断报告是否允许交付 |
+| 协作、工具调用和返工轨迹 | 诊断失败环节与修复过程 |
 
-核心判断和下一步改造计划见：
+本地输出目录与运行产物默认不作为源码提交内容，避免仓库被临时结果和敏感运行上下文污染。
 
-```text
-FINANCIAL_AGENT_PROJECT_SUMMARY.md
-```
+## 当前限制
 
-更适合放到 GitHub 仓库首页后继续阅读的详细说明见：
+- 公司研报主链成熟度高于行业与宏观报告链路。
+- 外部公开数据源存在可用性、时效性和市场覆盖差异。
+- 向量检索与远程模型均为可选增强能力，本地闭环优先保证可运行与可复核。
+- 质量门禁能阻止一批不合格报告，但不能替代正式投研中的持牌审核、合规审批和人工判断。
+- 当前仍需要扩大固定评测集，补充检索策略对照和跨市场数据覆盖。
 
-```text
-docs/financial_multi_agent_detailed_guide.md
-```
+## 设计原则
 
-下一阶段只聚焦公司/个股研报深度、多模态一致性、权威数据源、严谨估值建模和 Agent 自主补证闭环，具体落地方案见：
+1. 先证据，后结论，再写作。
+2. 先规则核验，后模型增强。
+3. 事实来源与历史记忆严格分离。
+4. 数据不足时披露缺口，不生成虚假确定性。
+5. 任何质量提升必须通过固定样本和对照评估说明边界。
 
-```text
-docs/company_stock_report_depth_plan.md
-```
+## 致谢
 
-DeepReport 原始骨架参考：
-
-```text
-/Users/yuan_dian/Downloads/deep_learn/DeepReport_award2_ref
-```
-
-尤其参考：
-
-```text
-docs/deepreport_reference_architecture.md
-src/agents/base_agent.py
-src/agents/planning_agent.py
-src/agents/deep_researcher_agent.py
-src/agents/browser_agent.py
-src/agents/deep_analyze_agent.py
-src/agents/final_answer_agent.py
-src/search/search_manager.py
-src/utils/model_adapter.py
-src/utils/mcp_manager.py
-```
+项目在工程骨架审计阶段参考了开源项目 `DeepReport` 的组织思路，并基于公司研报场景重新设计了数据契约、分析逻辑、质量门禁与评测闭环。

@@ -89,20 +89,58 @@ class EvidenceRecord:
 class EvidenceStore:
     """In-memory evidence store for retrieval modules."""
 
-    def __init__(self, records: List[EvidenceRecord]):
+    def __init__(self, records: List[EvidenceRecord], load_meta: Dict[str, Any] | None = None):
         self.records = records
+        self.load_meta = load_meta or {}
 
     @classmethod
     def from_curated_parquet(cls, curated_dir: str | Path = "data/curated") -> "EvidenceStore":
         curated_path = Path(curated_dir)
         paths = sorted(curated_path.glob("*.parquet"))
         if not paths:
-            return cls(records=[])
+            return cls(
+                records=[],
+                load_meta={
+                    "curated_dir": str(curated_path),
+                    "file_count": 0,
+                    "loaded_file_count": 0,
+                    "skipped_files": [],
+                    "load_errors": [],
+                },
+            )
 
-        frames = [pd.read_parquet(p) for p in paths]
+        frames = []
+        skipped_files: List[str] = []
+        load_errors: List[Dict[str, str]] = []
+        for path in paths:
+            try:
+                frames.append(pd.read_parquet(path))
+            except Exception as exc:
+                skipped_files.append(str(path))
+                load_errors.append({"path": str(path), "error": str(exc)})
+        if not frames:
+            return cls(
+                records=[],
+                load_meta={
+                    "curated_dir": str(curated_path),
+                    "file_count": len(paths),
+                    "loaded_file_count": 0,
+                    "skipped_files": skipped_files,
+                    "load_errors": load_errors,
+                },
+            )
         merged = pd.concat(frames, ignore_index=True)
         records = [EvidenceRecord.from_dict(dict(row)) for _, row in merged.iterrows()]
-        return cls(records=records)
+        return cls(
+            records=records,
+            load_meta={
+                "curated_dir": str(curated_path),
+                "file_count": len(paths),
+                "loaded_file_count": len(frames),
+                "skipped_files": skipped_files,
+                "load_errors": load_errors,
+            },
+        )
 
     def filter(self, symbol: str | None = None, period: str | None = None) -> List[EvidenceRecord]:
         output = self.records

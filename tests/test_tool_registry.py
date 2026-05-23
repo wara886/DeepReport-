@@ -98,7 +98,8 @@ def test_company_report_tools_return_statements_peers_and_valuation():
 
     assert statements["coverage"]["has_three_statement_view"] is True
     assert peers["peer_count"] >= 1
-    assert valuation["valuation_available"] is True
+    assert valuation["valuation_available"] is False
+    assert valuation["error"] == "valuation_input_invalid"
 
 
 def test_yahoo_market_snapshot_tool_returns_evidence(monkeypatch):

@@ -140,14 +140,29 @@ def _check_target_symbol_alignment(
     )
     if evidence_symbols and symbol not in evidence_symbols:
         errors.append(f"Target symbol mismatch: expected {symbol}, but evidence symbols are {', '.join(evidence_symbols)}.")
+    elif evidence_symbols:
+        non_target_evidence = [item for item in evidence_symbols if item != symbol]
+        if non_target_evidence:
+            warnings.append(
+                f"Evidence includes non-target symbols that must be limited to peer/context sections: {', '.join(non_target_evidence[:8])}."
+            )
 
     claim_text = " ".join(claim.claim_text for claim in claims)
     mentioned_symbols = _ticker_mentions(f"{markdown}\n{claim_text}")
     non_target_mentions = sorted(token for token in mentioned_symbols if token != symbol)
+    conflicting_mentions = _conflicting_company_mentions(symbol=symbol, text=f"{markdown}\n{claim_text}")
     if symbol not in mentioned_symbols and claims:
         warnings.append(f"Target symbol {symbol} is not explicitly mentioned in report claims or markdown.")
-    if non_target_mentions and symbol not in evidence_symbols:
-        warnings.append(f"Report mentions non-target ticker-like tokens: {', '.join(non_target_mentions[:8])}.")
+    if conflicting_mentions:
+        errors.append(f"Target symbol mismatch: expected {symbol}, but report appears to discuss {', '.join(conflicting_mentions)}.")
+    if non_target_mentions:
+        non_peer_mentions = sorted(token for token in non_target_mentions if token in _ticker_mentions(_non_peer_report_text(markdown)))
+        if non_peer_mentions:
+            warnings.append(
+                f"Target symbol mismatch: expected {symbol}, but non-peer sections mention ticker-like tokens {', '.join(non_peer_mentions[:8])}."
+            )
+        elif symbol not in evidence_symbols:
+            warnings.append(f"Report mentions non-target ticker-like tokens: {', '.join(non_target_mentions[:8])}.")
 
 
 def _check_evidence_support(
@@ -220,9 +235,14 @@ def _check_primary_source_support(
             continue
         grades = [_authority_grade(record) for record in linked_records]
         if not any(grade.get("authority_level") == "primary" for grade in grades):
-            errors.append(
-                f"Claim {claim.claim_id} is a core financial claim but has no primary evidence source."
-            )
+            if _has_period_matched_structured_fallback(claim, linked_records):
+                warnings.append(
+                    f"Claim {claim.claim_id} uses period-matched structured financial data as a fallback; primary filing support is still preferred."
+                )
+            else:
+                errors.append(
+                    f"Claim {claim.claim_id} is a core financial claim but has no primary evidence source."
+                )
         elif any(grade.get("authority_level") in {"secondary", "tertiary", "unknown"} for grade in grades):
             warnings.append(
                 f"Claim {claim.claim_id} mixes primary evidence with lower-authority sources; keep the primary source as the controlling citation."
@@ -254,6 +274,31 @@ def _requires_primary_financial_source(claim: ClaimItem) -> bool:
         "现金流",
     ]
     return claim.section_name in {"financial_analysis", "financial_statements"} or any(marker in text for marker in financial_markers)
+
+
+def _has_period_matched_structured_fallback(claim: ClaimItem, linked_records: List[Dict[str, Any]]) -> bool:
+    if not (claim.metric_lineage_ids or claim.input_metric_lineage_ids):
+        return False
+    structured_types = {"market_api", "market_data", "eastmoney_financials", "pdf_statement_table", "financials"}
+    for record in linked_records:
+        source_type = str(record.get("source_type") or "").lower()
+        metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+        if source_type not in structured_types:
+            continue
+        has_structured_payload = any(
+            isinstance(metadata.get(key), (dict, list))
+            for key in ["financials", "rows", "raw", "statement_rows", "metrics"]
+        )
+        if not has_structured_payload:
+            continue
+        evidence_numbers = _numbers_from_record(record)
+        if claim.numeric_values and any(
+            not _has_close_number(float(value), evidence_numbers)
+            for value in claim.numeric_values.values()
+        ):
+            continue
+        return True
+    return False
 
 
 def _is_market_numeric_claim(claim: ClaimItem) -> bool:
@@ -412,6 +457,21 @@ def _ticker_mentions(text: str) -> set[str]:
         "PDF",
         "PE",
         "PS",
+        "AI",
+        "CNY",
+        "EBIT",
+        "EBITDA",
+        "EPS",
+        "GAAP",
+        "HKD",
+        "IFRS",
+        "RMB",
+        "SEC",
+        "US",
+        "NASDAQ",
+        "NYSE",
+        "REUTERS",
+        "WSJ",
         "Q",
         "ROA",
         "ROE",
@@ -424,9 +484,71 @@ def _ticker_mentions(text: str) -> set[str]:
     }
 
 
+def _conflicting_company_mentions(symbol: str, text: str) -> List[str]:
+    target = str(symbol or "").upper()
+    checked_text = _non_peer_report_text(str(text or "")).lower()
+    aliases = {
+        "AAPL": ("aapl", "apple inc", "apple "),
+        "AMD": ("amd", "advanced micro devices", "advanced micro "),
+        "TSLA": ("tsla", "tesla inc", "tesla "),
+        "NVDA": ("nvda", "nvidia corp", "nvidia "),
+        "MSFT": ("msft", "microsoft corp", "microsoft "),
+    }
+    conflicts: List[str] = []
+    for ticker, names in aliases.items():
+        if ticker == target:
+            continue
+        if any(name in checked_text for name in names):
+            conflicts.append(ticker)
+    return conflicts
+
+
+def _non_peer_report_text(text: str) -> str:
+    """Return report text excluding sections where peer tickers are expected."""
+
+    sections = _split_markdown_sections(text)
+    if not sections:
+        return text
+    allowed_keywords = ("peer", "同行", "同业", "可比", "comparison", "competitor")
+    kept = []
+    for title, body in sections:
+        lowered = title.lower()
+        if any(keyword in lowered for keyword in allowed_keywords):
+            continue
+        kept.append(f"{title}\n{body}")
+    return "\n".join(kept)
+
+
+def _split_markdown_sections(text: str) -> List[tuple[str, str]]:
+    matches = list(re.finditer(r"(?m)^(#{1,6})\s+(.+?)\s*$", str(text or "")))
+    if not matches:
+        return []
+    sections: List[tuple[str, str]] = []
+    preface = str(text or "")[: matches[0].start()]
+    if preface.strip():
+        sections.append(("", preface))
+    for index, match in enumerate(matches):
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(str(text or ""))
+        sections.append((match.group(2).strip(), str(text or "")[start:end]))
+    return sections
+
+
 def _has_close_number(target: float, values: List[float]) -> bool:
     for value in values:
-        tolerance = max(abs(target) * 0.01, 0.05)
-        if abs(value - target) <= tolerance:
-            return True
+        for candidate in _numeric_scale_variants(value):
+            tolerance = max(abs(target) * 0.01, 0.05)
+            if abs(candidate - target) <= tolerance:
+                return True
     return False
+
+
+def _numeric_scale_variants(value: float) -> List[float]:
+    variants = [float(value)]
+    if abs(value) >= 1_000_000:
+        variants.append(float(value) / 1_000_000)
+        variants.append(float(value) / 1_000_000_000)
+    elif 0 < abs(value) <= 1_000:
+        variants.append(float(value) * 1_000_000)
+        variants.append(float(value) * 1_000_000_000)
+    return variants

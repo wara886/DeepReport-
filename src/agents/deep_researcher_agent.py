@@ -37,7 +37,7 @@ class DeepResearcherAgent(BaseAgent):
         topk = int(task.parameters.get("topk", 5))
         engines = task.parameters.get("engines")
         if engines is not None and not isinstance(engines, list):
-            engines = [str(engines)]
+            engines = [item.strip() for item in str(engines).split(",") if item.strip()]
         react_attempted = bool(task.parameters.get("use_react", False))
         skill_brief = str(task.parameters.get("skill_brief", "")).strip()
 
@@ -46,33 +46,45 @@ class DeepResearcherAgent(BaseAgent):
                 react_payload = self._run_react_search(task=task, query=query, topk=topk, skill_brief=skill_brief)
                 candidates = react_payload.get("evidence_candidates", [])
                 if candidates:
+                    if not bool(task.parameters.get("merge_standard_search_after_react", False)):
+                        return self.success(
+                            task,
+                            {
+                                "query": query,
+                                "evidence_candidates": candidates[:topk],
+                                "search_meta": react_payload.get("search_meta", {}),
+                            },
+                            metadata={
+                                "hit_count": len(candidates[:topk]),
+                                "react_used": True,
+                                "standard_search_merged": False,
+                                "react_trace": react_payload.get("react_trace", []),
+                                "react_final_content": react_payload.get("final_content", ""),
+                                "skill_brief_chars": len(skill_brief),
+                            },
+                        )
+                    fallback_payload = self._run_standard_search(task=task, query=query, topk=topk, engines=engines)
+                    candidates = _merge_evidence_candidates(candidates, fallback_payload.get("hits", []))[:topk]
+                    search_meta = dict(fallback_payload.get("meta", {}))
+                    search_meta["react_tool_loop"] = react_payload.get("search_meta", {})
+                    search_meta["react_merged_with_standard_search"] = True
                     return self.success(
                         task,
                         {
                             "query": query,
                             "evidence_candidates": candidates[:topk],
-                            "search_meta": react_payload.get("search_meta", {}),
+                            "search_meta": search_meta,
                         },
                         metadata={
                             "hit_count": len(candidates[:topk]),
                             "react_used": True,
+                            "standard_search_merged": True,
                             "react_trace": react_payload.get("react_trace", []),
                             "react_final_content": react_payload.get("final_content", ""),
                             "skill_brief_chars": len(skill_brief),
                         },
                     )
-            payload = self.search_manager.search(
-                query=query,
-                topk=topk,
-                engines=engines,
-                symbol=task.parameters.get("symbol"),
-                period=task.parameters.get("period"),
-                curated_dir=task.parameters.get("curated_dir", "data/curated"),
-                raw_data_root=task.parameters.get("raw_data_root", "data/raw/real_data"),
-                ranking_mode=task.parameters.get("ranking_mode", "bm25"),
-                data_source_config_path=task.parameters.get("data_source_config_path", "configs/data_sources.yaml"),
-                enable_remote=bool(task.parameters.get("enable_remote", False)),
-            )
+            payload = self._run_standard_search(task=task, query=query, topk=topk, engines=engines)
             return self.success(
                 task,
                 {
@@ -91,6 +103,26 @@ class DeepResearcherAgent(BaseAgent):
             )
         except Exception as exc:
             return self.failure(task, str(exc))
+
+    def _run_standard_search(
+        self,
+        task: AgentTask,
+        query: str,
+        topk: int,
+        engines: List[str] | None = None,
+    ) -> Dict[str, Any]:
+        return self.search_manager.search(
+            query=query,
+            topk=topk,
+            engines=engines,
+            symbol=task.parameters.get("symbol"),
+            period=task.parameters.get("period"),
+            curated_dir=task.parameters.get("curated_dir", "data/curated"),
+            raw_data_root=task.parameters.get("raw_data_root", "data/raw/real_data"),
+            ranking_mode=task.parameters.get("ranking_mode", "bm25"),
+            data_source_config_path=task.parameters.get("data_source_config_path", "configs/data_sources.yaml"),
+            enable_remote=bool(task.parameters.get("enable_remote", False)),
+        )
 
     def _run_react_search(self, task: AgentTask, query: str, topk: int, skill_brief: str = "") -> Dict[str, Any]:
         allowed_tools = ["retrieve_local_evidence", "fetch_yahoo_market_snapshot"]
@@ -168,3 +200,17 @@ def _evidence_candidates_from_observations(observations: List[Dict[str, Any]]) -
             seen.add(key)
             candidates.append(row)
     return candidates
+
+
+def _merge_evidence_candidates(primary: List[Dict[str, Any]], secondary: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    merged: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in primary + secondary:
+        if not isinstance(row, dict):
+            continue
+        key = str(row.get("result_id") or row.get("evidence_id") or row.get("url") or row.get("source_url") or "")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        merged.append(row)
+    return merged

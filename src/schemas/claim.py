@@ -18,6 +18,8 @@ class ClaimItem:
     risk_level: str = "unknown"
     confidence: float = 0.0
     notes: str = ""
+    metric_lineage_ids: List[str] = field(default_factory=list)
+    input_metric_lineage_ids: List[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ClaimItem":
@@ -31,10 +33,12 @@ class ClaimItem:
             risk_level=data.get("risk_level", "unknown"),
             confidence=float(data.get("confidence", 0.0)),
             notes=data.get("notes", ""),
+            metric_lineage_ids=[str(value) for value in data.get("metric_lineage_ids", [])],
+            input_metric_lineage_ids=[str(value) for value in data.get("input_metric_lineage_ids", [])],
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "claim_id": self.claim_id,
             "section_name": self.section_name,
             "claim_text": self.claim_text,
@@ -44,4 +48,9 @@ class ClaimItem:
             "confidence": self.confidence,
             "notes": self.notes,
         }
+        if self.metric_lineage_ids:
+            payload["metric_lineage_ids"] = list(self.metric_lineage_ids)
+        if self.input_metric_lineage_ids:
+            payload["input_metric_lineage_ids"] = list(self.input_metric_lineage_ids)
+        return payload
 
