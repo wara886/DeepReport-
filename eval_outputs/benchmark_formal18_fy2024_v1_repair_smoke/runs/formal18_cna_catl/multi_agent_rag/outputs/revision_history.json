@@ -1,0 +1,7 @@
+[
+  {
+    "round": 1,
+    "revision_request": "- Warnings: Target symbol 300750.SZ is not explicitly mentioned in report claims or markdown.\n- Warnings: Target symbol mismatch: expected 300750.SZ, but non-peer sections mention ticker-like tokens SZ.\n- Warnings: Claim cl_0001 numeric value cash_and_equivalents_billion=3035.12 was not found in linked evidence.\n- Fix recommendations: Extract the actual numeric values from the evidence sources (e.g., balance, income, cashflow tables) and update the claims' numeric_values or the evidence records to include them.\n- Fix recommendations: Ensure that each numeric claim is directly traceable to a specific cell value in the linked evidence.\n- Fix recommendations: Remove or qualify any numeric claims that cannot be verified against the provided evidence.\n- LLM warnings: Evidence records contain only metadata and no structured numeric values, making verification impossible for all numeric claims.\n- LLM errors: Claim cl_0001: cash_and_equivalents_billion=3035.12 not found in linked evidence (300750_FY2024_eastmoney_financials_balance_197f35da8c). Evidence record does not contain this numeric value.",
+    "passed_after_round": false
+  }
+]

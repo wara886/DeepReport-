@@ -1,0 +1,60 @@
+{
+  "passed": false,
+  "error_count": 15,
+  "warning_count": 4,
+  "errors": [
+    "Claim cl_0001 references missing evidence ids: pdf_section_b5a75e76cd23, pdf_section_44865c85cf46",
+    "Claim cl_0002 references missing evidence ids: pdf_section_3b35f4918508",
+    "Claim cl_0003 references missing evidence ids: pdf_section_b2bade0f3abb, pdf_section_5810c5d6296e",
+    "Claim cl_0004 references missing evidence ids: pdf_section_aa62d820564d",
+    "Claim cl_0005 references missing evidence ids: pdf_section_44865c85cf46",
+    "Claim cl_0006 references missing evidence ids: pdf_section_b2bade0f3abb",
+    "Claim cl_0007 references missing evidence ids: pdf_table_pdf_tbl_3de8c6182580",
+    "Claim cl_0008 references missing evidence ids: pdf_table_pdf_tbl_3de8c6182580",
+    "Claim cl_0009 references missing evidence ids: pdf_table_pdf_tbl_3de8c6182580",
+    "Claim cl_0010 references missing evidence ids: pdf_section_3b35f4918508, pdf_section_44865c85cf46, pdf_section_5810c5d6296e, pdf_section_aa62d820564d, pdf_section_b2bade0f3abb, pdf_section_b5a75e76cd23, pdf_table_pdf_tbl_3de8c6182580",
+    "Claim cl_0011 references missing evidence ids: pdf_section_3b35f4918508, pdf_section_aa62d820564d, pdf_section_b2bade0f3abb",
+    "Claim cl_0012 references missing evidence ids: pdf_section_3b35f4918508, pdf_section_aa62d820564d, pdf_section_b2bade0f3abb",
+    "Claim cl_0013 references missing evidence ids: pdf_section_3b35f4918508, pdf_section_aa62d820564d, pdf_section_b2bade0f3abb",
+    "Claim cl_0014 references missing evidence ids: pdf_section_3b35f4918508, pdf_section_aa62d820564d, pdf_section_b2bade0f3abb",
+    "Claim cl_0015 references missing evidence ids: pdf_section_3b35f4918508, pdf_section_aa62d820564d, pdf_section_b2bade0f3abb"
+  ],
+  "warnings": [
+    "No financial_analysis claims found.",
+    "Target symbol 0020.HK is not explicitly mentioned in report claims or markdown.",
+    "Target symbol mismatch: expected 0020.HK, but non-peer sections mention ticker-like tokens ANNUAL, AUDIT, FAN, GPT, GROUP, HK, INC, LIN.",
+    "Report has numeric claims but no charts were generated."
+  ],
+  "claim_count": 15,
+  "grounded_claim_count": 2,
+  "expected_symbol": "0020.HK",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 0,
+    "chart_text_consistency": {
+      "chart_count": 0,
+      "passed_chart_count": 0,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": []
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 0,
+      "results": []
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 0,
+      "details": []
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "valuation_not_available"
+    ],
+    "checks": {}
+  }
+}

@@ -1,0 +1,291 @@
+{
+  "schema_version": "quality_report.v1",
+  "generated_at": "2026-05-24T14:39:22.389880+00:00",
+  "run_dir": "eval_outputs\\benchmark_formal18_fy2024_v1\\runs\\formal18_us_amd\\single_agent_rag",
+  "outputs_dir": "eval_outputs\\benchmark_formal18_fy2024_v1\\runs\\formal18_us_amd\\single_agent_rag\\outputs",
+  "reports_dir": "eval_outputs\\benchmark_formal18_fy2024_v1\\runs\\formal18_us_amd\\single_agent_rag\\reports",
+  "total_score": 0.4758,
+  "objective_pass": false,
+  "scores": {
+    "structure": 0.8333,
+    "evidence": 0.2313,
+    "financial": 0.4125,
+    "multimodal": 0.0,
+    "professional_depth": 0.6667,
+    "compliance": 0.6
+  },
+  "weights": {
+    "structure": 0.18,
+    "evidence": 0.2,
+    "financial": 0.18,
+    "multimodal": 0.12,
+    "professional_depth": 0.2,
+    "compliance": 0.12
+  },
+  "issue_counts": {
+    "fatal": 0,
+    "blocker": 18,
+    "warning": 5,
+    "info": 0
+  },
+  "required_checks": {
+    "passed": false,
+    "details": {
+      "non_empty_executive_summary": true,
+      "non_empty_risk": true,
+      "non_empty_investment_conclusion": true,
+      "has_three_table_summary": false,
+      "has_business_profile": false,
+      "valuation_or_reason": true
+    }
+  },
+  "generalization_checks": {
+    "identity_consistency": {
+      "passed": true,
+      "available": false,
+      "reason": "research_blackboard_missing"
+    },
+    "period_consistency": {
+      "passed": true,
+      "available": false,
+      "reason": "research_blackboard_missing"
+    },
+    "market_route_coverage": {
+      "passed": true,
+      "available": false,
+      "reason": "research_blackboard_missing"
+    },
+    "industry_profile_confidence": {
+      "passed": true,
+      "available": false,
+      "reason": "research_blackboard_missing"
+    },
+    "pre_write_critic_passed": {
+      "passed": true,
+      "available": false,
+      "reason": "research_blackboard_missing"
+    }
+  },
+  "top_issues": [
+    {
+      "issue_id": "evidence_0002",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0001"
+    },
+    {
+      "issue_id": "evidence_0003",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0002"
+    },
+    {
+      "issue_id": "evidence_0004",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0003"
+    },
+    {
+      "issue_id": "evidence_0005",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0004"
+    },
+    {
+      "issue_id": "evidence_0006",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0005"
+    },
+    {
+      "issue_id": "evidence_0007",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0006"
+    },
+    {
+      "issue_id": "evidence_0008",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0007"
+    },
+    {
+      "issue_id": "evidence_0009",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0008"
+    },
+    {
+      "issue_id": "financial_0010",
+      "severity": "blocker",
+      "category": "financial",
+      "message": "缺少利润表摘要"
+    },
+    {
+      "issue_id": "financial_0011",
+      "severity": "blocker",
+      "category": "financial",
+      "message": "缺少资产负债表摘要"
+    },
+    {
+      "issue_id": "financial_0012",
+      "severity": "blocker",
+      "category": "financial",
+      "message": "缺少现金流量表摘要"
+    },
+    {
+      "issue_id": "gate_0022",
+      "severity": "blocker",
+      "category": "gate",
+      "message": "质量门禁未通过：has_three_table_summary"
+    }
+  ],
+  "issues": [
+    {
+      "issue_id": "structure_0001",
+      "severity": "blocker",
+      "category": "structure",
+      "message": "缺少必备章节或段落：business_profile"
+    },
+    {
+      "issue_id": "evidence_0002",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0001"
+    },
+    {
+      "issue_id": "evidence_0003",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0002"
+    },
+    {
+      "issue_id": "evidence_0004",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0003"
+    },
+    {
+      "issue_id": "evidence_0005",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0004"
+    },
+    {
+      "issue_id": "evidence_0006",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0005"
+    },
+    {
+      "issue_id": "evidence_0007",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0006"
+    },
+    {
+      "issue_id": "evidence_0008",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0007"
+    },
+    {
+      "issue_id": "evidence_0009",
+      "severity": "blocker",
+      "category": "evidence",
+      "message": "claim 缺少 evidence_ids：cl_0008"
+    },
+    {
+      "issue_id": "financial_0010",
+      "severity": "blocker",
+      "category": "financial",
+      "message": "缺少利润表摘要"
+    },
+    {
+      "issue_id": "financial_0011",
+      "severity": "blocker",
+      "category": "financial",
+      "message": "缺少资产负债表摘要"
+    },
+    {
+      "issue_id": "financial_0012",
+      "severity": "blocker",
+      "category": "financial",
+      "message": "缺少现金流量表摘要"
+    },
+    {
+      "issue_id": "multimodal_0013",
+      "severity": "blocker",
+      "category": "multimodal",
+      "message": "缺少图表产物"
+    },
+    {
+      "issue_id": "professional_depth_0014",
+      "severity": "blocker",
+      "category": "professional_depth",
+      "message": "专业深度不足：缺少 business_profile"
+    },
+    {
+      "issue_id": "professional_depth_0015",
+      "severity": "warning",
+      "category": "professional_depth",
+      "message": "专业深度不足：缺少 sensitivity"
+    },
+    {
+      "issue_id": "professional_depth_0016",
+      "severity": "blocker",
+      "category": "professional_depth",
+      "message": "估值缺失但没有明确估值不可用原因"
+    },
+    {
+      "issue_id": "professional_depth_0017",
+      "severity": "blocker",
+      "category": "professional_depth",
+      "message": "投资结论缺少明确方向和理由"
+    },
+    {
+      "issue_id": "compliance_0018",
+      "severity": "warning",
+      "category": "compliance",
+      "message": "合规披露不足：缺少 use_limitation"
+    },
+    {
+      "issue_id": "compliance_0019",
+      "severity": "warning",
+      "category": "compliance",
+      "message": "合规披露不足：缺少 conflict_statement"
+    },
+    {
+      "issue_id": "delivery_policy_0020",
+      "severity": "warning",
+      "category": "delivery_policy",
+      "message": "多智能体 trace 未清楚声明 memory 不可替代事实证据"
+    },
+    {
+      "issue_id": "delivery_policy_0021",
+      "severity": "warning",
+      "category": "delivery_policy",
+      "message": "免费公开数据源尝试不足，至少应记录两个以上数据源/搜索引擎"
+    },
+    {
+      "issue_id": "gate_0022",
+      "severity": "blocker",
+      "category": "gate",
+      "message": "质量门禁未通过：has_three_table_summary"
+    },
+    {
+      "issue_id": "gate_0023",
+      "severity": "blocker",
+      "category": "gate",
+      "message": "质量门禁未通过：has_business_profile"
+    }
+  ],
+  "artifact_counts": {
+    "claims": 8,
+    "evidence": 1,
+    "tables": 0,
+    "charts": 0,
+    "pdf_sections": 0,
+    "citations": 1
+  }
+}

@@ -1,0 +1,94 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "revenue",
+    "claim_text": "Apple's FY2024 revenue was $391.035 billion.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "revenue"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "profit",
+    "claim_text": "Apple's FY2024 net income was $93.736 billion.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "profit"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "cash_flow",
+    "claim_text": "Apple generated $118.254 billion in operating cash flow.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "cash_flow"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "valuation",
+    "claim_text": "No valuation data (P/E, EV/EBITDA) is available from the provided evidence.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "risk",
+    "claim_text": "Risk: Evidence limited to a single fiscal year (FY2024), no trend or peer comparison available.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "investment_rationale",
+    "claim_text": "Investment rationale: Strong profitability and cash generation, with net cash of $29.943 billion and low capex relative to cash flow.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "financial_analysis",
+    "claim_text": "Total assets were $364.98 billion as of September 28, 2024.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "financial_analysis",
+    "claim_text": "Capital expenditures were $9.447 billion in FY2024.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim"
+  }
+]

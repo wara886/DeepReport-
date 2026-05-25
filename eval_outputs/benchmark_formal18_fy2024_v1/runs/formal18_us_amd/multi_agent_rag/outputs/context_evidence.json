@@ -1,0 +1,70 @@
+[
+  {
+    "evidence_id": "sec_companyfacts_amd_e1f7a7661a",
+    "sample_id": "sec_companyfacts_amd_e1f7a7661a",
+    "symbol": "AMD",
+    "period": "FY2024",
+    "source_type": "sec_companyfacts",
+    "title": "AMD SEC company facts",
+    "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000002488.json",
+    "publish_time": "2025-02-05",
+    "content": "SEC companyfacts FY2024 supported metrics for AMD: RevenueFromContractWithCustomerExcludingAssessedTax: 25785000000 (USD, 2024-12-28); NetIncomeLoss: 1641000000 (USD, 2024-12-28); Assets: 69226000000 (USD, 2024-12-28); CashAndCashEquivalentsAtCarryingValue: 3787000000 (USD, 2024-12-28); NetCashProvidedByUsedInOperatingActivities: 3041000000 (USD, 2024-12-28); PaymentsToAcquirePropertyPlantAndEquipment: 636000000 (USD, 2024-12-28).",
+    "trust_level": "high",
+    "score": 0.0,
+    "key_points": [
+      "SEC companyfacts FY2024 supported metrics for AMD: RevenueFromContractWithCustomerExcludingAssessedTax: 25785000000 (USD, 2024-12-28); NetIncomeLoss: 1641000000 (USD, 2024-12-28); Assets: 69226000000 (USD, 2024-12-28); CashAndCashEquivalentsAtCarryingValue: 3787000000 (USD, 2024-12-28); NetCashProvidedByUsedInOperatingActivities: 3041000000 (USD, 2024-12-28); PaymentsToAcquirePropertyPlantAndEquipment: 636000000 (USD, 2024-12-28)"
+    ],
+    "metadata": {
+      "source_quality": {
+        "source_authority": "official",
+        "authority_level": "primary",
+        "authority_score": 1.0,
+        "trust_level": "high",
+        "source_document_type": "sec_companyfacts",
+        "allowed_claim_types": [
+          "balance_sheet",
+          "business_context",
+          "cash_flow",
+          "event",
+          "financial_metric",
+          "financial_statement",
+          "guidance",
+          "management_commentary",
+          "profit",
+          "revenue",
+          "risk"
+        ],
+        "reason": "official filing, structured financial record, or exchange disclosure"
+      },
+      "freshness": {
+        "source_timestamp": "2025-02-05",
+        "data_cutoff": "FY2024",
+        "freshness_days": 473,
+        "freshness_bucket": "stale"
+      },
+      "evidence_scope": "company"
+    },
+    "source_authority": "official",
+    "authority_level": "primary",
+    "authority_score": 1.0,
+    "source_document_type": "sec_companyfacts",
+    "allowed_claim_types": [
+      "balance_sheet",
+      "business_context",
+      "cash_flow",
+      "event",
+      "financial_metric",
+      "financial_statement",
+      "guidance",
+      "management_commentary",
+      "profit",
+      "revenue",
+      "risk"
+    ],
+    "source_timestamp": "2025-02-05",
+    "data_cutoff": "FY2024",
+    "freshness_days": 473,
+    "freshness_bucket": "stale",
+    "evidence_scope": "company"
+  }
+]

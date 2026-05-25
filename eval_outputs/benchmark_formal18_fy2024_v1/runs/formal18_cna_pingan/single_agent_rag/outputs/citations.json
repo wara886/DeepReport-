@@ -1,0 +1,58 @@
+[
+  {
+    "citation_id": "ref_001",
+    "evidence_id": "601318_FY2024_cninfo_6c52de6e74",
+    "title": "中国平安2024年年度报告",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2025-03-20/1222847447.PDF",
+    "source_type": "cninfo_announcement",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "2025-03-20",
+    "trust_level": "high",
+    "claim_ids": [],
+    "used_in_report": false,
+    "content_preview": "CNINFO official announcement for 中国平安 (601318): 中国平安2024年年度报告. PDF/source: http://static.cninfo.com.cn/finalpage/2025-03-20/1222847447.PDF"
+  },
+  {
+    "citation_id": "ref_002",
+    "evidence_id": "601318_FY2024_eastmoney_financials_balance_56ac006ff4",
+    "title": "601318 Eastmoney balance financial table",
+    "source_url": "https://data.eastmoney.com/bbsj/601318.html",
+    "source_type": "eastmoney_financials",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "2026-03-27 00:00:00",
+    "trust_level": "high",
+    "claim_ids": [],
+    "used_in_report": true,
+    "content_preview": "Eastmoney balance financial table: report_date 2024-12-31 00:00:00; total assets 12957827000000; total liabilities 11653115000000; total equity 1304712000000; cash and equivalents 683433000000."
+  },
+  {
+    "citation_id": "ref_003",
+    "evidence_id": "601318_FY2024_eastmoney_financials_cashflow_eb80795bfc",
+    "title": "601318 Eastmoney cashflow financial table",
+    "source_url": "https://data.eastmoney.com/bbsj/601318.html",
+    "source_type": "eastmoney_financials",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "2026-03-27 00:00:00",
+    "trust_level": "high",
+    "claim_ids": [],
+    "used_in_report": true,
+    "content_preview": "Eastmoney cashflow financial table: report_date 2024-12-31 00:00:00; net operating cash flow 382474000000; net investing cash flow -416251000000; net financing cash flow 30951000000."
+  },
+  {
+    "citation_id": "ref_004",
+    "evidence_id": "601318_FY2024_eastmoney_financials_income_0ce7f474c7",
+    "title": "601318 Eastmoney income financial table",
+    "source_url": "https://data.eastmoney.com/bbsj/601318.html",
+    "source_type": "eastmoney_financials",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "2026-03-27 00:00:00",
+    "trust_level": "high",
+    "claim_ids": [],
+    "used_in_report": true,
+    "content_preview": "Eastmoney income financial table: report_date 2024-12-31 00:00:00; operating revenue 1028925000000; total operating revenue 1028925000000; parent net profit 126607000000."
+  }
+]

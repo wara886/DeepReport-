@@ -1,0 +1,152 @@
+[
+  {
+    "chart_id": "key_metrics_bar",
+    "chart_type": "bar",
+    "title": "关键指标",
+    "output_path": "eval_outputs\\benchmark_formal18_fy2024_v1\\runs\\formal18_hk_4paradigm\\multi_agent_rag\\outputs\\charts\\key_metrics_bar.png",
+    "source_fields": "claims.numeric_values",
+    "input_table_ids": [
+      "6682.hk_fy2024_balance_sheet_pdf_table_pdf_tbl_ca8370e57ec8",
+      "6682.hk_fy2024_income_statement_pdf_table_pdf_tbl_d4a6553c1b20"
+    ],
+    "input_claim_ids": [
+      "cl_0001",
+      "cl_0002",
+      "cl_0008",
+      "cl_0009",
+      "cl_0012"
+    ],
+    "source_evidence_ids": [
+      "06682_FY2024_hkex_annual_report_e44bfd1911",
+      "pdf_section_0f3fb856a9d2",
+      "pdf_section_705699924be1",
+      "pdf_section_732125232415",
+      "pdf_section_a54881a87f88",
+      "pdf_section_d0eb63f9246a",
+      "pdf_section_ed10e0a23672",
+      "pdf_table_pdf_tbl_ca8370e57ec8",
+      "pdf_table_pdf_tbl_d4a6553c1b20"
+    ],
+    "chart_js": {
+      "type": "bar",
+      "labels": [
+        "cl_0001:total_assets",
+        "cl_0001:total_liabilities",
+        "cl_0001:equity",
+        "cl_0002:revenue",
+        "cl_0008:revenue",
+        "cl_0009:total_assets",
+        "cl_0009:total_liabilities",
+        "cl_0012:evidence_count"
+      ],
+      "data": [
+        2016009.0,
+        3199008.0,
+        2016009.0,
+        3.0,
+        3.0,
+        2016009.0,
+        3199008.0,
+        9.0
+      ],
+      "label": "指标值"
+    }
+  },
+  {
+    "chart_id": "claim_confidence_bar",
+    "chart_type": "bar",
+    "title": "结论置信度",
+    "output_path": "eval_outputs\\benchmark_formal18_fy2024_v1\\runs\\formal18_hk_4paradigm\\multi_agent_rag\\outputs\\charts\\claim_confidence_bar.png",
+    "source_fields": "claims.confidence",
+    "input_claim_ids": [
+      "cl_0001",
+      "cl_0002",
+      "cl_0003",
+      "cl_0004",
+      "cl_0005",
+      "cl_0006",
+      "cl_0007",
+      "cl_0008",
+      "cl_0009",
+      "cl_0010",
+      "cl_0011",
+      "cl_0012",
+      "cl_0013",
+      "cl_0014",
+      "cl_0015",
+      "cl_0016",
+      "cl_0017"
+    ],
+    "source_evidence_ids": [
+      "06682_FY2024_hkex_annual_report_e44bfd1911",
+      "pdf_section_0f3fb856a9d2",
+      "pdf_section_705699924be1",
+      "pdf_section_732125232415",
+      "pdf_section_a54881a87f88",
+      "pdf_section_d0eb63f9246a",
+      "pdf_section_ed10e0a23672",
+      "pdf_table_pdf_tbl_ca8370e57ec8",
+      "pdf_table_pdf_tbl_d4a6553c1b20"
+    ],
+    "chart_js": {
+      "type": "bar",
+      "labels": [
+        "cl_0001",
+        "cl_0002",
+        "cl_0003",
+        "cl_0004",
+        "cl_0005",
+        "cl_0006",
+        "cl_0007",
+        "cl_0008",
+        "cl_0009",
+        "cl_0010"
+      ],
+      "data": [
+        0.9,
+        0.9,
+        0.73,
+        0.73,
+        0.73,
+        0.73,
+        0.72,
+        0.82,
+        0.82,
+        0.62
+      ],
+      "label": "置信度"
+    }
+  },
+  {
+    "chart_id": "evidence_source_mix",
+    "chart_type": "table",
+    "title": "证据来源结构",
+    "output_path": "eval_outputs\\benchmark_formal18_fy2024_v1\\runs\\formal18_hk_4paradigm\\multi_agent_rag\\outputs\\charts\\evidence_source_mix.png",
+    "source_fields": "evidence_records.source_type",
+    "source_evidence_ids": [
+      "06682_FY2024_hkex_annual_report_e44bfd1911",
+      "pdf_section_0f3fb856a9d2",
+      "pdf_section_705699924be1",
+      "pdf_section_732125232415",
+      "pdf_section_a54881a87f88",
+      "pdf_section_d0eb63f9246a",
+      "pdf_section_ed10e0a23672",
+      "pdf_table_pdf_tbl_ca8370e57ec8",
+      "pdf_table_pdf_tbl_d4a6553c1b20"
+    ],
+    "chart_js": {
+      "type": "doughnut",
+      "labels": [
+        "pdf_section",
+        "pdf_statement_table",
+        "hkex_annual_report"
+      ],
+      "data": [
+        6.0,
+        2.0,
+        1.0
+      ],
+      "label": "证据数量"
+    }
+  }
+]

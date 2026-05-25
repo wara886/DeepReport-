@@ -1,0 +1,108 @@
+{
+  "schema_version": "quality_remediation_plan.v1",
+  "generated_at": "2026-05-24T08:29:30.408978+00:00",
+  "run_dir": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_tsla\\company\\outputs",
+  "symbol": "TSLA",
+  "period": "2026Q1",
+  "delivery_pass": true,
+  "quality_feedback_used": true,
+  "issue_counts": {
+    "fatal": 0,
+    "blocker": 0,
+    "warning": 8,
+    "info": 0
+  },
+  "failed_sections": [
+    "peer_comparison",
+    "valuation",
+    "sensitivity",
+    "investment_conclusion"
+  ],
+  "responsible_agents": [
+    {
+      "agent": "DeepAnalyzeAgent",
+      "reason": "period_mismatch, different_fiscal_period, unsupported_numeric"
+    },
+    {
+      "agent": "PeerAgent",
+      "reason": "peer_comparison, peer, comparison"
+    }
+  ],
+  "required_fixes": [
+    "Add peer comparison metrics and explicit boundaries instead of framework-only text.",
+    "Investment conclusion must include direction, reasons, cited evidence, and risk constraints."
+  ],
+  "forbidden_patterns": [
+    "no conclusion",
+    "no verifiable conclusion",
+    "unable to judge",
+    "to be filled",
+    "framework-only conclusion"
+  ],
+  "top_issues": [
+    {
+      "issue_id": "evidence_0001",
+      "severity": "warning",
+      "category": "evidence",
+      "message": "权威/一手来源占比偏低：0.17",
+      "source": "objective"
+    },
+    {
+      "issue_id": "llm_review_0001",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "缺乏原创投资洞察和独立分析，多为财务数据罗列",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0002",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "同行对比部分仅说明数据缺口，未实际对比",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0003",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "估值敏感性分析缺失",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0004",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "投资结论为中性观察，未给出明确方向性建议",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0005",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "多个章节出现'数据缺口说明'，削弱报告说服力",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "verifier_0007",
+      "severity": "warning",
+      "category": "verifier",
+      "message": "Target symbol mismatch: expected TSLA, but non-peer sections mention ticker-like tokens FRED.",
+      "source": "quality"
+    },
+    {
+      "issue_id": "verifier_0008",
+      "severity": "warning",
+      "category": "verifier",
+      "message": "Target symbol mismatch: expected TSLA, but non-peer sections mention ticker-like tokens FRED.",
+      "source": "quality"
+    }
+  ],
+  "planner_constraints": [
+    "Add peer comparison metrics and explicit boundaries instead of framework-only text.",
+    "Investment conclusion must include direction, reasons, cited evidence, and risk constraints.",
+    "Do not repeat hollow placeholder patterns: no conclusion, no verifiable conclusion, unable to judge, to be filled, framework-only conclusion.",
+    "All facts and numbers must remain bound to evidence_id/citation and pass verifier gates."
+  ],
+  "memory_note": "Quality feedback for TSLA 2026Q1: delivery_pass=True; issues=权威/一手来源占比偏低：0.17; 缺乏原创投资洞察和独立分析，多为财务数据罗列; 同行对比部分仅说明数据缺口，未实际对比; next fixes=Add peer comparison metrics and explicit boundaries instead of framework-only text.; Investment conclusion must include direction, reasons, cited evidence, and risk constraints.",
+  "boundary": "Quality feedback is planning context only; report facts still require evidence_id citations and verifier gates."
+}

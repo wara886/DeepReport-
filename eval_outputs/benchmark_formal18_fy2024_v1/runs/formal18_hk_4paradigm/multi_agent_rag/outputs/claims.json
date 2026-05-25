@@ -1,0 +1,291 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "financial_analysis",
+    "claim_text": "根据2024年年报数据，公司总资产为2,016,009元，总负债为3,199,008元，权益为2,016,009元，但会计等式不平衡，数据存在异常。",
+    "evidence_ids": [
+      "pdf_table_pdf_tbl_ca8370e57ec8"
+    ],
+    "numeric_values": {
+      "total_assets": 2016009.0,
+      "total_liabilities": 3199008.0,
+      "equity": 2016009.0
+    },
+    "risk_level": "high",
+    "confidence": 0.9,
+    "notes": "会计等式不成立，可能为提取错误或报表异常。",
+    "metric_lineage_ids": [
+      "6682.hk_fy2024_total_assets_pdf_tbl_ca8370e57ec8_nodate",
+      "6682.hk_fy2024_total_liabilities_pdf_tbl_ca8370e57ec8_nodate",
+      "6682.hk_fy2024_equity_pdf_tbl_ca8370e57ec8_nodate"
+    ],
+    "input_metric_lineage_ids": [
+      "6682.hk_fy2024_total_assets_pdf_tbl_ca8370e57ec8_nodate",
+      "6682.hk_fy2024_total_liabilities_pdf_tbl_ca8370e57ec8_nodate",
+      "6682.hk_fy2024_equity_pdf_tbl_ca8370e57ec8_nodate"
+    ]
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "financial_analysis",
+    "claim_text": "公司2024年营业收入仅为3元，收入金额极低。",
+    "evidence_ids": [
+      "pdf_table_pdf_tbl_d4a6553c1b20"
+    ],
+    "numeric_values": {
+      "revenue": 3.0
+    },
+    "risk_level": "high",
+    "confidence": 0.9,
+    "notes": "收入数据可能为千元单位或提取有误，但依据证据原值。",
+    "metric_lineage_ids": [
+      "6682.hk_fy2024_revenue_pdf_tbl_d4a6553c1b20_nodate"
+    ],
+    "input_metric_lineage_ids": [
+      "6682.hk_fy2024_revenue_pdf_tbl_d4a6553c1b20_nodate"
+    ],
+    "is_critical": true,
+    "critical_claim_type": "revenue"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "strategy_business",
+    "claim_text": "年报/公告 PDF 抽取的主营业务与业务结构片段显示：(楊強) REMUNERATION COMMITTEE Ms. Ke Yele (柯燁樂) (Chairlady) Dr. Yang Qiang (楊強) Mr. Li Jianbin (李建濱) NOMINATION COMMITTEE Dr. Dai Wenyuan (戴文淵) (Chairman) Mr. Liu Chijin (劉持金) Ms. Ke Yele (柯燁樂)(2) SUPERVISORS Mr. Chai Yif…；5 Beijing Fourth Paradigm Technology Co., Ltd. Annual Report 2024 CHAIRMAN’S STATEMENT Dear Shareholders, I am pleased to present our annual report for the year ended December 31, 2024 to our shareholders. BUSINESS REVI…",
+    "evidence_ids": [
+      "pdf_section_d0eb63f9246a",
+      "pdf_section_a54881a87f88"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "strategy_business",
+    "claim_text": "管理层讨论与经营情况 PDF 片段显示：CONTENTS 2 Corporate Information 4 Financial Highlights 5 Chairman’s Statement 12 Management Discussion and Analysis 22 Directors, Supervisors and Senior Management 29 Directors’ Report 54 Report of the Supervisory Comm…",
+    "evidence_ids": [
+      "pdf_section_ed10e0a23672"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "ownership_governance",
+    "claim_text": "股东结构、治理或管理层 PDF 片段显示：CONTENTS 2 Corporate Information 4 Financial Highlights 5 Chairman’s Statement 12 Management Discussion and Analysis 22 Directors, Supervisors and Senior Management 29 Directors’ Report 54 Report of the Supervisory Comm…；5 Beijing Fourth Paradigm Technology Co., Ltd. Annual Report 2024 CHAIRMAN’S STATEMENT Dear Shareholders, I am pleased to present our annual report for the year ended December 31, 2024 to our shareholders. BUSINESS REVI…",
+    "evidence_ids": [
+      "pdf_section_732125232415",
+      "pdf_section_705699924be1"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "financial_statements",
+    "claim_text": "财务报表 PDF 片段显示：an’s Statement 12 Management Discussion and Analysis 22 Directors, Supervisors and Senior Management 29 Directors’ Report 54 Report of the Supervisory Committee 55 Corporate Governance Report 72 Independent Auditor’s Re…",
+    "evidence_ids": [
+      "pdf_section_0f3fb856a9d2"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "ownership_governance",
+    "claim_text": "PDF 文件中关于股权与治理结构提供了以下信息： 5 Beijing Fourth Paradigm Technology Co., Ltd. Annual Report 2024 CHAIRMAN’S STATEMENT Dear Shareholders, I am pleased to present our annual report for the year ended December 31, 2024 to our shareholders. BUSINESS REVI…",
+    "evidence_ids": [
+      "pdf_section_705699924be1"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.72,
+    "notes": "来自 PDF insight，按 section type 分类提取的可引用内容"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "financial_statements",
+    "claim_text": "6682.HK FY2024 利润表摘要：收入约为 3.00。",
+    "evidence_ids": [
+      "pdf_table_pdf_tbl_ca8370e57ec8",
+      "pdf_table_pdf_tbl_d4a6553c1b20"
+    ],
+    "numeric_values": {
+      "revenue": 3.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.82,
+    "notes": "由标准化三表行生成，必须写入正文三表摘要。",
+    "metric_lineage_ids": [
+      "6682.hk_fy2024_revenue_pdf_tbl_d4a6553c1b20_nodate"
+    ],
+    "input_metric_lineage_ids": [
+      "6682.hk_fy2024_revenue_pdf_tbl_d4a6553c1b20_nodate"
+    ],
+    "is_critical": true,
+    "critical_claim_type": "revenue"
+  },
+  {
+    "claim_id": "cl_0009",
+    "section_name": "financial_statements",
+    "claim_text": "6682.HK FY2024 资产负债表摘要：总资产约为 2.02M，总负债约为 3.20M。",
+    "evidence_ids": [
+      "pdf_table_pdf_tbl_ca8370e57ec8",
+      "pdf_table_pdf_tbl_d4a6553c1b20"
+    ],
+    "numeric_values": {
+      "total_assets": 2016009.0,
+      "total_liabilities": 3199008.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.82,
+    "notes": "由标准化三表行生成，必须写入正文三表摘要。",
+    "metric_lineage_ids": [
+      "6682.hk_fy2024_total_assets_pdf_tbl_ca8370e57ec8_nodate",
+      "6682.hk_fy2024_total_liabilities_pdf_tbl_ca8370e57ec8_nodate"
+    ],
+    "input_metric_lineage_ids": [
+      "6682.hk_fy2024_total_assets_pdf_tbl_ca8370e57ec8_nodate",
+      "6682.hk_fy2024_total_liabilities_pdf_tbl_ca8370e57ec8_nodate"
+    ]
+  },
+  {
+    "claim_id": "cl_0010",
+    "section_name": "financial_statements",
+    "claim_text": "6682.HK FY2024 现金流量表缺口：当前标准化表格尚未取得经营现金流或自由现金流字段，报告应明确该缺口会限制现金转化率和估值敏感性判断。",
+    "evidence_ids": [
+      "pdf_table_pdf_tbl_ca8370e57ec8",
+      "pdf_table_pdf_tbl_d4a6553c1b20"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.62,
+    "notes": "现金流量表摘要或缺口说明，必须写入正文三表摘要。"
+  },
+  {
+    "claim_id": "cl_0011",
+    "section_name": "valuation",
+    "claim_text": "6682.HK FY2024 估值不可用原因：当前公开证据缺少市值或股本口径、净利润、净资产/股东权益，因此不能正式计算 P/E、P/B、P/S；报告应把这些缺口列为下一轮检索任务。",
+    "evidence_ids": [
+      "pdf_table_pdf_tbl_ca8370e57ec8",
+      "pdf_table_pdf_tbl_d4a6553c1b20"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "最小估值模型缺口披露。",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0012",
+    "section_name": "business_overview",
+    "claim_text": "6682.HK 的证据覆盖包括 9 条记录，横跨 3 类来源。",
+    "evidence_ids": [
+      "06682_FY2024_hkex_annual_report_e44bfd1911",
+      "pdf_section_0f3fb856a9d2",
+      "pdf_section_705699924be1",
+      "pdf_section_732125232415",
+      "pdf_section_a54881a87f88",
+      "pdf_section_d0eb63f9246a",
+      "pdf_section_ed10e0a23672",
+      "pdf_table_pdf_tbl_ca8370e57ec8",
+      "pdf_table_pdf_tbl_d4a6553c1b20"
+    ],
+    "numeric_values": {
+      "evidence_count": 9.0,
+      "unique_sources": 3.0
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由证据覆盖统计生成。",
+    "input_metric_lineage_ids": [
+      "6682.hk_fy2024_revenue_pdf_tbl_d4a6553c1b20_nodate",
+      "6682.hk_fy2024_total_assets_pdf_tbl_ca8370e57ec8_nodate",
+      "6682.hk_fy2024_total_liabilities_pdf_tbl_ca8370e57ec8_nodate"
+    ]
+  },
+  {
+    "claim_id": "cl_0013",
+    "section_name": "risks",
+    "claim_text": "ANNUAL REPORT 2024 提示了相关风险或运营关注点。",
+    "evidence_ids": [
+      "06682_FY2024_hkex_annual_report_e44bfd1911"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "由来源内容识别风险信号。",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0014",
+    "section_name": "executive_summary",
+    "claim_text": "6682.HK 暂无完整执行摘要，以下基于已有证据和报告结构填充。关键财务指标已绑定 evidence_id/citation 并由 verifier 校验。",
+    "evidence_ids": [
+      "pdf_section_ed10e0a23672",
+      "pdf_section_0f3fb856a9d2",
+      "pdf_section_732125232415"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.7,
+    "notes": "执行摘要 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0015",
+    "section_name": "peer_compare",
+    "claim_text": "6682.HK 属于上市公司类别，同行可比分析框架基于收入增长/利润率/ROE/估值/杠杆等维度。当前公开证据尚未覆盖完整同行数据，以下为框架性分析。",
+    "evidence_ids": [
+      "pdf_section_ed10e0a23672",
+      "pdf_section_0f3fb856a9d2",
+      "pdf_section_732125232415"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "同行对比 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "peer_comparison"
+  },
+  {
+    "claim_id": "cl_0016",
+    "section_name": "valuation_sensitivity",
+    "claim_text": "敏感性分析框架覆盖宏观需求/成本费用/竞争格局/监管政策等变量。当前证据不足以量化各变量影响，以下说明缺失数据对敏感性判断的约束。",
+    "evidence_ids": [
+      "pdf_section_ed10e0a23672",
+      "pdf_section_0f3fb856a9d2",
+      "pdf_section_732125232415"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "敏感性分析 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0017",
+    "section_name": "conclusion",
+    "claim_text": "关于6682.HK 的投资结论需要综合主营业务增长和经营效率改善等驱动因素和市场竞争、成本波动和监管变化等约束条件。当前公开证据尚不完整，以下为基于现有信息的初步判断。",
+    "evidence_ids": [
+      "pdf_section_ed10e0a23672",
+      "pdf_section_0f3fb856a9d2",
+      "pdf_section_732125232415"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "投资结论 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  }
+]

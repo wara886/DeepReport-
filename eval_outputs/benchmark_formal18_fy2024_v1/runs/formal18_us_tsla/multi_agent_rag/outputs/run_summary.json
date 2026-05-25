@@ -1,0 +1,12 @@
+{
+  "symbol": "TSLA",
+  "period": "FY2024",
+  "model": "deepseek-v4-flash",
+  "variant": "multi_agent_rag",
+  "entity_resolution": {
+    "resolved_symbol": "TSLA"
+  },
+  "frozen_evidence_only": true,
+  "retrieval": "bm25_frozen_snapshot",
+  "orchestration": "multi_agent_orchestrator"
+}

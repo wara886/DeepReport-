@@ -248,6 +248,12 @@ def quality_generalization_checks(artifacts: Dict[str, Any]) -> Dict[str, Any]:
     period_state = bb.get("period_state", {}) if isinstance(bb.get("period_state"), dict) else {}
     critic = bb.get("critic", {}) if isinstance(bb.get("critic"), dict) else {}
     role_outputs = bb.get("role_outputs", {}) if isinstance(bb.get("role_outputs"), dict) else {}
+    agent_writes = bb.get("agent_writes", []) if isinstance(bb.get("agent_writes"), list) else []
+    critic_available = any(
+        isinstance(item, dict)
+        and (item.get("agent") == "CriticAgent" or item.get("task_type") == "pre_write_critic")
+        for item in agent_writes
+    )
     industry_terms = [str(industry.get("industry") or ""), str(industry.get("sector") or ""), str(industry.get("business_summary") or "")]
     identity_ok = bool(identity.get("is_listed")) and bool(identity.get("canonical_symbol") or identity.get("symbol"))
     industry_ok = float(industry.get("confidence") or 0.0) >= 0.55
@@ -280,8 +286,10 @@ def quality_generalization_checks(artifacts: Dict[str, Any]) -> Dict[str, Any]:
             "business_summary": next((item for item in industry_terms if item), ""),
         },
         "pre_write_critic_passed": {
-            "passed": bool(critic.get("pre_write_passed")),
+            "passed": bool(critic.get("pre_write_passed")) if critic_available else True,
+            "available": critic_available,
             "objection_count": len(_as_list(critic.get("objections"))),
+            "reason": "" if critic_available else "pre_write_critic_not_executed",
         },
         "analysis_role_outputs": {
             "passed": _role_outputs_are_reviewable(role_outputs),

@@ -124,6 +124,48 @@ tests/          核心流程与质量规则测试
 | AMD 单样本修复验收 | 修复后的样本通过三层交付门禁，客观质量评分 `0.9667` | 可证明该样本满足当前交付条件，仍有正文深度和权威来源覆盖警告 |
 | 跨市场泛化回归 | 一轮 8 个跨行业/跨市场案例中，最终交付通过数为 `0/8` | 已建立泛化检查，但系统尚不具备稳定跨市场交付能力 |
 
+### Fixed Quick-9 Multi-Agent 跨市场诊断
+
+2026-05-24 完成固定 9 公司样本的当前 `multi_agent` 路线实跑，覆盖美股、港股与 A 股。本轮使用在线可用数据源进行工程诊断，不是冻结证据快照上的公平方案对比，也未运行 `Direct LLM` 或 `Single-Agent RAG` baseline。下表是对原九案产物按修正后的八项确定性交付合同进行的只读重算结果，不重新运行 Agent 或取数。
+
+| 指标 | Overall | US | HK | CN-A |
+| --- | ---: | ---: | ---: | ---: |
+| Delivery Pass Rate | `100.00%` | `100.00%` | `100.00%` | `100.00%` |
+| Objective Quality Score | `94.84` | `96.76` | `87.83` | `99.92` |
+| Traceable Claim Rate (artifact-derived) | `97.77%` | `100.00%` | `100.00%` | `93.31%` |
+
+结果显示，九案均完成 artifacts 写出并满足八项确定性交付要求，但这不等于达到正式质量标准：九案均仍带有客观质量诊断，A 股三案存在关键结论引用缺口。初版可追溯率基于现有 sidecar 产物统计，不等同于正式冻结数据集上的 `Traceable Claim Rate v1`。
+
+结果文件：[`eval_outputs/benchmark_quick9_multi_agent_reassessed/benchmark_report.md`](eval_outputs/benchmark_quick9_multi_agent_reassessed/benchmark_report.md)。原始旧口径记录由修复对照报告保留用于审计。
+
+### Phase 2R：进入正式 benchmark 前的修复评测
+
+在不引入 baseline variant 和冻结快照的前提下，项目进一步执行了修复评测：修正 `Delivery Pass Rate` 与客观质量/可追溯指标重复绑定的问题，将未执行的写前质疑与真实失败区分开；同时用 `diagnostic_full` 和一轮已有返工链路重跑固定九例，并为港股显式尝试 `hkex_announcements` 路线。
+
+| 指标 | 原记录值 | 按修正合同重算原产物 | 修复后重跑 | 实际修复变化 |
+| --- | ---: | ---: | ---: | ---: |
+| Delivery Pass Rate | `0.00%` | `100.00%` | `100.00%` | `0.00 pp` |
+| Objective Quality Score | `94.84` | `94.84` | `95.86` | `+1.02` |
+| Traceable Claim Rate (artifact-derived) | `97.77%` | `97.77%` | `85.91%` | `-11.86 pp` |
+
+这组结果不能写成“修复使交付通过率从 0% 提升至 100%”：原始 `0%` 主要来自评测合同把独立诊断重复计入交付门禁。修复后九例均满足八项确定性交付检查，但仍有五例出现引用/证据诊断，港股初版可追溯率仅 `64.44%`；`0020.HK` 与 `0700.HK` 已尝试港交所公告路线但未得到匹配结果，`6682.HK` 在返工阶段取得匹配结果。这些问题随后进入 Phase 3 冻结对照处理，正式结果见下节。
+
+结果文件：[`eval_outputs/benchmark_quick9_multi_agent_repair/benchmark_report.md`](eval_outputs/benchmark_quick9_multi_agent_repair/benchmark_report.md)、[`eval_outputs/benchmark_quick9_multi_agent_repair/repair_comparison.md`](eval_outputs/benchmark_quick9_multi_agent_repair/repair_comparison.md)。
+
+### Phase 3：Formal-18 冻结输入正式对照
+
+项目已完成 formal-18 固定对照：使用 `FY2024` 冻结证据快照，覆盖美股、港股、A 股各六家公司，统一运行 `direct_llm`、`single_agent_rag`、`multi_agent_rag`。快照版本为 `formal18_fy2024_v1`，`18/18` 案例就绪且 SHA-256 校验通过；54 个方案/案例运行单元全部完成评测，运行时不得联网补证。
+
+| Variant | Delivery Pass Rate | Objective Quality Score | Traceable Claim Rate v1 |
+| --- | ---: | ---: | ---: |
+| Direct LLM | `16.67%` | `51.21` | `29.66%` |
+| Single-Agent RAG | `27.78%` | `52.52` | `34.89%` |
+| Multi-Agent RAG | `72.22%` | `86.27` | `70.01%` |
+
+`Traceable Claim Rate v1` 只统计带显式关键结论标签、引用指向冻结 evidence、正文使用引用且数值审计通过的 claim；表中主指标按 18 个固定案例的 case-level rate 做宏平均。Multi-Agent RAG 在该冻结协议下三项主指标均高于两条 one-shot baseline，但尚有 5 个案例未通过交付门禁，港股可追溯率为 `37.80%`、A 股交付通过率为 `50.00%`，不能表述为生产级稳定交付或投资准确率证明。
+
+正式结果与复现依据：[`eval_outputs/benchmark_formal18_fy2024_v1/formal_benchmark_report.md`](eval_outputs/benchmark_formal18_fy2024_v1/formal_benchmark_report.md)、[`docs/formal_benchmark_protocol.md`](docs/formal_benchmark_protocol.md)、[`data/benchmarks/frozen_fy2024_v1/snapshot_manifest.json`](data/benchmarks/frozen_fy2024_v1/snapshot_manifest.json)。
+
 ## 快速开始
 
 ### 1. 安装
@@ -173,8 +215,29 @@ python scripts/run_financial_agent_ui.py --host 127.0.0.1 --port 8787
 ### 5. 运行核心测试
 
 ```bash
-pytest -q tests/test_multi_agent_workflow.py tests/test_delivery_gate.py tests/test_report_quality.py tests/test_web_ui.py
+python -m pytest -q tests/test_multi_agent_workflow.py tests/test_delivery_gate.py tests/test_report_quality.py tests/test_web_ui.py
 ```
+
+### 6. 运行 Fixed Quick-9 多智能体诊断
+
+```bash
+python scripts/run_quick9_multi_agent_benchmark.py --config configs/benchmark_quick9_multi_agent.yaml --output-root eval_outputs/benchmark_quick9_multi_agent
+
+# 不重跑 Agent，仅按现行评测合同重新汇总既有九案产物
+python scripts/run_quick9_multi_agent_benchmark.py --config configs/benchmark_quick9_multi_agent.yaml --reassess-source-root eval_outputs/benchmark_quick9_multi_agent --output-root eval_outputs/benchmark_quick9_multi_agent_reassessed
+```
+
+该命令只运行当前 `multi_agent` variant，并输出总体/分市场指标、失败分类与每案例运行元数据。
+
+### 7. 构建 Formal-18 冻结快照与正式对照
+
+```bash
+python scripts/stage_formal18_fy2024_evidence.py --config configs/benchmark_formal18_fy2024.yaml
+python scripts/build_frozen_snapshot.py --config configs/benchmark_formal18_fy2024.yaml
+python scripts/run_formal_benchmark.py --config configs/benchmark_formal18_fy2024.yaml
+```
+
+第一条命令是显式联网 staging，后两条只使用已落盘 evidence；正式运行仅在 formal-18 的 `FY2024` 冻结 evidence 完整且 hash 校验通过后执行三方案对照。当前 manifest 已为 `18/18` 且校验通过，结果产物位于 `eval_outputs/benchmark_formal18_fy2024_v1/`。
 
 ## 输出产物
 

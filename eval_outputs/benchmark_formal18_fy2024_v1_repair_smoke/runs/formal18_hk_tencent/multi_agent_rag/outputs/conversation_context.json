@@ -1,0 +1,41 @@
+{
+  "session_id": "f19e488c372e",
+  "user_intent": "腾讯控股 (0700.HK) formal FY2024 frozen-input report",
+  "symbol": "0700.HK",
+  "period": "FY2024",
+  "report_type": "company_stock_report",
+  "hard_constraints": [
+    "Only produce the requested company/stock research report type for this run.",
+    "Every material factual claim must be backed by an explicit evidence_id citation.",
+    "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+    "Keep verifier feedback active during revisions until the final verification passes.",
+    "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+    "Use frozen snapshot evidence only.",
+    "Cover executive summary, three statements or gaps, valuation or limitation, risks, and investment conclusion.",
+    "Emit explicitly labeled critical claims and body citations."
+  ],
+  "pinned_facts": [
+    "Target symbol: 0700.HK",
+    "Target period: FY2024",
+    "Report type: company_stock_report"
+  ],
+  "rejected_claims": [],
+  "verifier_feedback": [
+    "warnings: No financial_analysis claims found.",
+    "warnings: Target symbol 0700.HK is not explicitly mentioned in report claims or markdown.",
+    "warnings: Target symbol mismatch: expected 0700.HK, but non-peer sections mention ticker-like tokens ANNUAL, HK, REPORT.",
+    "fix_recommendations: All claims are supported by provided evidence IDs and citations are present in the markdown report.",
+    "revision_brief: - Warnings: No financial_analysis claims found. - Warnings: Target symbol 0700.HK is not explicitly mentioned in report claims or markdown. - Warnings: Target symbol mismatch: expected 0700.HK, but non-peer sections mention ticker-like tokens ANNUAL, HK, REPORT. - Fix recommendations: All claims are supported by provided evidence IDs and citations are present in the markdown report."
+  ],
+  "open_questions": [],
+  "turns": [
+    {
+      "role": "user",
+      "content": "腾讯控股 (0700.HK) formal FY2024 frozen-input report",
+      "metadata": {
+        "source": "run_request"
+      }
+    }
+  ],
+  "context_brief": "[ConversationMemory]\nUser intent:\n- 腾讯控股 (0700.HK) formal FY2024 frozen-input report\nRun scope:\n- report_type=company_stock_report\n- symbol=0700.HK\n- period=FY2024\nHard constraints:\n- Only produce the requested company/stock research report type for this run.\n- Every material factual claim must be backed by an explicit evidence_id citation.\n- Do not invent numbers, dates, sources, ratings, or unsupported conclusions.\n- Keep verifier feedback active during revisions until the final verification passes.\n- Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.\n- Use frozen snapshot evidence only.\n- Cover executive summary, three statements or gaps, valuation or limitation, risks, and investment conclusion.\n- Emit explicitly labeled critical claims and body citations.\nPinned facts:\n- Target symbol: 0700.HK\n- Target period: FY2024\n- Report type: company_stock_report\nVerifier feedback to keep active:\n- warnings: No financial_analysis claims found.\n- warnings: Target symbol 0700.HK is not explicitly mentioned in report claims or markdown.\n- warnings: Target symbol mismatch: expected 0700.HK, but non-peer sections mention ticker-like tokens ANNUAL, HK, REPORT.\n- fix_recommendations: All claims are supported by provided evidence IDs and citations are present in the markdown report.\n- revision_brief: - Warnings: No financial_analysis claims found. - Warnings: Target symbol 0700.HK is not explicitly mentioned in report claims or markdown. - Warnings: Target symbol mismatch: expected 0700.HK, but non-peer sections mention ticker-like tokens ANNUAL, HK, REPORT. -"
+}

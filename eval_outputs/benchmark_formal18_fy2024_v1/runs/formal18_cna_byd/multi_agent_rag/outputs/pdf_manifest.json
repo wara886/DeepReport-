@@ -1,0 +1,20 @@
+[
+  {
+    "evidence_id": "002594_FY2024_cninfo_d090bade3a",
+    "source_type": "cninfo_announcement",
+    "title": "2024年年度报告",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2025-03-25/1222881496.PDF",
+    "publish_time": "2025-03-25",
+    "status": "cached",
+    "cache_status": "cached",
+    "extraction_status": "extracted",
+    "file_path": "eval_outputs\\benchmark_formal18_fy2024_v1\\runs\\formal18_cna_byd\\multi_agent_rag\\outputs\\pdf_cache\\e9c2d7fdd088e151.pdf",
+    "sha256": "e9c2d7fdd088e151ccb6c8ad3d95587b2b014b10f2c9731508d23ce07fde4de3",
+    "size_bytes": 10092140,
+    "download_time": "2026-05-24T13:56:56.116105+00:00",
+    "page_count": 290,
+    "pages_read": 6,
+    "section_count": 7,
+    "table_count": 0
+  }
+]

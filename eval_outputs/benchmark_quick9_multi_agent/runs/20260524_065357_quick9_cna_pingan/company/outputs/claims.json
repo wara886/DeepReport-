@@ -1,0 +1,371 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "strategy_business",
+    "claim_text": "年报/公告 PDF 抽取的主营业务与业务结构片段显示：54 (7.1) 稀释每股收益（人民币元） 1.25 1.44 (13.2) 加权平均净资产收益率（非年化，%） 2.5 2.9 下降0.4 个百分点 2026 年3 月31 日 2025 年12 月31 日 变动（%） 总资产（人民币百万元） 14,169,947 13,898,471 2.0 归属于母公司股东权益（人民币百万元） 1,018,310 1,000,419 1.8 非经常性损益项目（人民币百万元） 2026 年1-3…",
+    "evidence_ids": [
+      "pdf_section_f130da89ab7b"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "ownership_governance",
+    "claim_text": "股东结构、治理或管理层 PDF 片段显示：证券代码：601318 证券简称：中国平安 公告编号：临2026-013 中国平安保险（集团）股份有限公司 2026 年第一季度报告 中国平安保险（集团）股份有限公司（以下简称“本公司”）董事会及全体董事保证本公告内 容不存在任何虚假记载、误导性陈述或者重大遗漏，并对其内容的真实性、准确性和完整性承担法 律责任。 重要内容提示： 本公司董事会、监事会及董事、监事、高级管理人员保证本季度报告内容的真实、准确、 完整，不存在虚假记载、误…",
+    "evidence_ids": [
+      "pdf_section_dd37d879668f"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "financial_statements",
+    "claim_text": "财务报表 PDF 片段显示：证券代码：601318 证券简称：中国平安 公告编号：临2026-013 中国平安保险（集团）股份有限公司 2026 年第一季度报告 中国平安保险（集团）股份有限公司（以下简称“本公司”）董事会及全体董事保证本公告内 容不存在任何虚假记载、误导性陈述或者重大遗漏，并对其内容的真实性、准确性和完整性承担法 律责任。 重要内容提示： 本公司董事会、监事会及董事、监事、高级管理人员保证本季度报告内容的真实、准确、 完整，不存在虚假记载、误…；百分点 2026 年3 月31 日 2025 年12 月31 日 变动（%） 总资产（人民币百万元） 14,169,947 13,898,471 2.0 归属于母公司股东权益（人民币百万元） 1,018,310 1,000,419 1.8 非经常性损益项目（人民币百万元） 2026 年1-3 月 计入营业外收入的政府补助 - 捐赠支出 (3) 除上述各项之外的其他符合非经常性损益定义的损益项目 1,149 所得税影响数 (24) 少数…",
+    "evidence_ids": [
+      "pdf_section_e746cdcbf2f3",
+      "pdf_section_929154e9ecfa"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "strategy_business",
+    "claim_text": "PDF 文件中的业务描述/管理层讨论提供了以下可参考信息： 54 (7.1) 稀释每股收益（人民币元） 1.25 1.44 (13.2) 加权平均净资产收益率（非年化，%） 2.5 2.9 下降0.4 个百分点 2026 年3 月31 日 2025 年12 月31 日 变动（%） 总资产（人民币百万元） 14,169,947 13,898,471 2.0 归属于母公司股东权益（人民币百万元） 1,018,310 1,000,419 1.8 非经常性损益项目（人民币百万元） 2026 年1-3…",
+    "evidence_ids": [
+      "pdf_section_f130da89ab7b"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.72,
+    "notes": "来自 PDF insight，按 section type 分类提取的可引用内容"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "ownership_governance",
+    "claim_text": "PDF 文件中关于股权与治理结构提供了以下信息： 证券代码：601318 证券简称：中国平安 公告编号：临2026-013 中国平安保险（集团）股份有限公司 2026 年第一季度报告 中国平安保险（集团）股份有限公司（以下简称“本公司”）董事会及全体董事保证本公告内 容不存在任何虚假记载、误导性陈述或者重大遗漏，并对其内容的真实性、准确性和完整性承担法 律责任。 重要内容提示： 本公司董事会、监事会及董事、监事、高级管理人员保证本季度报告内容的真实、准确、 完整，不存在虚假记载、误…",
+    "evidence_ids": [
+      "pdf_section_dd37d879668f"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.72,
+    "notes": "来自 PDF insight，按 section type 分类提取的可引用内容"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "financial_analysis",
+    "claim_text": "601318.SS 东方财富财务表显示，2026-03-31 00:00:00 营业收入约为 2184.05亿元，净利润约为 250.22亿元。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d"
+    ],
+    "numeric_values": {
+      "revenue": 218405000000.0,
+      "net_income": 25022000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.8,
+    "notes": "由东方财富结构化利润表记录生成，仍建议用巨潮/交易所公告 PDF 交叉验证。",
+    "metric_lineage_ids": [
+      "601318.ss_2026q1_revenue_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00",
+      "601318.ss_2026q1_net_income_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00"
+    ],
+    "input_metric_lineage_ids": [
+      "601318.ss_2026q1_revenue_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00",
+      "601318.ss_2026q1_net_income_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00"
+    ]
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "financial_statements",
+    "claim_text": "601318.SS 东方财富资产负债表显示，2026-03-31 00:00:00 总资产约为 141699.47亿元，总负债约为 127356.57亿元，所有者权益约为 14342.90亿元。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191"
+    ],
+    "numeric_values": {
+      "assets": 14169947000000.0,
+      "liabilities": 12735657000000.0,
+      "equity": 1434290000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.78,
+    "notes": "由东方财富结构化资产负债表记录生成，仍建议用巨潮/交易所公告 PDF 交叉验证。",
+    "metric_lineage_ids": [
+      "601318.ss_2026q1_total_assets_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00",
+      "601318.ss_2026q1_total_liabilities_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00",
+      "601318.ss_2026q1_equity_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00"
+    ],
+    "input_metric_lineage_ids": [
+      "601318.ss_2026q1_total_assets_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00",
+      "601318.ss_2026q1_total_liabilities_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00",
+      "601318.ss_2026q1_equity_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00"
+    ]
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "financial_statements",
+    "claim_text": "601318.SS 东方财富现金流量表显示，2026-03-31 00:00:00 经营现金流净额约为 1310.64亿元，投资现金流净额约为 -1229.34亿元，筹资现金流净额约为 -588.11亿元。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+    ],
+    "numeric_values": {
+      "operating_cash_flow": 131064000000.0,
+      "investing_cash_flow": -122934000000.0,
+      "financing_cash_flow": -58811000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.78,
+    "notes": "由东方财富结构化现金流量表记录生成，仍建议用巨潮/交易所公告 PDF 交叉验证。",
+    "metric_lineage_ids": [
+      "601318.ss_2026q1_operating_cash_flow_601318.ss_2026q1_cashflow_601318_2026q1_eastmoney_financials_cashflow_66f5ea1caa_2026-03-31_00:00:00"
+    ],
+    "input_metric_lineage_ids": [
+      "601318.ss_2026q1_operating_cash_flow_601318.ss_2026q1_cashflow_601318_2026q1_eastmoney_financials_cashflow_66f5ea1caa_2026-03-31_00:00:00"
+    ]
+  },
+  {
+    "claim_id": "cl_0009",
+    "section_name": "financial_statements",
+    "claim_text": "系统已构建三表视图，覆盖 11 个核心项目。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+    ],
+    "numeric_values": {
+      "statement_line_item_count": 11.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.74,
+    "notes": "由 build_three_statement_view 生成覆盖结论。",
+    "input_metric_lineage_ids": [
+      "601318.ss_2026q1_revenue_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00",
+      "601318.ss_2026q1_net_income_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00",
+      "601318.ss_2026q1_operating_cash_flow_601318.ss_2026q1_cashflow_601318_2026q1_eastmoney_financials_cashflow_66f5ea1caa_2026-03-31_00:00:00",
+      "601318.ss_2026q1_gross_margin_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00",
+      "601318.ss_2026q1_total_assets_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00",
+      "601318.ss_2026q1_total_liabilities_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00"
+    ]
+  },
+  {
+    "claim_id": "cl_0010",
+    "section_name": "financial_statements",
+    "claim_text": "601318.SS 2026Q1 利润表摘要：收入约为 218.41B，净利润约为 25.02B。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+    ],
+    "numeric_values": {
+      "revenue": 218405000000.0,
+      "net_income": 25022000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.82,
+    "notes": "由标准化三表行生成，必须写入正文三表摘要。",
+    "metric_lineage_ids": [
+      "601318.ss_2026q1_revenue_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00",
+      "601318.ss_2026q1_net_income_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00"
+    ],
+    "input_metric_lineage_ids": [
+      "601318.ss_2026q1_revenue_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00",
+      "601318.ss_2026q1_net_income_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00"
+    ]
+  },
+  {
+    "claim_id": "cl_0011",
+    "section_name": "financial_statements",
+    "claim_text": "601318.SS 2026Q1 资产负债表摘要：总资产约为 14169.95B，总负债约为 12735.66B。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+    ],
+    "numeric_values": {
+      "total_assets": 14169947000000.0,
+      "total_liabilities": 12735657000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.82,
+    "notes": "由标准化三表行生成，必须写入正文三表摘要。",
+    "metric_lineage_ids": [
+      "601318.ss_2026q1_total_assets_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00",
+      "601318.ss_2026q1_total_liabilities_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00"
+    ],
+    "input_metric_lineage_ids": [
+      "601318.ss_2026q1_total_assets_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00",
+      "601318.ss_2026q1_total_liabilities_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00"
+    ]
+  },
+  {
+    "claim_id": "cl_0012",
+    "section_name": "financial_statements",
+    "claim_text": "601318.SS 2026Q1 现金流量表摘要：经营现金流约为 131.06B。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+    ],
+    "numeric_values": {
+      "operating_cash_flow": 131064000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.82,
+    "notes": "现金流量表摘要或缺口说明，必须写入正文三表摘要。",
+    "metric_lineage_ids": [
+      "601318.ss_2026q1_operating_cash_flow_601318.ss_2026q1_cashflow_601318_2026q1_eastmoney_financials_cashflow_66f5ea1caa_2026-03-31_00:00:00"
+    ],
+    "input_metric_lineage_ids": [
+      "601318.ss_2026q1_operating_cash_flow_601318.ss_2026q1_cashflow_601318_2026q1_eastmoney_financials_cashflow_66f5ea1caa_2026-03-31_00:00:00"
+    ]
+  },
+  {
+    "claim_id": "cl_0013",
+    "section_name": "valuation",
+    "claim_text": "601318.SS 2026Q1 估值不可用原因：当前公开证据缺少市值或股本口径、净资产/股东权益，因此不能正式计算 P/E、P/B、P/S；报告应把这些缺口列为下一轮检索任务。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "最小估值模型缺口披露。"
+  },
+  {
+    "claim_id": "cl_0014",
+    "section_name": "executive_summary",
+    "claim_text": "601318.SS 2026Q1 核心摘要：收入约 218.41B，净利润约 25.02B，净利率约 11.5%；模型结论为“中性观察”。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+    ],
+    "numeric_values": {
+      "revenue": 218405000000.0,
+      "net_income": 25022000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.76,
+    "notes": "由三表和估值模型生成的执行摘要，不使用空壳 backfill。",
+    "metric_lineage_ids": [
+      "601318.ss_2026q1_revenue_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00",
+      "601318.ss_2026q1_net_income_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00"
+    ],
+    "input_metric_lineage_ids": [
+      "601318.ss_2026q1_revenue_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00",
+      "601318.ss_2026q1_net_income_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00"
+    ]
+  },
+  {
+    "claim_id": "cl_0015",
+    "section_name": "business_overview",
+    "claim_text": "601318.SS 的证据覆盖包括 10 条记录，横跨 3 类来源。",
+    "evidence_ids": [
+      "601318_2026Q1_cninfo_44b1a686b1",
+      "601318_2026Q1_cninfo_546b2760c8",
+      "601318_2026Q1_cninfo_9a016922ce",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa",
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "pdf_section_929154e9ecfa",
+      "pdf_section_dd37d879668f",
+      "pdf_section_e746cdcbf2f3",
+      "pdf_section_f130da89ab7b"
+    ],
+    "numeric_values": {
+      "evidence_count": 10.0,
+      "unique_sources": 3.0
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由证据覆盖统计生成。",
+    "input_metric_lineage_ids": [
+      "601318.ss_2026q1_revenue_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00",
+      "601318.ss_2026q1_net_income_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00",
+      "601318.ss_2026q1_operating_cash_flow_601318.ss_2026q1_cashflow_601318_2026q1_eastmoney_financials_cashflow_66f5ea1caa_2026-03-31_00:00:00",
+      "601318.ss_2026q1_gross_margin_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00",
+      "601318.ss_2026q1_total_assets_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00",
+      "601318.ss_2026q1_total_liabilities_601318.ss_2026q1_balance_601318_2026q1_eastmoney_financials_balance_0fed348191_2026-03-31_00:00:00"
+    ]
+  },
+  {
+    "claim_id": "cl_0016",
+    "section_name": "peer_compare",
+    "claim_text": "601318.SS 属于上市公司类别，同行可比分析框架基于收入增长/利润率/ROE/估值/杠杆等维度。当前公开证据尚未覆盖完整同行数据，以下为框架性分析。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "同行对比 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0017",
+    "section_name": "risks",
+    "claim_text": "601318.SS 的主要风险包括三类：第一，行业竞争和供给扩张可能压缩高毛利业务的持续性；第二，宏观利率、资本开支周期和云厂商采购节奏会放大收入波动；第三，当前核心季度三表采用结构化降级来源，若后续一手公告与该数据不一致，盈利质量、自由现金流和估值结论都需要重算。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+    ],
+    "numeric_values": {},
+    "risk_level": "high",
+    "confidence": 0.66,
+    "notes": "风险 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0018",
+    "section_name": "conclusion",
+    "claim_text": "关于601318.SS 的投资结论需要综合主营业务增长和经营效率改善等驱动因素和市场竞争、成本波动和监管变化等约束条件。当前公开证据尚不完整，以下为基于现有信息的初步判断。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "投资结论 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0019",
+    "section_name": "risks",
+    "claim_text": "601318.SS 的主要风险包括三类：第一，行业竞争和供给扩张可能压缩高毛利业务的持续性；第二，宏观利率、资本开支周期和云厂商采购节奏会放大收入波动；第三，当前核心季度三表采用结构化降级来源，若后续一手公告与该数据不一致，盈利质量、自由现金流和估值结论都需要重算。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+    ],
+    "numeric_values": {},
+    "risk_level": "high",
+    "confidence": 0.66,
+    "notes": "风险 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0020",
+    "section_name": "conclusion",
+    "claim_text": "关于601318.SS 的投资结论需要综合主营业务增长和经营效率改善等驱动因素和市场竞争、成本波动和监管变化等约束条件。当前公开证据尚不完整，以下为基于现有信息的初步判断。",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "投资结论 backfill——primary 未生成时的兜底文本"
+  }
+]

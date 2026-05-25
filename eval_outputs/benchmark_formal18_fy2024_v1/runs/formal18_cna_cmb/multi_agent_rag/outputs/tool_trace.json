@@ -1,0 +1,171 @@
+{
+  "schema_version": "tool_trace.v1",
+  "tool_call_count": 6,
+  "successful_call_count": 6,
+  "failed_call_count": 0,
+  "calls": [
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "calculate_financial_ratios",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "rows"
+        ],
+        "rows_count": 10
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.002,
+      "evidence_ids": [
+        "600036_FY2024_cninfo_027bef3dcb",
+        "600036_FY2024_eastmoney_financials_balance_6afe41b5f9",
+        "600036_FY2024_eastmoney_financials_cashflow_1eeaa83979",
+        "600036_FY2024_eastmoney_financials_income_4823d2e9ca",
+        "pdf_section_02f40fcb770a",
+        "pdf_section_0b7b6373841a",
+        "pdf_section_72ba0a0243d7",
+        "pdf_section_74e55aecf4d9",
+        "pdf_section_b5954a6c18b4",
+        "pdf_section_b6fa9adb309e"
+      ],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_trend_features",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "rows"
+        ],
+        "rows_count": 1
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.005,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_three_statement_view",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "coverage",
+          "rows",
+          "source_record_count"
+        ],
+        "rows_count": 0
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_peer_comparison",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "period",
+          "raw_data_root",
+          "symbol"
+        ],
+        "symbol": "600036.SS",
+        "period": "FY2024"
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "peer_count",
+          "peer_rows",
+          "ranking",
+          "target_symbol"
+        ],
+        "peer_count": 0
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "perform_company_valuation",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "period",
+          "raw_data_root",
+          "records",
+          "symbol"
+        ],
+        "records_count": 10,
+        "symbol": "600036.SS",
+        "period": "FY2024"
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "error",
+          "period",
+          "symbol",
+          "valuation_available"
+        ],
+        "valuation_available": false,
+        "symbol": "600036.SS",
+        "period": "FY2024"
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "SearchManager",
+      "tool_name": "formal_snapshot_bm25",
+      "input_summary": {
+        "engine": "formal_snapshot_bm25"
+      },
+      "output_summary": {
+        "mode": "formal_snapshot_bm25",
+        "offline_only": true,
+        "record_count": 4,
+        "returned_hit_count": 4
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0,
+      "evidence_ids": [],
+      "artifact_paths": [],
+      "source": "search_engine"
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "revenue",
+    "claim_text": "Total revenue increased 25.1% year-on-year in FY2024.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "revenue"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "risk",
+    "claim_text": "The Group faces unhedged foreign exchange risk primarily from USD and HKD fluctuations.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "risk",
+    "claim_text": "Heavy R&D investment may negatively impact profitability and operating cash flow in the short term.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "risk",
+    "claim_text": "Goodwill of approximately RMB166 million requires annual impairment assessment.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "financial_analysis",
+    "claim_text": "No material litigation or regulatory actions were reported for FY2024.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "financial_analysis",
+    "claim_text": "Credit risk is managed through policies including credit terms up to 90 days and dealing with reputable institutions.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "profit",
+    "claim_text": "Exact profit, cash flow, and margin figures are not provided in the available evidence.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "profit"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "valuation",
+    "claim_text": "Valuation cannot be determined due to insufficient financial data.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  }
+]

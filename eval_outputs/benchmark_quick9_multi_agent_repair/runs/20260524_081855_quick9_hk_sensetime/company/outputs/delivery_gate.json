@@ -1,0 +1,303 @@
+{
+  "schema_version": "delivery_gate.v1",
+  "generated_at": "2026-05-24T08:34:28.142738+00:00",
+  "run_dir": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_sensetime\\company\\outputs",
+  "delivery_pass": false,
+  "verifier_passed": false,
+  "objective_pass": false,
+  "llm_review_pass": false,
+  "scores": {
+    "objective_total_score": 0.8525,
+    "llm_total_score": 0.2,
+    "company_report_score": 0.5667
+  },
+  "gate_requirements": {
+    "formula": "delivery_pass = verifier_passed && objective_pass && llm_review_pass",
+    "verification_passed": false,
+    "objective_pass": false,
+    "llm_review_pass": false,
+    "llm_review_min_total_score": 0.8,
+    "llm_review_score_pass": false,
+    "llm_review_strict_score_pass": false,
+    "llm_review_relaxed_score_pass": false,
+    "llm_review_no_fatal_or_blocker": false,
+    "delivery_no_fatal_or_blocker": false
+  },
+  "issue_counts": {
+    "fatal": 10,
+    "blocker": 22,
+    "warning": 5,
+    "info": 0
+  },
+  "top_issues": [
+    {
+      "issue_id": "llm_review_0001",
+      "severity": "fatal",
+      "category": "llm_review",
+      "message": "报告内容空洞，大量章节使用'数据缺口说明'，无实际投资分析，大量引用不存在的证据，不符合研报要求",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "verifier_0015",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Claim cl_0001 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0016",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Claim cl_0002 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0017",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Claim cl_0003 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0018",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Claim cl_0004 references missing evidence ids: unstructured_record_0"
+    }
+  ],
+  "issues": [
+    {
+      "issue_id": "llm_review_0001",
+      "severity": "fatal",
+      "category": "llm_review",
+      "message": "报告内容空洞，大量章节使用'数据缺口说明'，无实际投资分析，大量引用不存在的证据，不符合研报要求",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "verifier_0015",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Claim cl_0001 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0016",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Claim cl_0002 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0017",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Claim cl_0003 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0018",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Claim cl_0004 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0019",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Claim cl_0005 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0020",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Claim cl_0006 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0021",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Claim cl_0007 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0022",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Claim cl_0008 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0023",
+      "severity": "fatal",
+      "category": "verifier",
+      "message": "Multimodal consistency check failed."
+    },
+    {
+      "issue_id": "financial_0002",
+      "severity": "blocker",
+      "category": "financial",
+      "message": "缺少利润表摘要",
+      "source": "objective"
+    },
+    {
+      "issue_id": "financial_0003",
+      "severity": "blocker",
+      "category": "financial",
+      "message": "缺少资产负债表摘要",
+      "source": "objective"
+    },
+    {
+      "issue_id": "financial_0004",
+      "severity": "blocker",
+      "category": "financial",
+      "message": "缺少现金流量表摘要",
+      "source": "objective"
+    },
+    {
+      "issue_id": "gate_0006",
+      "severity": "blocker",
+      "category": "gate",
+      "message": "质量门禁未通过：has_three_table_summary",
+      "source": "objective"
+    },
+    {
+      "issue_id": "llm_review_0002",
+      "severity": "blocker",
+      "category": "llm_review",
+      "message": "缺少利润表摘要",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0003",
+      "severity": "blocker",
+      "category": "llm_review",
+      "message": "缺少资产负债表摘要",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0004",
+      "severity": "blocker",
+      "category": "llm_review",
+      "message": "缺少现金流量表摘要",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0005",
+      "severity": "blocker",
+      "category": "llm_review",
+      "message": "质量门禁未通过：has_three_table_summary",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0006",
+      "severity": "blocker",
+      "category": "llm_review",
+      "message": "所有8条声明引用了不存在的证据ID unstructured_record_0",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "verifier_0024",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "Claim cl_0001 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0025",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "Claim cl_0002 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0026",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "Claim cl_0003 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0027",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "Claim cl_0004 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0028",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "Claim cl_0005 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0029",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "Claim cl_0006 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0030",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "Claim cl_0007 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0031",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "Claim cl_0008 references missing evidence ids: unstructured_record_0"
+    },
+    {
+      "issue_id": "verifier_0032",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "Multimodal consistency check failed."
+    },
+    {
+      "issue_id": "verifier_0034",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "Chart claim_confidence_bar expects claim numeric values but none are available."
+    },
+    {
+      "issue_id": "verifier_0035",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "Chart claims missing numeric values for confidence bar."
+    },
+    {
+      "issue_id": "verifier_0036",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "Valuation not available; no supporting evidence for valuation methods or inputs."
+    },
+    {
+      "issue_id": "verifier_0037",
+      "severity": "blocker",
+      "category": "verifier",
+      "message": "LLM valuation objection downgraded because valuation_audit passed: Valuation section claims 'Valuation availability: False' but relies on missing evidence id."
+    },
+    {
+      "issue_id": "evidence_0001",
+      "severity": "warning",
+      "category": "evidence",
+      "message": "权威/一手来源占比偏低：0.00",
+      "source": "objective"
+    },
+    {
+      "issue_id": "llm_review_0007",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "权威/一手来源占比偏低：0.00",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0008",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "图表未明显服务于财务分析",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "multimodal_0005",
+      "severity": "warning",
+      "category": "multimodal",
+      "message": "图表未明显服务于财务分析",
+      "source": "objective"
+    },
+    {
+      "issue_id": "verifier_0033",
+      "severity": "warning",
+      "category": "verifier",
+      "message": "Target symbol mismatch: expected 0020.HK, but non-peer sections mention ticker-like tokens FRED, HK, UNRATE."
+    }
+  ]
+}

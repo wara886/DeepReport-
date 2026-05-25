@@ -1240,13 +1240,29 @@ def enforce_verified_financial_sections(
 
     rows = _verified_statement_rows(financial_metrics, tables)
     if not rows:
-        return markdown
+        return _replace_section(markdown, _section_title("financial_statements"), _statement_gap_markdown(claims))
     statement_body = _statement_rows_to_markdown(rows)
     output = _replace_section(markdown, _section_title("financial_statements"), statement_body)
     analysis_body = _financial_analysis_body(rows, claims)
     if analysis_body:
         output = _replace_section(output, _section_title("financial_analysis"), analysis_body)
     return output
+
+
+def _statement_gap_markdown(claims: List[Dict[str, Any]]) -> str:
+    evidence_ids = _dedupe_preserve_order(
+        str(evidence_id)
+        for claim in claims
+        if isinstance(claim, dict)
+        for evidence_id in claim.get("evidence_ids", [])
+        if str(evidence_id)
+    )
+    citation_tail = " ".join(f"[{evidence_id}]" for evidence_id in evidence_ids[:3])
+    return (
+        "- 三表缺口说明：当前已验收结构化证据未形成可验证的利润表、资产负债表和现金流量表行；"
+        "正文不补写三表数值，该缺口会限制盈利质量、现金转化和估值判断。 "
+        + citation_tail
+    ).rstrip()
 
 
 def backfill_role_output_sections(markdown: str, research_blackboard: Any = None) -> str:

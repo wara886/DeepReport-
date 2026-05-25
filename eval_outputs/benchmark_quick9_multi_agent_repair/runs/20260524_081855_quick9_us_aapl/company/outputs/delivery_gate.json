@@ -1,0 +1,125 @@
+{
+  "schema_version": "delivery_gate.v1",
+  "generated_at": "2026-05-24T08:21:36.168610+00:00",
+  "run_dir": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_aapl\\company\\outputs",
+  "delivery_pass": true,
+  "verifier_passed": true,
+  "objective_pass": true,
+  "llm_review_pass": true,
+  "scores": {
+    "objective_total_score": 0.9667,
+    "llm_total_score": 1.0,
+    "company_report_score": 0.9167
+  },
+  "gate_requirements": {
+    "formula": "delivery_pass = verifier_passed && objective_pass && llm_review_pass",
+    "verification_passed": true,
+    "objective_pass": true,
+    "llm_review_pass": true,
+    "llm_review_min_total_score": 0.8,
+    "llm_review_score_pass": true,
+    "llm_review_strict_score_pass": true,
+    "llm_review_relaxed_score_pass": true,
+    "llm_review_no_fatal_or_blocker": true,
+    "delivery_no_fatal_or_blocker": true
+  },
+  "issue_counts": {
+    "fatal": 0,
+    "blocker": 0,
+    "warning": 8,
+    "info": 0
+  },
+  "top_issues": [
+    {
+      "issue_id": "evidence_0001",
+      "severity": "warning",
+      "category": "evidence",
+      "message": "权威/一手来源占比偏低：0.17",
+      "source": "objective"
+    },
+    {
+      "issue_id": "llm_review_0001",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "净利润口径不一致：SEC公司事实显示净利润71.675B，而Yahoo调整净利润为29.578B，报告中同时列出但未解释差异。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0002",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "同行对比和估值敏感性仅提供缺口说明，未进行实际分析。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0003",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "投资建议未给出明确评级，仅维持'中性观察'，不符合赛题要求。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0004",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "投资结论部分内容重复（两段完全相同）。",
+      "source": "llm_review"
+    }
+  ],
+  "issues": [
+    {
+      "issue_id": "evidence_0001",
+      "severity": "warning",
+      "category": "evidence",
+      "message": "权威/一手来源占比偏低：0.17",
+      "source": "objective"
+    },
+    {
+      "issue_id": "llm_review_0001",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "净利润口径不一致：SEC公司事实显示净利润71.675B，而Yahoo调整净利润为29.578B，报告中同时列出但未解释差异。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0002",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "同行对比和估值敏感性仅提供缺口说明，未进行实际分析。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0003",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "投资建议未给出明确评级，仅维持'中性观察'，不符合赛题要求。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0004",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "投资结论部分内容重复（两段完全相同）。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0005",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "图表（关键指标、置信度、证据来源）对投资分析辅助作用有限，未能有效支持结论。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "verifier_0007",
+      "severity": "warning",
+      "category": "verifier",
+      "message": "Target symbol mismatch: expected AAPL, but non-peer sections mention ticker-like tokens FRED."
+    },
+    {
+      "issue_id": "verifier_0008",
+      "severity": "warning",
+      "category": "verifier",
+      "message": "Target symbol mismatch: expected AAPL, but non-peer sections mention ticker-like tokens FRED."
+    }
+  ]
+}

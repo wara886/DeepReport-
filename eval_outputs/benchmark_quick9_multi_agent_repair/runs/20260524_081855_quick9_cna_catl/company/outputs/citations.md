@@ -1,0 +1,40 @@
+## 参考来源
+
+- [pdf_section_dd36e25661cd] PDF section: business_overview (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-16/1225107946.PDF
+  - 支持结论: cl_0001, cl_0004, cl_0015
+- [pdf_section_0fb91746fd37] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-16/1225107946.PDF
+  - 支持结论: cl_0002, cl_0005, cl_0015
+- [pdf_section_85868b5cdd42] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-16/1225107946.PDF
+  - 支持结论: cl_0002, cl_0015
+- [pdf_section_6c829934ad51] PDF section: financial_statements (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-16/1225107946.PDF
+  - 支持结论: cl_0003, cl_0015
+- [300750_2026Q1_eastmoney_financials_income_2d97044975] 300750 Eastmoney income financial table (eastmoney_financials/official, 2026-04-16 00:00:00) - https://data.eastmoney.com/bbsj/300750.html
+  - 支持结论: cl_0006, cl_0009, cl_0010, cl_0011, cl_0012, cl_0013, cl_0014, cl_0015, cl_0016, cl_0017, cl_0018
+- [300750_2026Q1_eastmoney_financials_balance_2c71a0dc9e] 300750 Eastmoney balance financial table (eastmoney_financials/official, 2026-04-16 00:00:00) - https://data.eastmoney.com/bbsj/300750.html
+  - 支持结论: cl_0007, cl_0009, cl_0010, cl_0011, cl_0012, cl_0013, cl_0014, cl_0015, cl_0016, cl_0017, cl_0018
+- [300750_2026Q1_eastmoney_financials_cashflow_52b5cd0291] 300750 Eastmoney cashflow financial table (eastmoney_financials/official, 2026-04-16 00:00:00) - https://data.eastmoney.com/bbsj/300750.html
+  - 支持结论: cl_0008, cl_0009, cl_0010, cl_0011, cl_0012, cl_0013, cl_0014, cl_0015, cl_0016, cl_0017, cl_0018
+- [300750_2026Q1_cninfo_a9321f7fa6] 2025年年度报告摘要 (cninfo_announcement/official, 1773072000000) - http://static.cninfo.com.cn/finalpage/2026-03-10/1225002213.PDF
+  - 支持结论: cl_0015
+- [300750_2026Q1_cninfo_b57fb40220] 2026年一季度报告 (cninfo_announcement/official, 1776268800000) - http://static.cninfo.com.cn/finalpage/2026-04-16/1225107946.PDF
+  - 支持结论: cl_0015
+- [300750_2026Q1_cninfo_ff323defb4] 2025年年度报告 (cninfo_announcement/official, 1773072000000) - http://static.cninfo.com.cn/finalpage/2026-03-10/1225002214.PDF
+  - 支持结论: cl_0015
+- [pdf_section_a0dfb05ea51d] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-16/1225107946.PDF
+  - 支持结论: 未关联
+- [pdf_section_748ae3738e22] PDF section: financial_statements (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-16/1225107946.PDF
+  - 支持结论: 未关联
+- [pdf_section_e475c2e47361] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-16/1225107946.PDF
+  - 支持结论: 未关联
+- [pdf_section_b1237e14377b] PDF section: financial_statements (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-16/1225107946.PDF
+  - 支持结论: 未关联
+- [pdf_section_26bac257b1e1] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-03-10/1225002214.PDF
+  - 支持结论: 未关联
+- [pdf_section_71c62194af43] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-03-10/1225002214.PDF
+  - 支持结论: 未关联
+- [pdf_section_dee3ff0d81fb] PDF section: risk_factors (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-03-10/1225002214.PDF
+  - 支持结论: 未关联
+- [pdf_section_9a08ff0a9142] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-03-10/1225002214.PDF
+  - 支持结论: 未关联
+- [pdf_section_e1d847d82d76] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-03-10/1225002214.PDF
+  - 支持结论: 未关联

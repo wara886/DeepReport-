@@ -994,6 +994,19 @@ The old draft repeats stale cash-flow numbers.
     assert "[ev_cash]" in updated
 
 
+def test_final_answer_discloses_three_statement_gap_without_verified_rows():
+    draft = normalize_report_headings("# Report\n\n## Financial Statements\n\nPlaceholder.\n")
+    claims = [{"claim_id": "cl_gap", "section_name": "risks", "claim_text": "Evidence limited.", "evidence_ids": ["ev_frozen"]}]
+
+    updated = enforce_verified_financial_sections(draft, claims=claims, financial_metrics={}, tables=[])
+
+    assert "三表缺口说明" in updated
+    assert "利润表" in updated
+    assert "资产负债表" in updated
+    assert "现金流量表" in updated
+    assert "[ev_frozen]" in updated
+
+
 def test_final_answer_backfills_thin_role_sections_from_role_findings():
     markdown = normalize_report_headings("# Report\n\n## Peer Comparison\n\nFramework only.\n")
     blackboard = {

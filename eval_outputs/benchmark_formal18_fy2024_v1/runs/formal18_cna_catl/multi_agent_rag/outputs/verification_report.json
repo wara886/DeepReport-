@@ -1,0 +1,55 @@
+{
+  "passed": false,
+  "error_count": 10,
+  "warning_count": 4,
+  "errors": [
+    "Claim cl_0001 references missing evidence ids: pdf_section_f52bf93ae971",
+    "Claim cl_0002 references missing evidence ids: pdf_section_a4e3db4888df, pdf_section_d48f89db146f",
+    "Claim cl_0003 references missing evidence ids: pdf_section_a1d8d8b61da1",
+    "Claim cl_0004 references missing evidence ids: pdf_section_d5bca258a67d",
+    "Claim cl_0005 references missing evidence ids: pdf_section_a4e3db4888df",
+    "Claim cl_0006 references missing evidence ids: pdf_section_a1d8d8b61da1",
+    "Claim cl_0007 references missing evidence ids: pdf_section_a1d8d8b61da1, pdf_section_a4e3db4888df, pdf_section_d48f89db146f, pdf_section_f52bf93ae971, pdf_section_250b9e76c488, pdf_section_d5bca258a67d",
+    "Claim cl_0007 evidence ids are not cited in markdown: pdf_section_250b9e76c488",
+    "Claim cl_0008 references missing evidence ids: pdf_section_250b9e76c488, pdf_section_a1d8d8b61da1, pdf_section_a4e3db4888df, pdf_section_d48f89db146f, pdf_section_d5bca258a67d, pdf_section_f52bf93ae971",
+    "Claim cl_0008 evidence ids are not cited in markdown: pdf_section_250b9e76c488"
+  ],
+  "warnings": [
+    "No financial_analysis claims found.",
+    "Target symbol 300750.SZ is not explicitly mentioned in report claims or markdown.",
+    "Target symbol mismatch: expected 300750.SZ, but non-peer sections mention ticker-like tokens SZ.",
+    "Report has numeric claims but no charts were generated."
+  ],
+  "claim_count": 12,
+  "grounded_claim_count": 1,
+  "expected_symbol": "300750.SZ",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 0,
+    "chart_text_consistency": {
+      "chart_count": 0,
+      "passed_chart_count": 0,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": []
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 0,
+      "results": []
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 0,
+      "details": []
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "valuation_not_available"
+    ],
+    "checks": {}
+  }
+}

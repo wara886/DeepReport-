@@ -1,0 +1,58 @@
+benchmark:
+  id: formal18_fy2024_v1
+  phase: baseline_and_frozen_snapshot
+  description: Formal cross-market benchmark protocol on one frozen FY2024 evidence snapshot.
+  period: FY2024
+  dataset_version: formal18_fy2024_v1
+  snapshot_root: data/benchmarks/frozen_fy2024_v1
+  snapshot_source_root: data/benchmark_sources/fy2024
+  output_root: eval_outputs/benchmark_formal18_fy2024_v1
+  metric_scope: traceable_claim_rate_v1
+  model_config_path: configs/model_backends.yaml
+  required_sections:
+    - executive_summary
+    - financial_statements
+    - valuation
+    - risks
+    - investment_conclusion
+  critical_claim_types:
+    - revenue
+    - profit
+    - cash_flow
+    - margin
+    - valuation
+    - peer_comparison
+    - risk
+    - investment_rationale
+  variants:
+    - id: direct_llm
+      retrieval: none
+      orchestration: none
+      rework: false
+    - id: single_agent_rag
+      retrieval: bm25
+      orchestration: single_generation_call
+      rework: false
+    - id: multi_agent_rag
+      retrieval: bm25
+      orchestration: current_multi_agent_diagnostic_full
+      rework: true
+  cases:
+    - {case_id: formal18_us_aapl, market: US, company_name: Apple, canonical_symbol: AAPL}
+    - {case_id: formal18_us_msft, market: US, company_name: Microsoft, canonical_symbol: MSFT}
+    - {case_id: formal18_us_googl, market: US, company_name: Alphabet, canonical_symbol: GOOGL}
+    - {case_id: formal18_us_nvda, market: US, company_name: NVIDIA, canonical_symbol: NVDA}
+    - {case_id: formal18_us_amd, market: US, company_name: AMD, canonical_symbol: AMD}
+    - {case_id: formal18_us_tsla, market: US, company_name: Tesla, canonical_symbol: TSLA}
+    - {case_id: formal18_hk_sensetime, market: HK, company_name: 商汤科技, canonical_symbol: 0020.HK}
+    - {case_id: formal18_hk_4paradigm, market: HK, company_name: 第四范式, canonical_symbol: 6682.HK}
+    - {case_id: formal18_hk_tencent, market: HK, company_name: 腾讯控股, canonical_symbol: 0700.HK}
+    - {case_id: formal18_hk_xiaomi, market: HK, company_name: 小米集团, canonical_symbol: 1810.HK}
+    - {case_id: formal18_hk_meituan, market: HK, company_name: 美团, canonical_symbol: 3690.HK}
+    - {case_id: formal18_hk_baidu, market: HK, company_name: 百度集团, canonical_symbol: 9888.HK}
+    - {case_id: formal18_cna_moutai, market: CN-A, company_name: 贵州茅台, canonical_symbol: 600519.SS}
+    - {case_id: formal18_cna_catl, market: CN-A, company_name: 宁德时代, canonical_symbol: 300750.SZ}
+    - {case_id: formal18_cna_byd, market: CN-A, company_name: 比亚迪, canonical_symbol: 002594.SZ}
+    - {case_id: formal18_cna_pingan, market: CN-A, company_name: 中国平安, canonical_symbol: 601318.SS}
+    - {case_id: formal18_cna_cmb, market: CN-A, company_name: 招商银行, canonical_symbol: 600036.SS}
+    - {case_id: formal18_cna_smic, market: CN-A, company_name: 中芯国际, canonical_symbol: 688981.SS}

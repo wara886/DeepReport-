@@ -1,0 +1,103 @@
+{
+  "overview": "Generate a formal FY2024 frozen-input research report for Alphabet (GOOGL) covering executive summary, three statements or gaps, valuation or limitation, risks, and investment conclusion, with explicit citations.",
+  "research_topic": "Alphabet (GOOGL) formal FY2024 frozen-input report",
+  "requirements": [
+    "Use frozen snapshot evidence only.",
+    "Cover executive summary, three statements or gaps, valuation or limitation, risks, and investment conclusion.",
+    "Emit explicitly labeled critical claims and body citations."
+  ],
+  "output_format": "markdown, html, json with citations",
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "deep_researcher",
+      "description": "Gather frozen snapshot evidence for Alphabet (GOOGL) FY2024: financial statements (balance sheet, income statement, cash flow), market data (stock price, shares outstanding), and any relevant news or analyst estimates. Use frozen snapshot only.",
+      "parameters": {
+        "symbol": "GOOGL",
+        "period": "FY2024",
+        "source_preferences": [
+          "frozen_snapshot"
+        ],
+        "evidence_types": [
+          "financial_statements",
+          "market_data"
+        ]
+      },
+      "dependencies": [],
+      "priority": 5,
+      "expected_output": "A set of evidence records with evidence_ids for each data point, including balance sheet, income statement, cash flow, stock price, and shares outstanding."
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "deep_analyze",
+      "description": "Perform financial statement analysis on GOOGL FY2024 evidence: compute key ratios (e.g., P/E, EPS, revenue growth, profit margins, debt-to-equity), build three-statement view, and conduct valuation using DCF or multiples. Identify any gaps in data.",
+      "parameters": {
+        "analysis_type": "financial_statements_and_valuation",
+        "peer_comparison": false,
+        "valuation_model": "DCF"
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 4,
+      "expected_output": "Evidence-backed claims with tables for financial metrics, valuation estimate, and gap notes. All numeric claims retain evidence_ids."
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "deep_analyze",
+      "description": "Analyze risks and limitations based on GOOGL FY2024 evidence: identify key risk factors (e.g., regulatory, competition, macroeconomic), assess financial health limitations, and list material uncertainties. Use frozen snapshot evidence only.",
+      "parameters": {
+        "analysis_type": "risk_and_limitations",
+        "focus_areas": [
+          "regulatory",
+          "competitive",
+          "financial_health"
+        ]
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 3,
+      "expected_output": "List of risk claims with evidence_ids, and a limitations section noting data constraints."
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "final_answer",
+      "description": "Assemble the final FY2024 frozen-input report for GOOGL. Include sections: Executive Summary, Three Statements or Gaps, Valuation or Limitation, Risks, Investment Conclusion. Embed all critical claims with body citations (evidence_id). Use markdown format initially.",
+      "parameters": {
+        "report_type": "company_stock_report",
+        "format": "markdown",
+        "include_charts": false
+      },
+      "dependencies": [
+        "task_002",
+        "task_003"
+      ],
+      "priority": 5,
+      "expected_output": "Markdown report with all required sections and inline citations."
+    },
+    {
+      "task_id": "task_005",
+      "task_type": "verifier",
+      "description": "Verify the final report: check every material factual claim has an evidence_id citation, confirm only frozen snapshot evidence was used, ensure all required sections are present, and compliance with constraints. Provide pass/fail and revision instructions if needed.",
+      "parameters": {
+        "verification_type": "citation_and_constraints_check"
+      },
+      "dependencies": [
+        "task_004"
+      ],
+      "priority": 3,
+      "expected_output": "Verification result: pass or revision brief with specific issues."
+    }
+  ],
+  "data_sources": [
+    "Frozen snapshot of Alphabet (GOOGL) FY2024 financial statements and market data"
+  ],
+  "citations_required": true,
+  "final_outputs": [
+    "markdown",
+    "html",
+    "json"
+  ],
+  "fallback_used": false
+}

@@ -1,0 +1,4 @@
+metric,recorded_before,before_reassessed,after_repair,repair_delta
+Delivery Pass Rate,0.0,1.0,1.0,0.0
+Objective Quality Score,94.84,94.84,95.86,1.02
+Traceable Claim Rate (artifact-derived),0.9777,0.9777,0.8591,-0.1186

@@ -1,0 +1,511 @@
+{
+  "ratio_rows": [
+    {
+      "sample_id": "600519_FY2024_eastmoney_financials_balance_14150e8ae3",
+      "symbol": "600519.SS",
+      "period": "FY2024",
+      "source_type": "eastmoney_financials",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519_FY2024_eastmoney_financials_income_5e0e920979",
+      "symbol": "600519.SS",
+      "period": "FY2024",
+      "source_type": "eastmoney_financials",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519_FY2024_eastmoney_financials_cashflow_4fec8a9bf5",
+      "symbol": "600519.SS",
+      "period": "FY2024",
+      "source_type": "eastmoney_financials",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600519_FY2024_cninfo_43b7c2e67b",
+      "symbol": "600519.SS",
+      "period": "FY2024",
+      "source_type": "cninfo_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_2214bd6a0ef9",
+      "symbol": "600519.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_3dbece543a91",
+      "symbol": "600519.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_b003c26d2e91",
+      "symbol": "600519.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_e128cbdf5161",
+      "symbol": "600519.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_af53aa4b8e56",
+      "symbol": "600519.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_72451dae6025",
+      "symbol": "600519.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    }
+  ],
+  "trend_rows": [
+    {
+      "symbol": "600519.SS",
+      "period": "FY2024",
+      "evidence_count": 10,
+      "unique_sources": 3,
+      "latest_publish_time": "2026-04-17 00:00:00",
+      "sample_ids": "600519_FY2024_cninfo_43b7c2e67b|600519_FY2024_eastmoney_financials_balance_14150e8ae3|600519_FY2024_eastmoney_financials_cashflow_4fec8a9bf5|600519_FY2024_eastmoney_financials_income_5e0e920979|pdf_section_2214bd6a0ef9|pdf_section_3dbece543a91|pdf_section_72451dae6025|pdf_section_af53aa4b8e56|pdf_section_b003c26d2e91|pdf_section_e128cbdf5161"
+    }
+  ],
+  "statement_view": {
+    "rows": [],
+    "coverage": {
+      "statements": {},
+      "has_three_statement_view": false,
+      "line_item_count": 0
+    },
+    "source_record_count": 3
+  },
+  "financial_metrics": {
+    "metrics": [],
+    "metric_count": 0,
+    "rejected_metrics": [],
+    "rejected_metric_count": 0,
+    "coverage": {
+      "required_metrics": [
+        "revenue",
+        "net_income",
+        "gross_margin",
+        "free_cash_flow"
+      ],
+      "present_metrics": [],
+      "has_core_metric_lineage": false,
+      "standard_metric_count": 0,
+      "standard_has_core_metric_lineage": false,
+      "rejected_metric_count": 0
+    }
+  },
+  "tables": [],
+  "peer_context": {
+    "target_symbol": "600519.SS",
+    "peer_rows": [],
+    "peer_count": 0,
+    "ranking": {}
+  },
+  "valuation": {
+    "symbol": "600519.SS",
+    "period": "FY2024",
+    "valuation_available": false,
+    "error": "target financials not found"
+  },
+  "valuation_model": {},
+  "valuation_assumptions": {},
+  "valuation_sensitivity": {},
+  "identity_profile": {
+    "status": "complete",
+    "confidence": 0.84,
+    "source": "official_disclosure_or_company_profile",
+    "evidence_ids": [
+      "600519_FY2024_eastmoney_financials_balance_14150e8ae3",
+      "600519_FY2024_eastmoney_financials_income_5e0e920979",
+      "600519_FY2024_eastmoney_financials_cashflow_4fec8a9bf5",
+      "600519_FY2024_cninfo_43b7c2e67b",
+      "pdf_section_2214bd6a0ef9",
+      "pdf_section_3dbece543a91",
+      "pdf_section_b003c26d2e91",
+      "pdf_section_e128cbdf5161"
+    ],
+    "findings": [
+      "Resolved analysis target as 600519.SS for FY2024.",
+      "Official/company evidence records available: 11."
+    ],
+    "missing_inputs": [],
+    "impact_on_report": "FinalAnswer may use company identity and business profile from verified evidence.",
+    "owner_agent": "IdentityAgent",
+    "verified": true,
+    "reviewed_objections": []
+  },
+  "three_statement_analysis": {
+    "status": "partial",
+    "confidence": 0.58,
+    "source": "financial_statement_view_and_metric_lineage",
+    "evidence_ids": [
+      "600519_FY2024_eastmoney_financials_balance_14150e8ae3",
+      "600519_FY2024_eastmoney_financials_income_5e0e920979",
+      "600519_FY2024_eastmoney_financials_cashflow_4fec8a9bf5",
+      "600519_FY2024_cninfo_43b7c2e67b",
+      "pdf_section_2214bd6a0ef9",
+      "pdf_section_3dbece543a91",
+      "pdf_section_b003c26d2e91",
+      "pdf_section_e128cbdf5161",
+      "pdf_section_af53aa4b8e56",
+      "pdf_section_72451dae6025"
+    ],
+    "findings": [
+      "Three-statement coverage income=False, balance=False, cash_flow=False.",
+      "Financial metric lineage count: 0.",
+      "Statement view coverage: {'statements': {}, 'has_three_statement_view': False, 'line_item_count': 0}."
+    ],
+    "missing_inputs": [
+      "income",
+      "balance",
+      "cash_flow"
+    ],
+    "impact_on_report": "Financial analysis must disclose missing statement coverage and avoid full three-statement conclusions.",
+    "owner_agent": "StatementAgent",
+    "verified": false,
+    "reviewed_objections": []
+  },
+  "peer_analysis": {
+    "status": "missing",
+    "confidence": 0.3,
+    "source": "peer_comparison_tool",
+    "evidence_ids": [
+      "600519_FY2024_eastmoney_financials_balance_14150e8ae3",
+      "600519_FY2024_eastmoney_financials_income_5e0e920979",
+      "600519_FY2024_eastmoney_financials_cashflow_4fec8a9bf5"
+    ],
+    "findings": [
+      "Peer context contains 0 comparable companies."
+    ],
+    "missing_inputs": [
+      "peer_universe",
+      "peer_financial_metrics"
+    ],
+    "impact_on_report": "Peer section must be framed as a data gap or qualitative context, not a ranked conclusion.",
+    "owner_agent": "PeerAgent",
+    "verified": false,
+    "reviewed_objections": []
+  },
+  "valuation_analysis": {
+    "status": "partial",
+    "confidence": 0.5,
+    "source": "valuation_tool_and_market_inputs",
+    "evidence_ids": [
+      "600519_FY2024_eastmoney_financials_balance_14150e8ae3",
+      "600519_FY2024_eastmoney_financials_income_5e0e920979",
+      "600519_FY2024_eastmoney_financials_cashflow_4fec8a9bf5",
+      "pdf_section_2214bd6a0ef9",
+      "pdf_section_3dbece543a91",
+      "pdf_section_b003c26d2e91",
+      "pdf_section_e128cbdf5161",
+      "pdf_section_af53aa4b8e56",
+      "pdf_section_72451dae6025",
+      "600519_FY2024_cninfo_43b7c2e67b",
+      "pdf_section_38e2fc6144a5"
+    ],
+    "findings": [
+      "Valuation availability: False.",
+      "Valuation method: not_available."
+    ],
+    "missing_inputs": [
+      "valuation_inputs"
+    ],
+    "impact_on_report": "Valuation section must list missing inputs and avoid target-price style conclusions.",
+    "owner_agent": "ValuationAgent",
+    "verified": false,
+    "reviewed_objections": []
+  },
+  "risk_analysis": {
+    "status": "complete",
+    "confidence": 0.72,
+    "source": "risk_claims_and_evidence",
+    "evidence_ids": [
+      "pdf_section_2214bd6a0ef9"
+    ],
+    "findings": [
+      "Risk-related claim evidence count: 1.",
+      "风险提示 PDF 片段显示：276.24元（含税）。截至2025年3月31日， 公司总股本1,256,197,800股，回购专用证券账户中股份数1,082,700股，总股本扣除回购专用证 券账户中的股份数为1,255,115,100股，以此计算合计派发现金红利34,671,299,522.40元（含税 ）。在实施权益分派的股权登记日前公司总股本扣除回购专用证券账户内的股份数如发生变动的 ，将维持分配总额不变，相应调整每股分红比例。以上利润分配预案需提交公司股东大…",
+      "PDF 文件中关于风险因素提供了以下参考信息： 276.24元（含税）。截至2025年3月31日， 公司总股本1,256,197,800股，回购专用证券账户中股份数1,082,700股，总股本扣除回购专用证 券账户中的股份数为1,255,115,100股，以此计算合计派发现金红利34,671,299,522.40元（含税 ）。在实施权益分派的股权登记日前公司总股本扣除回购专用证券账户内的股份数如发生变动的 ，将维持分配总额不变，相应调整每股分红比例。以上利润分配预案需提交公司股东大…"
+    ],
+    "missing_inputs": [],
+    "impact_on_report": "Risk section can cite identified operational or market risk evidence.",
+    "owner_agent": "RiskAgent",
+    "verified": true,
+    "reviewed_objections": []
+  },
+  "role_outputs": {
+    "identity_profile": {
+      "status": "complete",
+      "confidence": 0.84,
+      "source": "official_disclosure_or_company_profile",
+      "evidence_ids": [
+        "600519_FY2024_eastmoney_financials_balance_14150e8ae3",
+        "600519_FY2024_eastmoney_financials_income_5e0e920979",
+        "600519_FY2024_eastmoney_financials_cashflow_4fec8a9bf5",
+        "600519_FY2024_cninfo_43b7c2e67b",
+        "pdf_section_2214bd6a0ef9",
+        "pdf_section_3dbece543a91",
+        "pdf_section_b003c26d2e91",
+        "pdf_section_e128cbdf5161"
+      ],
+      "findings": [
+        "Resolved analysis target as 600519.SS for FY2024.",
+        "Official/company evidence records available: 11."
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "FinalAnswer may use company identity and business profile from verified evidence.",
+      "owner_agent": "IdentityAgent",
+      "verified": true,
+      "reviewed_objections": []
+    },
+    "three_statement_analysis": {
+      "status": "partial",
+      "confidence": 0.58,
+      "source": "financial_statement_view_and_metric_lineage",
+      "evidence_ids": [
+        "600519_FY2024_eastmoney_financials_balance_14150e8ae3",
+        "600519_FY2024_eastmoney_financials_income_5e0e920979",
+        "600519_FY2024_eastmoney_financials_cashflow_4fec8a9bf5",
+        "600519_FY2024_cninfo_43b7c2e67b",
+        "pdf_section_2214bd6a0ef9",
+        "pdf_section_3dbece543a91",
+        "pdf_section_b003c26d2e91",
+        "pdf_section_e128cbdf5161",
+        "pdf_section_af53aa4b8e56",
+        "pdf_section_72451dae6025"
+      ],
+      "findings": [
+        "Three-statement coverage income=False, balance=False, cash_flow=False.",
+        "Financial metric lineage count: 0.",
+        "Statement view coverage: {'statements': {}, 'has_three_statement_view': False, 'line_item_count': 0}."
+      ],
+      "missing_inputs": [
+        "income",
+        "balance",
+        "cash_flow"
+      ],
+      "impact_on_report": "Financial analysis must disclose missing statement coverage and avoid full three-statement conclusions.",
+      "owner_agent": "StatementAgent",
+      "verified": false,
+      "reviewed_objections": []
+    },
+    "peer_analysis": {
+      "status": "missing",
+      "confidence": 0.3,
+      "source": "peer_comparison_tool",
+      "evidence_ids": [
+        "600519_FY2024_eastmoney_financials_balance_14150e8ae3",
+        "600519_FY2024_eastmoney_financials_income_5e0e920979",
+        "600519_FY2024_eastmoney_financials_cashflow_4fec8a9bf5"
+      ],
+      "findings": [
+        "Peer context contains 0 comparable companies."
+      ],
+      "missing_inputs": [
+        "peer_universe",
+        "peer_financial_metrics"
+      ],
+      "impact_on_report": "Peer section must be framed as a data gap or qualitative context, not a ranked conclusion.",
+      "owner_agent": "PeerAgent",
+      "verified": false,
+      "reviewed_objections": []
+    },
+    "valuation_analysis": {
+      "status": "partial",
+      "confidence": 0.5,
+      "source": "valuation_tool_and_market_inputs",
+      "evidence_ids": [
+        "600519_FY2024_eastmoney_financials_balance_14150e8ae3",
+        "600519_FY2024_eastmoney_financials_income_5e0e920979",
+        "600519_FY2024_eastmoney_financials_cashflow_4fec8a9bf5",
+        "pdf_section_2214bd6a0ef9",
+        "pdf_section_3dbece543a91",
+        "pdf_section_b003c26d2e91",
+        "pdf_section_e128cbdf5161",
+        "pdf_section_af53aa4b8e56",
+        "pdf_section_72451dae6025",
+        "600519_FY2024_cninfo_43b7c2e67b",
+        "pdf_section_38e2fc6144a5"
+      ],
+      "findings": [
+        "Valuation availability: False.",
+        "Valuation method: not_available."
+      ],
+      "missing_inputs": [
+        "valuation_inputs"
+      ],
+      "impact_on_report": "Valuation section must list missing inputs and avoid target-price style conclusions.",
+      "owner_agent": "ValuationAgent",
+      "verified": false,
+      "reviewed_objections": []
+    },
+    "risk_analysis": {
+      "status": "complete",
+      "confidence": 0.72,
+      "source": "risk_claims_and_evidence",
+      "evidence_ids": [
+        "pdf_section_2214bd6a0ef9"
+      ],
+      "findings": [
+        "Risk-related claim evidence count: 1.",
+        "风险提示 PDF 片段显示：276.24元（含税）。截至2025年3月31日， 公司总股本1,256,197,800股，回购专用证券账户中股份数1,082,700股，总股本扣除回购专用证 券账户中的股份数为1,255,115,100股，以此计算合计派发现金红利34,671,299,522.40元（含税 ）。在实施权益分派的股权登记日前公司总股本扣除回购专用证券账户内的股份数如发生变动的 ，将维持分配总额不变，相应调整每股分红比例。以上利润分配预案需提交公司股东大…",
+        "PDF 文件中关于风险因素提供了以下参考信息： 276.24元（含税）。截至2025年3月31日， 公司总股本1,256,197,800股，回购专用证券账户中股份数1,082,700股，总股本扣除回购专用证 券账户中的股份数为1,255,115,100股，以此计算合计派发现金红利34,671,299,522.40元（含税 ）。在实施权益分派的股权登记日前公司总股本扣除回购专用证券账户内的股份数如发生变动的 ，将维持分配总额不变，相应调整每股分红比例。以上利润分配预案需提交公司股东大…"
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "Risk section can cite identified operational or market risk evidence.",
+      "owner_agent": "RiskAgent",
+      "verified": true,
+      "reviewed_objections": []
+    }
+  },
+  "claim_rejection_report": {
+    "input_claim_count": 16,
+    "accepted_claim_count": 12,
+    "rejected_claim_count": 4,
+    "rejected_claims": [
+      {
+        "claim_id": "cl_0001",
+        "section_name": "financial_analysis",
+        "reasons": [
+          "missing_metric_lineage"
+        ],
+        "evidence_ids": [
+          "600519_FY2024_eastmoney_financials_income_5e0e920979"
+        ],
+        "metric_lineage_ids": [],
+        "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+        "suggested_data_source": "official filing or structured financial statement for target period",
+        "claim_text": "贵州茅台2024年营业收入1741.44亿元，归母净利润862.28亿元，净利率约49.5%。"
+      },
+      {
+        "claim_id": "cl_0002",
+        "section_name": "financial_analysis",
+        "reasons": [
+          "missing_metric_lineage"
+        ],
+        "evidence_ids": [
+          "600519_FY2024_eastmoney_financials_balance_14150e8ae3",
+          "600519_FY2024_eastmoney_financials_income_5e0e920979"
+        ],
+        "metric_lineage_ids": [],
+        "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+        "suggested_data_source": "official filing or structured financial statement for target period",
+        "claim_text": "2024年净资产收益率（ROE）约35.6%，盈利能力突出。"
+      },
+      {
+        "claim_id": "cl_0003",
+        "section_name": "financial_analysis",
+        "reasons": [
+          "missing_metric_lineage"
+        ],
+        "evidence_ids": [
+          "600519_FY2024_eastmoney_financials_cashflow_4fec8a9bf5",
+          "pdf_section_72451dae6025"
+        ],
+        "metric_lineage_ids": [],
+        "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+        "suggested_data_source": "official filing or structured financial statement for target period",
+        "claim_text": "经营活动现金流净额924.64亿元，同比增长38.85%，现金创造能力强。"
+      },
+      {
+        "claim_id": "cl_0004",
+        "section_name": "financial_analysis",
+        "reasons": [
+          "missing_metric_lineage"
+        ],
+        "evidence_ids": [
+          "600519_FY2024_eastmoney_financials_balance_14150e8ae3"
+        ],
+        "metric_lineage_ids": [],
+        "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+        "suggested_data_source": "official filing or structured financial statement for target period",
+        "claim_text": "资产负债率约19.0%，财务结构稳健。"
+      }
+    ]
+  }
+}

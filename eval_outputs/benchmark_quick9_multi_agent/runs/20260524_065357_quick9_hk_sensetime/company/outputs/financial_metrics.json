@@ -1,0 +1,32 @@
+{
+  "metrics": [],
+  "metric_count": 0,
+  "rejected_metrics": [
+    {
+      "metric_name": "market_embedded_financials",
+      "target_period": "2026Q1",
+      "source_evidence_id": "0020.HK_2026Q1_yahoo_financials_67c3c09b84",
+      "reason": "market_financials_not_allowed_as_statement_primary_evidence"
+    },
+    {
+      "metric_name": "market_embedded_financials",
+      "target_period": "2026Q1",
+      "source_evidence_id": "0020.HK_2026Q1_yahoo_finance_d3b6671f5a",
+      "reason": "market_financials_not_allowed_as_statement_primary_evidence"
+    }
+  ],
+  "rejected_metric_count": 2,
+  "coverage": {
+    "required_metrics": [
+      "revenue",
+      "net_income",
+      "gross_margin",
+      "free_cash_flow"
+    ],
+    "present_metrics": [],
+    "has_core_metric_lineage": false,
+    "standard_metric_count": 0,
+    "standard_has_core_metric_lineage": false,
+    "rejected_metric_count": 2
+  }
+}

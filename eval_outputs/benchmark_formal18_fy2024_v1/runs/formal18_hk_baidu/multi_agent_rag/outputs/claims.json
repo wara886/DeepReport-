@@ -1,0 +1,242 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "financial_analysis",
+    "claim_text": "百度集团采用加权投票权结构，每份B类普通股拥有10票投票权，这种结构可能对中小股东权益产生影响。",
+    "evidence_ids": [
+      "pdf_section_497fe54e912d",
+      "pdf_section_00a0866b705f"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.9,
+    "notes": "WVR结构风险已在年报风险因素中披露。"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "financial_analysis",
+    "claim_text": "百度集团通过VIE结构在中国大陆开展运营，该结构存在特定风险，包括监管不确定性。",
+    "evidence_ids": [
+      "pdf_section_e43b47ef569d"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.9,
+    "notes": "VIE结构风险披露于年报风险因素部分。"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "financial_analysis",
+    "claim_text": "集团功能货币为美元，报告货币为人民币，汇率风险敞口主要涉及现金及现金等价物等资产。",
+    "evidence_ids": [
+      "09888_FY2024_hkex_annual_report_a0649ee209"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.9,
+    "notes": "汇率风险已披露，但未提供具体敞口数值。"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "strategy_business",
+    "claim_text": "年报/公告 PDF 抽取的主营业务与业务结构片段显示：identify these forward-looking statements by terminology such as “may,” “will,” “expect,” “anticipate,” “future,” “intend,” “plan,” “believe,” “estimate,” “is/are likely to” or other similar expressions. We have based t…",
+    "evidence_ids": [
+      "pdf_section_e79257d7628f"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "ownership_governance",
+    "claim_text": "股东结构、治理或管理层 PDF 片段显示：upon the whole or any part of the contents of this announcement. Under our weighted voting rights structure, our share capital comprises Class A ordinary shares and Class B ordinary shares. Each Class A ordinary share e…；. . . . . . . . . 90 Item 4A. Unresolved Staff Comments . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 155 Item 5. Operating and Financial Review and Prospects . . . .…",
+    "evidence_ids": [
+      "pdf_section_00a0866b705f",
+      "pdf_section_75d2776d304a"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "risks",
+    "claim_text": "风险提示 PDF 片段显示：our weighted voting rights structure, our share capital comprises Class A ordinary shares and Class B ordinary shares. Each Class A ordinary share entitles the holder to exercise one vote, and each Class B ordinary shar…；. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 207 Item 9. The Offer and Listing . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 209 Item…",
+    "evidence_ids": [
+      "pdf_section_497fe54e912d",
+      "pdf_section_719d0ec03faa"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "financial_statements",
+    "claim_text": "财务报表 PDF 片段显示：Exchange of Hong Kong Limited. This document is available on the websites of the Hong Kong Stock Exchange (http://www.hkexnews.hk) and our website (https://ir.baidu.com/). Summary content: Section A: Extracted Form 20-F…；icate by check mark whether the registrant is a large accelerated filer, an accelerated filer, a non-accelerated filer or an emerging growth company. See definition of “large accelerated filer,” “accelerated filer” “eme…",
+    "evidence_ids": [
+      "pdf_section_70f1ffb9d784",
+      "pdf_section_8098c1227e19"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "risks",
+    "claim_text": "PDF 文件中关于风险因素提供了以下参考信息： our weighted voting rights structure, our share capital comprises Class A ordinary shares and Class B ordinary shares. Each Class A ordinary share entitles the holder to exercise one vote, and each Class B ordinary shar…",
+    "evidence_ids": [
+      "pdf_section_497fe54e912d"
+    ],
+    "numeric_values": {},
+    "risk_level": "high",
+    "confidence": 0.72,
+    "notes": "来自 PDF insight，按 section type 分类提取的可引用内容",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0009",
+    "section_name": "valuation",
+    "claim_text": "9888.HK  估值不可用原因：当前公开证据缺少市值或股本口径、净利润、净资产/股东权益、收入，因此不能正式计算 P/E、P/B、P/S；报告应把这些缺口列为下一轮检索任务。",
+    "evidence_ids": [
+      "pdf_section_497fe54e912d",
+      "pdf_section_70f1ffb9d784",
+      "pdf_section_00a0866b705f",
+      "pdf_section_8098c1227e19",
+      "pdf_section_719d0ec03faa",
+      "pdf_section_a71bec3e4f23",
+      "pdf_section_75d2776d304a",
+      "pdf_section_e43b47ef569d",
+      "pdf_section_e79257d7628f"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "最小估值模型缺口披露。",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0010",
+    "section_name": "business_overview",
+    "claim_text": "9888.HK 的证据覆盖包括 10 条记录，横跨 2 类来源。",
+    "evidence_ids": [
+      "09888_FY2024_hkex_annual_report_a0649ee209",
+      "pdf_section_00a0866b705f",
+      "pdf_section_497fe54e912d",
+      "pdf_section_70f1ffb9d784",
+      "pdf_section_719d0ec03faa",
+      "pdf_section_75d2776d304a",
+      "pdf_section_8098c1227e19",
+      "pdf_section_a71bec3e4f23",
+      "pdf_section_e43b47ef569d",
+      "pdf_section_e79257d7628f"
+    ],
+    "numeric_values": {
+      "evidence_count": 10.0,
+      "unique_sources": 2.0
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由证据覆盖统计生成。"
+  },
+  {
+    "claim_id": "cl_0011",
+    "section_name": "risks",
+    "claim_text": "ANNUAL REPORT 2024 提示了相关风险或运营关注点。",
+    "evidence_ids": [
+      "09888_FY2024_hkex_annual_report_a0649ee209"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "由来源内容识别风险信号。",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0012",
+    "section_name": "risks",
+    "claim_text": "PDF section: risk_factors 提示了相关风险或运营关注点。",
+    "evidence_ids": [
+      "pdf_section_497fe54e912d"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "由来源内容识别风险信号。",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0013",
+    "section_name": "executive_summary",
+    "claim_text": "9888.HK 暂无完整执行摘要，以下基于已有证据和报告结构填充。关键财务指标已绑定 evidence_id/citation 并由 verifier 校验。",
+    "evidence_ids": [
+      "pdf_section_497fe54e912d",
+      "pdf_section_70f1ffb9d784",
+      "pdf_section_00a0866b705f"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.7,
+    "notes": "执行摘要 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0014",
+    "section_name": "peer_compare",
+    "claim_text": "9888.HK 属于上市公司类别，同行可比分析框架基于收入增长/利润率/ROE/估值/杠杆等维度。当前公开证据尚未覆盖完整同行数据，以下为框架性分析。",
+    "evidence_ids": [
+      "pdf_section_497fe54e912d",
+      "pdf_section_70f1ffb9d784",
+      "pdf_section_00a0866b705f"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "同行对比 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "peer_comparison"
+  },
+  {
+    "claim_id": "cl_0015",
+    "section_name": "valuation_sensitivity",
+    "claim_text": "敏感性分析框架覆盖宏观需求/成本费用/竞争格局/监管政策等变量。当前证据不足以量化各变量影响，以下说明缺失数据对敏感性判断的约束。",
+    "evidence_ids": [
+      "pdf_section_497fe54e912d",
+      "pdf_section_70f1ffb9d784",
+      "pdf_section_00a0866b705f"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "敏感性分析 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0016",
+    "section_name": "conclusion",
+    "claim_text": "关于9888.HK 的投资结论需要综合主营业务增长和经营效率改善等驱动因素和市场竞争、成本波动和监管变化等约束条件。当前公开证据尚不完整，以下为基于现有信息的初步判断。",
+    "evidence_ids": [
+      "pdf_section_497fe54e912d",
+      "pdf_section_70f1ffb9d784",
+      "pdf_section_00a0866b705f"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "投资结论 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  }
+]

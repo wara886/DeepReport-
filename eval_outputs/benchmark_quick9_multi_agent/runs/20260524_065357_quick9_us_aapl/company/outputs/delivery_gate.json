@@ -1,0 +1,125 @@
+{
+  "schema_version": "delivery_gate.v1",
+  "generated_at": "2026-05-24T06:56:46.399943+00:00",
+  "run_dir": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_us_aapl\\company\\outputs",
+  "delivery_pass": false,
+  "verifier_passed": false,
+  "objective_pass": false,
+  "llm_review_pass": false,
+  "scores": {
+    "objective_total_score": 0.9676,
+    "llm_total_score": 0.42,
+    "company_report_score": 0.8167
+  },
+  "gate_requirements": {
+    "formula": "delivery_pass = verifier_passed && objective_pass && llm_review_pass",
+    "verification_passed": false,
+    "objective_pass": false,
+    "llm_review_pass": false,
+    "llm_review_min_total_score": 0.8,
+    "llm_review_score_pass": false,
+    "llm_review_strict_score_pass": false,
+    "llm_review_relaxed_score_pass": false,
+    "llm_review_no_fatal_or_blocker": true,
+    "delivery_no_fatal_or_blocker": false
+  },
+  "issue_counts": {
+    "fatal": 2,
+    "blocker": 1,
+    "warning": 5,
+    "info": 0
+  },
+  "top_issues": [
+    {
+      "issue_id": "llm_review_0001",
+      "severity": "fatal",
+      "category": "evidence",
+      "message": "多个关键财务指标（毛利率、调整净利润、总负债、权益）缺乏证据支持，存在事实错误。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0002",
+      "severity": "fatal",
+      "category": "insight",
+      "message": "报告大量篇幅为'数据缺口说明'，缺乏实质性投资洞察与原创分析，投资结论仅为'中性观察'。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "generalization_0002",
+      "severity": "blocker",
+      "category": "generalization",
+      "message": "泛化质量检查未通过：pre_write_critic_passed",
+      "source": "objective"
+    },
+    {
+      "issue_id": "llm_review_0004",
+      "severity": "warning",
+      "category": "chart",
+      "message": "图表（结论置信度、证据来源结构）为元数据展示，无助于理解公司基本面。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "evidence_0001",
+      "severity": "warning",
+      "category": "evidence",
+      "message": "权威/一手来源占比偏低：0.17",
+      "source": "objective"
+    }
+  ],
+  "issues": [
+    {
+      "issue_id": "llm_review_0001",
+      "severity": "fatal",
+      "category": "evidence",
+      "message": "多个关键财务指标（毛利率、调整净利润、总负债、权益）缺乏证据支持，存在事实错误。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0002",
+      "severity": "fatal",
+      "category": "insight",
+      "message": "报告大量篇幅为'数据缺口说明'，缺乏实质性投资洞察与原创分析，投资结论仅为'中性观察'。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "generalization_0002",
+      "severity": "blocker",
+      "category": "generalization",
+      "message": "泛化质量检查未通过：pre_write_critic_passed",
+      "source": "objective"
+    },
+    {
+      "issue_id": "llm_review_0004",
+      "severity": "warning",
+      "category": "chart",
+      "message": "图表（结论置信度、证据来源结构）为元数据展示，无助于理解公司基本面。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "evidence_0001",
+      "severity": "warning",
+      "category": "evidence",
+      "message": "权威/一手来源占比偏低：0.17",
+      "source": "objective"
+    },
+    {
+      "issue_id": "llm_review_0003",
+      "severity": "warning",
+      "category": "generalization",
+      "message": "存在目标股票符号不匹配（提及FRED），且同行对比与估值敏感性部分完全缺失量化分析。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "verifier_0007",
+      "severity": "warning",
+      "category": "verifier",
+      "message": "Target symbol mismatch: expected AAPL, but non-peer sections mention ticker-like tokens FRED."
+    },
+    {
+      "issue_id": "verifier_0008",
+      "severity": "warning",
+      "category": "verifier",
+      "message": "Target symbol mismatch: expected AAPL, but non-peer sections mention ticker-like tokens FRED (if present in full report)."
+    }
+  ]
+}

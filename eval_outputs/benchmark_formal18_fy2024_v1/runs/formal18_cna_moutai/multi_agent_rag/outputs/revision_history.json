@@ -1,0 +1,7 @@
+[
+  {
+    "round": 1,
+    "revision_request": "- Warnings: Target symbol 600519.SS is not explicitly mentioned in report claims or markdown.\n- Warnings: Target symbol mismatch: expected 600519.SS, but non-peer sections mention ticker-like tokens SS.\n- Fix recommendations: Update claim cl_0008 evidence count to 8 or include all relevant evidence_ids.\n- Fix recommendations: Include full content of pdf_section_b003c26d2e91 and pdf_section_e128cbdf5161 in evidence records for verification.\n- LLM warnings: Claim cl_0002: evidence pdf_section_b003c26d2e91 cited but its content is not in provided evidence records; cannot verify claim text matches.\n- LLM warnings: Claim cl_0003: evidence pdf_section_e128cbdf5161 cited but its content is not in provided evidence records; cannot verify full claim text.\n- LLM errors: Claim cl_0008: evidence count claim 10 does not match the number of cited evidence_ids (8).",
+    "passed_after_round": false
+  }
+]

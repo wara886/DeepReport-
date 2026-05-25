@@ -1,0 +1,12 @@
+{
+  "symbol": "600519.SS",
+  "period": "FY2024",
+  "model": "deepseek-v4-flash",
+  "variant": "direct_llm",
+  "entity_resolution": {
+    "resolved_symbol": "600519.SS"
+  },
+  "frozen_evidence_only": true,
+  "retrieval": "none",
+  "orchestration": "one_generation_call"
+}

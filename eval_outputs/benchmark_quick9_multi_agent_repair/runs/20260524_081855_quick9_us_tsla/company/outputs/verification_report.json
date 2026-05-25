@@ -1,0 +1,229 @@
+{
+  "passed": true,
+  "error_count": 0,
+  "warning_count": 1,
+  "errors": [],
+  "warnings": [
+    "Target symbol mismatch: expected TSLA, but non-peer sections mention ticker-like tokens FRED."
+  ],
+  "claim_count": 17,
+  "grounded_claim_count": 9,
+  "expected_symbol": "TSLA",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 3,
+    "chart_text_consistency": {
+      "chart_count": 3,
+      "passed_chart_count": 3,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "title": "关键指标",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "title": "结论置信度",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "title": "证据来源结构",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 3,
+      "results": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "passed": true,
+          "errors": []
+        }
+      ]
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 1,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "valuation_not_available"
+    ],
+    "checks": {}
+  },
+  "llm_used": true,
+  "entity_resolution": {
+    "requested_symbol": "TSLA",
+    "research_topic": "Generate a company stock research report for Tesla (TSLA) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+    "resolved_symbol": "TSLA",
+    "resolution_source": "symbol",
+    "topic_resolution": {
+      "input": "Generate a company stock research report for Tesla (TSLA) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "resolved": true,
+      "symbol": "TSLA",
+      "company_name": "Tesla, Inc.",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data\\raw\\real_data\\TSLA\\2025Q4\\company_profile.json",
+      "sector": "Consumer Cyclical",
+      "industry": "Auto Manufacturers",
+      "business_summary": "Manufactures electric vehicles and energy storage systems.",
+      "period": "2025Q4",
+      "ambiguous": false
+    },
+    "symbol_resolution": {
+      "input": "TSLA",
+      "resolved": true,
+      "symbol": "TSLA",
+      "company_name": "Tesla, Inc.",
+      "match_type": "symbol_token",
+      "confidence": 1.0,
+      "profile_path": "data\\raw\\real_data\\TSLA\\2025Q4\\company_profile.json",
+      "sector": "Consumer Cyclical",
+      "industry": "Auto Manufacturers",
+      "business_summary": "Manufactures electric vehicles and energy storage systems.",
+      "period": "2025Q4",
+      "ambiguous": false
+    },
+    "conflict": false
+  },
+  "context_pack_meta": {
+    "claims": {
+      "input_count": 17,
+      "packed_count": 3,
+      "dropped_count": 14,
+      "packed_ids": [
+        "cl_0001",
+        "cl_0002",
+        "cl_0006"
+      ],
+      "dropped_ids": [
+        "cl_0007",
+        "cl_0005",
+        "cl_0003",
+        "cl_0011",
+        "cl_0012",
+        "cl_0008",
+        "cl_0009",
+        "cl_0004",
+        "cl_0010",
+        "cl_0013",
+        "cl_0016",
+        "cl_0017",
+        "cl_0015",
+        "cl_0014"
+      ],
+      "used_chars": 2367,
+      "total_chars": 2600
+    },
+    "evidence": {
+      "input_count": 6,
+      "packed_count": 1,
+      "dropped_count": 5,
+      "packed_ids": [
+        "sec_companyfacts_tsla_f31cc88549"
+      ],
+      "dropped_ids": [
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_finance_bbc5d5481f",
+        "fred_fedfunds_20260401",
+        "fred_dgs10_20260521",
+        "fred_cpiaucsl_20260401"
+      ],
+      "used_chars": 3502,
+      "total_chars": 5200,
+      "prioritized_evidence_count": 3,
+      "prioritized_dropped_ids": [
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_finance_bbc5d5481f",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_finance_bbc5d5481f",
+        "TSLA_2026Q1_yahoo_finance_bbc5d5481f",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_finance_bbc5d5481f",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_finance_bbc5d5481f",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_finance_bbc5d5481f",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_finance_bbc5d5481f"
+      ]
+    }
+  },
+  "llm_passed": true,
+  "llm_errors": [],
+  "llm_warnings": [
+    "Target symbol mismatch: expected TSLA, but non-peer sections mention ticker-like tokens FRED."
+  ],
+  "fix_recommendations": [
+    "Remove or properly cite industry classification and business description from appropriate sources (e.g., SEC 10-K).",
+    "For gross margin, provide evidence from income statement (e.g., cost of revenue) or remove the metric.",
+    "Ensure all balance sheet items have direct evidence; total liabilities and equity should be derived from assets and known equity or cited from sources that contain them.",
+    "The investment conclusion '中性观察' should be based on a supported valuation model with evidence."
+  ],
+  "rework_required": false,
+  "evidence_gaps": [
+    {
+      "gap_id": "gap_0001_entity_or_period_mismatch",
+      "gap_type": "entity_or_period_mismatch",
+      "description": "Target symbol mismatch: expected TSLA, but non-peer sections mention ticker-like tokens FRED.",
+      "claim_id": "",
+      "required_source_type": [],
+      "required_fields": [
+        "Target symbol mismatch: expected TSLA, but non-peer sections mention ticker-like"
+      ],
+      "suggested_queries": [],
+      "blocking": false,
+      "status": "open"
+    },
+    {
+      "gap_id": "gap_0002_entity_or_period_mismatch",
+      "gap_type": "entity_or_period_mismatch",
+      "description": "Target symbol mismatch: expected TSLA, but non-peer sections mention ticker-like tokens FRED.",
+      "claim_id": "",
+      "required_source_type": [],
+      "required_fields": [
+        "Target symbol mismatch: expected TSLA, but non-peer sections mention ticker-like"
+      ],
+      "suggested_queries": [],
+      "blocking": false,
+      "status": "open"
+    }
+  ],
+  "revision_brief": "- Warnings: Target symbol mismatch: expected TSLA, but non-peer sections mention ticker-like tokens FRED.\n- Fix recommendations: Remove or properly cite industry classification and business description from appropriate sources (e.g., SEC 10-K).\n- Fix recommendations: For gross margin, provide evidence from income statement (e.g., cost of revenue) or remove the metric.\n- Fix recommendations: Ensure all balance sheet items have direct evidence; total liabilities and equity should be derived from assets and known equity or cited from sources that contain them.\n- Fix recommendations: The investment conclusion '中性观察' should be based on a supported valuation model with evidence.\n- LLM warnings: Target symbol mismatch: expected TSLA, but non-peer sections mention ticker-like tokens FRED."
+}

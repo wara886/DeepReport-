@@ -1,0 +1,95 @@
+[
+  {
+    "chart_id": "key_metrics_bar",
+    "chart_type": "bar",
+    "title": "关键指标",
+    "output_path": "eval_outputs\\benchmark_formal18_fy2024_v1_repair_smoke\\runs\\formal18_hk_tencent\\multi_agent_rag\\outputs\\charts\\key_metrics_bar.png",
+    "source_fields": "claims.numeric_values",
+    "input_table_ids": [],
+    "input_claim_ids": [
+      "cl_0001"
+    ],
+    "source_evidence_ids": [
+      "00700_FY2024_hkex_annual_report_039e2f7c84"
+    ],
+    "chart_js": {
+      "type": "bar",
+      "labels": [
+        "cl_0001:evidence_count",
+        "cl_0001:unique_sources"
+      ],
+      "data": [
+        1.0,
+        1.0
+      ],
+      "label": "指标值"
+    }
+  },
+  {
+    "chart_id": "claim_confidence_bar",
+    "chart_type": "bar",
+    "title": "结论置信度",
+    "output_path": "eval_outputs\\benchmark_formal18_fy2024_v1_repair_smoke\\runs\\formal18_hk_tencent\\multi_agent_rag\\outputs\\charts\\claim_confidence_bar.png",
+    "source_fields": "claims.confidence",
+    "input_claim_ids": [
+      "cl_0001",
+      "cl_0002",
+      "cl_0003",
+      "cl_0004",
+      "cl_0005",
+      "cl_0006",
+      "cl_0007",
+      "cl_0008",
+      "cl_0009"
+    ],
+    "source_evidence_ids": [
+      "00700_FY2024_hkex_annual_report_039e2f7c84"
+    ],
+    "chart_js": {
+      "type": "bar",
+      "labels": [
+        "cl_0001",
+        "cl_0002",
+        "cl_0003",
+        "cl_0004",
+        "cl_0005",
+        "cl_0006",
+        "cl_0007",
+        "cl_0008",
+        "cl_0009"
+      ],
+      "data": [
+        0.76,
+        0.7,
+        0.66,
+        0.6,
+        0.63,
+        0.68,
+        0.63,
+        0.66,
+        0.66
+      ],
+      "label": "置信度"
+    }
+  },
+  {
+    "chart_id": "evidence_source_mix",
+    "chart_type": "table",
+    "title": "证据来源结构",
+    "output_path": "eval_outputs\\benchmark_formal18_fy2024_v1_repair_smoke\\runs\\formal18_hk_tencent\\multi_agent_rag\\outputs\\charts\\evidence_source_mix.png",
+    "source_fields": "evidence_records.source_type",
+    "source_evidence_ids": [
+      "00700_FY2024_hkex_annual_report_039e2f7c84"
+    ],
+    "chart_js": {
+      "type": "doughnut",
+      "labels": [
+        "hkex_annual_report"
+      ],
+      "data": [
+        1.0
+      ],
+      "label": "证据数量"
+    }
+  }
+]

@@ -1,0 +1,98 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "revenue",
+    "claim_text": "Revenue of 337.488B RMB for FY2024.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "revenue"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "profit",
+    "claim_text": "Net profit attributable to parent of 148.391B RMB.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "profit"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "cash_flow",
+    "claim_text": "Net operating cash flow of 447.023B RMB, exceeding net profit.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "cash_flow"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "margin",
+    "claim_text": "Net profit margin approximately 44%.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "margin"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "risk",
+    "claim_text": "Total liabilities to equity ratio of ~8.86x indicates high leverage.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "risk",
+    "claim_text": "Negative net investing cash flow of -292.859B RMB suggests significant capital outlays.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "investment_rationale",
+    "claim_text": "Return on equity (ROE) of 12.03%.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "valuation",
+    "claim_text": "Market price and shares outstanding not provided; valuation ratios cannot be computed.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  }
+]

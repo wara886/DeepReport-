@@ -1,0 +1,470 @@
+{
+  "schema_version": "research_blackboard.v1",
+  "symbol": "601318.SS",
+  "target_period": "2026Q1",
+  "company_identity": {
+    "symbol": "601318.SS",
+    "canonical_symbol": "601318.SS",
+    "company_name": "",
+    "market": "cn_a",
+    "exchange": "SSE",
+    "currency": "CNY",
+    "country_region": "China",
+    "is_listed": true,
+    "resolution_confidence": 0.72,
+    "data_source_plan": {
+      "symbol": "601318.SS",
+      "market": "cn_a",
+      "exchange": "SSE",
+      "engines": [
+        "local_real_data",
+        "cninfo_announcements",
+        "exchange_announcements",
+        "eastmoney_financials",
+        "yahoo_finance",
+        "eastmoney",
+        "local_evidence"
+      ],
+      "primary_sources": [
+        "cninfo_announcements",
+        "exchange_announcements",
+        "eastmoney_financials"
+      ],
+      "free_public_only": true,
+      "requires_gap_explanation_when_missing": [
+        "income_statement",
+        "balance_sheet",
+        "cash_flow",
+        "valuation",
+        "peer_compare"
+      ]
+    },
+    "match_type": "cn_code",
+    "needs_confirmation": false,
+    "reason": "matched_cn_code",
+    "sector": "",
+    "industry": "",
+    "business_summary": "",
+    "official_sources": [
+      "cninfo_announcements",
+      "exchange_announcements",
+      "eastmoney_financials"
+    ],
+    "latest_disclosure_period": "",
+    "entity_resolution": {
+      "requested_symbol": "601318.SS",
+      "research_topic": "Generate a company stock research report for 中国平安 (601318.SS) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "resolved_symbol": "601318.SS",
+      "resolution_source": "fallback",
+      "topic_resolution": {
+        "input": "Generate a company stock research report for 中国平安 (601318.SS) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+        "resolved": false,
+        "symbol": "",
+        "company_name": "",
+        "match_type": "none",
+        "confidence": 0.0,
+        "candidate_symbols": [
+          "0700.HK",
+          "600519.SS",
+          "AAPL",
+          "AMD",
+          "GOOGL",
+          "MSFT",
+          "NVDA",
+          "TSLA"
+        ],
+        "reason": "no_match"
+      },
+      "symbol_resolution": {
+        "input": "601318.SS",
+        "resolved": false,
+        "symbol": "",
+        "company_name": "",
+        "match_type": "none",
+        "confidence": 0.0,
+        "candidate_symbols": [
+          "0700.HK",
+          "600519.SS",
+          "AAPL",
+          "AMD",
+          "GOOGL",
+          "MSFT",
+          "NVDA",
+          "TSLA"
+        ],
+        "reason": "no_match"
+      },
+      "conflict": false
+    }
+  },
+  "market_route": {
+    "market": "cn_a",
+    "exchange": "SSE",
+    "data_source_plan": {
+      "symbol": "601318.SS",
+      "market": "cn_a",
+      "exchange": "SSE",
+      "engines": [
+        "local_real_data",
+        "cninfo_announcements",
+        "exchange_announcements",
+        "eastmoney_financials",
+        "yahoo_finance",
+        "eastmoney",
+        "local_evidence"
+      ],
+      "primary_sources": [
+        "cninfo_announcements",
+        "exchange_announcements",
+        "eastmoney_financials"
+      ],
+      "free_public_only": true,
+      "requires_gap_explanation_when_missing": [
+        "income_statement",
+        "balance_sheet",
+        "cash_flow",
+        "valuation",
+        "peer_compare"
+      ]
+    },
+    "primary_sources": [
+      "cninfo_announcements",
+      "exchange_announcements",
+      "eastmoney_financials"
+    ],
+    "planned_engines": [
+      "local_real_data",
+      "cninfo_announcements",
+      "exchange_announcements",
+      "eastmoney_financials",
+      "yahoo_finance",
+      "eastmoney",
+      "independent_macro",
+      "local_evidence"
+    ],
+    "attempted_engines": [
+      "local_real_data",
+      "cninfo_announcements",
+      "exchange_announcements",
+      "eastmoney_financials",
+      "yahoo_finance",
+      "eastmoney",
+      "independent_macro",
+      "local_evidence"
+    ],
+    "missing_primary_sources": [],
+    "route_coverage": 1.0
+  },
+  "industry_profile": {
+    "industry": "",
+    "sector": "",
+    "business_summary": "601318 Eastmoney income financial table Eastmoney income financial table: report_date 2026-03-31 00:00:00; operating revenue 218405000000; total operating revenue 218405000000; parent net profit 25022000000. 601318 Eastmoney balance financial table Eastmoney balance financial table: report_date 2026-03-31 00:00:00; ...",
+    "confidence": 0.9,
+    "source_priority": "official_disclosure",
+    "evidence_ids": [
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa",
+      "601318_2026Q1_cninfo_546b2760c8",
+      "601318_2026Q1_cninfo_9a016922ce",
+      "601318_2026Q1_cninfo_44b1a686b1",
+      "pdf_section_e746cdcbf2f3",
+      "pdf_section_dd37d879668f"
+    ]
+  },
+  "period_state": {
+    "target_period": "2026Q1",
+    "latest_available_disclosure_period": "2026Q1",
+    "financial_data_basis": "quarterly or latest available public disclosure",
+    "market_data_as_of": "",
+    "has_data_delay": false,
+    "notes": []
+  },
+  "coverage": {
+    "evidence_count": 19,
+    "official_evidence_count": 19,
+    "source_types": [
+      "cninfo_announcement",
+      "eastmoney_financials",
+      "pdf_section"
+    ],
+    "three_statement": {
+      "income": true,
+      "balance": true,
+      "cash_flow": true
+    },
+    "peer_compare": {
+      "available": true,
+      "reason": ""
+    },
+    "valuation": {
+      "available": false,
+      "method": "",
+      "missing_inputs": []
+    },
+    "risk": {
+      "available": true,
+      "evidence_ids": [
+        "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+        "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+        "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+      ]
+    }
+  },
+  "role_outputs": {
+    "identity_profile": {
+      "status": "complete",
+      "confidence": 0.84,
+      "source": "official_disclosure_or_company_profile",
+      "evidence_ids": [
+        "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+        "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+        "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa",
+        "601318_2026Q1_cninfo_546b2760c8",
+        "601318_2026Q1_cninfo_9a016922ce",
+        "601318_2026Q1_cninfo_44b1a686b1",
+        "pdf_section_e746cdcbf2f3",
+        "pdf_section_dd37d879668f"
+      ],
+      "findings": [
+        "Resolved analysis target as 601318.SS for 2026Q1.",
+        "Official/company evidence records available: 10."
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "FinalAnswer may use company identity and business profile from verified evidence.",
+      "owner_agent": "DeepAnalyzeAgent",
+      "verified": true
+    },
+    "three_statement_analysis": {
+      "status": "complete",
+      "confidence": 0.86,
+      "source": "financial_statement_view_and_metric_lineage",
+      "evidence_ids": [
+        "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+        "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+        "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa",
+        "601318_2026Q1_cninfo_546b2760c8",
+        "601318_2026Q1_cninfo_9a016922ce",
+        "601318_2026Q1_cninfo_44b1a686b1",
+        "pdf_section_e746cdcbf2f3",
+        "pdf_section_dd37d879668f",
+        "pdf_section_f130da89ab7b",
+        "pdf_section_929154e9ecfa"
+      ],
+      "findings": [
+        "Three-statement coverage income=True, balance=True, cash_flow=True.",
+        "Financial metric lineage count: 7.",
+        "盈利摘要：收入 218,405,000,000 CNY；毛利率 16.11 pct；净利润 25,022,000,000 CNY [601318_2026Q1_eastmoney_financials_income_3364d4d44d]",
+        "资产负债摘要：总资产 14,169,947,000,000 CNY；总负债 12,735,657,000,000 CNY；权益 1,434,290,000,000 CNY [601318_2026Q1_eastmoney_financials_balance_0fed348191]",
+        "现金流摘要：经营现金流 131,064,000,000 CNY；投资现金流 -122,934,000,000 CNY；筹资现金流 -58,811,000,000 CNY [601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa]",
+        "Statement view coverage: {'statements': {'income_statement': 5, 'balance_sheet': 3, 'cash_flow_statement': 3}, 'has_three_statement_view': True, 'line_item_count': 11}."
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "Financial analysis can discuss income statement, balance sheet, and cash flow together.",
+      "owner_agent": "DeepAnalyzeAgent",
+      "verified": true
+    },
+    "peer_analysis": {
+      "status": "missing",
+      "confidence": 0.3,
+      "source": "peer_comparison_tool",
+      "evidence_ids": [
+        "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+        "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+        "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+      ],
+      "findings": [
+        "Peer context contains 0 comparable companies."
+      ],
+      "missing_inputs": [
+        "peer_universe",
+        "peer_financial_metrics"
+      ],
+      "impact_on_report": "Peer section must be framed as a data gap or qualitative context, not a ranked conclusion.",
+      "owner_agent": "DeepAnalyzeAgent",
+      "verified": false
+    },
+    "valuation_analysis": {
+      "status": "partial",
+      "confidence": 0.5,
+      "source": "valuation_tool_and_market_inputs",
+      "evidence_ids": [
+        "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+        "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+        "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa",
+        "601318_2026Q1_cninfo_546b2760c8",
+        "601318_2026Q1_cninfo_9a016922ce",
+        "601318_2026Q1_cninfo_44b1a686b1",
+        "pdf_section_e746cdcbf2f3",
+        "pdf_section_dd37d879668f",
+        "pdf_section_f130da89ab7b",
+        "pdf_section_929154e9ecfa"
+      ],
+      "findings": [
+        "Valuation availability: False.",
+        "Valuation method: not_available."
+      ],
+      "missing_inputs": [
+        "valuation_inputs"
+      ],
+      "impact_on_report": "Valuation section must list missing inputs and avoid target-price style conclusions.",
+      "owner_agent": "DeepAnalyzeAgent",
+      "verified": false
+    },
+    "risk_analysis": {
+      "status": "complete",
+      "confidence": 0.72,
+      "source": "risk_claims_and_evidence",
+      "evidence_ids": [
+        "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+        "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+        "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+      ],
+      "findings": [
+        "Risk-related claim evidence count: 3.",
+        "601318.SS 的主要风险包括三类：第一，行业竞争和供给扩张可能压缩高毛利业务的持续性；第二，宏观利率、资本开支周期和云厂商采购节奏会放大收入波动；第三，当前核心季度三表采用结构化降级来源，若后续一手公告与该数据不一致，盈利质量、自由现金流和估值结论都需要重算。"
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "Risk section can cite identified operational or market risk evidence.",
+      "owner_agent": "DeepAnalyzeAgent",
+      "verified": true
+    }
+  },
+  "agent_writes": [
+    {
+      "agent": "DeepResearcherAgent",
+      "task_type": "deep_researcher",
+      "writes": [
+        "evidence_candidates",
+        "search_meta",
+        "market_route"
+      ],
+      "evidence_count": 0,
+      "claim_count": 0,
+      "output_keys": [
+        "evidence_candidates",
+        "query",
+        "search_meta"
+      ]
+    },
+    {
+      "agent": "BrowserAgent",
+      "task_type": "browser",
+      "writes": [
+        "evidence_records",
+        "pdf_artifacts"
+      ],
+      "evidence_count": 6,
+      "claim_count": 0,
+      "output_keys": [
+        "evidence_records"
+      ]
+    },
+    {
+      "agent": "BrowserAgent",
+      "task_type": "browser",
+      "writes": [
+        "evidence_records",
+        "pdf_artifacts"
+      ],
+      "evidence_count": 19,
+      "claim_count": 0,
+      "output_keys": [
+        "evidence_records"
+      ]
+    },
+    {
+      "agent": "DeepAnalyzeAgent",
+      "task_type": "deep_analyze",
+      "writes": [
+        "claims",
+        "analysis_artifacts",
+        "coverage",
+        "role_outputs",
+        "identity_profile",
+        "three_statement_analysis",
+        "peer_analysis",
+        "valuation_analysis",
+        "risk_analysis"
+      ],
+      "evidence_count": 19,
+      "claim_count": 18,
+      "output_keys": [
+        "analysis_artifacts",
+        "claims"
+      ]
+    },
+    {
+      "agent": "DeepAnalyzeAgent",
+      "task_type": "deep_analyze",
+      "writes": [
+        "claims",
+        "analysis_artifacts",
+        "coverage",
+        "role_outputs",
+        "identity_profile",
+        "three_statement_analysis",
+        "peer_analysis",
+        "valuation_analysis",
+        "risk_analysis"
+      ],
+      "evidence_count": 19,
+      "claim_count": 20,
+      "output_keys": [
+        "analysis_artifacts",
+        "claims"
+      ]
+    },
+    {
+      "agent": "FinalAnswerAgent",
+      "task_type": "final_answer",
+      "writes": [
+        "markdown",
+        "report_json"
+      ],
+      "evidence_count": 19,
+      "claim_count": 20,
+      "output_keys": [
+        "html",
+        "markdown",
+        "report_json",
+        "summary"
+      ]
+    },
+    {
+      "agent": "VerifierAgent",
+      "task_type": "verifier",
+      "writes": [
+        "verification_report",
+        "gap_resolution_trace"
+      ],
+      "evidence_count": 19,
+      "claim_count": 20,
+      "output_keys": [
+        "verification_report"
+      ]
+    },
+    {
+      "agent": "GapResolverAgent",
+      "task_type": "gap_resolver",
+      "writes": [
+        "gap_resolution_trace",
+        "data_repair_summary",
+        "repair_constraints"
+      ],
+      "evidence_count": 19,
+      "claim_count": 20,
+      "output_keys": [
+        "data_repair_summary",
+        "gap_resolution_trace",
+        "repair_constraints",
+        "required_backfill_sections"
+      ]
+    }
+  ],
+  "critic": {
+    "pre_write_passed": false,
+    "objections": [],
+    "recommendations": []
+  }
+}

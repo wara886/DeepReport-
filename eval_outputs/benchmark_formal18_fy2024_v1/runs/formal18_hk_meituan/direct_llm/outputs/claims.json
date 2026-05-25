@@ -1,0 +1,114 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "cash_flow",
+    "claim_text": "Net cash generated from investing activities was RMB10.2 billion in FY2024.",
+    "evidence_ids": [
+      "03690_FY2024_hkex_annual_report_8e4e651b17"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "cash_flow"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "cash_flow",
+    "claim_text": "Net cash used in financing activities was RMB30.4 billion in FY2024, driven by share repurchases and debt repayments.",
+    "evidence_ids": [
+      "03690_FY2024_hkex_annual_report_8e4e651b17"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "cash_flow"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "risk",
+    "claim_text": "Gearing ratio as of December 31, 2024 was approximately 32%.",
+    "evidence_ids": [
+      "03690_FY2024_hkex_annual_report_8e4e651b17"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "risk",
+    "claim_text": "Goodwill carrying amount was RMB27,774 million as at December 31, 2024, subject to annual impairment testing.",
+    "evidence_ids": [
+      "03690_FY2024_hkex_annual_report_8e4e651b17"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "investment_rationale",
+    "claim_text": "Investment portfolio amounted to RMB41,309 million as at December 31, 2024.",
+    "evidence_ids": [
+      "03690_FY2024_hkex_annual_report_8e4e651b17"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "risk",
+    "claim_text": "No material contingent liabilities existed as of December 31, 2024.",
+    "evidence_ids": [
+      "03690_FY2024_hkex_annual_report_8e4e651b17"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "risk",
+    "claim_text": "The auditor issued an unqualified opinion stating the financial statements give a true and fair view.",
+    "evidence_ids": [
+      "03690_FY2024_hkex_annual_report_8e4e651b17"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "risk",
+    "claim_text": "Key assumptions for goodwill impairment include revenue growth rate, gross margin, terminal growth rate, and pre-tax discount rate.",
+    "evidence_ids": [
+      "03690_FY2024_hkex_annual_report_8e4e651b17"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  }
+]

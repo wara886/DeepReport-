@@ -2,6 +2,48 @@
 
 > 维护规则（2026-05-16 更新）：每次开工必须先读本文档和 `docs/web_ui_multimodal_workbench.md`；每完成一个功能必须记录改动、验证命令、质量结果、遗留问题和下一步，并单独提交一次 git。Chat memory 只用于用户偏好和任务上下文，不替代 evidence/citation/verifier。报告只有同时通过 verifier、本地 objective quality eval、LLM/Codex 主观 review，才标记为可交付。
 
+## 2026-05-24 Formal-18 FY2024 正式对照完成（Phase 3 收尾）
+
+- 冻结数据集 `formal18_fy2024_v1` 已达到 `18/18` 完整覆盖（US/HK/CN-A 各 `6/6`），`snapshot_sha256=d989a021754e5cd0f8c0d4f2015b40b444c02a784ba2a0cd860977983cffa54e`，formal runner 校验通过。
+- HK 缺口已由 HKEXnews 官方年度报告检索、公司/年度匹配与 PDF 文本提取路线补齐；正式执行仍只消费冻结 evidence，不在运行期补证。
+- 三方案固定对照已完成：`direct_llm`、`single_agent_rag`、`multi_agent_rag` 各运行 18 案，共 `54/54` 个运行单元为 `evaluated`，没有 runtime/model failure。
+- 总体主指标（交付通过率 / 客观质量评分 / `Traceable Claim Rate v1`）：Direct LLM 为 `16.67% / 51.21 / 29.66%`，Single-Agent RAG 为 `27.78% / 52.52 / 34.89%`，Multi-Agent RAG 为 `72.22% / 86.27 / 70.01%`。
+- 失败复盘：Multi-Agent RAG 仍有 `5/18` 例未通过交付门禁、`9` 个运行记录带有 `citation_or_evidence_gap`；其港股可追溯率仅 `37.80%`，A 股交付通过率为 `50.00%`，需保留为结果边界。
+- 收尾增强：正式汇总增加 `formal_secondary_metrics.csv` 与报告中的 micro claim 覆盖、运行完整性和 failure taxonomy，主指标仍维持固定案例宏平均口径。
+- 结果入口：`eval_outputs/benchmark_formal18_fy2024_v1/formal_benchmark_report.md`；协议与口径：`docs/formal_benchmark_protocol.md`；快照清单：`data/benchmarks/frozen_fy2024_v1/snapshot_manifest.json`。
+- 风险与后续：港股证据密度/关键结论引用覆盖仍是主要薄弱点；在扩大数据集或宣称外部泛化前，应补港股多证据记录与独立人工抽检。
+
+## 2026-05-24 Formal-18 FY2024 Evidence Staging（Phase 3 中间状态，已被完成记录取代）
+
+- 新增 `src/evaluation/formal_evidence_staging.py` 与 `scripts/stage_formal18_fy2024_evidence.py`，将显式联网采集与正式离线 runner 分离；采集过程写入 `data/benchmark_sources/fy2024/acquisition_manifest.json`。
+- 修正 SEC `FY2024` 选择：只接受目标 `fy`/`fp=FY`/年度 form，并在同一 10-K 携带比较年度列时选当期最新 `end`；实际 US 六案分别命中其真实财年结束日。
+- 修正 A 股期间解析：`FY2024` 可正确限定 CNINFO 年度报告与 `2024-12-31` 三张结构化财务表；同时将 CNINFO 毫秒公告时间按中国时区规范化。
+- 当时实采并冻结结果：US `6/6`、CN-A `6/6`、HK `0/6`，snapshot 为 `12/18`、`complete=false`。HK 现有间接搜索路线出现数字 URL 误命中风险，未写入 formal evidence。
+- 当时运行边界：`python scripts/run_formal_benchmark.py --config configs/benchmark_formal18_fy2024.yaml` 已验证因 `snapshot is incomplete` 拒绝执行；后续正式结果见本文顶部完成记录。
+- 验证命令：`python -m pytest -q tests/test_independent_sources.py tests/test_formal_evidence_staging.py tests/test_frozen_snapshot.py tests/test_formal_benchmark.py tests/test_benchmark_metrics.py tests/test_summarize_existing_runs.py tests/test_quick9_benchmark_runner.py`；`python scripts/stage_formal18_fy2024_evidence.py --config configs/benchmark_formal18_fy2024.yaml`；`python scripts/build_frozen_snapshot.py --config configs/benchmark_formal18_fy2024.yaml`。
+- 下一项（已完成）：实现不经通用搜索的 HKEX 官方年度报告 acquisition/解析及公司、年度校验，完成余下 `6/18` 后运行 formal variants。
+
+## 2026-05-24 Formal-18 冻结对照协议（Phase 3 启动）
+
+- 新增 `configs/benchmark_formal18_fy2024.yaml`，固定 formal-18 公司、`FY2024` 期间、三个 variant 与主指标范围。
+- 新增 `src/evaluation/frozen_snapshot.py` 与 `scripts/build_frozen_snapshot.py`：仅冻结本地预置 evidence，写入逐案例 SHA-256、全 snapshot hash 和完整性状态，不允许在线补证。
+- 新增 `src/evaluation/formal_benchmark.py` 与 `scripts/run_formal_benchmark.py`：三种方案共享同一已验证快照；`multi_agent_rag` 仅通过 `formal_snapshot_bm25` 进入现有 `MultiAgentOrchestrator` 离线完整链路；snapshot 不完整或 hash 不一致时拒绝生成正式结果。
+- `ClaimItem` 新增 `is_critical` / `critical_claim_type`；formal multi-agent 运行通过分析侧 `formal_v1` 合同在评分前落盘结构化标签，正式 `Traceable Claim Rate v1` 只接受该显式关键类型，并要求冻结 evidence、正文 citation 与 numeric audit 同时通过，评测器不从正文自动推断标签。
+- 本段启动时真实快照 coverage manifest 为 `0/18`、`complete=false`；当前进展见上方 staging 记录，仍不声称已完成三方案对比或正式结果数字。
+- 说明文档：`docs/formal_benchmark_protocol.md`；当前 manifest：`data/benchmarks/frozen_fy2024_v1/snapshot_manifest.json`。
+- 验证命令：`pytest -q tests/test_schemas.py tests/test_frozen_snapshot.py tests/test_formal_benchmark.py tests/test_benchmark_metrics.py tests/test_summarize_existing_runs.py tests/test_quick9_benchmark_runner.py`。
+
+## 2026-05-24 Fixed Quick-9 Multi-Agent 跨市场诊断（Phase 2）
+
+- 新增 `scripts/run_quick9_multi_agent_benchmark.py` 与 `configs/benchmark_quick9_multi_agent.yaml` 执行配置，固定运行 AAPL、AMD、TSLA、0020.HK、6682.HK、0700.HK、600519.SS、300750.SZ、601318.SS 九案，仅使用当前 `multi_agent` variant。
+- 每案写入独立 `company/outputs` 与 `company/reports` 目录，并补充 `benchmark_run_metadata.json`，记录模型、检索模式、来源尝试、目标期 `2026Q1` 与实际可得数据期间。
+- 原运行产物位于 `eval_outputs/benchmark_quick9_multi_agent/`；其初始汇总把独立质量诊断重复计入 Delivery，已保留为历史审计记录，不作为现行主指标。
+- 修正合同后的只读重算输出位于 `eval_outputs/benchmark_quick9_multi_agent_reassessed/`，未重新运行 Agent 或取数：9/9 案例完成 artifacts；`Delivery Pass Rate=100.00%`、`Objective Quality Score=94.84`、`Traceable Claim Rate (artifact-derived)=97.77%`。
+- 分市场只读重算结果：US `100.00% / 96.76 / 100.00%`，HK `100.00% / 87.83 / 100.00%`，CN-A `100.00% / 99.92 / 93.31%`，顺序均为交付通过率 / 客观质量分 / 初版可追溯率。
+- 诊断定位：按八项合同九案均满足交付要求，但九案仍记录 `quality_gate_blocker` 诊断，A 股三案仍有 `citation_or_evidence_gap`；这些缺口不能被 Delivery 通过所掩盖。
+- 边界说明：本阶段是使用当前在线来源路线的跨市场工程诊断，未执行 `Direct LLM`、`Single-Agent RAG` 对照，未冻结 evidence snapshot；初版可追溯率不能表述为正式 `Traceable Claim Rate v1`。
+- 验证命令：`python -m pytest -q tests/test_benchmark_metrics.py tests/test_summarize_existing_runs.py tests/test_quick9_benchmark_runner.py`；`python scripts/run_quick9_multi_agent_benchmark.py --config configs/benchmark_quick9_multi_agent.yaml --reassess-source-root eval_outputs/benchmark_quick9_multi_agent --output-root eval_outputs/benchmark_quick9_multi_agent_reassessed`。
+
 ## 2026-05-16 Chat-first 与质量门禁任务
 
 - 当前最高优先级：把 Web UI 改为 ChatGPT-like 首屏，让用户只输入“生成某公司最新财报研报”即可触发解析、memory、实时数据、多 Agent 生成、质量评测和报告链接返回。

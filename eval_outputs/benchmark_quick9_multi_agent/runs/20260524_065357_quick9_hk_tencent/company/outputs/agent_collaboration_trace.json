@@ -1,0 +1,595 @@
+{
+  "schema_version": "agent_collaboration_trace.v1",
+  "symbol": "0700.HK",
+  "period": "2026Q1",
+  "research_topic": "Generate a company stock research report for 腾讯控股 (0700.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+  "agent_count": 7,
+  "step_count": 7,
+  "agents": [
+    {
+      "step": 1,
+      "agent": "PlanningAgent",
+      "task_id": "task_000_planning",
+      "task_type": "planning",
+      "description": "Generate a company stock research report for 腾讯控股 (0700.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "status": "completed",
+      "duration_sec": 60.046,
+      "input_summary": {
+        "research_topic": "Generate a company stock research report for 腾讯控股 (0700.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion."
+      },
+      "output_keys": [
+        "plan"
+      ],
+      "output_summary": {
+        "keys": [
+          "plan"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [],
+      "objections": [],
+      "handoff_from": "",
+      "handoff_to": "DeepResearcherAgent",
+      "error": ""
+    },
+    {
+      "step": 2,
+      "agent": "DeepResearcherAgent",
+      "task_id": "task_001",
+      "task_type": "deep_researcher",
+      "description": "Collect company filings, market data, financial statements, and recent news evidence.",
+      "status": "completed",
+      "duration_sec": 40.002,
+      "input_summary": {
+        "symbol": "0700.HK",
+        "period": "2026Q1",
+        "query": "0700.HK 2026Q1 Collect company filings, market data, financial statements, and recent news evidence.",
+        "research_topic": "Generate a company stock research report for 腾讯控股 (0700.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+        "engines": [
+          "local_real_data",
+          "yahoo_finance",
+          "independent_macro",
+          "tavily",
+          "serper",
+          "local_evidence"
+        ]
+      },
+      "output_keys": [
+        "evidence_candidates",
+        "query",
+        "search_meta"
+      ],
+      "output_summary": {
+        "keys": [
+          "evidence_candidates",
+          "query",
+          "search_meta"
+        ],
+        "react_used": false
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "evidence_candidates",
+        "market_route",
+        "search_meta"
+      ],
+      "objections": [],
+      "handoff_from": "PlanningAgent",
+      "handoff_to": "BrowserAgent",
+      "error": ""
+    },
+    {
+      "step": 3,
+      "agent": "BrowserAgent",
+      "task_id": "task_002",
+      "task_type": "browser",
+      "description": "Extract relevant text, tables, and citation snippets from selected sources.",
+      "status": "completed",
+      "duration_sec": 0.0,
+      "input_summary": {},
+      "output_keys": [
+        "evidence_records"
+      ],
+      "output_summary": {
+        "keys": [
+          "evidence_records"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "evidence_records",
+        "pdf_artifacts"
+      ],
+      "objections": [],
+      "handoff_from": "DeepResearcherAgent",
+      "handoff_to": "DeepAnalyzeAgent",
+      "error": ""
+    },
+    {
+      "step": 4,
+      "agent": "DeepAnalyzeAgent",
+      "task_id": "task_003",
+      "task_type": "deep_analyze",
+      "description": "Analyze financial performance, valuation, risks, trends, and peer context.",
+      "status": "completed",
+      "duration_sec": 60.076,
+      "input_summary": {
+        "symbol": "0700.HK",
+        "period": "2026Q1",
+        "max_records": 10
+      },
+      "output_keys": [
+        "analysis_artifacts",
+        "claims"
+      ],
+      "output_summary": {
+        "keys": [
+          "analysis_artifacts",
+          "claims"
+        ],
+        "react_used": false
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "analysis_artifacts",
+        "claims",
+        "coverage",
+        "identity_profile",
+        "peer_analysis",
+        "risk_analysis",
+        "role_outputs",
+        "three_statement_analysis",
+        "valuation_analysis"
+      ],
+      "objections": [],
+      "handoff_from": "BrowserAgent",
+      "handoff_to": "FinalAnswerAgent",
+      "error": ""
+    },
+    {
+      "step": 5,
+      "agent": "FinalAnswerAgent",
+      "task_id": "task_004",
+      "task_type": "final_answer",
+      "description": "Generate the final research report with citations, charts, and structured sections.",
+      "status": "completed",
+      "duration_sec": 60.423,
+      "input_summary": {
+        "symbol": "0700.HK",
+        "period": "2026Q1",
+        "research_topic": "Generate a company stock research report for 腾讯控股 (0700.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+        "max_claims": 10
+      },
+      "output_keys": [
+        "html",
+        "markdown",
+        "report_json",
+        "summary"
+      ],
+      "output_summary": {
+        "keys": [
+          "html",
+          "markdown",
+          "report_json",
+          "summary"
+        ],
+        "quality_remediation_used": false
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "markdown",
+        "report_json"
+      ],
+      "objections": [],
+      "handoff_from": "DeepAnalyzeAgent",
+      "handoff_to": "VerifierAgent",
+      "error": ""
+    },
+    {
+      "step": 6,
+      "agent": "VerifierAgent",
+      "task_id": "task_005",
+      "task_type": "verifier",
+      "description": "Check claim support, numeric consistency, citation coverage, and report completeness.",
+      "status": "completed",
+      "duration_sec": 60.322,
+      "input_summary": {
+        "period": "2026Q1",
+        "expected_symbol": "0700.HK"
+      },
+      "output_keys": [
+        "verification_report"
+      ],
+      "output_summary": {
+        "keys": [
+          "verification_report"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "gap_resolution_trace",
+        "verification_report"
+      ],
+      "objections": [],
+      "handoff_from": "FinalAnswerAgent",
+      "handoff_to": "GapResolverAgent",
+      "error": ""
+    },
+    {
+      "step": 7,
+      "agent": "GapResolverAgent",
+      "task_id": "task_gap_resolver_001",
+      "task_type": "gap_resolver",
+      "description": "Resolve data and delivery gaps for the generated report.",
+      "status": "completed",
+      "duration_sec": 0.001,
+      "input_summary": {
+        "symbol": "0700.HK",
+        "period": "2026Q1"
+      },
+      "output_keys": [
+        "data_repair_summary",
+        "gap_resolution_trace",
+        "repair_constraints",
+        "required_backfill_sections"
+      ],
+      "output_summary": {
+        "keys": [
+          "data_repair_summary",
+          "gap_resolution_trace",
+          "repair_constraints",
+          "required_backfill_sections"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "data_repair_summary",
+        "gap_resolution_trace",
+        "repair_constraints"
+      ],
+      "objections": [],
+      "handoff_from": "VerifierAgent",
+      "handoff_to": "",
+      "error": ""
+    }
+  ],
+  "handoffs": [
+    {
+      "from": "PlanningAgent",
+      "to": "DeepResearcherAgent",
+      "artifact_keys": [
+        "plan"
+      ]
+    },
+    {
+      "from": "DeepResearcherAgent",
+      "to": "BrowserAgent",
+      "artifact_keys": [
+        "evidence_candidates",
+        "query",
+        "search_meta"
+      ]
+    },
+    {
+      "from": "BrowserAgent",
+      "to": "DeepAnalyzeAgent",
+      "artifact_keys": [
+        "evidence_records"
+      ]
+    },
+    {
+      "from": "DeepAnalyzeAgent",
+      "to": "FinalAnswerAgent",
+      "artifact_keys": [
+        "analysis_artifacts",
+        "claims"
+      ]
+    },
+    {
+      "from": "FinalAnswerAgent",
+      "to": "VerifierAgent",
+      "artifact_keys": [
+        "html",
+        "markdown",
+        "report_json",
+        "summary"
+      ]
+    },
+    {
+      "from": "VerifierAgent",
+      "to": "GapResolverAgent",
+      "artifact_keys": [
+        "verification_report"
+      ]
+    }
+  ],
+  "memory": {
+    "enabled": false,
+    "context_scope": "planner_router",
+    "used_by_agents": [],
+    "fact_boundary": "Memory is routing/context only; facts require evidence/citation/verifier."
+  },
+  "quality": {
+    "verification_passed": true,
+    "rework_rounds": 0,
+    "quality_feedback_used": false,
+    "blockers": [],
+    "remaining_gap_count": 1
+  },
+  "pre_write_rework_history": [],
+  "research_blackboard": {
+    "schema_version": "research_blackboard.v1",
+    "market_route": {
+      "market": "hk",
+      "exchange": "HKEX",
+      "data_source_plan": {
+        "symbol": "0700.HK",
+        "market": "hk",
+        "exchange": "HKEX",
+        "engines": [
+          "local_real_data",
+          "hkex_announcements",
+          "yahoo_finance",
+          "tavily",
+          "serper",
+          "local_evidence"
+        ],
+        "primary_sources": [
+          "hkex_announcements",
+          "yahoo_finance",
+          "tavily",
+          "serper"
+        ],
+        "free_public_only": true,
+        "requires_gap_explanation_when_missing": [
+          "income_statement",
+          "balance_sheet",
+          "cash_flow",
+          "valuation",
+          "peer_compare"
+        ]
+      },
+      "primary_sources": [
+        "hkex_announcements",
+        "yahoo_finance",
+        "tavily",
+        "serper"
+      ],
+      "planned_engines": [
+        "local_real_data",
+        "yahoo_finance",
+        "independent_macro",
+        "tavily",
+        "serper",
+        "local_evidence"
+      ],
+      "attempted_engines": [
+        "local_real_data",
+        "yahoo_finance",
+        "independent_macro",
+        "tavily",
+        "serper",
+        "local_evidence"
+      ],
+      "missing_primary_sources": [
+        "hkex_announcements"
+      ],
+      "route_coverage": 1.0
+    },
+    "company_identity": {
+      "symbol": "0700.HK",
+      "canonical_symbol": "0700.HK",
+      "company_name": "Tencent Holdings Limited",
+      "market": "hk",
+      "exchange": "HKEX",
+      "currency": "HKD",
+      "country_region": "Hong Kong",
+      "is_listed": true,
+      "resolution_confidence": 1.0,
+      "data_source_plan": {
+        "symbol": "0700.HK",
+        "market": "hk",
+        "exchange": "HKEX",
+        "engines": [
+          "local_real_data",
+          "hkex_announcements",
+          "yahoo_finance",
+          "tavily",
+          "serper",
+          "local_evidence"
+        ],
+        "primary_sources": [
+          "hkex_announcements",
+          "yahoo_finance",
+          "tavily",
+          "serper"
+        ],
+        "free_public_only": true,
+        "requires_gap_explanation_when_missing": [
+          "income_statement",
+          "balance_sheet",
+          "cash_flow",
+          "valuation",
+          "peer_compare"
+        ]
+      },
+      "match_type": "symbol_exact",
+      "needs_confirmation": false,
+      "reason": "resolved",
+      "sector": "Technology",
+      "industry": "Internet Services",
+      "business_summary": "",
+      "official_sources": [
+        "hkex_announcements",
+        "yahoo_finance",
+        "tavily",
+        "serper"
+      ],
+      "latest_disclosure_period": "",
+      "entity_resolution": {
+        "requested_symbol": "0700.HK",
+        "research_topic": "Generate a company stock research report for 腾讯控股 (0700.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+        "resolved_symbol": "0700.HK",
+        "resolution_source": "symbol",
+        "topic_resolution": {
+          "input": "Generate a company stock research report for 腾讯控股 (0700.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+          "resolved": true,
+          "symbol": "0700.HK",
+          "company_name": "Tencent Holdings Limited",
+          "match_type": "alias_contains",
+          "confidence": 0.662,
+          "profile_path": "",
+          "sector": "Technology",
+          "industry": "Internet Services",
+          "business_summary": "",
+          "period": "",
+          "ambiguous": false
+        },
+        "symbol_resolution": {
+          "input": "0700.HK",
+          "resolved": true,
+          "symbol": "0700.HK",
+          "company_name": "Tencent Holdings Limited",
+          "match_type": "symbol_exact",
+          "confidence": 1.0,
+          "profile_path": "",
+          "sector": "Technology",
+          "industry": "Internet Services",
+          "business_summary": "",
+          "period": "",
+          "ambiguous": false
+        },
+        "conflict": false
+      }
+    },
+    "industry_profile": {
+      "industry": "Internet Services",
+      "sector": "Technology",
+      "business_summary": "0700.HK Yahoo Finance financial data 0700.HK Yahoo Finance financial data: | totalRevenue=768201981952 | operatingCashflow=327513997312 | freeCashflow=130086625280 | grossMargins=0.56449 | profitMargins=0.30606002 | c...",
+      "confidence": 0.72,
+      "source_priority": "market_or_search",
+      "evidence_ids": []
+    },
+    "period_state": {
+      "target_period": "2026Q1",
+      "latest_available_disclosure_period": "2026Q1",
+      "financial_data_basis": "quarterly or latest available public disclosure",
+      "market_data_as_of": "2026-05-22",
+      "has_data_delay": false,
+      "notes": []
+    },
+    "role_outputs": {
+      "identity_profile": {
+        "status": "partial",
+        "confidence": 0.52,
+        "source": "symbol_and_available_evidence",
+        "evidence_ids": [],
+        "findings": [
+          "Resolved analysis target as 0700.HK for 2026Q1.",
+          "Official/company evidence records available: 0.",
+          "No official identity evidence was present in the analysis input."
+        ],
+        "missing_inputs": [
+          "official_identity_disclosure"
+        ],
+        "impact_on_report": "FinalAnswer must avoid expanding business or industry claims beyond verified fields.",
+        "owner_agent": "DeepAnalyzeAgent",
+        "verified": false
+      },
+      "three_statement_analysis": {
+        "status": "partial",
+        "confidence": 0.58,
+        "source": "financial_statement_view_and_metric_lineage",
+        "evidence_ids": [],
+        "findings": [
+          "Three-statement coverage income=False, balance=False, cash_flow=False.",
+          "Financial metric lineage count: 0.",
+          "Statement view coverage: {'statements': {}, 'has_three_statement_view': False, 'line_item_count': 0}."
+        ],
+        "missing_inputs": [
+          "income",
+          "balance",
+          "cash_flow"
+        ],
+        "impact_on_report": "Financial analysis must disclose missing statement coverage and avoid full three-statement conclusions.",
+        "owner_agent": "DeepAnalyzeAgent",
+        "verified": false
+      },
+      "peer_analysis": {
+        "status": "missing",
+        "confidence": 0.3,
+        "source": "peer_comparison_tool",
+        "evidence_ids": [
+          "0700.HK_2026Q1_yahoo_financials_99cabf7b33",
+          "0700.HK_2026Q1_yahoo_finance_ac9fa807af"
+        ],
+        "findings": [
+          "Peer context contains 0 comparable companies."
+        ],
+        "missing_inputs": [
+          "peer_universe",
+          "peer_financial_metrics"
+        ],
+        "impact_on_report": "Peer section must be framed as a data gap or qualitative context, not a ranked conclusion.",
+        "owner_agent": "DeepAnalyzeAgent",
+        "verified": false
+      },
+      "valuation_analysis": {
+        "status": "partial",
+        "confidence": 0.5,
+        "source": "valuation_tool_and_market_inputs",
+        "evidence_ids": [
+          "0700.HK_2026Q1_yahoo_financials_99cabf7b33",
+          "0700.HK_2026Q1_yahoo_finance_ac9fa807af"
+        ],
+        "findings": [
+          "Valuation availability: False.",
+          "Valuation method: not_available.",
+          "估值缺口：annual_or_ttm_free_cash_flow。"
+        ],
+        "missing_inputs": [
+          "annual_or_ttm_free_cash_flow"
+        ],
+        "impact_on_report": "Valuation section must list missing inputs and avoid target-price style conclusions.",
+        "owner_agent": "DeepAnalyzeAgent",
+        "verified": false
+      },
+      "risk_analysis": {
+        "status": "complete",
+        "confidence": 0.72,
+        "source": "risk_claims_and_evidence",
+        "evidence_ids": [
+          "0700.HK_2026Q1_yahoo_financials_99cabf7b33",
+          "0700.HK_2026Q1_yahoo_finance_ac9fa807af"
+        ],
+        "findings": [
+          "Risk-related claim evidence count: 2.",
+          "0700.HK 的主要风险包括三类：第一，行业竞争和供给扩张可能压缩高毛利业务的持续性；第二，宏观利率、资本开支周期和云厂商采购节奏会放大收入波动；第三，当前核心季度三表采用结构化降级来源，若后续一手公告与该数据不一致，盈利质量、自由现金流和估值结论都需要重算。"
+        ],
+        "missing_inputs": [],
+        "impact_on_report": "Risk section can cite identified operational or market risk evidence.",
+        "owner_agent": "DeepAnalyzeAgent",
+        "verified": true
+      }
+    },
+    "critic": {
+      "pre_write_passed": false,
+      "objections": [],
+      "recommendations": []
+    }
+  }
+}

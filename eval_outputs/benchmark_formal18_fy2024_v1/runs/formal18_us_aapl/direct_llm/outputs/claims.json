@@ -1,0 +1,84 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "revenue",
+    "claim_text": "Apple's FY2024 revenue reached $391.0 billion.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "revenue"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "profit",
+    "claim_text": "Net income for FY2024 was $93.7 billion, implying a net profit margin of approximately 24%.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "profit"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "cash_flow",
+    "claim_text": "Operating cash flow was $118.3 billion, with capital expenditures of $9.4 billion, yielding free cash flow of $108.8 billion.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "cash_flow"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "financial_analysis",
+    "claim_text": "Total assets stood at $365.0 billion, including $29.9 billion in cash and cash equivalents.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "valuation",
+    "claim_text": "Valuation cannot be determined due to the absence of market price or shares outstanding data.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "investment_rationale",
+    "claim_text": "Strong operating cash flow and high net profit margin indicate robust profitability and cash generation.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "risk",
+    "claim_text": "Low cash-to-assets ratio of about 8.2% may indicate working capital efficiency or potential liquidity risk.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  }
+]

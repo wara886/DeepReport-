@@ -1,0 +1,10 @@
+variant,market,delivery_pass_rate,objective_quality_score,traceable_claim_rate_v1
+direct_llm,US,0.0,49.9,0.4524
+direct_llm,HK,0.3333,53.19,0.3333
+direct_llm,CN-A,0.1667,50.55,0.1042
+single_agent_rag,US,0.1667,50.9,0.3055
+single_agent_rag,HK,0.1667,54.16,0.4524
+single_agent_rag,CN-A,0.5,52.5,0.2887
+multi_agent_rag,US,1.0,85.06,1.0
+multi_agent_rag,HK,0.6667,87.53,0.378
+multi_agent_rag,CN-A,0.5,86.22,0.7222

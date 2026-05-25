@@ -1,0 +1,26 @@
+{
+  "chart_count": 3,
+  "passed_chart_count": 3,
+  "failed_chart_count": 0,
+  "passed": true,
+  "details": [
+    {
+      "chart_id": "key_metrics_bar",
+      "title": "关键指标",
+      "passed": true,
+      "issues": []
+    },
+    {
+      "chart_id": "claim_confidence_bar",
+      "title": "结论置信度",
+      "passed": true,
+      "issues": []
+    },
+    {
+      "chart_id": "evidence_source_mix",
+      "title": "证据来源结构",
+      "passed": true,
+      "issues": []
+    }
+  ]
+}

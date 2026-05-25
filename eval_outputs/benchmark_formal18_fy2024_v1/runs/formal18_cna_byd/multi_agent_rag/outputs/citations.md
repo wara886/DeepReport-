@@ -1,0 +1,24 @@
+## 参考来源
+
+- [pdf_section_b661e15516c0] PDF section: management_discussion (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-25/1222881496.PDF
+  - 支持结论: cl_0001, cl_0006, cl_0007
+- [pdf_section_d161532810f9] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-25/1222881496.PDF
+  - 支持结论: cl_0002, cl_0004, cl_0006, cl_0007
+- [pdf_section_80955285101b] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-25/1222881496.PDF
+  - 支持结论: cl_0002, cl_0006, cl_0007
+- [pdf_section_ab49bde85950] PDF section: risk_factors (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-25/1222881496.PDF
+  - 支持结论: cl_0003, cl_0005, cl_0006, cl_0007
+- [002594_FY2024_eastmoney_financials_balance_fad0b73368] 002594 Eastmoney balance financial table (eastmoney_financials/official, 2026-03-28 00:00:00) - https://data.eastmoney.com/bbsj/002594.html
+  - 支持结论: cl_0006, cl_0007, cl_0008, cl_0009, cl_0010, cl_0011
+- [002594_FY2024_eastmoney_financials_income_75aa272415] 002594 Eastmoney income financial table (eastmoney_financials/official, 2026-03-28 00:00:00) - https://data.eastmoney.com/bbsj/002594.html
+  - 支持结论: cl_0006, cl_0007, cl_0008, cl_0009, cl_0010, cl_0011
+- [002594_FY2024_eastmoney_financials_cashflow_8bedecabaf] 002594 Eastmoney cashflow financial table (eastmoney_financials/official, 2026-03-28 00:00:00) - https://data.eastmoney.com/bbsj/002594.html
+  - 支持结论: cl_0006, cl_0007, cl_0008, cl_0009, cl_0010, cl_0011
+- [pdf_section_74e093b15fa2] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-25/1222881496.PDF
+  - 支持结论: cl_0006, cl_0007
+- [pdf_section_eff08c4dc23a] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-25/1222881496.PDF
+  - 支持结论: cl_0006, cl_0007
+- [002594_FY2024_cninfo_d090bade3a] 2024年年度报告 (cninfo_announcement/official, 2025-03-25) - http://static.cninfo.com.cn/finalpage/2025-03-25/1222881496.PDF
+  - 支持结论: cl_0007
+- [pdf_section_139a91702cb4] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-25/1222881496.PDF
+  - 支持结论: 未关联

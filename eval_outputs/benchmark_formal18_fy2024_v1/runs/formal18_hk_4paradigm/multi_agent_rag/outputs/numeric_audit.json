@@ -1,0 +1,25 @@
+{
+  "schema_version": "formal_numeric_audit.v1",
+  "claims": [
+    {
+      "claim_id": "cl_0001",
+      "supported": false
+    },
+    {
+      "claim_id": "cl_0002",
+      "supported": false
+    },
+    {
+      "claim_id": "cl_0008",
+      "supported": false
+    },
+    {
+      "claim_id": "cl_0009",
+      "supported": false
+    },
+    {
+      "claim_id": "cl_0012",
+      "supported": true
+    }
+  ]
+}

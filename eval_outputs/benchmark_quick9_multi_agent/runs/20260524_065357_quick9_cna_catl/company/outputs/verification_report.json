@@ -1,0 +1,235 @@
+{
+  "passed": true,
+  "error_count": 0,
+  "warning_count": 2,
+  "errors": [],
+  "warnings": [
+    "Target symbol 300750.SZ is not explicitly mentioned in report claims or markdown.",
+    "Target symbol mismatch: expected 300750.SZ, but non-peer sections mention ticker-like tokens SZ."
+  ],
+  "claim_count": 19,
+  "grounded_claim_count": 9,
+  "expected_symbol": "300750.SZ",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 3,
+    "chart_text_consistency": {
+      "chart_count": 3,
+      "passed_chart_count": 3,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "title": "关键指标",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "title": "结论置信度",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "title": "证据来源结构",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 3,
+      "results": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "passed": true,
+          "errors": []
+        }
+      ]
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 1,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "valuation_not_available"
+    ],
+    "checks": {}
+  },
+  "llm_used": true,
+  "entity_resolution": {
+    "requested_symbol": "300750.SZ",
+    "research_topic": "Generate a company stock research report for 宁德时代 (300750.SZ) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+    "resolved_symbol": "300750.SZ",
+    "resolution_source": "fallback",
+    "topic_resolution": {
+      "input": "Generate a company stock research report for 宁德时代 (300750.SZ) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "resolved": false,
+      "symbol": "",
+      "company_name": "",
+      "match_type": "none",
+      "confidence": 0.0,
+      "candidate_symbols": [
+        "0700.HK",
+        "600519.SS",
+        "AAPL",
+        "AMD",
+        "GOOGL",
+        "MSFT",
+        "NVDA",
+        "TSLA"
+      ],
+      "reason": "no_match"
+    },
+    "symbol_resolution": {
+      "input": "300750.SZ",
+      "resolved": false,
+      "symbol": "",
+      "company_name": "",
+      "match_type": "none",
+      "confidence": 0.0,
+      "candidate_symbols": [
+        "0700.HK",
+        "600519.SS",
+        "AAPL",
+        "AMD",
+        "GOOGL",
+        "MSFT",
+        "NVDA",
+        "TSLA"
+      ],
+      "reason": "no_match"
+    },
+    "conflict": false
+  },
+  "context_pack_meta": {
+    "claims": {
+      "input_count": 19,
+      "packed_count": 2,
+      "dropped_count": 17,
+      "packed_ids": [
+        "cl_0011",
+        "cl_0012"
+      ],
+      "dropped_ids": [
+        "cl_0013",
+        "cl_0007",
+        "cl_0001",
+        "cl_0008",
+        "cl_0009",
+        "cl_0016",
+        "cl_0015",
+        "cl_0010",
+        "cl_0003",
+        "cl_0002",
+        "cl_0004",
+        "cl_0005",
+        "cl_0006",
+        "cl_0014",
+        "cl_0018",
+        "cl_0019",
+        "cl_0017"
+      ],
+      "used_chars": 2117,
+      "total_chars": 2600
+    },
+    "evidence": {
+      "input_count": 19,
+      "packed_count": 2,
+      "dropped_count": 17,
+      "packed_ids": [
+        "300750_2026Q1_cninfo_a9321f7fa6",
+        "300750_2026Q1_cninfo_b57fb40220"
+      ],
+      "dropped_ids": [
+        "300750_2026Q1_cninfo_ff323defb4",
+        "pdf_section_0fb91746fd37",
+        "pdf_section_6c829934ad51",
+        "pdf_section_85868b5cdd42",
+        "pdf_section_dd36e25661cd",
+        "300750_2026Q1_eastmoney_financials_income_2d97044975",
+        "300750_2026Q1_eastmoney_financials_balance_2c71a0dc9e",
+        "300750_2026Q1_eastmoney_financials_cashflow_52b5cd0291",
+        "pdf_section_a0dfb05ea51d",
+        "pdf_section_748ae3738e22",
+        "pdf_section_e475c2e47361",
+        "pdf_section_b1237e14377b",
+        "pdf_section_26bac257b1e1",
+        "pdf_section_71c62194af43",
+        "pdf_section_dee3ff0d81fb",
+        "pdf_section_9a08ff0a9142",
+        "pdf_section_e1d847d82d76"
+      ],
+      "used_chars": 4965,
+      "total_chars": 5200,
+      "prioritized_evidence_count": 10,
+      "prioritized_dropped_ids": [
+        "pdf_section_dd36e25661cd",
+        "pdf_section_0fb91746fd37",
+        "pdf_section_85868b5cdd42",
+        "pdf_section_6c829934ad51",
+        "pdf_section_dd36e25661cd",
+        "pdf_section_0fb91746fd37",
+        "300750_2026Q1_eastmoney_financials_income_2d97044975",
+        "300750_2026Q1_eastmoney_financials_balance_2c71a0dc9e",
+        "300750_2026Q1_eastmoney_financials_cashflow_52b5cd0291",
+        "300750_2026Q1_eastmoney_financials_income_2d97044975",
+        "300750_2026Q1_eastmoney_financials_balance_2c71a0dc9e",
+        "300750_2026Q1_eastmoney_financials_cashflow_52b5cd0291",
+        "300750_2026Q1_eastmoney_financials_income_2d97044975",
+        "300750_2026Q1_eastmoney_financials_balance_2c71a0dc9e",
+        "300750_2026Q1_eastmoney_financials_cashflow_52b5cd0291",
+        "300750_2026Q1_eastmoney_financials_income_2d97044975",
+        "300750_2026Q1_eastmoney_financials_balance_2c71a0dc9e",
+        "300750_2026Q1_eastmoney_financials_cashflow_52b5cd0291",
+        "300750_2026Q1_eastmoney_financials_income_2d97044975",
+        "300750_2026Q1_eastmoney_financials_balance_2c71a0dc9e"
+      ]
+    }
+  },
+  "llm_passed": true,
+  "llm_errors": [],
+  "llm_warnings": [],
+  "fix_recommendations": [],
+  "rework_required": false,
+  "evidence_gaps": [
+    {
+      "gap_id": "gap_0002_entity_or_period_mismatch",
+      "gap_type": "entity_or_period_mismatch",
+      "description": "Target symbol mismatch: expected 300750.SZ, but non-peer sections mention ticker-like tokens SZ.",
+      "claim_id": "",
+      "required_source_type": [],
+      "required_fields": [
+        "Target symbol mismatch: expected 300750.SZ, but non-peer sections mention ticker"
+      ],
+      "suggested_queries": [],
+      "blocking": false,
+      "status": "open"
+    }
+  ],
+  "revision_brief": "- Warnings: Target symbol 300750.SZ is not explicitly mentioned in report claims or markdown.\n- Warnings: Target symbol mismatch: expected 300750.SZ, but non-peer sections mention ticker-like tokens SZ."
+}

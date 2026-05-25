@@ -1,0 +1,454 @@
+{
+  "ratio_rows": [
+    {
+      "sample_id": "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+      "symbol": "688981.SS",
+      "period": "FY2024",
+      "source_type": "eastmoney_financials",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "688981_FY2024_cninfo_be04192fe4",
+      "symbol": "688981.SS",
+      "period": "FY2024",
+      "source_type": "cninfo_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+      "symbol": "688981.SS",
+      "period": "FY2024",
+      "source_type": "eastmoney_financials",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "688981_FY2024_eastmoney_financials_cashflow_65b079c80e",
+      "symbol": "688981.SS",
+      "period": "FY2024",
+      "source_type": "eastmoney_financials",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_8a5a315442ed",
+      "symbol": "688981.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_749ce4b54ba1",
+      "symbol": "688981.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_8c1fc0057c74",
+      "symbol": "688981.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_d5ddf6c76957",
+      "symbol": "688981.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_b3d65bf0f1ad",
+      "symbol": "688981.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_860902e95b9e",
+      "symbol": "688981.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    }
+  ],
+  "trend_rows": [
+    {
+      "symbol": "688981.SS",
+      "period": "FY2024",
+      "evidence_count": 10,
+      "unique_sources": 3,
+      "latest_publish_time": "2026-03-27 00:00:00",
+      "sample_ids": "688981_FY2024_cninfo_be04192fe4|688981_FY2024_eastmoney_financials_balance_199f3bd775|688981_FY2024_eastmoney_financials_cashflow_65b079c80e|688981_FY2024_eastmoney_financials_income_c483ec25b6|pdf_section_749ce4b54ba1|pdf_section_860902e95b9e|pdf_section_8a5a315442ed|pdf_section_8c1fc0057c74|pdf_section_b3d65bf0f1ad|pdf_section_d5ddf6c76957"
+    }
+  ],
+  "statement_view": {
+    "rows": [],
+    "coverage": {
+      "statements": {},
+      "has_three_statement_view": false,
+      "line_item_count": 0
+    },
+    "source_record_count": 3
+  },
+  "financial_metrics": {
+    "metrics": [],
+    "metric_count": 0,
+    "rejected_metrics": [],
+    "rejected_metric_count": 0,
+    "coverage": {
+      "required_metrics": [
+        "revenue",
+        "net_income",
+        "gross_margin",
+        "free_cash_flow"
+      ],
+      "present_metrics": [],
+      "has_core_metric_lineage": false,
+      "standard_metric_count": 0,
+      "standard_has_core_metric_lineage": false,
+      "rejected_metric_count": 0
+    }
+  },
+  "tables": [],
+  "peer_context": {
+    "target_symbol": "688981.SS",
+    "peer_rows": [],
+    "peer_count": 0,
+    "ranking": {}
+  },
+  "valuation": {
+    "symbol": "688981.SS",
+    "period": "FY2024",
+    "valuation_available": false,
+    "error": "target financials not found"
+  },
+  "valuation_model": {},
+  "valuation_assumptions": {},
+  "valuation_sensitivity": {},
+  "identity_profile": {
+    "status": "complete",
+    "confidence": 0.84,
+    "source": "official_disclosure_or_company_profile",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+      "688981_FY2024_cninfo_be04192fe4",
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e",
+      "pdf_section_8a5a315442ed",
+      "pdf_section_749ce4b54ba1",
+      "pdf_section_8c1fc0057c74",
+      "pdf_section_d5ddf6c76957"
+    ],
+    "findings": [
+      "Resolved analysis target as 688981.SS for FY2024.",
+      "Official/company evidence records available: 12."
+    ],
+    "missing_inputs": [],
+    "impact_on_report": "FinalAnswer may use company identity and business profile from verified evidence.",
+    "owner_agent": "IdentityAgent",
+    "verified": true,
+    "reviewed_objections": []
+  },
+  "three_statement_analysis": {
+    "status": "partial",
+    "confidence": 0.58,
+    "source": "financial_statement_view_and_metric_lineage",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+      "688981_FY2024_cninfo_be04192fe4",
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e",
+      "pdf_section_8a5a315442ed",
+      "pdf_section_749ce4b54ba1",
+      "pdf_section_8c1fc0057c74",
+      "pdf_section_d5ddf6c76957",
+      "pdf_section_b3d65bf0f1ad",
+      "pdf_section_860902e95b9e"
+    ],
+    "findings": [
+      "Three-statement coverage income=False, balance=False, cash_flow=False.",
+      "Financial metric lineage count: 0.",
+      "Statement view coverage: {'statements': {}, 'has_three_statement_view': False, 'line_item_count': 0}."
+    ],
+    "missing_inputs": [
+      "income",
+      "balance",
+      "cash_flow"
+    ],
+    "impact_on_report": "Financial analysis must disclose missing statement coverage and avoid full three-statement conclusions.",
+    "owner_agent": "StatementAgent",
+    "verified": false,
+    "reviewed_objections": []
+  },
+  "peer_analysis": {
+    "status": "missing",
+    "confidence": 0.3,
+    "source": "peer_comparison_tool",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e"
+    ],
+    "findings": [
+      "Peer context contains 0 comparable companies."
+    ],
+    "missing_inputs": [
+      "peer_universe",
+      "peer_financial_metrics"
+    ],
+    "impact_on_report": "Peer section must be framed as a data gap or qualitative context, not a ranked conclusion.",
+    "owner_agent": "PeerAgent",
+    "verified": false,
+    "reviewed_objections": []
+  },
+  "valuation_analysis": {
+    "status": "partial",
+    "confidence": 0.5,
+    "source": "valuation_tool_and_market_inputs",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e",
+      "pdf_section_8a5a315442ed",
+      "pdf_section_749ce4b54ba1",
+      "pdf_section_8c1fc0057c74",
+      "pdf_section_d5ddf6c76957",
+      "pdf_section_b3d65bf0f1ad",
+      "pdf_section_860902e95b9e",
+      "688981_FY2024_cninfo_be04192fe4",
+      "pdf_section_5a736fd342a3",
+      "pdf_section_e7b7f5068e28"
+    ],
+    "findings": [
+      "Valuation availability: False.",
+      "Valuation method: not_available."
+    ],
+    "missing_inputs": [
+      "valuation_inputs"
+    ],
+    "impact_on_report": "Valuation section must list missing inputs and avoid target-price style conclusions.",
+    "owner_agent": "ValuationAgent",
+    "verified": false,
+    "reviewed_objections": []
+  },
+  "risk_analysis": {
+    "status": "complete",
+    "confidence": 0.72,
+    "source": "risk_claims_and_evidence",
+    "evidence_ids": [
+      "pdf_section_749ce4b54ba1"
+    ],
+    "findings": [
+      "Risk-related claim evidence count: 1.",
+      "风险提示 PDF 片段显示：中芯国际集成电路制造有限公司2024 年年度报告 2 / 222 重要提示 一、本公司董事会及董事和高级管理人员保证年度报告内容的真实性、准确性、完整性，不存在 虚假记载、误导性陈述或重大遗漏，并承担个别和连带的法律责任。 二、公司上市时未盈利且尚未实现盈利 □是 √否 三、重大风险提示 公司已在本报告中详细阐述公司在生产经营过程中可能面临的各种风险及应对措施，敬请查 阅本报告“第四节管理层讨论与分析”之“四、风险因素”。 四、公司全…",
+      "PDF 文件中关于风险因素提供了以下参考信息： 中芯国际集成电路制造有限公司2024 年年度报告 2 / 222 重要提示 一、本公司董事会及董事和高级管理人员保证年度报告内容的真实性、准确性、完整性，不存在 虚假记载、误导性陈述或重大遗漏，并承担个别和连带的法律责任。 二、公司上市时未盈利且尚未实现盈利 □是 √否 三、重大风险提示 公司已在本报告中详细阐述公司在生产经营过程中可能面临的各种风险及应对措施，敬请查 阅本报告“第四节管理层讨论与分析”之“四、风险因素”。 四、公司全…"
+    ],
+    "missing_inputs": [],
+    "impact_on_report": "Risk section can cite identified operational or market risk evidence.",
+    "owner_agent": "RiskAgent",
+    "verified": true,
+    "reviewed_objections": []
+  },
+  "role_outputs": {
+    "identity_profile": {
+      "status": "complete",
+      "confidence": 0.84,
+      "source": "official_disclosure_or_company_profile",
+      "evidence_ids": [
+        "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+        "688981_FY2024_cninfo_be04192fe4",
+        "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+        "688981_FY2024_eastmoney_financials_cashflow_65b079c80e",
+        "pdf_section_8a5a315442ed",
+        "pdf_section_749ce4b54ba1",
+        "pdf_section_8c1fc0057c74",
+        "pdf_section_d5ddf6c76957"
+      ],
+      "findings": [
+        "Resolved analysis target as 688981.SS for FY2024.",
+        "Official/company evidence records available: 12."
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "FinalAnswer may use company identity and business profile from verified evidence.",
+      "owner_agent": "IdentityAgent",
+      "verified": true,
+      "reviewed_objections": []
+    },
+    "three_statement_analysis": {
+      "status": "partial",
+      "confidence": 0.58,
+      "source": "financial_statement_view_and_metric_lineage",
+      "evidence_ids": [
+        "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+        "688981_FY2024_cninfo_be04192fe4",
+        "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+        "688981_FY2024_eastmoney_financials_cashflow_65b079c80e",
+        "pdf_section_8a5a315442ed",
+        "pdf_section_749ce4b54ba1",
+        "pdf_section_8c1fc0057c74",
+        "pdf_section_d5ddf6c76957",
+        "pdf_section_b3d65bf0f1ad",
+        "pdf_section_860902e95b9e"
+      ],
+      "findings": [
+        "Three-statement coverage income=False, balance=False, cash_flow=False.",
+        "Financial metric lineage count: 0.",
+        "Statement view coverage: {'statements': {}, 'has_three_statement_view': False, 'line_item_count': 0}."
+      ],
+      "missing_inputs": [
+        "income",
+        "balance",
+        "cash_flow"
+      ],
+      "impact_on_report": "Financial analysis must disclose missing statement coverage and avoid full three-statement conclusions.",
+      "owner_agent": "StatementAgent",
+      "verified": false,
+      "reviewed_objections": []
+    },
+    "peer_analysis": {
+      "status": "missing",
+      "confidence": 0.3,
+      "source": "peer_comparison_tool",
+      "evidence_ids": [
+        "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+        "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+        "688981_FY2024_eastmoney_financials_cashflow_65b079c80e"
+      ],
+      "findings": [
+        "Peer context contains 0 comparable companies."
+      ],
+      "missing_inputs": [
+        "peer_universe",
+        "peer_financial_metrics"
+      ],
+      "impact_on_report": "Peer section must be framed as a data gap or qualitative context, not a ranked conclusion.",
+      "owner_agent": "PeerAgent",
+      "verified": false,
+      "reviewed_objections": []
+    },
+    "valuation_analysis": {
+      "status": "partial",
+      "confidence": 0.5,
+      "source": "valuation_tool_and_market_inputs",
+      "evidence_ids": [
+        "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+        "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+        "688981_FY2024_eastmoney_financials_cashflow_65b079c80e",
+        "pdf_section_8a5a315442ed",
+        "pdf_section_749ce4b54ba1",
+        "pdf_section_8c1fc0057c74",
+        "pdf_section_d5ddf6c76957",
+        "pdf_section_b3d65bf0f1ad",
+        "pdf_section_860902e95b9e",
+        "688981_FY2024_cninfo_be04192fe4",
+        "pdf_section_5a736fd342a3",
+        "pdf_section_e7b7f5068e28"
+      ],
+      "findings": [
+        "Valuation availability: False.",
+        "Valuation method: not_available."
+      ],
+      "missing_inputs": [
+        "valuation_inputs"
+      ],
+      "impact_on_report": "Valuation section must list missing inputs and avoid target-price style conclusions.",
+      "owner_agent": "ValuationAgent",
+      "verified": false,
+      "reviewed_objections": []
+    },
+    "risk_analysis": {
+      "status": "complete",
+      "confidence": 0.72,
+      "source": "risk_claims_and_evidence",
+      "evidence_ids": [
+        "pdf_section_749ce4b54ba1"
+      ],
+      "findings": [
+        "Risk-related claim evidence count: 1.",
+        "风险提示 PDF 片段显示：中芯国际集成电路制造有限公司2024 年年度报告 2 / 222 重要提示 一、本公司董事会及董事和高级管理人员保证年度报告内容的真实性、准确性、完整性，不存在 虚假记载、误导性陈述或重大遗漏，并承担个别和连带的法律责任。 二、公司上市时未盈利且尚未实现盈利 □是 √否 三、重大风险提示 公司已在本报告中详细阐述公司在生产经营过程中可能面临的各种风险及应对措施，敬请查 阅本报告“第四节管理层讨论与分析”之“四、风险因素”。 四、公司全…",
+        "PDF 文件中关于风险因素提供了以下参考信息： 中芯国际集成电路制造有限公司2024 年年度报告 2 / 222 重要提示 一、本公司董事会及董事和高级管理人员保证年度报告内容的真实性、准确性、完整性，不存在 虚假记载、误导性陈述或重大遗漏，并承担个别和连带的法律责任。 二、公司上市时未盈利且尚未实现盈利 □是 √否 三、重大风险提示 公司已在本报告中详细阐述公司在生产经营过程中可能面临的各种风险及应对措施，敬请查 阅本报告“第四节管理层讨论与分析”之“四、风险因素”。 四、公司全…"
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "Risk section can cite identified operational or market risk evidence.",
+      "owner_agent": "RiskAgent",
+      "verified": true,
+      "reviewed_objections": []
+    }
+  },
+  "claim_rejection_report": {
+    "input_claim_count": 11,
+    "accepted_claim_count": 11,
+    "rejected_claim_count": 0,
+    "rejected_claims": []
+  }
+}

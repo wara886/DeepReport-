@@ -8,7 +8,11 @@ from typing import Any, Dict, List
 
 @dataclass
 class ClaimItem:
-    """Claim unit linked to evidence ids and numeric values."""
+    """Claim unit linked to evidence ids and numeric values.
+
+    Formal benchmark runs set ``is_critical`` and ``critical_claim_type`` so
+    traceability scoring does not need to infer important claims from prose.
+    """
 
     claim_id: str
     section_name: str
@@ -20,6 +24,8 @@ class ClaimItem:
     notes: str = ""
     metric_lineage_ids: List[str] = field(default_factory=list)
     input_metric_lineage_ids: List[str] = field(default_factory=list)
+    is_critical: bool = False
+    critical_claim_type: str = ""
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ClaimItem":
@@ -35,6 +41,8 @@ class ClaimItem:
             notes=data.get("notes", ""),
             metric_lineage_ids=[str(value) for value in data.get("metric_lineage_ids", [])],
             input_metric_lineage_ids=[str(value) for value in data.get("input_metric_lineage_ids", [])],
+            is_critical=bool(data.get("is_critical", False)),
+            critical_claim_type=str(data.get("critical_claim_type", "")),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -52,5 +60,8 @@ class ClaimItem:
             payload["metric_lineage_ids"] = list(self.metric_lineage_ids)
         if self.input_metric_lineage_ids:
             payload["input_metric_lineage_ids"] = list(self.input_metric_lineage_ids)
+        if self.is_critical or self.critical_claim_type:
+            payload["is_critical"] = self.is_critical
+            payload["critical_claim_type"] = self.critical_claim_type
         return payload
 

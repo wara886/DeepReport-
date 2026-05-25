@@ -1,0 +1,132 @@
+[
+  {
+    "chart_id": "key_metrics_bar",
+    "chart_type": "bar",
+    "title": "关键指标",
+    "output_path": "eval_outputs\\benchmark_formal18_fy2024_v1\\runs\\formal18_cna_catl\\multi_agent_rag\\outputs\\charts\\key_metrics_bar.png",
+    "source_fields": "claims.numeric_values",
+    "input_table_ids": [],
+    "input_claim_ids": [
+      "cl_0008"
+    ],
+    "source_evidence_ids": [
+      "300750_FY2024_cninfo_b95ae6522d",
+      "300750_FY2024_eastmoney_financials_balance_197f35da8c",
+      "300750_FY2024_eastmoney_financials_cashflow_197af30d0d",
+      "300750_FY2024_eastmoney_financials_income_85c3eb6f1c",
+      "pdf_section_250b9e76c488",
+      "pdf_section_a1d8d8b61da1",
+      "pdf_section_a4e3db4888df",
+      "pdf_section_d48f89db146f",
+      "pdf_section_d5bca258a67d",
+      "pdf_section_f52bf93ae971"
+    ],
+    "chart_js": {
+      "type": "bar",
+      "labels": [
+        "cl_0008:evidence_count",
+        "cl_0008:unique_sources"
+      ],
+      "data": [
+        10.0,
+        3.0
+      ],
+      "label": "指标值"
+    }
+  },
+  {
+    "chart_id": "claim_confidence_bar",
+    "chart_type": "bar",
+    "title": "结论置信度",
+    "output_path": "eval_outputs\\benchmark_formal18_fy2024_v1\\runs\\formal18_cna_catl\\multi_agent_rag\\outputs\\charts\\claim_confidence_bar.png",
+    "source_fields": "claims.confidence",
+    "input_claim_ids": [
+      "cl_0001",
+      "cl_0002",
+      "cl_0003",
+      "cl_0004",
+      "cl_0005",
+      "cl_0006",
+      "cl_0007",
+      "cl_0008",
+      "cl_0009",
+      "cl_0010",
+      "cl_0011",
+      "cl_0012"
+    ],
+    "source_evidence_ids": [
+      "300750_FY2024_cninfo_b95ae6522d",
+      "300750_FY2024_eastmoney_financials_balance_197f35da8c",
+      "300750_FY2024_eastmoney_financials_cashflow_197af30d0d",
+      "300750_FY2024_eastmoney_financials_income_85c3eb6f1c",
+      "pdf_section_250b9e76c488",
+      "pdf_section_a1d8d8b61da1",
+      "pdf_section_a4e3db4888df",
+      "pdf_section_d48f89db146f",
+      "pdf_section_d5bca258a67d",
+      "pdf_section_f52bf93ae971"
+    ],
+    "chart_js": {
+      "type": "bar",
+      "labels": [
+        "cl_0001",
+        "cl_0002",
+        "cl_0003",
+        "cl_0004",
+        "cl_0005",
+        "cl_0006",
+        "cl_0007",
+        "cl_0008",
+        "cl_0009",
+        "cl_0010"
+      ],
+      "data": [
+        0.73,
+        0.73,
+        0.73,
+        0.73,
+        0.72,
+        0.72,
+        0.68,
+        0.76,
+        0.7,
+        0.63
+      ],
+      "label": "置信度"
+    }
+  },
+  {
+    "chart_id": "evidence_source_mix",
+    "chart_type": "table",
+    "title": "证据来源结构",
+    "output_path": "eval_outputs\\benchmark_formal18_fy2024_v1\\runs\\formal18_cna_catl\\multi_agent_rag\\outputs\\charts\\evidence_source_mix.png",
+    "source_fields": "evidence_records.source_type",
+    "source_evidence_ids": [
+      "300750_FY2024_cninfo_b95ae6522d",
+      "300750_FY2024_eastmoney_financials_balance_197f35da8c",
+      "300750_FY2024_eastmoney_financials_cashflow_197af30d0d",
+      "300750_FY2024_eastmoney_financials_income_85c3eb6f1c",
+      "pdf_section_250b9e76c488",
+      "pdf_section_a1d8d8b61da1",
+      "pdf_section_a4e3db4888df",
+      "pdf_section_d48f89db146f",
+      "pdf_section_d5bca258a67d",
+      "pdf_section_d74c16f7dff5",
+      "pdf_section_f52bf93ae971"
+    ],
+    "chart_js": {
+      "type": "doughnut",
+      "labels": [
+        "pdf_section",
+        "eastmoney_financials",
+        "cninfo_announcement"
+      ],
+      "data": [
+        7.0,
+        3.0,
+        1.0
+      ],
+      "label": "证据数量"
+    }
+  }
+]

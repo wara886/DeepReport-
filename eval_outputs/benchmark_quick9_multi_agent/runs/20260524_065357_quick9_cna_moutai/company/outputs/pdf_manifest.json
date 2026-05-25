@@ -1,0 +1,38 @@
+[
+  {
+    "evidence_id": "600519_2026Q1_cninfo_4f7e837a05",
+    "source_type": "cninfo_announcement",
+    "title": "贵州茅台2026年第一季度报告",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF",
+    "publish_time": "1777046400000",
+    "status": "cached",
+    "cache_status": "cached",
+    "extraction_status": "extracted",
+    "file_path": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_moutai\\company\\outputs\\pdf_cache\\ca10d0e4fb3a1e4e.pdf",
+    "sha256": "ca10d0e4fb3a1e4e9f258c04fc4c62000968f337a9b0bf6f714d4f153536d363",
+    "size_bytes": 158374,
+    "download_time": "2026-05-24T07:17:22.997639+00:00",
+    "page_count": 12,
+    "pages_read": 6,
+    "section_count": 8,
+    "table_count": 0
+  },
+  {
+    "evidence_id": "600519_2026Q1_cninfo_ba21bf4403",
+    "source_type": "cninfo_announcement",
+    "title": "贵州茅台2025年年度报告",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF",
+    "publish_time": "1776355200000",
+    "status": "cached",
+    "cache_status": "cached",
+    "extraction_status": "extracted",
+    "file_path": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_moutai\\company\\outputs\\pdf_cache\\474905deeaf0f875.pdf",
+    "sha256": "474905deeaf0f875fc0a1b097a626c0c7852c427faadc5d7fc7816cbf45ea288",
+    "size_bytes": 1082847,
+    "download_time": "2026-05-24T07:17:26.987579+00:00",
+    "page_count": 143,
+    "pages_read": 6,
+    "section_count": 6,
+    "table_count": 0
+  }
+]

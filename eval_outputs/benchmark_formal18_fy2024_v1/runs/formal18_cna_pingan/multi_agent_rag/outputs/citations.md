@@ -1,0 +1,22 @@
+## 参考来源
+
+- [pdf_section_804d2f9f4494] PDF section: management_discussion (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-20/1222847447.PDF
+  - 支持结论: cl_0001, cl_0005, cl_0006
+- [pdf_section_b7d3b01ec65e] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-20/1222847447.PDF
+  - 支持结论: cl_0002, cl_0004, cl_0005, cl_0006
+- [pdf_section_787060a737e4] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-20/1222847447.PDF
+  - 支持结论: cl_0002, cl_0005, cl_0006
+- [pdf_section_6e969f271571] PDF section: financial_statements (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-20/1222847447.PDF
+  - 支持结论: cl_0003, cl_0005, cl_0006
+- [601318_FY2024_eastmoney_financials_balance_56ac006ff4] 601318 Eastmoney balance financial table (eastmoney_financials/official, 2026-03-27 00:00:00) - https://data.eastmoney.com/bbsj/601318.html
+  - 支持结论: cl_0005, cl_0006, cl_0007, cl_0008, cl_0009, cl_0010, cl_0011
+- [601318_FY2024_eastmoney_financials_income_0ce7f474c7] 601318 Eastmoney income financial table (eastmoney_financials/official, 2026-03-27 00:00:00) - https://data.eastmoney.com/bbsj/601318.html
+  - 支持结论: cl_0005, cl_0006, cl_0007, cl_0008, cl_0009, cl_0010, cl_0011
+- [601318_FY2024_eastmoney_financials_cashflow_eb80795bfc] 601318 Eastmoney cashflow financial table (eastmoney_financials/official, 2026-03-27 00:00:00) - https://data.eastmoney.com/bbsj/601318.html
+  - 支持结论: cl_0005, cl_0006, cl_0007, cl_0008, cl_0009, cl_0010, cl_0011
+- [pdf_section_7a77497c2bc6] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-20/1222847447.PDF
+  - 支持结论: cl_0005, cl_0006
+- [pdf_section_a49176f8301c] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2025-03-20/1222847447.PDF
+  - 支持结论: cl_0005, cl_0006
+- [601318_FY2024_cninfo_6c52de6e74] 中国平安2024年年度报告 (cninfo_announcement/official, 2025-03-20) - http://static.cninfo.com.cn/finalpage/2025-03-20/1222847447.PDF
+  - 支持结论: cl_0006

@@ -1,0 +1,106 @@
+{
+  "overview": "Task graph for generating a frozen-input financial research report on SMIC (688981.SS) FY2024 with strict citation and compliance requirements.",
+  "research_topic": "中芯国际 (688981.SS) formal FY2024 frozen-input report",
+  "requirements": [
+    "Use frozen snapshot evidence only.",
+    "Cover executive summary, three statements or gaps, valuation or limitation, risks, and investment conclusion.",
+    "Emit explicitly labeled critical claims and body citations."
+  ],
+  "output_format": "markdown, html, json with citations",
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "deep_researcher",
+      "description": "Retrieve all available frozen snapshot evidence for SMIC (688981.SS) FY2024 including annual report filings, financial statements, market data, and news. Use retrieve_local_evidence and fetch_yahoo_market_snapshot. Return ranked evidence records with evidence_ids.",
+      "parameters": {
+        "symbol": "688981.SS",
+        "period": "FY2024",
+        "source_preferences": [
+          "frozen_snapshot"
+        ],
+        "ranking_mode": "relevance"
+      },
+      "dependencies": [],
+      "priority": 5,
+      "expected_output": "List of evidence records with evidence_id, source, title, date, and content snippets."
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "deep_analyze",
+      "description": "Using evidence from task_001, compute financial ratios, three-statement view, peer comparison, and valuation. Identify gaps in data. Provide evidence-backed claims for each metric.",
+      "parameters": {
+        "analysis_type": "financial_statement_analysis",
+        "include_ratios": true,
+        "include_trends": true,
+        "include_peer_comp": true,
+        "include_valuation": true
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 5,
+      "expected_output": "Structured claims with evidence_ids covering balance sheet, income statement, cash flow, ratios, peer comparison, and valuation."
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "deep_analyze",
+      "description": "Based on evidence from task_001 and analysis from task_002, identify key risks (operational, financial, market, regulatory) and form an investment conclusion with supporting citations. Output claims with evidence_ids.",
+      "parameters": {
+        "analysis_type": "risk_and_conclusion",
+        "section": "risks_and_investment_conclusion"
+      },
+      "dependencies": [
+        "task_001",
+        "task_002"
+      ],
+      "priority": 4,
+      "expected_output": "Claims for risks and investment conclusion, each with evidence_ids."
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "final_answer",
+      "description": "Assemble all claims, tables, charts into a structured Chinese research report covering executive summary, three statements or gaps, valuation/limitation, risks, and investment conclusion. Include citations, charts, and compliance disclosure. Output markdown, HTML, JSON payloads.",
+      "parameters": {
+        "report_type": "company_stock_report",
+        "language": "zh",
+        "output_formats": [
+          "markdown",
+          "html",
+          "json"
+        ]
+      },
+      "dependencies": [
+        "task_002",
+        "task_003"
+      ],
+      "priority": 5,
+      "expected_output": "Three files: report.md, report.html, report.json with complete content and citations."
+    },
+    {
+      "task_id": "task_005",
+      "task_type": "verifier",
+      "description": "Verify that every material factual claim has an evidence_id citation, no unsupported numbers, compliance disclosure present, and format matches requirements. If fails, return revision brief to previous tasks.",
+      "parameters": {
+        "check_citations": true,
+        "check_compliance": true,
+        "check_format": true
+      },
+      "dependencies": [
+        "task_004"
+      ],
+      "priority": 5,
+      "expected_output": "Verification pass or revision brief with specific issues."
+    }
+  ],
+  "data_sources": [
+    "local_evidence_snapshots",
+    "yahoo_market_snapshot"
+  ],
+  "citations_required": true,
+  "final_outputs": [
+    "markdown",
+    "html",
+    "json"
+  ],
+  "fallback_used": false
+}

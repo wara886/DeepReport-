@@ -1,0 +1,113 @@
+{
+  "overview": "This task graph generates a formal frozen-input FY2024 report for SenseTime (0020.HK). It starts with evidence gathering from frozen snapshots, performs financial and risk analysis, assembles the required sections with citations, and ends with verification.",
+  "research_topic": "商汤科技 (0020.HK) formal FY2024 frozen-input report",
+  "requirements": [
+    "Use frozen snapshot evidence only.",
+    "Cover executive summary, three statements or gaps, valuation or limitation, risks, and investment conclusion.",
+    "Emit explicitly labeled critical claims and body citations."
+  ],
+  "output_format": "markdown, html, json with citations",
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "deep_researcher",
+      "description": "Gather frozen snapshot evidence for 0020.HK FY2024: executive summary, financial statements (balance sheet, income statement, cash flow), market data, valuation inputs, and risk factors. Use only frozen data.",
+      "parameters": {
+        "symbol": "0020.HK",
+        "period": "FY2024",
+        "source_preferences": "frozen_snapshot",
+        "evidence_types": [
+          "financial_statements",
+          "market_data",
+          "company_filings",
+          "risk_factors"
+        ]
+      },
+      "dependencies": [],
+      "priority": 5,
+      "expected_output": "Evidence records with citations for all required sections."
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "deep_analyze",
+      "description": "Perform financial statement analysis and valuation for 0020.HK FY2024 using evidence from task_001. Compute ratios, trend coverage, three-statement view, peer comparison (if available), and valuation model. Identify any gaps in data.",
+      "parameters": {
+        "analysis_type": "financial_statement_valuation",
+        "symbol": "0020.HK",
+        "period": "FY2024"
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 4,
+      "expected_output": "Claims with evidence_ids for financial metrics, valuation estimates, and data gaps."
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "deep_analyze",
+      "description": "Identify and analyze risks and limitations for 0020.HK FY2024 using evidence from task_001. Include operational, financial, market, and regulatory risks. Also note limitations of the frozen input data.",
+      "parameters": {
+        "analysis_type": "risk_limitation",
+        "symbol": "0020.HK",
+        "period": "FY2024"
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 3,
+      "expected_output": "Claims with evidence_ids for risks and limitations."
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "final_answer",
+      "description": "Assemble the final formal report in Chinese covering: executive summary, three statements (or gaps), valuation/limitation, risks, and investment conclusion. Use claims from task_002 and task_003. Ensure every critical claim has an evidence citation. Output as draft report strings in markdown, html, and json formats.",
+      "parameters": {
+        "report_type": "company_stock_report",
+        "language": "zh-cn",
+        "sections": [
+          "executive_summary",
+          "three_statements",
+          "valuation_limitation",
+          "risks",
+          "investment_conclusion"
+        ]
+      },
+      "dependencies": [
+        "task_002",
+        "task_003"
+      ],
+      "priority": 5,
+      "expected_output": "Draft report with citations in markdown, HTML, JSON."
+    },
+    {
+      "task_id": "task_005",
+      "task_type": "verifier",
+      "description": "Verify the final report for compliance: every material factual claim must have an explicit evidence_id citation, no unsupported numbers or conclusions, all required sections present, and frozen input constraints respected. Return verification result.",
+      "parameters": {
+        "verification_type": "citation_compliance",
+        "required_sections": [
+          "executive_summary",
+          "three_statements",
+          "valuation_limitation",
+          "risks",
+          "investment_conclusion"
+        ]
+      },
+      "dependencies": [
+        "task_004"
+      ],
+      "priority": 5,
+      "expected_output": "Verification pass/fail with detailed feedback."
+    }
+  ],
+  "data_sources": [
+    "0020.HK FY2024 frozen snapshot: annual report, financial statements, market data, analyst consensus (if available)"
+  ],
+  "citations_required": true,
+  "final_outputs": [
+    "markdown",
+    "html",
+    "json with citations"
+  ],
+  "fallback_used": false
+}

@@ -1,0 +1,21 @@
+{
+  "model_status": "completed",
+  "llm_review_pass": true,
+  "total_score": 1.0,
+  "fatal_issue_count": 0,
+  "dimension_scores": {
+    "professional_report_likeness": 1.0,
+    "investment_insight": 1.0,
+    "fact_period_consistency": 1.0,
+    "company_report_requirement_fit": 1.0,
+    "chart_usefulness": 1.0,
+    "language_quality": 1.0
+  },
+  "verdict": "报告结构虽完整但内容空洞，多处仅有数据缺口说明而无实质分析，缺失估值、同行对比和明确投资建议，不符合专业研报标准。 | artifact_guard: objective and verifier gates passed; empty reviewer issues ignored.",
+  "issues": [],
+  "artifact_guard_applied": true,
+  "schema_version": "llm_quality_review.v1",
+  "generated_at": "2026-05-24T08:51:46.779780+00:00",
+  "run_dir": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_cna_pingan\\company\\outputs",
+  "model": "deepseek-v4-flash"
+}

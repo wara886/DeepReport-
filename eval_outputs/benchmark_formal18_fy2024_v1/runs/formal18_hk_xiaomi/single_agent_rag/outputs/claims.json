@@ -1,0 +1,108 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "revenue",
+    "claim_text": "Revenue for FY2024 was RMB 365.9 billion, up 35% YoY from RMB 271.0 billion.",
+    "evidence_ids": [
+      "01810_FY2024_hkex_annual_report_ffd8d2d672"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "revenue"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "profit",
+    "claim_text": "Net profit attributable to owners was RMB 23.7 billion, up 35% YoY from RMB 17.5 billion.",
+    "evidence_ids": [
+      "01810_FY2024_hkex_annual_report_ffd8d2d672"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "profit"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "margin",
+    "claim_text": "Gross profit margin was 20.9% (RMB 76.6 billion gross profit).",
+    "evidence_ids": [
+      "01810_FY2024_hkex_annual_report_ffd8d2d672"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "margin"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "margin",
+    "claim_text": "Operating profit margin was 6.7% (RMB 24.5 billion operating profit).",
+    "evidence_ids": [
+      "01810_FY2024_hkex_annual_report_ffd8d2d672"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "margin"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "risk",
+    "claim_text": "Goodwill impairment test for Zimi CGU shows headroom of RMB 1.14 billion; a 5% lower revenue growth or 1% higher discount rate would reduce headroom significantly.",
+    "evidence_ids": [
+      "01810_FY2024_hkex_annual_report_ffd8d2d672"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "risk",
+    "claim_text": "No cash flow statement or balance sheet is provided in the evidence; therefore cash flow and leverage analysis is unavailable.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "valuation",
+    "claim_text": "Valuation metrics (P/E, EV/EBITDA) cannot be computed as market price is not in evidence.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "investment_rationale",
+    "claim_text": "Revenue growth was driven by smartphones, IoT, and the new smart EV business launched in March 2024.",
+    "evidence_ids": [
+      "01810_FY2024_hkex_annual_report_ffd8d2d672"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "symbol": "AAPL",
+  "period": "2026Q1",
+  "gap_count": 0,
+  "blocker_count": 0,
+  "warning_count": 0,
+  "required_backfill_sections": [],
+  "financial_metric_count": 17,
+  "table_types": [
+    "balance_sheet",
+    "cash_flow_statement",
+    "income_statement"
+  ],
+  "source_failure_count": 0
+}

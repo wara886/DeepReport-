@@ -1,0 +1,89 @@
+{
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "deep_researcher",
+      "selected_skills": [
+        "evidence_discovery",
+        "financial_statement_analysis"
+      ],
+      "memory_context_policy": {},
+      "skill_brief_chars": 898
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "browser",
+      "selected_skills": [
+        "evidence_discovery",
+        "report_assembly"
+      ],
+      "memory_context_policy": {},
+      "skill_brief_chars": 898
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "deep_analyze",
+      "selected_skills": [
+        "financial_statement_analysis",
+        "evidence_discovery"
+      ],
+      "memory_context_policy": {},
+      "skill_brief_chars": 898
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "final_answer",
+      "selected_skills": [
+        "report_assembly",
+        "evidence_discovery"
+      ],
+      "memory_context_policy": {},
+      "skill_brief_chars": 898
+    },
+    {
+      "task_id": "task_005",
+      "task_type": "verifier",
+      "selected_skills": [
+        "evidence_discovery",
+        "verification_rework"
+      ],
+      "memory_context_policy": {},
+      "skill_brief_chars": 898
+    },
+    {
+      "task_id": "task_role_identity",
+      "task_type": "identity_profile",
+      "selected_skills": [],
+      "memory_context_policy": {},
+      "skill_brief_chars": 0
+    },
+    {
+      "task_id": "task_role_statement",
+      "task_type": "three_statement_analysis",
+      "selected_skills": [],
+      "memory_context_policy": {},
+      "skill_brief_chars": 0
+    },
+    {
+      "task_id": "task_role_peer",
+      "task_type": "peer_analysis",
+      "selected_skills": [],
+      "memory_context_policy": {},
+      "skill_brief_chars": 0
+    },
+    {
+      "task_id": "task_role_valuation",
+      "task_type": "valuation_analysis",
+      "selected_skills": [],
+      "memory_context_policy": {},
+      "skill_brief_chars": 0
+    },
+    {
+      "task_id": "task_role_risk",
+      "task_type": "risk_analysis",
+      "selected_skills": [],
+      "memory_context_policy": {},
+      "skill_brief_chars": 0
+    }
+  ]
+}

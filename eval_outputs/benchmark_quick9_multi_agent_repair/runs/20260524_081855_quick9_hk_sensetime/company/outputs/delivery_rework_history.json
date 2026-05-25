@@ -1,0 +1,110 @@
+[
+  {
+    "round": 1,
+    "trigger": "delivery_gate_failed",
+    "status": "completed",
+    "top_quality_issues": [
+      {
+        "issue_id": "llm_review_0001",
+        "severity": "fatal",
+        "category": "llm_review",
+        "message": "内容空洞：报告大量使用'数据缺口说明'和'暂无完整'表述，缺乏实质性财务数据和投资分析，投资结论为审慎观察，无明确方向。",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "llm_review_0002",
+        "severity": "fatal",
+        "category": "llm_review",
+        "message": "大量暂无结论：三表摘要、财务分析、同行对比、估值观察、敏感性分析均以数据缺口为由未给出具体结论。",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "financial_0002",
+        "severity": "blocker",
+        "category": "financial",
+        "message": "缺少利润表摘要",
+        "source": "objective"
+      },
+      {
+        "issue_id": "financial_0003",
+        "severity": "blocker",
+        "category": "financial",
+        "message": "缺少资产负债表摘要",
+        "source": "objective"
+      },
+      {
+        "issue_id": "financial_0004",
+        "severity": "blocker",
+        "category": "financial",
+        "message": "缺少现金流量表摘要",
+        "source": "objective"
+      }
+    ],
+    "responsible_agents": [
+      {
+        "agent": "DeepResearcherAgent",
+        "reason": "missing_or_unknown_evidence, source, evidence missing"
+      },
+      {
+        "agent": "BrowserAgent",
+        "reason": "missing_or_unknown_evidence, source, evidence missing"
+      },
+      {
+        "agent": "DeepAnalyzeAgent",
+        "reason": "period_mismatch, different_fiscal_period, unsupported_numeric"
+      },
+      {
+        "agent": "PeerAgent",
+        "reason": "peer_comparison, peer, comparison"
+      }
+    ],
+    "required_fixes": [
+      "Backfill income statement, balance sheet, and cash flow statement summaries from primary or structured evidence.",
+      "Add peer comparison metrics and explicit boundaries instead of framework-only text.",
+      "Rewrite hollow sections with evidence-backed business implications, investment judgment, and risk boundaries.",
+      "Investment conclusion must include direction, reasons, cited evidence, and risk constraints.",
+      "Repair failed objective gate checks: has_three_table_summary.",
+      "Prioritize fatal/blocker issues from the LLM review before final delivery."
+    ],
+    "rework_mode": "owner_routed_plus_full_pipeline_rerun",
+    "repair_type": "data_repair",
+    "handled": true,
+    "target_agents": [
+      "DeepResearcherAgent",
+      "BrowserAgent",
+      "DeepAnalyzeAgent",
+      "PeerAgent"
+    ],
+    "target_agents_rerun": [
+      {
+        "agent": "DeepResearcherAgent",
+        "task_type": "deep_researcher",
+        "status": "completed"
+      },
+      {
+        "agent": "BrowserAgent",
+        "task_type": "browser",
+        "status": "completed"
+      },
+      {
+        "agent": "DeepAnalyzeAgent",
+        "task_type": "deep_analyze",
+        "status": "completed"
+      },
+      {
+        "agent": "PeerAgent",
+        "task_type": "peer_analysis",
+        "status": "completed"
+      }
+    ],
+    "critic_rechecked": true,
+    "final_editor_rerun": true,
+    "llm_repair_attempted": true,
+    "claim_rebuild_attempted": true,
+    "rejected_claim_count": 1,
+    "remaining_unfixable_gaps": [],
+    "unfixable_reasons": [],
+    "escalated_full_pipeline_rerun": true,
+    "delivery_pass_after_round": false
+  }
+]

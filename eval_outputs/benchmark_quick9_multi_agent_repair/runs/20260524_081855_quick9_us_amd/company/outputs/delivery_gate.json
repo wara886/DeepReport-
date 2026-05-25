@@ -1,0 +1,112 @@
+{
+  "schema_version": "delivery_gate.v1",
+  "generated_at": "2026-05-24T08:26:17.792493+00:00",
+  "run_dir": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs",
+  "delivery_pass": true,
+  "verifier_passed": true,
+  "objective_pass": true,
+  "llm_review_pass": true,
+  "scores": {
+    "objective_total_score": 0.9676,
+    "llm_total_score": 1.0,
+    "company_report_score": 0.9167
+  },
+  "gate_requirements": {
+    "formula": "delivery_pass = verifier_passed && objective_pass && llm_review_pass",
+    "verification_passed": true,
+    "objective_pass": true,
+    "llm_review_pass": true,
+    "llm_review_min_total_score": 0.8,
+    "llm_review_score_pass": true,
+    "llm_review_strict_score_pass": true,
+    "llm_review_relaxed_score_pass": true,
+    "llm_review_no_fatal_or_blocker": true,
+    "delivery_no_fatal_or_blocker": true
+  },
+  "issue_counts": {
+    "fatal": 0,
+    "blocker": 0,
+    "warning": 6,
+    "info": 0
+  },
+  "top_issues": [
+    {
+      "issue_id": "evidence_0001",
+      "severity": "warning",
+      "category": "evidence",
+      "message": "权威/一手来源占比偏低：0.17",
+      "source": "objective"
+    },
+    {
+      "issue_id": "llm_review_0001",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "报告缺乏投资洞察和原创分析，财务指标描述为主，未形成明确观点或建议。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0002",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "同行对比和估值敏感性部分仅以'数据缺口说明'回避实质性分析，未达到研报要求。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0003",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "图表（关键指标、结论置信度、证据来源）为统计性展示，对投资分析辅助作用有限。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0004",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "语言部分存在重复表述（如多次出现'数据缺口说明'），可读性一般。",
+      "source": "llm_review"
+    }
+  ],
+  "issues": [
+    {
+      "issue_id": "evidence_0001",
+      "severity": "warning",
+      "category": "evidence",
+      "message": "权威/一手来源占比偏低：0.17",
+      "source": "objective"
+    },
+    {
+      "issue_id": "llm_review_0001",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "报告缺乏投资洞察和原创分析，财务指标描述为主，未形成明确观点或建议。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0002",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "同行对比和估值敏感性部分仅以'数据缺口说明'回避实质性分析，未达到研报要求。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0003",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "图表（关键指标、结论置信度、证据来源）为统计性展示，对投资分析辅助作用有限。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "llm_review_0004",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "语言部分存在重复表述（如多次出现'数据缺口说明'），可读性一般。",
+      "source": "llm_review"
+    },
+    {
+      "issue_id": "verifier_0006",
+      "severity": "warning",
+      "category": "verifier",
+      "message": "Target symbol mismatch: expected AMD, but non-peer sections mention ticker-like tokens FRED."
+    }
+  ]
+}

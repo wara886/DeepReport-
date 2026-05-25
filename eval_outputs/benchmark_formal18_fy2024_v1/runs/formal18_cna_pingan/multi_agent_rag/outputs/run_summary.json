@@ -1,0 +1,12 @@
+{
+  "symbol": "601318.SS",
+  "period": "FY2024",
+  "model": "deepseek-v4-flash",
+  "variant": "multi_agent_rag",
+  "entity_resolution": {
+    "resolved_symbol": "601318.SS"
+  },
+  "frozen_evidence_only": true,
+  "retrieval": "bm25_frozen_snapshot",
+  "orchestration": "multi_agent_orchestrator"
+}

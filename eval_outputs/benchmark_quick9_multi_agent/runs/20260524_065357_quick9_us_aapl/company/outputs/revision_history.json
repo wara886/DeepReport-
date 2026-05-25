@@ -1,0 +1,7 @@
+[
+  {
+    "round": 1,
+    "revision_request": "- Warnings: Target symbol mismatch: expected AAPL, but non-peer sections mention ticker-like tokens FRED.\n- Fix recommendations: Remove or adjust unsupported numbers (gross margin, adjusted net income, total liabilities, equity) or provide corresponding evidence content for yahoo financials.\n- Fix recommendations: Ensure every numerical claim in the report has a direct evidence_id that includes the exact value in its content.\n- Fix recommendations: Bind qualitative conclusions to specific analytical calculations or evidence-derived ranges.\n- LLM warnings: The investment conclusion '中性观察' lacks explicit evidence binding; the cited evidence ids do not contain a conclusion.\n- LLM warnings: Several numerical claims rely on evidence id 'AAPL_2026Q1_yahoo_financials_710459470a' whose content was not provided, making verification impossible.\n- LLM errors: Claim '毛利率 49.27 pct' is not supported by any provided evidence content.\n- LLM errors: Claim 'adjusted_net_income 29,578,000,000 USD' is not supported by any provided evidence content.",
+    "passed_after_round": false
+  }
+]

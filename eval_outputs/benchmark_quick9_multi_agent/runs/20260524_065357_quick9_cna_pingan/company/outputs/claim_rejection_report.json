@@ -1,0 +1,25 @@
+{
+  "input_claim_count": 21,
+  "accepted_claim_count": 20,
+  "rejected_claim_count": 1,
+  "rejected_claims": [
+    {
+      "claim_id": "cl_0016",
+      "section_name": "valuation_sensitivity",
+      "reasons": [
+        "numeric_values_not_in_metric_lineage:net_income_delta_1pct"
+      ],
+      "evidence_ids": [
+        "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+        "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+        "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa"
+      ],
+      "metric_lineage_ids": [
+        "601318.ss_2026q1_net_income_601318.ss_2026q1_income_601318_2026q1_eastmoney_financials_income_3364d4d44d_2026-03-31_00:00:00"
+      ],
+      "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+      "suggested_data_source": "official filing or structured financial statement for target period",
+      "claim_text": "601318.SS 2026Q1 敏感性分析显示，当前净利率约为 11.5%；若净利率变动 1pct，净利润方向性影响约为 2.18B。对科技公司应重点跟踪收入增速、毛利率和研发费用率；对消费品公司应重点跟踪收入增速、净利率和渠道价格。"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+## 参考来源
+
+- [pdf_section_497fe54e912d] PDF section: risk_factors (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf
+  - 支持结论: cl_0001, cl_0006, cl_0008, cl_0009, cl_0010, cl_0012, cl_0013, cl_0014, cl_0015, cl_0016
+- [pdf_section_00a0866b705f] PDF section: ownership_governance (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf
+  - 支持结论: cl_0001, cl_0005, cl_0009, cl_0010, cl_0013, cl_0014, cl_0015, cl_0016
+- [pdf_section_e43b47ef569d] PDF section: risk_factors (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf
+  - 支持结论: cl_0002, cl_0009, cl_0010
+- [09888_FY2024_hkex_annual_report_a0649ee209] ANNUAL REPORT 2024 (hkex_annual_report/official, 2025-03-28) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf
+  - 支持结论: cl_0003, cl_0010, cl_0011
+- [pdf_section_e79257d7628f] PDF section: business_overview (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf
+  - 支持结论: cl_0004, cl_0009, cl_0010
+- [pdf_section_75d2776d304a] PDF section: ownership_governance (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf
+  - 支持结论: cl_0005, cl_0009, cl_0010
+- [pdf_section_719d0ec03faa] PDF section: risk_factors (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf
+  - 支持结论: cl_0006, cl_0009, cl_0010
+- [pdf_section_70f1ffb9d784] PDF section: financial_statements (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf
+  - 支持结论: cl_0007, cl_0009, cl_0010, cl_0013, cl_0014, cl_0015, cl_0016
+- [pdf_section_8098c1227e19] PDF section: financial_statements (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf
+  - 支持结论: cl_0007, cl_0009, cl_0010
+- [pdf_section_a71bec3e4f23] PDF section: financial_statements (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf
+  - 支持结论: cl_0009, cl_0010
+- [pdf_section_303eb3e5b79d] PDF section: risk_factors (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf
+  - 支持结论: 未关联
+- [pdf_section_3d82495dc2fc] PDF section: financial_statements (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf
+  - 支持结论: 未关联

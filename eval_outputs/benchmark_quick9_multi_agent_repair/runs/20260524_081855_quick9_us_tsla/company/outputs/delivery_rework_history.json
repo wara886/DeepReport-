@@ -1,0 +1,87 @@
+[
+  {
+    "round": 1,
+    "trigger": "delivery_gate_failed",
+    "status": "completed",
+    "top_quality_issues": [
+      {
+        "issue_id": "llm_review_0001",
+        "severity": "fatal",
+        "category": "llm_review",
+        "message": "内容空洞：多个部分（同行对比、估值敏感性、投资结论）仅陈述数据缺口，无实质性分析，缺乏投资洞察。",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "evidence_0001",
+        "severity": "warning",
+        "category": "evidence",
+        "message": "权威/一手来源占比偏低：0.17",
+        "source": "objective"
+      },
+      {
+        "issue_id": "llm_review_0002",
+        "severity": "warning",
+        "category": "llm_review",
+        "message": "权威一手来源占比偏低（0.17），依赖市场数据而非官方财报。",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "llm_review_0003",
+        "severity": "warning",
+        "category": "llm_review",
+        "message": "图表为内部指标（关键指标、置信度、来源结构），不直接有助于公司基本面分析。",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "llm_review_0004",
+        "severity": "warning",
+        "category": "llm_review",
+        "message": "存在符号不匹配警告（FRED被误认为ticker），虽非严重但影响一致性。",
+        "source": "llm_review"
+      }
+    ],
+    "responsible_agents": [
+      {
+        "agent": "DeepAnalyzeAgent",
+        "reason": "period_mismatch, different_fiscal_period, unsupported_numeric"
+      },
+      {
+        "agent": "PeerAgent",
+        "reason": "peer_comparison, peer, comparison"
+      }
+    ],
+    "required_fixes": [
+      "Add peer comparison metrics and explicit boundaries instead of framework-only text.",
+      "Rewrite hollow sections with evidence-backed business implications, investment judgment, and risk boundaries.",
+      "Investment conclusion must include direction, reasons, cited evidence, and risk constraints.",
+      "Prioritize fatal/blocker issues from the LLM review before final delivery."
+    ],
+    "rework_mode": "owner_routed",
+    "repair_type": "analysis_repair",
+    "handled": true,
+    "target_agents": [
+      "DeepAnalyzeAgent",
+      "PeerAgent"
+    ],
+    "target_agents_rerun": [
+      {
+        "agent": "DeepAnalyzeAgent",
+        "task_type": "deep_analyze",
+        "status": "completed"
+      },
+      {
+        "agent": "PeerAgent",
+        "task_type": "peer_analysis",
+        "status": "completed"
+      }
+    ],
+    "critic_rechecked": true,
+    "final_editor_rerun": true,
+    "llm_repair_attempted": true,
+    "claim_rebuild_attempted": true,
+    "rejected_claim_count": 1,
+    "remaining_unfixable_gaps": [],
+    "unfixable_reasons": [],
+    "delivery_pass_after_round": true
+  }
+]

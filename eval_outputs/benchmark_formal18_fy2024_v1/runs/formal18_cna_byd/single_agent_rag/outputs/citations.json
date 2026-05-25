@@ -1,0 +1,68 @@
+[
+  {
+    "citation_id": "ref_001",
+    "evidence_id": "002594_FY2024_eastmoney_financials_income_75aa272415",
+    "title": "002594 Eastmoney income financial table",
+    "source_url": "https://data.eastmoney.com/bbsj/002594.html",
+    "source_type": "eastmoney_financials",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "2026-03-28 00:00:00",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0001",
+      "cl_0002",
+      "cl_0003"
+    ],
+    "used_in_report": true,
+    "content_preview": "Eastmoney income financial table: report_date 2024-12-31 00:00:00; total operating revenue 777102455000; parent net profit 40254346000."
+  },
+  {
+    "citation_id": "ref_002",
+    "evidence_id": "002594_FY2024_eastmoney_financials_cashflow_8bedecabaf",
+    "title": "002594 Eastmoney cashflow financial table",
+    "source_url": "https://data.eastmoney.com/bbsj/002594.html",
+    "source_type": "eastmoney_financials",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "2026-03-28 00:00:00",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0004",
+      "cl_0005",
+      "cl_0007"
+    ],
+    "used_in_report": true,
+    "content_preview": "Eastmoney cashflow financial table: report_date 2024-12-31 00:00:00; net operating cash flow 133453873000; net investing cash flow -129082282000; net financing cash flow -10267547000."
+  },
+  {
+    "citation_id": "ref_003",
+    "evidence_id": "002594_FY2024_eastmoney_financials_balance_fad0b73368",
+    "title": "002594 Eastmoney balance financial table",
+    "source_url": "https://data.eastmoney.com/bbsj/002594.html",
+    "source_type": "eastmoney_financials",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "2026-03-28 00:00:00",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0006"
+    ],
+    "used_in_report": true,
+    "content_preview": "Eastmoney balance financial table: report_date 2024-12-31 00:00:00; total assets 783355855000; total liabilities 584667646000; total equity 198688209000; cash and equivalents 102738734000."
+  },
+  {
+    "citation_id": "ref_004",
+    "evidence_id": "002594_FY2024_cninfo_d090bade3a",
+    "title": "2024年年度报告",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2025-03-25/1222881496.PDF",
+    "source_type": "cninfo_announcement",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "2025-03-25",
+    "trust_level": "high",
+    "claim_ids": [],
+    "used_in_report": false,
+    "content_preview": "CNINFO official announcement for 比亚迪 (002594): 2024年年度报告. PDF/source: http://static.cninfo.com.cn/finalpage/2025-03-25/1222881496.PDF"
+  }
+]

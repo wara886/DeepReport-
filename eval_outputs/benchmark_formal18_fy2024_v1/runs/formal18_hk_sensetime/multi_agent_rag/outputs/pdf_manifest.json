@@ -1,0 +1,20 @@
+[
+  {
+    "evidence_id": "00020_FY2024_hkex_annual_report_6c0dcd66b0",
+    "source_type": "hkex_annual_report",
+    "title": "2024 ANNUAL REPORT",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042400917.pdf",
+    "publish_time": "2025-04-24",
+    "status": "cached",
+    "cache_status": "cached",
+    "extraction_status": "extracted",
+    "file_path": "eval_outputs\\benchmark_formal18_fy2024_v1\\runs\\formal18_hk_sensetime\\multi_agent_rag\\outputs\\pdf_cache\\a7538e74302d2267.pdf",
+    "sha256": "a7538e74302d2267455a2cf93ea2c137e9f526d0a1768e4c77681d75988791e3",
+    "size_bytes": 19689295,
+    "download_time": "2026-05-24T13:40:21.525366+00:00",
+    "page_count": 242,
+    "pages_read": 6,
+    "section_count": 6,
+    "table_count": 1
+  }
+]

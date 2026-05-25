@@ -1,0 +1,94 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "revenue",
+    "claim_text": "FY2024 revenue increased 10.7% YoY to RMB3.77 billion.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "revenue"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "profit",
+    "claim_text": "Net loss narrowed to RMB4.31 billion from RMB6.49 billion in FY2023.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "profit"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "cash_flow",
+    "claim_text": "Operating cash flow was negative RMB3.93 billion in FY2024.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "cash_flow"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "margin",
+    "claim_text": "Gross margin was approximately 42.9% in FY2024 (gross profit RMB1.62B / revenue RMB3.77B).",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "margin"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "risk",
+    "claim_text": "Trade receivables aging worsened, with over RMB3.8 billion due beyond three years.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "financial_analysis",
+    "claim_text": "Company held cash and term deposits of approximately RMB11.86 billion as of Dec 2024.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "segmental_performance",
+    "claim_text": "Computer Vision segment revenue accounted for 29.5% of total; customer repurchase rate improved 31pp.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "risk",
+    "claim_text": "R&D expenses remained high at RMB4.13 billion, representing 109.5% of revenue.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  }
+]

@@ -1,0 +1,13 @@
+[
+  {
+    "evidence_id": "01810_FY2024_hkex_annual_report_ffd8d2d672",
+    "source_type": "hkex_annual_report",
+    "title": "2024 ANNUAL REPORT",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042401119.pdf",
+    "publish_time": "2025-04-24",
+    "status": "failed",
+    "cache_status": "failed",
+    "extraction_status": "not_attempted",
+    "failure_reason": "pdf_download_failed: <urlopen error _ssl.c:1011: The handshake operation timed out>"
+  }
+]

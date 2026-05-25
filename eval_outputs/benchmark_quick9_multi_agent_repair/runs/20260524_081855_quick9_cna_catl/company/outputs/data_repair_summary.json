@@ -1,0 +1,17 @@
+{
+  "symbol": "300750.SZ",
+  "period": "2026Q1",
+  "gap_count": 2,
+  "blocker_count": 1,
+  "warning_count": 1,
+  "required_backfill_sections": [
+    "valuation"
+  ],
+  "financial_metric_count": 7,
+  "table_types": [
+    "balance_sheet",
+    "cash_flow_statement",
+    "income_statement"
+  ],
+  "source_failure_count": 1
+}

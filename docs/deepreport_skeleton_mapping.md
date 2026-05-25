@@ -3,9 +3,11 @@
 Stage: `Stage -1`
 Reference repository: `references/DeepReport_ref/`
 Reference commit: `afc6ee7`
-Audit date: 2026-04-16
+Audit date: 2026-05-20
 
 This mapping records how the DeepReport reference skeleton should influence Open DeepReport++ without copying its business logic.
+
+The audited DeepReport reference should be treated as a role/workflow skeleton, not as proof of autonomous multi-agent collaboration. Its agent roles are useful, but its application loop remains centrally orchestrated by `main.py`.
 
 ## Mapping Table
 
@@ -14,6 +16,7 @@ This mapping records how the DeepReport reference skeleton should influence Open
 | Repository root with `main.py`, `config.py`, Docker files, `src/`, `docs/`, `examples/` | Repository root with `README.md`, `pyproject.toml`, `.env.example`, `configs/`, `scripts/`, `src/`, `tests/`, `data/`, `docs/`, `references/` | Rewrite |
 | `main.py` as Gradio application and orchestration entry | `src/app/main.py`, `src/app/pipeline.py`, plus `scripts/run_local_smoke.py` | Rewrite |
 | `DeepReportApp.generate_report()` end-to-end orchestration | Claim-first pipeline: fetch/normalize -> feature extraction -> claim generation -> verification -> export | Rewrite |
+| `DeepReportApp._execute_research_plan()` sequential task dispatch | `MultiAgentOrchestrator` legacy modes and `CollaborativeOrchestrator` for blackboard-driven role execution | Preserve boundary / rewrite semantics |
 | `config.py` using `.env` and Pydantic settings | `src/utils/config.py` reading YAML configs from `configs/*.yaml` | Rewrite |
 | `.env` API-key centric configuration | `.env.example` for secrets only; YAML for model, path, top-k, batch size, backend, switches | Rewrite |
 | `src/agents/base_agent.py` with `Task`, `TaskResult`, and status enum | `src/agents/` plus `src/schemas/task.py`; typed task/result boundaries | Preserve with rewrite |
@@ -21,6 +24,7 @@ This mapping records how the DeepReport reference skeleton should influence Open
 | `src/agents/deep_researcher_agent.py` | `src/data/*` in early stages, later `src/retrieval/*` and `src/agents/analyst.py` | Rewrite |
 | `src/agents/browser_agent.py` | Later browser/PDF ingestion adapter if needed; no Stage 0/2 dependency | Defer |
 | `src/agents/deep_analyze_agent.py` | `src/features/financial_ratios.py`, `src/features/trend_analysis.py`, `src/features/peer_compare.py`, `src/features/risk_signals.py`, and `src/agents/analyst.py` | Rewrite |
+| Monolithic analysis role inside `DeepAnalyzeAgent` | `IdentityAgent`, `StatementAgent`, `PeerAgent`, `ValuationAgent`, `RiskAgent` writing role-owned blackboard outputs | Rewrite |
 | `src/agents/final_answer_agent.py` | `src/agents/writer.py`, `src/templates/*`, `src/generation/*`, `src/evaluation/*` | Rewrite |
 | `src/agents/sub_agents.py` re-export layer | `src/agents/__init__.py` package exports | Preserve |
 | `src/search/search_manager.py` | `src/retrieval/retrieve.py` and later retrieval manager abstraction | Preserve with rewrite |
@@ -117,6 +121,15 @@ Open DeepReport++ orchestration:
 - `orchestrator.py` wires the claim-first flow.
 
 Strategy: preserve the role boundaries, rewrite the behavior.
+
+For the current multi-agent upgrade, the concrete implication is:
+
+- Keep DeepReport's high-level separation between planning, research, analysis, and final writing.
+- Do not copy its central application loop as-is if the target claim is autonomous collaboration.
+- Add a shared `ResearchBlackboard` as the only factual interface between agents.
+- Split analysis into real responsibility agents rather than a single `DeepAnalyzeAgent` producing all analysis.
+- Use `CriticAgent` as a pre-write gate and responsibility router, not just a final report reviewer.
+- Route rework to the owner agent (`StatementAgent`, `IdentityAgent`, `PeerAgent`, `ValuationAgent`, `RiskAgent`, or `FinalEditor`) instead of rerunning the whole writer.
 
 ### Search / Retrieval Layer
 

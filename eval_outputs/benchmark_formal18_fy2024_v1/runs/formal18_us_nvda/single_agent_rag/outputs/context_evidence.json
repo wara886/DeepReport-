@@ -1,0 +1,23 @@
+[
+  {
+    "evidence_id": "sec_companyfacts_nvda_e9046c235f",
+    "sample_id": "sec_companyfacts_nvda_e9046c235f",
+    "source_type": "sec_companyfacts",
+    "symbol": "NVDA",
+    "period": "FY2024",
+    "title": "NVDA SEC company facts",
+    "publish_time": "2024-02-21",
+    "content": "SEC companyfacts FY2024 supported metrics for NVDA: Revenues: 60922000000 (USD, 2024-01-28); NetIncomeLoss: 29760000000 (USD, 2024-01-28); Assets: 65728000000 (USD, 2024-01-28); CashAndCashEquivalentsAtCarryingValue: 7280000000 (USD, 2024-01-28); NetCashProvidedByUsedInOperatingActivities: 28090000000 (USD, 2024-01-28); PaymentsToAcquireProductiveAssets: 1069000000 (USD, 2024-01-28).",
+    "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+    "trust_level": "high",
+    "source_timestamp": "2024-02-21",
+    "data_cutoff": "2024-02-21",
+    "freshness_days": 823,
+    "freshness_bucket": "stale",
+    "evidence_scope": "company",
+    "source_authority": "official",
+    "authority_level": "primary",
+    "source_document_type": "sec_companyfacts",
+    "authority_score": 1.0
+  }
+]

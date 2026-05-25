@@ -1,0 +1,244 @@
+{
+  "protocol": "local-mcp-v1",
+  "tool_count": 9,
+  "tools": [
+    {
+      "name": "attach_charts_to_report",
+      "qualified_name": "finance.attach_charts_to_report",
+      "namespace": "finance",
+      "description": "Attach rendered chart metadata to an existing Markdown report.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "report_path": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "report_path",
+          "metadata"
+        ]
+      }
+    },
+    {
+      "name": "build_peer_comparison",
+      "qualified_name": "finance.build_peer_comparison",
+      "namespace": "finance",
+      "description": "Build a local sector peer table and target ranking for a company and period.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "raw_data_root": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol",
+          "period"
+        ]
+      }
+    },
+    {
+      "name": "build_three_statement_view",
+      "qualified_name": "finance.build_three_statement_view",
+      "namespace": "finance",
+      "description": "Normalize available company evidence into income statement, cash-flow statement, and balance-sheet rows.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "records"
+        ]
+      }
+    },
+    {
+      "name": "build_trend_features",
+      "qualified_name": "finance.build_trend_features",
+      "namespace": "finance",
+      "description": "Build evidence coverage and trend summary features from records.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Evidence-like records with sample_id, symbol, period, source_type, publish_time."
+          }
+        },
+        "required": [
+          "records"
+        ]
+      }
+    },
+    {
+      "name": "calculate_financial_ratios",
+      "qualified_name": "finance.calculate_financial_ratios",
+      "namespace": "finance",
+      "description": "Extract revenue, margin, ROE/ROA, and cash-flow features from evidence records.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Evidence-like records with content, symbol, period, source_type, and sample_id."
+          }
+        },
+        "required": [
+          "records"
+        ]
+      }
+    },
+    {
+      "name": "fetch_yahoo_market_snapshot",
+      "qualified_name": "finance.fetch_yahoo_market_snapshot",
+      "namespace": "finance",
+      "description": "Fetch a real keyless Yahoo Finance market snapshot and return it as evidence.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Ticker symbol, for example AAPL."
+          },
+          "period": {
+            "type": "string",
+            "description": "Optional fiscal/report period label."
+          },
+          "range_": {
+            "type": "string",
+            "description": "Yahoo chart range, for example 1mo, 3mo, 1y."
+          },
+          "interval": {
+            "type": "string",
+            "description": "Yahoo chart interval, for example 1d, 1wk."
+          }
+        },
+        "required": [
+          "symbol"
+        ]
+      }
+    },
+    {
+      "name": "perform_company_valuation",
+      "qualified_name": "finance.perform_company_valuation",
+      "namespace": "finance",
+      "description": "Run a first-pass P/E, P/S, and DCF valuation with peer context.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "raw_data_root": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol",
+          "period"
+        ]
+      }
+    },
+    {
+      "name": "render_all_charts",
+      "qualified_name": "finance.render_all_charts",
+      "namespace": "finance",
+      "description": "Render report charts from generated feature parquet files.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "features_root": {
+            "type": "string"
+          },
+          "chart_output_dir": {
+            "type": "string"
+          },
+          "metadata_path": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "retrieve_local_evidence",
+      "qualified_name": "finance.retrieve_local_evidence",
+      "namespace": "finance",
+      "description": "Search the local evidence store with BM25 or reranker mode.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query."
+          },
+          "topk": {
+            "type": "integer",
+            "description": "Maximum number of hits."
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Optional ticker symbol."
+          },
+          "period": {
+            "type": "string",
+            "description": "Optional fiscal period."
+          },
+          "curated_dir": {
+            "type": "string",
+            "description": "Curated evidence directory."
+          },
+          "ranking_mode": {
+            "type": "string",
+            "enum": [
+              "bm25",
+              "vector",
+              "hybrid",
+              "reranker",
+              "hybrid_rerank"
+            ]
+          },
+          "use_chunks": {
+            "type": "boolean",
+            "description": "Retrieve paragraph/table/metric chunks instead of whole records."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  ]
+}

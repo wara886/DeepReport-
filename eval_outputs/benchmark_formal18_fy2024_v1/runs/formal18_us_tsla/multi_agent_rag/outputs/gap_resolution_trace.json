@@ -1,0 +1,26 @@
+[
+  {
+    "gap_type": "income_statement",
+    "severity": "blocker",
+    "message": "Missing income statement in artifacts and body.",
+    "route": "final_answer"
+  },
+  {
+    "gap_type": "balance_sheet",
+    "severity": "blocker",
+    "message": "Missing balance sheet in artifacts and body.",
+    "route": "final_answer"
+  },
+  {
+    "gap_type": "cash_flow_statement",
+    "severity": "blocker",
+    "message": "Missing cash flow statement in artifacts and body.",
+    "route": "final_answer"
+  },
+  {
+    "gap_type": "valuation",
+    "severity": "blocker",
+    "message": "Valuation is unavailable but body lacks a clear reason.",
+    "route": "final_answer"
+  }
+]

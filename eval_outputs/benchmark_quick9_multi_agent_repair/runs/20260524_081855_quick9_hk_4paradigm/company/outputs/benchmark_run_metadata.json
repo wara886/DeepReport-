@@ -1,0 +1,410 @@
+{
+  "schema_version": "benchmark_quick9_run.v1",
+  "variant": "multi_agent",
+  "evaluation_stage": "phase_2r_repair",
+  "case": {
+    "case_id": "quick9_hk_4paradigm",
+    "market": "HK",
+    "company_name": "第四范式",
+    "canonical_symbol": "6682.HK",
+    "period_policy": "fixed_target_period"
+  },
+  "run_started_at": "2026-05-24T08:34:28.157118+00:00",
+  "target_period": "2026Q1",
+  "execution": {
+    "execution_mode": "diagnostic_full",
+    "fast": true,
+    "enable_remote_data": true,
+    "model_config_path": "configs/model_backends.yaml",
+    "data_source_config_path": "configs/data_sources.yaml",
+    "retrieval_ranking_mode": "hybrid_rerank",
+    "engines": [
+      "local_real_data",
+      "hkex_announcements",
+      "yahoo_finance",
+      "independent_macro",
+      "tavily",
+      "serper",
+      "local_evidence"
+    ]
+  },
+  "outputs_dir": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs",
+  "reports_dir": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\reports",
+  "status": "completed",
+  "result_paths": {
+    "task_plan": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\task_plan.json",
+    "task_route_context": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\task_route_context.json",
+    "task_trace": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\task_trace.jsonl",
+    "agent_collaboration_trace": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\agent_collaboration_trace.json",
+    "tool_trace": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\tool_trace.json",
+    "search_meta": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\search_meta.json",
+    "evidence": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\evidence.json",
+    "claims": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\claims.json",
+    "analysis_artifacts": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\analysis_artifacts.json",
+    "financial_metrics": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\financial_metrics.json",
+    "rejected_metrics": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\rejected_metrics.json",
+    "claim_rejection_report": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\claim_rejection_report.json",
+    "pdf_manifest": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\pdf_manifest.json",
+    "pdf_sections": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\pdf_sections.json",
+    "company_profile_extracted": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\company_profile_extracted.json",
+    "tables": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\tables.json",
+    "valuation_model": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\valuation_model.json",
+    "valuation_assumptions": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\valuation_assumptions.json",
+    "valuation_sensitivity": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\valuation_sensitivity.json",
+    "citations": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\citations.json",
+    "citations_md": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\citations.md",
+    "charts": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\charts.json",
+    "chart_consistency": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\chart_consistency.json",
+    "multimodal_consistency": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\multimodal_consistency.json",
+    "mcp_manifest": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\mcp_manifest.json",
+    "revision_history": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\revision_history.json",
+    "gap_resolution_trace": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\gap_resolution_trace.jsonl",
+    "gap_resolution_trace_json": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\gap_resolution_trace.json",
+    "data_repair_summary": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\data_repair_summary.json",
+    "repair_constraints": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\repair_constraints.json",
+    "research_blackboard": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\research_blackboard.json",
+    "company_report_scorecard": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\company_report_scorecard.json",
+    "conversation_context": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\conversation_context.json",
+    "durable_memory": "",
+    "report_md": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\reports\\report.md",
+    "report_html": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\reports\\report.html",
+    "report_json": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\reports\\report.json",
+    "verification_report": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\verification_report.json",
+    "run_summary": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_hk_4paradigm\\company\\outputs\\run_summary.json"
+  },
+  "quality_pipeline": {
+    "quality_report": {
+      "objective_pass": true,
+      "total_score": 1.0
+    },
+    "llm_quality_review": {
+      "llm_review_pass": true,
+      "total_score": 1.0,
+      "model_status": "completed"
+    },
+    "delivery_gate": {
+      "delivery_pass": true,
+      "verifier_passed": true,
+      "objective_pass": true,
+      "llm_review_pass": true
+    },
+    "remediation_plan": {
+      "quality_feedback_used": true,
+      "required_fixes": [
+        "Add peer comparison metrics and explicit boundaries instead of framework-only text."
+      ],
+      "failed_sections": [
+        "peer_comparison"
+      ],
+      "memory_quality_feedback_used": false
+    },
+    "top_quality_issues": [
+      {
+        "issue_id": "verifier_0001",
+        "severity": "warning",
+        "category": "verifier",
+        "message": "Target symbol mismatch: expected 6682.HK, but non-peer sections mention ticker-like tokens FRED, HK, UNRATE."
+      },
+      {
+        "issue_id": "verifier_0002",
+        "severity": "warning",
+        "category": "verifier",
+        "message": "Target symbol mismatch: expected 6682.HK, but non-peer sections mention ticker-like tokens FRED, HK, UNRATE."
+      }
+    ]
+  },
+  "delivery_rework": {
+    "rounds": [
+      {
+        "round": 1,
+        "trigger": "delivery_gate_failed",
+        "status": "completed",
+        "top_quality_issues": [
+          {
+            "issue_id": "llm_review_0001",
+            "severity": "fatal",
+            "category": "content_hollowness",
+            "message": "大量暂无结论：估值、估值敏感性、同行对比等部分均明确表示证据不足，无实质性结论，构成内容空洞。",
+            "source": "llm_review"
+          },
+          {
+            "issue_id": "llm_review_0002",
+            "severity": "blocker",
+            "category": "company_report_requirement_fit",
+            "message": "缺少利润表、资产负债表、现金流量表完整摘要，仅列出个别指标，未满足三表要求。",
+            "source": "llm_review"
+          },
+          {
+            "issue_id": "llm_review_0003",
+            "severity": "blocker",
+            "category": "company_report_requirement_fit",
+            "message": "缺少同行对比定量分析，仅提供框架而无实际数据。",
+            "source": "llm_review"
+          },
+          {
+            "issue_id": "llm_review_0004",
+            "severity": "blocker",
+            "category": "company_report_requirement_fit",
+            "message": "估值和敏感性分析未完成，无法给出合理估值区间。",
+            "source": "llm_review"
+          },
+          {
+            "issue_id": "financial_0002",
+            "severity": "blocker",
+            "category": "financial",
+            "message": "缺少利润表摘要",
+            "source": "objective"
+          }
+        ],
+        "responsible_agents": [
+          {
+            "agent": "DeepResearcherAgent",
+            "reason": "missing_or_unknown_evidence, source, evidence missing"
+          },
+          {
+            "agent": "BrowserAgent",
+            "reason": "missing_or_unknown_evidence, source, evidence missing"
+          },
+          {
+            "agent": "DeepAnalyzeAgent",
+            "reason": "period_mismatch, different_fiscal_period, unsupported_numeric"
+          },
+          {
+            "agent": "PeerAgent",
+            "reason": "peer_comparison, peer, comparison"
+          },
+          {
+            "agent": "FinalAnswerAgent",
+            "reason": "company_report_requirement_fit, professional_report_likeness, empty"
+          }
+        ],
+        "required_fixes": [
+          "Backfill income statement, balance sheet, and cash flow statement summaries from primary or structured evidence.",
+          "Add peer comparison metrics and explicit boundaries instead of framework-only text.",
+          "Rewrite hollow sections with evidence-backed business implications, investment judgment, and risk boundaries.",
+          "Investment conclusion must include direction, reasons, cited evidence, and risk constraints.",
+          "Repair failed objective gate checks: has_three_table_summary.",
+          "Prioritize fatal/blocker issues from the LLM review before final delivery."
+        ],
+        "rework_mode": "owner_routed",
+        "repair_type": "data_repair",
+        "handled": true,
+        "target_agents": [
+          "DeepResearcherAgent",
+          "BrowserAgent",
+          "DeepAnalyzeAgent",
+          "PeerAgent",
+          "FinalAnswerAgent"
+        ],
+        "target_agents_rerun": [
+          {
+            "agent": "DeepResearcherAgent",
+            "task_type": "deep_researcher",
+            "status": "completed"
+          },
+          {
+            "agent": "BrowserAgent",
+            "task_type": "browser",
+            "status": "completed"
+          },
+          {
+            "agent": "DeepAnalyzeAgent",
+            "task_type": "deep_analyze",
+            "status": "completed"
+          },
+          {
+            "agent": "PeerAgent",
+            "task_type": "peer_analysis",
+            "status": "completed"
+          }
+        ],
+        "critic_rechecked": true,
+        "final_editor_rerun": true,
+        "llm_repair_attempted": true,
+        "claim_rebuild_attempted": true,
+        "rejected_claim_count": 0,
+        "remaining_unfixable_gaps": [],
+        "unfixable_reasons": [],
+        "delivery_pass_after_round": true
+      }
+    ],
+    "quality_result": {
+      "quality_report": {
+        "objective_pass": true,
+        "total_score": 1.0
+      },
+      "llm_quality_review": {
+        "llm_review_pass": true,
+        "total_score": 1.0,
+        "model_status": "completed"
+      },
+      "delivery_gate": {
+        "delivery_pass": true,
+        "verifier_passed": true,
+        "objective_pass": true,
+        "llm_review_pass": true
+      },
+      "remediation_plan": {
+        "quality_feedback_used": true,
+        "required_fixes": [
+          "Add peer comparison metrics and explicit boundaries instead of framework-only text."
+        ],
+        "failed_sections": [
+          "peer_comparison"
+        ],
+        "memory_quality_feedback_used": false
+      },
+      "top_quality_issues": [
+        {
+          "issue_id": "verifier_0001",
+          "severity": "warning",
+          "category": "verifier",
+          "message": "Target symbol mismatch: expected 6682.HK, but non-peer sections mention ticker-like tokens FRED, HK, UNRATE."
+        },
+        {
+          "issue_id": "verifier_0002",
+          "severity": "warning",
+          "category": "verifier",
+          "message": "Target symbol mismatch: expected 6682.HK, but non-peer sections mention ticker-like tokens FRED, HK, UNRATE."
+        }
+      ]
+    },
+    "reworked": true
+  },
+  "run_finished_at": "2026-05-24T08:37:31.836502+00:00",
+  "model": "deepseek-v4-flash",
+  "actual_report_period": "2026Q1",
+  "available_data_periods": [
+    "2026Q1"
+  ],
+  "source_attempts": {
+    "local_real_data": {
+      "mode": "local_real_data",
+      "raw_data_root": "data/raw/real_data",
+      "symbol": "6682.HK",
+      "period": "2026Q1",
+      "record_count": 0,
+      "returned_hit_count": 0,
+      "failure_reason": "no_records_for_symbol_period",
+      "chunking_enabled": true,
+      "query_original": "Generate a company stock research report for 第四范式 (6682.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "query_adapted": "Generate a company stock research report for 第四范式 (6682.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "adapted_query": "Generate a company stock research report for 第四范式 (6682.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "query_terms_added": [],
+      "query_expansion_version": "finance_query_expansion_v1"
+    },
+    "hkex_announcements": {
+      "mode": "hkex_announcements",
+      "search_depth": "basic",
+      "request_id": "3eb2df9a-8ad3-4dd8-9888-f7ef50771574",
+      "response_time": 2.19,
+      "result_count": 4,
+      "via": "tavily",
+      "identity_rejected_count": 1
+    },
+    "yahoo_finance": {
+      "mode": "yahoo_finance",
+      "symbol": "6682.HK",
+      "range": "1mo",
+      "interval": "1d",
+      "result_count": 2,
+      "has_financials": true
+    },
+    "independent_macro": {
+      "mode": "independent_macro",
+      "period": "2026Q1",
+      "source_meta": {
+        "fred": {
+          "mode": "fred",
+          "record_count": 4,
+          "errors": [],
+          "failure_reason": ""
+        },
+        "bls": {
+          "mode": "bls",
+          "record_count": 2,
+          "failure_reason": ""
+        },
+        "bea": {
+          "mode": "bea",
+          "record_count": 1,
+          "failure_reason": ""
+        }
+      },
+      "record_count": 7,
+      "failure_reason": "",
+      "query": "Generate a company stock research report for 第四范式 (6682.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion."
+    },
+    "tavily": {
+      "mode": "tavily",
+      "search_depth": "basic",
+      "request_id": "77065613-abbd-416e-9d6e-605aa26969fd",
+      "response_time": 1.98,
+      "result_count": 1
+    },
+    "serper": {
+      "mode": "serper",
+      "result_count": 5,
+      "search_parameters": {
+        "q": "Generate a company stock research report for 第四范式 (6682.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+        "gl": "us",
+        "hl": "en",
+        "type": "search",
+        "num": 5,
+        "engine": "google"
+      }
+    },
+    "local_evidence": {
+      "mode": "hybrid_rerank",
+      "backend": "score_passthrough",
+      "model_name": "BAAI/bge-reranker-base",
+      "checkpoint_path": "data/outputs/checkpoints/reranker_checkpoint.json",
+      "checkpoint_used": false,
+      "fallback_used": true,
+      "score_components": [
+        "base_score"
+      ],
+      "feature_weights": {},
+      "vector_backend": "memory",
+      "vector_hit_count": 0,
+      "query": "Generate a company stock research report for 第四范式 (6682.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "source_record_count": 0,
+      "record_count": 0,
+      "bm25_hit_count": 0,
+      "chunking_enabled": true,
+      "chunk_count": 0,
+      "returned_hit_count": 0,
+      "failure_reason": "no_records_for_symbol_period",
+      "loaded_file_count": 0,
+      "skipped_files": [
+        "data\\curated\\filings.parquet",
+        "data\\curated\\financials.parquet",
+        "data\\curated\\market.parquet",
+        "data\\curated\\news.parquet"
+      ],
+      "load_errors": [
+        {
+          "path": "data\\curated\\filings.parquet",
+          "error": "Repetition level histogram size mismatch"
+        },
+        {
+          "path": "data\\curated\\financials.parquet",
+          "error": "Repetition level histogram size mismatch"
+        },
+        {
+          "path": "data\\curated\\market.parquet",
+          "error": "Repetition level histogram size mismatch"
+        },
+        {
+          "path": "data\\curated\\news.parquet",
+          "error": "Repetition level histogram size mismatch"
+        }
+      ],
+      "query_original": "Generate a company stock research report for 第四范式 (6682.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "query_adapted": "Generate a company stock research report for 第四范式 (6682.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "adapted_query": "Generate a company stock research report for 第四范式 (6682.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "query_terms_added": [],
+      "query_expansion_version": "finance_query_expansion_v1"
+    }
+  }
+}

@@ -1030,13 +1030,7 @@ def _is_sh_symbol(symbol: str) -> bool:
 
 def _announcement_date_range(period: str | None) -> tuple[str, str]:
     text = str(period or "").strip().upper()
-    year = ""
-    for token in text.replace("-", " ").replace("Q", " Q").split():
-        if token.isdigit() and len(token) == 4:
-            year = token
-            break
-    if not year and len(text) >= 4 and text[:4].isdigit():
-        year = text[:4]
+    year = _period_year(text)
     if not year:
         return "", ""
     next_year = str(int(year) + 1)
@@ -1061,6 +1055,7 @@ def _filter_period_announcement_hits(hits: List[Dict[str, Any]], period: str | N
     text = str(period or "").strip().upper()
     if not hits or not ("Q4" in text or "FY" in text or "ANNUAL" in text):
         return hits
+    year = _period_year(text)
     annual_terms = ("年度报告", "年报")
     exclude_terms = ("第一季度", "半年度", "第三季度", "一季度", "半年报", "三季度")
     filtered = [
@@ -1068,6 +1063,7 @@ def _filter_period_announcement_hits(hits: List[Dict[str, Any]], period: str | N
         for hit in hits
         if any(term in str(hit.get("title") or "") for term in annual_terms)
         and not any(term in str(hit.get("title") or "") for term in exclude_terms)
+        and (not year or year in str(hit.get("title") or ""))
     ]
     return filtered or hits
 
@@ -1112,7 +1108,7 @@ def _company_identity_terms(symbol: str, company_name: str) -> List[str]:
 
 def _target_report_date(period: str | None) -> str:
     text = str(period or "").strip().upper()
-    year = text[:4] if len(text) >= 4 and text[:4].isdigit() else ""
+    year = _period_year(text)
     if not year:
         return ""
     if "Q1" in text:
@@ -1124,6 +1120,12 @@ def _target_report_date(period: str | None) -> str:
     if "Q4" in text or "FY" in text or "ANNUAL" in text:
         return f"{year}-12-31"
     return ""
+
+
+def _period_year(period: str | None) -> str:
+    text = str(period or "").strip().upper()
+    match = re.search(r"20\d{2}", text)
+    return match.group(0) if match else ""
 
 
 def _select_financial_row_for_period(records: List[Any], period: str | None) -> Dict[str, Any]:

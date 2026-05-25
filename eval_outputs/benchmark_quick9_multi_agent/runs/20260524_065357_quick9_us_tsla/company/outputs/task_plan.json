@@ -1,0 +1,114 @@
+{
+  "overview": "Financial research plan for Generate a company stock research report for Tesla (TSLA) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion..",
+  "research_topic": "Generate a company stock research report for Tesla (TSLA) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+  "requirements": [
+    "Provide executive summary, risk assessment, and investment conclusion.",
+    "Cover three statements or explicitly disclose unavailable statement evidence.",
+    "Include valuation analysis or explicitly state why valuation is unavailable.",
+    "Bind critical conclusions to evidence IDs and citations used in report."
+  ],
+  "output_format": "markdown, html, json with citations",
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "deep_researcher",
+      "description": "Collect company filings, market data, financial statements, and recent news evidence.",
+      "parameters": {
+        "research_topic": "Generate a company stock research report for Tesla (TSLA) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+        "requirements": [
+          "Provide executive summary, risk assessment, and investment conclusion.",
+          "Cover three statements or explicitly disclose unavailable statement evidence.",
+          "Include valuation analysis or explicitly state why valuation is unavailable.",
+          "Bind critical conclusions to evidence IDs and citations used in report."
+        ]
+      },
+      "dependencies": [],
+      "priority": 5,
+      "expected_output": "Ranked evidence candidates with source metadata."
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "browser",
+      "description": "Extract relevant text, tables, and citation snippets from selected sources.",
+      "parameters": {
+        "source_types": [
+          "filings",
+          "news",
+          "market_data"
+        ]
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 4,
+      "expected_output": "Structured evidence records with citation anchors."
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "deep_analyze",
+      "description": "Analyze financial performance, valuation, risks, trends, and peer context.",
+      "parameters": {
+        "analysis_types": [
+          "financials",
+          "valuation",
+          "risk",
+          "trend",
+          "peer_compare"
+        ]
+      },
+      "dependencies": [
+        "task_001",
+        "task_002"
+      ],
+      "priority": 5,
+      "expected_output": "Evidence-backed claims, metrics, charts, and risk signals."
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "final_answer",
+      "description": "Generate the final research report with citations, charts, and structured sections.",
+      "parameters": {
+        "output_format": "markdown, html, json with citations"
+      },
+      "dependencies": [
+        "task_003"
+      ],
+      "priority": 4,
+      "expected_output": "Markdown, HTML, and JSON report artifacts."
+    },
+    {
+      "task_id": "task_005",
+      "task_type": "verifier",
+      "description": "Check claim support, numeric consistency, citation coverage, and report completeness.",
+      "parameters": {
+        "checks": [
+          "claim_support",
+          "numeric_consistency",
+          "citation_coverage"
+        ]
+      },
+      "dependencies": [
+        "task_004"
+      ],
+      "priority": 3,
+      "expected_output": "Verification report and fix recommendations."
+    }
+  ],
+  "data_sources": [
+    "company_filings",
+    "financial_statements",
+    "market_data",
+    "news",
+    "local_evidence_store"
+  ],
+  "citations_required": true,
+  "final_outputs": [
+    "task_plan.json",
+    "claims.json",
+    "report.md",
+    "report.html",
+    "verification_report.json"
+  ],
+  "fallback_used": true,
+  "fallback_reason": "HTTP 503: {\"error\":{\"message\":\"Service is too busy. We advise users to temporarily switch to alternative LLM API service providers.\",\"type\":\"service_unavailable_error\",\"param\":null,\"code\":\"service_unavailable_error\"}}"
+}

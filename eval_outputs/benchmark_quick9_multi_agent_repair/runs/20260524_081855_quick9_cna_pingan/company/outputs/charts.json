@@ -1,0 +1,173 @@
+[
+  {
+    "chart_id": "key_metrics_bar",
+    "chart_type": "bar",
+    "title": "关键指标",
+    "output_path": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_cna_pingan\\company\\outputs\\charts\\key_metrics_bar.png",
+    "source_fields": "claims.numeric_values",
+    "input_table_ids": [
+      "601318.ss_2026q1_balance_sheet_601318_2026q1_eastmoney_financials_balance_0fed348191",
+      "601318.ss_2026q1_cash_flow_statement_601318_2026q1_eastmoney_financials_cashflow_66f5ea1caa",
+      "601318.ss_2026q1_income_statement_601318_2026q1_eastmoney_financials_income_3364d4d44d"
+    ],
+    "input_claim_ids": [
+      "cl_0006",
+      "cl_0007",
+      "cl_0008",
+      "cl_0009",
+      "cl_0010",
+      "cl_0011",
+      "cl_0012",
+      "cl_0014",
+      "cl_0015"
+    ],
+    "source_evidence_ids": [
+      "601318_2026Q1_cninfo_44b1a686b1",
+      "601318_2026Q1_cninfo_546b2760c8",
+      "601318_2026Q1_cninfo_9a016922ce",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa",
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "pdf_section_929154e9ecfa",
+      "pdf_section_dd37d879668f",
+      "pdf_section_e746cdcbf2f3",
+      "pdf_section_f130da89ab7b"
+    ],
+    "chart_js": {
+      "type": "bar",
+      "labels": [
+        "cl_0006:revenue",
+        "cl_0006:net_income",
+        "cl_0007:assets",
+        "cl_0007:liabilities",
+        "cl_0007:equity",
+        "cl_0008:operating_cash_flow",
+        "cl_0008:investing_cash_flow",
+        "cl_0008:financing_cash_flow"
+      ],
+      "data": [
+        218405000000.0,
+        25022000000.0,
+        14169947000000.0,
+        12735657000000.0,
+        1434290000000.0,
+        131064000000.0,
+        -122934000000.0,
+        -58811000000.0
+      ],
+      "label": "指标值"
+    }
+  },
+  {
+    "chart_id": "claim_confidence_bar",
+    "chart_type": "bar",
+    "title": "结论置信度",
+    "output_path": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_cna_pingan\\company\\outputs\\charts\\claim_confidence_bar.png",
+    "source_fields": "claims.confidence",
+    "input_claim_ids": [
+      "cl_0001",
+      "cl_0002",
+      "cl_0003",
+      "cl_0004",
+      "cl_0005",
+      "cl_0006",
+      "cl_0007",
+      "cl_0008",
+      "cl_0009",
+      "cl_0010",
+      "cl_0011",
+      "cl_0012",
+      "cl_0013",
+      "cl_0014",
+      "cl_0015",
+      "cl_0016",
+      "cl_0017",
+      "cl_0018",
+      "cl_0019",
+      "cl_0020",
+      "cl_0021"
+    ],
+    "source_evidence_ids": [
+      "601318_2026Q1_cninfo_44b1a686b1",
+      "601318_2026Q1_cninfo_546b2760c8",
+      "601318_2026Q1_cninfo_9a016922ce",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa",
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "pdf_section_929154e9ecfa",
+      "pdf_section_dd37d879668f",
+      "pdf_section_e746cdcbf2f3",
+      "pdf_section_f130da89ab7b"
+    ],
+    "chart_js": {
+      "type": "bar",
+      "labels": [
+        "cl_0001",
+        "cl_0002",
+        "cl_0003",
+        "cl_0004",
+        "cl_0005",
+        "cl_0006",
+        "cl_0007",
+        "cl_0008",
+        "cl_0009",
+        "cl_0010"
+      ],
+      "data": [
+        0.73,
+        0.73,
+        0.73,
+        0.72,
+        0.72,
+        0.8,
+        0.78,
+        0.78,
+        0.74,
+        0.82
+      ],
+      "label": "置信度"
+    }
+  },
+  {
+    "chart_id": "evidence_source_mix",
+    "chart_type": "table",
+    "title": "证据来源结构",
+    "output_path": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_cna_pingan\\company\\outputs\\charts\\evidence_source_mix.png",
+    "source_fields": "evidence_records.source_type",
+    "source_evidence_ids": [
+      "601318_2026Q1_cninfo_44b1a686b1",
+      "601318_2026Q1_cninfo_546b2760c8",
+      "601318_2026Q1_cninfo_9a016922ce",
+      "601318_2026Q1_eastmoney_financials_balance_0fed348191",
+      "601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa",
+      "601318_2026Q1_eastmoney_financials_income_3364d4d44d",
+      "pdf_section_14f544370e9b",
+      "pdf_section_34919843d577",
+      "pdf_section_57ba4dca9785",
+      "pdf_section_614d3a660ddc",
+      "pdf_section_8202bfa15eeb",
+      "pdf_section_8af154814f60",
+      "pdf_section_929154e9ecfa",
+      "pdf_section_b630018a9d39",
+      "pdf_section_bf812aa6c3ce",
+      "pdf_section_dd37d879668f",
+      "pdf_section_e746cdcbf2f3",
+      "pdf_section_f130da89ab7b",
+      "pdf_section_f942515305ff"
+    ],
+    "chart_js": {
+      "type": "doughnut",
+      "labels": [
+        "pdf_section",
+        "eastmoney_financials",
+        "cninfo_announcement"
+      ],
+      "data": [
+        13.0,
+        3.0,
+        3.0
+      ],
+      "label": "证据数量"
+    }
+  }
+]

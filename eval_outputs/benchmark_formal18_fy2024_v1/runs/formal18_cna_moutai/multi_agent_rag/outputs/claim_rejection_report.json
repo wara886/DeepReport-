@@ -1,0 +1,65 @@
+{
+  "input_claim_count": 16,
+  "accepted_claim_count": 12,
+  "rejected_claim_count": 4,
+  "rejected_claims": [
+    {
+      "claim_id": "cl_0001",
+      "section_name": "financial_analysis",
+      "reasons": [
+        "missing_metric_lineage"
+      ],
+      "evidence_ids": [
+        "600519_FY2024_eastmoney_financials_income_5e0e920979"
+      ],
+      "metric_lineage_ids": [],
+      "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+      "suggested_data_source": "official filing or structured financial statement for target period",
+      "claim_text": "贵州茅台2024年营业收入1741.44亿元，归母净利润862.28亿元，净利率约49.5%。"
+    },
+    {
+      "claim_id": "cl_0002",
+      "section_name": "financial_analysis",
+      "reasons": [
+        "missing_metric_lineage"
+      ],
+      "evidence_ids": [
+        "600519_FY2024_eastmoney_financials_balance_14150e8ae3",
+        "600519_FY2024_eastmoney_financials_income_5e0e920979"
+      ],
+      "metric_lineage_ids": [],
+      "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+      "suggested_data_source": "official filing or structured financial statement for target period",
+      "claim_text": "2024年净资产收益率（ROE）约35.6%，盈利能力突出。"
+    },
+    {
+      "claim_id": "cl_0003",
+      "section_name": "financial_analysis",
+      "reasons": [
+        "missing_metric_lineage"
+      ],
+      "evidence_ids": [
+        "600519_FY2024_eastmoney_financials_cashflow_4fec8a9bf5",
+        "pdf_section_72451dae6025"
+      ],
+      "metric_lineage_ids": [],
+      "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+      "suggested_data_source": "official filing or structured financial statement for target period",
+      "claim_text": "经营活动现金流净额924.64亿元，同比增长38.85%，现金创造能力强。"
+    },
+    {
+      "claim_id": "cl_0004",
+      "section_name": "financial_analysis",
+      "reasons": [
+        "missing_metric_lineage"
+      ],
+      "evidence_ids": [
+        "600519_FY2024_eastmoney_financials_balance_14150e8ae3"
+      ],
+      "metric_lineage_ids": [],
+      "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+      "suggested_data_source": "official filing or structured financial statement for target period",
+      "claim_text": "资产负债率约19.0%，财务结构稳健。"
+    }
+  ]
+}

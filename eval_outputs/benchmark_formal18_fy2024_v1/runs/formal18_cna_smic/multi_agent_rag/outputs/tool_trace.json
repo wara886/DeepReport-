@@ -1,0 +1,315 @@
+{
+  "schema_version": "tool_trace.v1",
+  "tool_call_count": 11,
+  "successful_call_count": 11,
+  "failed_call_count": 0,
+  "calls": [
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "calculate_financial_ratios",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "rows"
+        ],
+        "rows_count": 10
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.002,
+      "evidence_ids": [
+        "688981_FY2024_cninfo_be04192fe4",
+        "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+        "688981_FY2024_eastmoney_financials_cashflow_65b079c80e",
+        "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+        "pdf_section_749ce4b54ba1",
+        "pdf_section_860902e95b9e",
+        "pdf_section_8a5a315442ed",
+        "pdf_section_8c1fc0057c74",
+        "pdf_section_b3d65bf0f1ad",
+        "pdf_section_d5ddf6c76957"
+      ],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_trend_features",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "rows"
+        ],
+        "rows_count": 1
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.005,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_three_statement_view",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "coverage",
+          "rows",
+          "source_record_count"
+        ],
+        "rows_count": 0
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_peer_comparison",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "period",
+          "raw_data_root",
+          "symbol"
+        ],
+        "symbol": "688981.SS",
+        "period": "FY2024"
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "peer_count",
+          "peer_rows",
+          "ranking",
+          "target_symbol"
+        ],
+        "peer_count": 0
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "perform_company_valuation",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "period",
+          "raw_data_root",
+          "records",
+          "symbol"
+        ],
+        "records_count": 10,
+        "symbol": "688981.SS",
+        "period": "FY2024"
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "error",
+          "period",
+          "symbol",
+          "valuation_available"
+        ],
+        "valuation_available": false,
+        "symbol": "688981.SS",
+        "period": "FY2024"
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "calculate_financial_ratios",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "rows"
+        ],
+        "rows_count": 10
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.002,
+      "evidence_ids": [
+        "688981_FY2024_cninfo_be04192fe4",
+        "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+        "688981_FY2024_eastmoney_financials_cashflow_65b079c80e",
+        "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+        "pdf_section_749ce4b54ba1",
+        "pdf_section_860902e95b9e",
+        "pdf_section_8a5a315442ed",
+        "pdf_section_8c1fc0057c74",
+        "pdf_section_b3d65bf0f1ad",
+        "pdf_section_d5ddf6c76957"
+      ],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_trend_features",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "rows"
+        ],
+        "rows_count": 1
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.005,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_three_statement_view",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "coverage",
+          "rows",
+          "source_record_count"
+        ],
+        "rows_count": 0
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_peer_comparison",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "period",
+          "raw_data_root",
+          "symbol"
+        ],
+        "symbol": "688981.SS",
+        "period": "FY2024"
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "peer_count",
+          "peer_rows",
+          "ranking",
+          "target_symbol"
+        ],
+        "peer_count": 0
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "perform_company_valuation",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "period",
+          "raw_data_root",
+          "records",
+          "symbol"
+        ],
+        "records_count": 10,
+        "symbol": "688981.SS",
+        "period": "FY2024"
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "error",
+          "period",
+          "symbol",
+          "valuation_available"
+        ],
+        "valuation_available": false,
+        "symbol": "688981.SS",
+        "period": "FY2024"
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "SearchManager",
+      "tool_name": "formal_snapshot_bm25",
+      "input_summary": {
+        "engine": "formal_snapshot_bm25"
+      },
+      "output_summary": {
+        "mode": "formal_snapshot_bm25",
+        "offline_only": true,
+        "record_count": 4,
+        "returned_hit_count": 4
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0,
+      "evidence_ids": [],
+      "artifact_paths": [],
+      "source": "search_engine"
+    }
+  ]
+}

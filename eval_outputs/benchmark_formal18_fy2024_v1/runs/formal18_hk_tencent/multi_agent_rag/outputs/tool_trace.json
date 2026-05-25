@@ -1,0 +1,315 @@
+{
+  "schema_version": "tool_trace.v1",
+  "tool_call_count": 11,
+  "successful_call_count": 11,
+  "failed_call_count": 0,
+  "calls": [
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "calculate_financial_ratios",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "rows"
+        ],
+        "rows_count": 10
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.002,
+      "evidence_ids": [
+        "00700_FY2024_hkex_annual_report_039e2f7c84",
+        "pdf_section_08d3f1b37d2a",
+        "pdf_section_25316346f545",
+        "pdf_section_398d97c4f0c0",
+        "pdf_section_767809fe1617",
+        "pdf_section_7d683b65aa66",
+        "pdf_section_9f2ffbf49cfb",
+        "pdf_section_a19d216c69f0",
+        "pdf_section_d36230aea32e",
+        "pdf_section_e2911df06472"
+      ],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_trend_features",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "rows"
+        ],
+        "rows_count": 1
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.005,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_three_statement_view",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "coverage",
+          "rows",
+          "source_record_count"
+        ],
+        "rows_count": 0
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_peer_comparison",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "period",
+          "raw_data_root",
+          "symbol"
+        ],
+        "symbol": "0700.HK",
+        "period": "FY2024"
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "peer_count",
+          "peer_rows",
+          "ranking",
+          "target_symbol"
+        ],
+        "peer_count": 0
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "perform_company_valuation",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "period",
+          "raw_data_root",
+          "records",
+          "symbol"
+        ],
+        "records_count": 10,
+        "symbol": "0700.HK",
+        "period": "FY2024"
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "error",
+          "period",
+          "symbol",
+          "valuation_available"
+        ],
+        "valuation_available": false,
+        "symbol": "0700.HK",
+        "period": "FY2024"
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "calculate_financial_ratios",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "rows"
+        ],
+        "rows_count": 10
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.003,
+      "evidence_ids": [
+        "00700_FY2024_hkex_annual_report_039e2f7c84",
+        "pdf_section_08d3f1b37d2a",
+        "pdf_section_25316346f545",
+        "pdf_section_398d97c4f0c0",
+        "pdf_section_767809fe1617",
+        "pdf_section_7d683b65aa66",
+        "pdf_section_9f2ffbf49cfb",
+        "pdf_section_a19d216c69f0",
+        "pdf_section_d36230aea32e",
+        "pdf_section_e2911df06472"
+      ],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_trend_features",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "rows"
+        ],
+        "rows_count": 1
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.005,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_three_statement_view",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "records"
+        ],
+        "records_count": 10
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "coverage",
+          "rows",
+          "source_record_count"
+        ],
+        "rows_count": 0
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "build_peer_comparison",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "period",
+          "raw_data_root",
+          "symbol"
+        ],
+        "symbol": "0700.HK",
+        "period": "FY2024"
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "peer_count",
+          "peer_rows",
+          "ranking",
+          "target_symbol"
+        ],
+        "peer_count": 0
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "DeepAnalyzeAgent",
+      "tool_name": "perform_company_valuation",
+      "input_summary": {
+        "type": "dict",
+        "keys": [
+          "period",
+          "raw_data_root",
+          "records",
+          "symbol"
+        ],
+        "records_count": 10,
+        "symbol": "0700.HK",
+        "period": "FY2024"
+      },
+      "output_summary": {
+        "type": "dict",
+        "keys": [
+          "error",
+          "period",
+          "symbol",
+          "valuation_available"
+        ],
+        "valuation_available": false,
+        "symbol": "0700.HK",
+        "period": "FY2024"
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0.0,
+      "evidence_ids": [],
+      "artifact_paths": []
+    },
+    {
+      "caller_agent": "SearchManager",
+      "tool_name": "formal_snapshot_bm25",
+      "input_summary": {
+        "engine": "formal_snapshot_bm25"
+      },
+      "output_summary": {
+        "mode": "formal_snapshot_bm25",
+        "offline_only": true,
+        "record_count": 1,
+        "returned_hit_count": 1
+      },
+      "success": true,
+      "failure_reason": "",
+      "duration_sec": 0,
+      "evidence_ids": [],
+      "artifact_paths": [],
+      "source": "search_engine"
+    }
+  ]
+}

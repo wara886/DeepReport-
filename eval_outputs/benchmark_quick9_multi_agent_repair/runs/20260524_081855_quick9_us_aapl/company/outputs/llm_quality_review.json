@@ -1,0 +1,51 @@
+{
+  "model_status": "completed",
+  "llm_review_pass": true,
+  "total_score": 1.0,
+  "fatal_issue_count": 0,
+  "dimension_scores": {
+    "professional_report_likeness": 1.0,
+    "investment_insight": 1.0,
+    "fact_period_consistency": 1.0,
+    "company_report_requirement_fit": 1.0,
+    "chart_usefulness": 1.0,
+    "language_quality": 1.0
+  },
+  "verdict": "Needs improvement: report meets basic structure but lacks original analysis and has significant gaps in peer comparison, valuation sensitivity, and investment recommendation.",
+  "issues": [
+    {
+      "issue_id": "llm_review_0001",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "净利润口径不一致：SEC公司事实显示净利润71.675B，而Yahoo调整净利润为29.578B，报告中同时列出但未解释差异。"
+    },
+    {
+      "issue_id": "llm_review_0002",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "同行对比和估值敏感性仅提供缺口说明，未进行实际分析。"
+    },
+    {
+      "issue_id": "llm_review_0003",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "投资建议未给出明确评级，仅维持'中性观察'，不符合赛题要求。"
+    },
+    {
+      "issue_id": "llm_review_0004",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "投资结论部分内容重复（两段完全相同）。"
+    },
+    {
+      "issue_id": "llm_review_0005",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "图表（关键指标、置信度、证据来源）对投资分析辅助作用有限，未能有效支持结论。"
+    }
+  ],
+  "schema_version": "llm_quality_review.v1",
+  "generated_at": "2026-05-24T08:21:19.239717+00:00",
+  "run_dir": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_aapl\\company\\outputs",
+  "model": "deepseek-v4-flash"
+}

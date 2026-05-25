@@ -1,0 +1,53 @@
+{
+  "passed": false,
+  "error_count": 8,
+  "warning_count": 4,
+  "errors": [
+    "Claim cl_0001 references missing evidence ids: pdf_section_02f40fcb770a",
+    "Claim cl_0002 references missing evidence ids: pdf_section_b5954a6c18b4",
+    "Claim cl_0003 references missing evidence ids: pdf_section_0b7b6373841a, pdf_section_74e55aecf4d9",
+    "Claim cl_0004 references missing evidence ids: pdf_section_b6fa9adb309e, pdf_section_72ba0a0243d7",
+    "Claim cl_0005 references missing evidence ids: pdf_section_b5954a6c18b4",
+    "Claim cl_0006 references missing evidence ids: pdf_section_0b7b6373841a",
+    "Claim cl_0007 references missing evidence ids: pdf_section_02f40fcb770a, pdf_section_0b7b6373841a, pdf_section_b6fa9adb309e, pdf_section_b5954a6c18b4, pdf_section_74e55aecf4d9, pdf_section_72ba0a0243d7",
+    "Claim cl_0008 references missing evidence ids: pdf_section_02f40fcb770a, pdf_section_0b7b6373841a, pdf_section_72ba0a0243d7, pdf_section_74e55aecf4d9, pdf_section_b5954a6c18b4, pdf_section_b6fa9adb309e"
+  ],
+  "warnings": [
+    "No financial_analysis claims found.",
+    "Target symbol 600036.SS is not explicitly mentioned in report claims or markdown.",
+    "Target symbol mismatch: expected 600036.SS, but non-peer sections mention ticker-like tokens SS.",
+    "Report has numeric claims but no charts were generated."
+  ],
+  "claim_count": 12,
+  "grounded_claim_count": 1,
+  "expected_symbol": "600036.SS",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 0,
+    "chart_text_consistency": {
+      "chart_count": 0,
+      "passed_chart_count": 0,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": []
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 0,
+      "results": []
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 0,
+      "details": []
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "valuation_not_available"
+    ],
+    "checks": {}
+  }
+}

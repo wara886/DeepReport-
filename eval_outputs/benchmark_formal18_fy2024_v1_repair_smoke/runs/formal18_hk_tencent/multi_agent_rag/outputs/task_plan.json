@@ -1,0 +1,94 @@
+{
+  "overview": "Generate a formal FY2024 frozen-input research report for Tencent Holdings (0700.HK) covering executive summary, three financial statements or gaps, valuation or limitations, risks, and investment conclusion, using only frozen snapshot evidence and explicit citations.",
+  "research_topic": "腾讯控股 (0700.HK) formal FY2024 frozen-input report",
+  "requirements": [
+    "Use frozen snapshot evidence only.",
+    "Cover executive summary, three statements or gaps, valuation or limitation, risks, and investment conclusion.",
+    "Emit explicitly labeled critical claims and body citations."
+  ],
+  "output_format": "markdown, html, json with citations",
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "deep_researcher",
+      "description": "Retrieve frozen snapshot evidence for Tencent Holdings (0700.HK) FY2024, including annual report, financial statements, market data, valuation multiples, and recent news. Use only pre-frozen evidence records. Output ranked evidence candidates with evidence_ids ready for citation.",
+      "parameters": {
+        "symbol": "0700.HK",
+        "period": "FY2024",
+        "source_preferences": [
+          "frozen_local",
+          "yahoo_finance_snapshot"
+        ],
+        "ranking_mode": "relevance"
+      },
+      "dependencies": [],
+      "priority": 5,
+      "expected_output": "List of evidence records with evidence_id, source, type, content summary, and all citation-ready fields."
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "deep_analyze",
+      "description": "Based on evidence from task_001, perform financial statement analysis (compute ratios, trends, three-statement view), valuation (DCF or multiples), peer comparison, and risk identification. Output claims with evidence_ids for every numeric statement. Include a valuation model artifact and sensitivity table if possible.",
+      "parameters": {
+        "symbol": "0700.HK",
+        "period": "FY2024",
+        "analysis_type": "comprehensive_fundamental"
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 4,
+      "expected_output": "Structured claims covering executive summary points, income statement, balance sheet, cash flow gaps, valuation range, key risks, and investment conclusion, each with evidence_ids."
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "final_answer",
+      "description": "Assemble the final report in Markdown, HTML, and JSON formats using claims from task_002. Include sections: Executive Summary, Three Statements or Gaps, Valuation or Limitation, Risks, and Investment Conclusion. Embed all required citations as explicit [evidence_id] markers. Add charts and compliance disclosure.",
+      "parameters": {
+        "report_type": "company_stock_report",
+        "target_symbol": "0700.HK",
+        "period": "FY2024",
+        "output_formats": [
+          "markdown",
+          "html",
+          "json"
+        ]
+      },
+      "dependencies": [
+        "task_002"
+      ],
+      "priority": 3,
+      "expected_output": "Three artifacts (markdown, html, json) complete with citations, charts attached, and compliance disclosure."
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "verifier",
+      "description": "Verify the final report from task_003: check that every material factual claim has an explicit evidence_id citation, no unsupported numbers or conclusions, sections are complete, and frozen snapshot constraint is met. If issues found, return revision brief to be resolved before final output.",
+      "parameters": {
+        "verification_type": "full_compliance",
+        "frozen_input_required": true
+      },
+      "dependencies": [
+        "task_003"
+      ],
+      "priority": 2,
+      "expected_output": "Verification pass or revision brief with specific issues to fix."
+    }
+  ],
+  "data_sources": [
+    "Tencent Holdings FY2024 Annual Report (frozen)",
+    "Yahoo Finance snapshot for 0700.HK (frozen)",
+    "Market data snapshots (PE, PB, EV/EBITDA)",
+    "Analyst consensus snapshot (if available frozen)"
+  ],
+  "citations_required": true,
+  "final_outputs": [
+    "report_en.md",
+    "report_en.html",
+    "report_en.json",
+    "charts/*.png",
+    "citations.json",
+    "compliance_disclosure.md"
+  ],
+  "fallback_used": false
+}

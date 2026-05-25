@@ -1,0 +1,23 @@
+[
+  {
+    "citation_id": "ref_001",
+    "evidence_id": "sec_companyfacts_googl_565a4159b3",
+    "title": "GOOGL SEC company facts",
+    "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001652044.json",
+    "source_type": "sec_companyfacts",
+    "source_authority": "official",
+    "authority_score": 1.0,
+    "publish_time": "2025-02-05",
+    "trust_level": "high",
+    "claim_ids": [
+      "cl_0001",
+      "cl_0002",
+      "cl_0003",
+      "cl_0004",
+      "cl_0005",
+      "cl_0006"
+    ],
+    "used_in_report": true,
+    "content_preview": "SEC companyfacts FY2024 supported metrics for GOOGL: RevenueFromContractWithCustomerExcludingAssessedTax: 350018000000 (USD, 2024-12-31); NetIncomeLoss: 100118000000 (USD, 2024-12-31); Assets: 450256000000 (USD, 2024-12-31); CashAndCashEqui"
+  }
+]

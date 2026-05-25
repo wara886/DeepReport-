@@ -1,0 +1,42 @@
+{
+  "passed": true,
+  "error_count": 0,
+  "warning_count": 2,
+  "errors": [],
+  "warnings": [
+    "No financial_analysis claims found.",
+    "Report has numeric claims but no charts were generated."
+  ],
+  "claim_count": 9,
+  "grounded_claim_count": 1,
+  "expected_symbol": "NVDA",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 0,
+    "chart_text_consistency": {
+      "chart_count": 0,
+      "passed_chart_count": 0,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": []
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 0,
+      "results": []
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 0,
+      "details": []
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "valuation_not_available"
+    ],
+    "checks": {}
+  }
+}

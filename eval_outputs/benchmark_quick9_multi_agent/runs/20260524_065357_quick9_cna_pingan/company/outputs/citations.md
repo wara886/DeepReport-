@@ -1,0 +1,40 @@
+## 参考来源
+
+- [pdf_section_f130da89ab7b] PDF section: business_overview (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-29/1225235613.PDF
+  - 支持结论: cl_0001, cl_0004, cl_0015
+- [pdf_section_dd37d879668f] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-29/1225235613.PDF
+  - 支持结论: cl_0002, cl_0005, cl_0015
+- [pdf_section_e746cdcbf2f3] PDF section: financial_statements (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-29/1225235613.PDF
+  - 支持结论: cl_0003, cl_0015
+- [pdf_section_929154e9ecfa] PDF section: financial_statements (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-29/1225235613.PDF
+  - 支持结论: cl_0003, cl_0015
+- [601318_2026Q1_eastmoney_financials_income_3364d4d44d] 601318 Eastmoney income financial table (eastmoney_financials/official, 2026-04-29 00:00:00) - https://data.eastmoney.com/bbsj/601318.html
+  - 支持结论: cl_0006, cl_0009, cl_0010, cl_0011, cl_0012, cl_0013, cl_0014, cl_0015, cl_0016, cl_0017, cl_0018, cl_0019, cl_0020
+- [601318_2026Q1_eastmoney_financials_balance_0fed348191] 601318 Eastmoney balance financial table (eastmoney_financials/official, 2026-04-29 00:00:00) - https://data.eastmoney.com/bbsj/601318.html
+  - 支持结论: cl_0007, cl_0009, cl_0010, cl_0011, cl_0012, cl_0013, cl_0014, cl_0015, cl_0016, cl_0017, cl_0018, cl_0019, cl_0020
+- [601318_2026Q1_eastmoney_financials_cashflow_66f5ea1caa] 601318 Eastmoney cashflow financial table (eastmoney_financials/official, 2026-04-29 00:00:00) - https://data.eastmoney.com/bbsj/601318.html
+  - 支持结论: cl_0008, cl_0009, cl_0010, cl_0011, cl_0012, cl_0013, cl_0014, cl_0015, cl_0016, cl_0017, cl_0018, cl_0019, cl_0020
+- [601318_2026Q1_cninfo_44b1a686b1] 中国平安2025年年度报告摘要 (cninfo_announcement/official, 1774540800000) - http://static.cninfo.com.cn/finalpage/2026-03-27/1225038326.PDF
+  - 支持结论: cl_0015
+- [601318_2026Q1_cninfo_546b2760c8] 中国平安2026年第一季度报告 (cninfo_announcement/official, 1777392000000) - http://static.cninfo.com.cn/finalpage/2026-04-29/1225235613.PDF
+  - 支持结论: cl_0015
+- [601318_2026Q1_cninfo_9a016922ce] 中国平安：平安银行股份有限公司2026年第一季度报告 (cninfo_announcement/official, 1777046400000) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225193720.PDF
+  - 支持结论: cl_0015
+- [pdf_section_f942515305ff] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-29/1225235613.PDF
+  - 支持结论: 未关联
+- [pdf_section_8af154814f60] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-29/1225235613.PDF
+  - 支持结论: 未关联
+- [pdf_section_14f544370e9b] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-29/1225235613.PDF
+  - 支持结论: 未关联
+- [pdf_section_57ba4dca9785] PDF section: financial_statements (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225193720.PDF
+  - 支持结论: 未关联
+- [pdf_section_bf812aa6c3ce] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225193720.PDF
+  - 支持结论: 未关联
+- [pdf_section_614d3a660ddc] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225193720.PDF
+  - 支持结论: 未关联
+- [pdf_section_34919843d577] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225193720.PDF
+  - 支持结论: 未关联
+- [pdf_section_b630018a9d39] PDF section: financial_statements (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225193720.PDF
+  - 支持结论: 未关联
+- [pdf_section_8202bfa15eeb] PDF section: management_discussion (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225193720.PDF
+  - 支持结论: 未关联

@@ -1,0 +1,188 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "financial_analysis",
+    "claim_text": "2024年度不进行利润分配，尚需股东大会审议。",
+    "evidence_ids": [
+      "pdf_section_8a5a315442ed"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.9,
+    "notes": "来自年度报告利润分配预案。"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "strategy_business",
+    "claim_text": "管理层讨论与经营情况 PDF 片段显示：中芯国际集成电路制造有限公司2024 年年度报告 2 / 222 重要提示 一、本公司董事会及董事和高级管理人员保证年度报告内容的真实性、准确性、完整性，不存在 虚假记载、误导性陈述或重大遗漏，并承担个别和连带的法律责任。 二、公司上市时未盈利且尚未实现盈利 □是 √否 三、重大风险提示 公司已在本报告中详细阐述公司在生产经营过程中可能面临的各种风险及应对措施，敬请查 阅本报告“第四节管理层讨论与分析”之“四、风险因素”。 四、公司全…；中芯国际集成电路制造有限公司2024 年年度报告 4 / 222 目录 第一节 释义 .................................................................. 5 第二节 致股东的信 ............................................................ 6 第三节 公司简介和主要财务指标 ..................…",
+    "evidence_ids": [
+      "pdf_section_8a5a315442ed",
+      "pdf_section_b3d65bf0f1ad"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "ownership_governance",
+    "claim_text": "股东结构、治理或管理层 治理复核应聚焦董事会监督、股权稀释、管理层激励、重大关联交易和信息披露及时性；当前证据链将治理事项作为风险约束纳入投资结论，而不把治理信息缺口写成确定性负面判断。",
+    "evidence_ids": [
+      "pdf_section_8c1fc0057c74",
+      "pdf_section_d5ddf6c76957"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "risks",
+    "claim_text": "风险提示 PDF 片段显示：中芯国际集成电路制造有限公司2024 年年度报告 2 / 222 重要提示 一、本公司董事会及董事和高级管理人员保证年度报告内容的真实性、准确性、完整性，不存在 虚假记载、误导性陈述或重大遗漏，并承担个别和连带的法律责任。 二、公司上市时未盈利且尚未实现盈利 □是 √否 三、重大风险提示 公司已在本报告中详细阐述公司在生产经营过程中可能面临的各种风险及应对措施，敬请查 阅本报告“第四节管理层讨论与分析”之“四、风险因素”。 四、公司全…",
+    "evidence_ids": [
+      "pdf_section_749ce4b54ba1"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "ownership_governance",
+    "claim_text": "PDF 治理复核应聚焦董事会监督、股权稀释、管理层激励、重大关联交易和信息披露及时性；当前证据链将治理事项作为风险约束纳入投资结论，而不把治理信息缺口写成确定性负面判断。",
+    "evidence_ids": [
+      "pdf_section_8c1fc0057c74"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.72,
+    "notes": "来自 PDF insight，按 section type 分类提取的可引用内容"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "risks",
+    "claim_text": "PDF 文件中关于风险因素提供了以下参考信息： 中芯国际集成电路制造有限公司2024 年年度报告 2 / 222 重要提示 一、本公司董事会及董事和高级管理人员保证年度报告内容的真实性、准确性、完整性，不存在 虚假记载、误导性陈述或重大遗漏，并承担个别和连带的法律责任。 二、公司上市时未盈利且尚未实现盈利 □是 √否 三、重大风险提示 公司已在本报告中详细阐述公司在生产经营过程中可能面临的各种风险及应对措施，敬请查 阅本报告“第四节管理层讨论与分析”之“四、风险因素”。 四、公司全…",
+    "evidence_ids": [
+      "pdf_section_749ce4b54ba1"
+    ],
+    "numeric_values": {},
+    "risk_level": "high",
+    "confidence": 0.72,
+    "notes": "来自 PDF insight，按 section type 分类提取的可引用内容",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "valuation",
+    "claim_text": "688981.SS  估值不可用原因：当前公开证据缺少市值或股本口径、净利润、净资产/股东权益、收入，因此不能正式计算 P/E、P/B、P/S；报告应把这些缺口列为下一轮检索任务。",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e",
+      "pdf_section_8a5a315442ed",
+      "pdf_section_749ce4b54ba1",
+      "pdf_section_8c1fc0057c74",
+      "pdf_section_d5ddf6c76957",
+      "pdf_section_b3d65bf0f1ad",
+      "pdf_section_860902e95b9e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "最小估值模型缺口披露。",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "business_overview",
+    "claim_text": "688981.SS 的证据覆盖包括 10 条记录，横跨 3 类来源。",
+    "evidence_ids": [
+      "688981_FY2024_cninfo_be04192fe4",
+      "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e",
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+      "pdf_section_749ce4b54ba1",
+      "pdf_section_860902e95b9e",
+      "pdf_section_8a5a315442ed",
+      "pdf_section_8c1fc0057c74",
+      "pdf_section_b3d65bf0f1ad",
+      "pdf_section_d5ddf6c76957"
+    ],
+    "numeric_values": {
+      "evidence_count": 10.0,
+      "unique_sources": 3.0
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由证据覆盖统计生成。"
+  },
+  {
+    "claim_id": "cl_0009",
+    "section_name": "executive_summary",
+    "claim_text": "688981.SS 暂无完整执行摘要，以下基于已有证据和报告结构填充。关键财务指标已绑定 evidence_id/citation 并由 verifier 校验。",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.7,
+    "notes": "执行摘要 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0010",
+    "section_name": "peer_compare",
+    "claim_text": "688981.SS 属于上市公司类别，同行可比分析框架基于收入增长/利润率/ROE/估值/杠杆等维度。当前公开证据尚未覆盖完整同行数据，以下为框架性分析。",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "同行对比 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "peer_comparison"
+  },
+  {
+    "claim_id": "cl_0011",
+    "section_name": "valuation_sensitivity",
+    "claim_text": "敏感性分析框架覆盖宏观需求/成本费用/竞争格局/监管政策等变量。当前证据不足以量化各变量影响，以下说明缺失数据对敏感性判断的约束。",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "敏感性分析 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0012",
+    "section_name": "conclusion",
+    "claim_text": "关于688981.SS 的投资结论需要综合主营业务增长和经营效率改善等驱动因素和市场竞争、成本波动和监管变化等约束条件。当前公开证据尚不完整，以下为基于现有信息的初步判断。",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_balance_199f3bd775",
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6",
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "投资结论 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  }
+]

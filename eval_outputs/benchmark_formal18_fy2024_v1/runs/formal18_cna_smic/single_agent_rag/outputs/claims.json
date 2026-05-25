@@ -1,0 +1,99 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "revenue",
+    "claim_text": "Total operating revenue for FY2024 was ¥57,795.57 million.",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "revenue"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "margin",
+    "claim_text": "Net profit margin was approximately 6.4% (net profit ¥3,698.665 million / revenue ¥57,795.57 million).",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "margin"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "cash_flow",
+    "claim_text": "Net operating cash flow was ¥22,658.629 million, indicating strong cash generation.",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "cash_flow"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "risk",
+    "claim_text": "Net investing cash flow was -¥30,669.293 million, exceeding operating cash flow, suggesting heavy capital expenditure.",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "risk",
+    "claim_text": "Net financing cash flow was ¥9,998.953 million, indicating reliance on external financing.",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "valuation",
+    "claim_text": "Valuation metrics (e.g., P/E, market cap) cannot be computed from the provided evidence as stock price and shares outstanding are missing.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "investment_rationale",
+    "claim_text": "Strong operating cash flow supports investment, but low net profit margin and heavy capex pose profitability and financing risks.",
+    "evidence_ids": [
+      "688981_FY2024_eastmoney_financials_cashflow_65b079c80e",
+      "688981_FY2024_eastmoney_financials_income_c483ec25b6"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  }
+]

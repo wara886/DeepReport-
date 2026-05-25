@@ -1,0 +1,24 @@
+{
+  "overall_score": 0.8063,
+  "scores": {
+    "authority_score": 1.0,
+    "numeric_lineage_score": 0.625,
+    "multimodal_consistency_score": 1.0,
+    "valuation_reproducibility_score": 1.0,
+    "gap_resolution_score": 0.0
+  },
+  "weights": {
+    "authority_score": 0.25,
+    "numeric_lineage_score": 0.25,
+    "multimodal_consistency_score": 0.18,
+    "valuation_reproducibility_score": 0.22,
+    "gap_resolution_score": 0.1
+  },
+  "passed": true,
+  "diagnostics": {
+    "evidence_count": 9,
+    "metric_count": 4,
+    "verification_passed": true,
+    "open_gap_count": 0
+  }
+}

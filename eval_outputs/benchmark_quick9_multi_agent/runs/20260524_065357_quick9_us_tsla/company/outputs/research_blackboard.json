@@ -1,0 +1,404 @@
+{
+  "schema_version": "research_blackboard.v1",
+  "symbol": "TSLA",
+  "target_period": "2026Q1",
+  "company_identity": {
+    "symbol": "TSLA",
+    "canonical_symbol": "TSLA",
+    "company_name": "Tesla, Inc.",
+    "market": "us",
+    "exchange": "US",
+    "currency": "USD",
+    "country_region": "United States",
+    "is_listed": true,
+    "resolution_confidence": 1.0,
+    "data_source_plan": {
+      "symbol": "TSLA",
+      "market": "us",
+      "exchange": "US",
+      "engines": [
+        "local_real_data",
+        "sec_edgar",
+        "yahoo_finance",
+        "independent_macro",
+        "tavily",
+        "local_evidence"
+      ],
+      "primary_sources": [
+        "sec_edgar",
+        "yahoo_finance"
+      ],
+      "free_public_only": true,
+      "requires_gap_explanation_when_missing": [
+        "income_statement",
+        "balance_sheet",
+        "cash_flow",
+        "valuation",
+        "peer_compare"
+      ]
+    },
+    "match_type": "symbol_token",
+    "needs_confirmation": false,
+    "reason": "resolved",
+    "sector": "Consumer Cyclical",
+    "industry": "Auto Manufacturers",
+    "business_summary": "Manufactures electric vehicles and energy storage systems.",
+    "official_sources": [
+      "sec_edgar",
+      "yahoo_finance"
+    ],
+    "latest_disclosure_period": "2025Q4",
+    "entity_resolution": {
+      "requested_symbol": "TSLA",
+      "research_topic": "Generate a company stock research report for Tesla (TSLA) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "resolved_symbol": "TSLA",
+      "resolution_source": "symbol",
+      "topic_resolution": {
+        "input": "Generate a company stock research report for Tesla (TSLA) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+        "resolved": true,
+        "symbol": "TSLA",
+        "company_name": "Tesla, Inc.",
+        "match_type": "symbol_token",
+        "confidence": 1.0,
+        "profile_path": "data\\raw\\real_data\\TSLA\\2025Q4\\company_profile.json",
+        "sector": "Consumer Cyclical",
+        "industry": "Auto Manufacturers",
+        "business_summary": "Manufactures electric vehicles and energy storage systems.",
+        "period": "2025Q4",
+        "ambiguous": false
+      },
+      "symbol_resolution": {
+        "input": "TSLA",
+        "resolved": true,
+        "symbol": "TSLA",
+        "company_name": "Tesla, Inc.",
+        "match_type": "symbol_token",
+        "confidence": 1.0,
+        "profile_path": "data\\raw\\real_data\\TSLA\\2025Q4\\company_profile.json",
+        "sector": "Consumer Cyclical",
+        "industry": "Auto Manufacturers",
+        "business_summary": "Manufactures electric vehicles and energy storage systems.",
+        "period": "2025Q4",
+        "ambiguous": false
+      },
+      "conflict": false
+    }
+  },
+  "market_route": {
+    "market": "us",
+    "exchange": "US",
+    "data_source_plan": {
+      "symbol": "TSLA",
+      "market": "us",
+      "exchange": "US",
+      "engines": [
+        "local_real_data",
+        "sec_edgar",
+        "yahoo_finance",
+        "independent_macro",
+        "tavily",
+        "local_evidence"
+      ],
+      "primary_sources": [
+        "sec_edgar",
+        "yahoo_finance"
+      ],
+      "free_public_only": true,
+      "requires_gap_explanation_when_missing": [
+        "income_statement",
+        "balance_sheet",
+        "cash_flow",
+        "valuation",
+        "peer_compare"
+      ]
+    },
+    "primary_sources": [
+      "sec_edgar",
+      "yahoo_finance"
+    ],
+    "planned_engines": [
+      "local_real_data",
+      "sec_edgar",
+      "yahoo_finance",
+      "independent_macro",
+      "tavily",
+      "serper",
+      "local_evidence"
+    ],
+    "attempted_engines": [
+      "local_real_data",
+      "sec_edgar",
+      "yahoo_finance",
+      "independent_macro",
+      "tavily",
+      "serper",
+      "local_evidence"
+    ],
+    "missing_primary_sources": [],
+    "route_coverage": 1.0
+  },
+  "industry_profile": {
+    "industry": "Auto Manufacturers",
+    "sector": "Consumer Cyclical",
+    "business_summary": "TSLA SEC company facts SEC companyfacts latest supported metrics for TSLA: Revenues: 22387000000 (USD, 2026-03-31); RevenueFromContractWithCustomerExcludingAssessedTax: 22387000000 (USD, 2026-03-31); NetIncomeLoss: 47...",
+    "confidence": 0.9,
+    "source_priority": "official_disclosure",
+    "evidence_ids": [
+      "sec_companyfacts_tsla_f31cc88549"
+    ]
+  },
+  "period_state": {
+    "target_period": "2026Q1",
+    "latest_available_disclosure_period": "2026Q1",
+    "financial_data_basis": "quarterly or latest available public disclosure",
+    "market_data_as_of": "2026-05-22",
+    "has_data_delay": false,
+    "notes": []
+  },
+  "coverage": {
+    "evidence_count": 6,
+    "official_evidence_count": 1,
+    "source_types": [
+      "fred_series",
+      "market_api",
+      "sec_companyfacts"
+    ],
+    "three_statement": {
+      "income": true,
+      "balance": true,
+      "cash_flow": true
+    },
+    "peer_compare": {
+      "available": true,
+      "reason": ""
+    },
+    "valuation": {
+      "available": false,
+      "method": "",
+      "missing_inputs": [
+        "annual_or_ttm_free_cash_flow"
+      ]
+    },
+    "risk": {
+      "available": true,
+      "evidence_ids": [
+        "sec_companyfacts_tsla_f31cc88549",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_finance_bbc5d5481f"
+      ]
+    }
+  },
+  "role_outputs": {
+    "identity_profile": {
+      "status": "complete",
+      "confidence": 0.84,
+      "source": "official_disclosure_or_company_profile",
+      "evidence_ids": [
+        "sec_companyfacts_tsla_f31cc88549"
+      ],
+      "findings": [
+        "Resolved analysis target as TSLA for 2026Q1.",
+        "Official/company evidence records available: 1."
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "FinalAnswer may use company identity and business profile from verified evidence.",
+      "owner_agent": "DeepAnalyzeAgent",
+      "verified": true
+    },
+    "three_statement_analysis": {
+      "status": "complete",
+      "confidence": 0.86,
+      "source": "financial_statement_view_and_metric_lineage",
+      "evidence_ids": [
+        "sec_companyfacts_tsla_f31cc88549"
+      ],
+      "findings": [
+        "Three-statement coverage income=True, balance=True, cash_flow=True.",
+        "Financial metric lineage count: 18.",
+        "盈利摘要：收入 22,387,000,000 USD；毛利率 21.08 pct；净利润 477,000,000 USD [TSLA_2026Q1_yahoo_financials_3f153e7fec]",
+        "资产负债摘要：总资产 143,724,000,000 USD；总负债 58,922,000,000 USD；权益 84,802,000,000 USD [TSLA_2026Q1_yahoo_financials_3f153e7fec]",
+        "现金流摘要：经营现金流 3,937,000,000 USD；自由现金流 1,444,000,000 USD；资本开支 2,493,000,000 USD [TSLA_2026Q1_yahoo_financials_3f153e7fec]",
+        "Statement view coverage: {'statements': {'income_statement': 6, 'balance_sheet': 5, 'cash_flow_statement': 6}, 'has_three_statement_view': True, 'line_item_count': 17}."
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "Financial analysis can discuss income statement, balance sheet, and cash flow together.",
+      "owner_agent": "DeepAnalyzeAgent",
+      "verified": true
+    },
+    "peer_analysis": {
+      "status": "missing",
+      "confidence": 0.3,
+      "source": "peer_comparison_tool",
+      "evidence_ids": [
+        "sec_companyfacts_tsla_f31cc88549",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_finance_bbc5d5481f"
+      ],
+      "findings": [
+        "Peer context contains 0 comparable companies."
+      ],
+      "missing_inputs": [
+        "peer_universe",
+        "peer_financial_metrics"
+      ],
+      "impact_on_report": "Peer section must be framed as a data gap or qualitative context, not a ranked conclusion.",
+      "owner_agent": "DeepAnalyzeAgent",
+      "verified": false
+    },
+    "valuation_analysis": {
+      "status": "partial",
+      "confidence": 0.5,
+      "source": "valuation_tool_and_market_inputs",
+      "evidence_ids": [
+        "sec_companyfacts_tsla_f31cc88549",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_finance_bbc5d5481f"
+      ],
+      "findings": [
+        "Valuation availability: False.",
+        "Valuation method: not_available.",
+        "估值缺口：annual_or_ttm_free_cash_flow。"
+      ],
+      "missing_inputs": [
+        "annual_or_ttm_free_cash_flow"
+      ],
+      "impact_on_report": "Valuation section must list missing inputs and avoid target-price style conclusions.",
+      "owner_agent": "DeepAnalyzeAgent",
+      "verified": false
+    },
+    "risk_analysis": {
+      "status": "complete",
+      "confidence": 0.72,
+      "source": "risk_claims_and_evidence",
+      "evidence_ids": [
+        "sec_companyfacts_tsla_f31cc88549",
+        "TSLA_2026Q1_yahoo_financials_3f153e7fec",
+        "TSLA_2026Q1_yahoo_finance_bbc5d5481f"
+      ],
+      "findings": [
+        "Risk-related claim evidence count: 3.",
+        "TSLA 的主要风险包括三类：第一，行业竞争和供给扩张可能压缩高毛利业务的持续性；第二，宏观利率、资本开支周期和云厂商采购节奏会放大收入波动；第三，当前核心季度三表采用结构化降级来源，若后续一手公告与该数据不一致，盈利质量、自由现金流和估值结论都需要重算。"
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "Risk section can cite identified operational or market risk evidence.",
+      "owner_agent": "DeepAnalyzeAgent",
+      "verified": true
+    }
+  },
+  "agent_writes": [
+    {
+      "agent": "DeepResearcherAgent",
+      "task_type": "deep_researcher",
+      "writes": [
+        "evidence_candidates",
+        "search_meta",
+        "market_route"
+      ],
+      "evidence_count": 0,
+      "claim_count": 0,
+      "output_keys": [
+        "evidence_candidates",
+        "query",
+        "search_meta"
+      ]
+    },
+    {
+      "agent": "BrowserAgent",
+      "task_type": "browser",
+      "writes": [
+        "evidence_records",
+        "pdf_artifacts"
+      ],
+      "evidence_count": 6,
+      "claim_count": 0,
+      "output_keys": [
+        "evidence_records"
+      ]
+    },
+    {
+      "agent": "BrowserAgent",
+      "task_type": "browser",
+      "writes": [
+        "evidence_records",
+        "pdf_artifacts"
+      ],
+      "evidence_count": 6,
+      "claim_count": 0,
+      "output_keys": [
+        "evidence_records"
+      ]
+    },
+    {
+      "agent": "DeepAnalyzeAgent",
+      "task_type": "deep_analyze",
+      "writes": [
+        "claims",
+        "analysis_artifacts",
+        "coverage",
+        "role_outputs",
+        "identity_profile",
+        "three_statement_analysis",
+        "peer_analysis",
+        "valuation_analysis",
+        "risk_analysis"
+      ],
+      "evidence_count": 6,
+      "claim_count": 17,
+      "output_keys": [
+        "analysis_artifacts",
+        "claims"
+      ]
+    },
+    {
+      "agent": "FinalAnswerAgent",
+      "task_type": "final_answer",
+      "writes": [
+        "markdown",
+        "report_json"
+      ],
+      "evidence_count": 6,
+      "claim_count": 17,
+      "output_keys": [
+        "html",
+        "markdown",
+        "report_json",
+        "summary"
+      ]
+    },
+    {
+      "agent": "VerifierAgent",
+      "task_type": "verifier",
+      "writes": [
+        "verification_report",
+        "gap_resolution_trace"
+      ],
+      "evidence_count": 6,
+      "claim_count": 17,
+      "output_keys": [
+        "verification_report"
+      ]
+    },
+    {
+      "agent": "GapResolverAgent",
+      "task_type": "gap_resolver",
+      "writes": [
+        "gap_resolution_trace",
+        "data_repair_summary",
+        "repair_constraints"
+      ],
+      "evidence_count": 6,
+      "claim_count": 17,
+      "output_keys": [
+        "data_repair_summary",
+        "gap_resolution_trace",
+        "repair_constraints",
+        "required_backfill_sections"
+      ]
+    }
+  ],
+  "critic": {
+    "pre_write_passed": false,
+    "objections": [],
+    "recommendations": []
+  }
+}

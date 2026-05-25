@@ -1,0 +1,456 @@
+{
+  "ratio_rows": [
+    {
+      "sample_id": "600036_FY2024_eastmoney_financials_balance_6afe41b5f9",
+      "symbol": "600036.SS",
+      "period": "FY2024",
+      "source_type": "eastmoney_financials",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600036_FY2024_eastmoney_financials_income_4823d2e9ca",
+      "symbol": "600036.SS",
+      "period": "FY2024",
+      "source_type": "eastmoney_financials",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600036_FY2024_eastmoney_financials_cashflow_1eeaa83979",
+      "symbol": "600036.SS",
+      "period": "FY2024",
+      "source_type": "eastmoney_financials",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "600036_FY2024_cninfo_027bef3dcb",
+      "symbol": "600036.SS",
+      "period": "FY2024",
+      "source_type": "cninfo_announcement",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_02f40fcb770a",
+      "symbol": "600036.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_0b7b6373841a",
+      "symbol": "600036.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_b6fa9adb309e",
+      "symbol": "600036.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_b5954a6c18b4",
+      "symbol": "600036.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_74e55aecf4d9",
+      "symbol": "600036.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    },
+    {
+      "sample_id": "pdf_section_72ba0a0243d7",
+      "symbol": "600036.SS",
+      "period": "FY2024",
+      "source_type": "pdf_section",
+      "revenue_billion": null,
+      "revenue_growth_pct": null,
+      "gross_margin_pct": null,
+      "net_margin_pct": null,
+      "roe_pct": null,
+      "roa_pct": null,
+      "operating_cash_flow_billion": null,
+      "free_cash_flow_billion": null
+    }
+  ],
+  "trend_rows": [
+    {
+      "symbol": "600036.SS",
+      "period": "FY2024",
+      "evidence_count": 10,
+      "unique_sources": 3,
+      "latest_publish_time": "2026-03-28 00:00:00",
+      "sample_ids": "600036_FY2024_cninfo_027bef3dcb|600036_FY2024_eastmoney_financials_balance_6afe41b5f9|600036_FY2024_eastmoney_financials_cashflow_1eeaa83979|600036_FY2024_eastmoney_financials_income_4823d2e9ca|pdf_section_02f40fcb770a|pdf_section_0b7b6373841a|pdf_section_72ba0a0243d7|pdf_section_74e55aecf4d9|pdf_section_b5954a6c18b4|pdf_section_b6fa9adb309e"
+    }
+  ],
+  "statement_view": {
+    "rows": [],
+    "coverage": {
+      "statements": {},
+      "has_three_statement_view": false,
+      "line_item_count": 0
+    },
+    "source_record_count": 3
+  },
+  "financial_metrics": {
+    "metrics": [],
+    "metric_count": 0,
+    "rejected_metrics": [],
+    "rejected_metric_count": 0,
+    "coverage": {
+      "required_metrics": [
+        "revenue",
+        "net_income",
+        "gross_margin",
+        "free_cash_flow"
+      ],
+      "present_metrics": [],
+      "has_core_metric_lineage": false,
+      "standard_metric_count": 0,
+      "standard_has_core_metric_lineage": false,
+      "rejected_metric_count": 0
+    }
+  },
+  "tables": [],
+  "peer_context": {
+    "target_symbol": "600036.SS",
+    "peer_rows": [],
+    "peer_count": 0,
+    "ranking": {}
+  },
+  "valuation": {
+    "symbol": "600036.SS",
+    "period": "FY2024",
+    "valuation_available": false,
+    "error": "target financials not found"
+  },
+  "valuation_model": {},
+  "valuation_assumptions": {},
+  "valuation_sensitivity": {},
+  "identity_profile": {
+    "status": "complete",
+    "confidence": 0.84,
+    "source": "official_disclosure_or_company_profile",
+    "evidence_ids": [
+      "600036_FY2024_eastmoney_financials_balance_6afe41b5f9",
+      "600036_FY2024_eastmoney_financials_income_4823d2e9ca",
+      "600036_FY2024_eastmoney_financials_cashflow_1eeaa83979",
+      "600036_FY2024_cninfo_027bef3dcb",
+      "pdf_section_02f40fcb770a",
+      "pdf_section_0b7b6373841a",
+      "pdf_section_b6fa9adb309e",
+      "pdf_section_b5954a6c18b4"
+    ],
+    "findings": [
+      "Resolved analysis target as 600036.SS for FY2024.",
+      "Official/company evidence records available: 13."
+    ],
+    "missing_inputs": [],
+    "impact_on_report": "FinalAnswer may use company identity and business profile from verified evidence.",
+    "owner_agent": "IdentityAgent",
+    "verified": true,
+    "reviewed_objections": []
+  },
+  "three_statement_analysis": {
+    "status": "partial",
+    "confidence": 0.58,
+    "source": "financial_statement_view_and_metric_lineage",
+    "evidence_ids": [
+      "600036_FY2024_eastmoney_financials_balance_6afe41b5f9",
+      "600036_FY2024_eastmoney_financials_income_4823d2e9ca",
+      "600036_FY2024_eastmoney_financials_cashflow_1eeaa83979",
+      "600036_FY2024_cninfo_027bef3dcb",
+      "pdf_section_02f40fcb770a",
+      "pdf_section_0b7b6373841a",
+      "pdf_section_b6fa9adb309e",
+      "pdf_section_b5954a6c18b4",
+      "pdf_section_74e55aecf4d9",
+      "pdf_section_72ba0a0243d7"
+    ],
+    "findings": [
+      "Three-statement coverage income=False, balance=False, cash_flow=False.",
+      "Financial metric lineage count: 0.",
+      "Statement view coverage: {'statements': {}, 'has_three_statement_view': False, 'line_item_count': 0}."
+    ],
+    "missing_inputs": [
+      "income",
+      "balance",
+      "cash_flow"
+    ],
+    "impact_on_report": "Financial analysis must disclose missing statement coverage and avoid full three-statement conclusions.",
+    "owner_agent": "StatementAgent",
+    "verified": false,
+    "reviewed_objections": []
+  },
+  "peer_analysis": {
+    "status": "missing",
+    "confidence": 0.3,
+    "source": "peer_comparison_tool",
+    "evidence_ids": [
+      "600036_FY2024_eastmoney_financials_balance_6afe41b5f9",
+      "600036_FY2024_eastmoney_financials_income_4823d2e9ca",
+      "600036_FY2024_eastmoney_financials_cashflow_1eeaa83979"
+    ],
+    "findings": [
+      "Peer context contains 0 comparable companies."
+    ],
+    "missing_inputs": [
+      "peer_universe",
+      "peer_financial_metrics"
+    ],
+    "impact_on_report": "Peer section must be framed as a data gap or qualitative context, not a ranked conclusion.",
+    "owner_agent": "PeerAgent",
+    "verified": false,
+    "reviewed_objections": []
+  },
+  "valuation_analysis": {
+    "status": "partial",
+    "confidence": 0.5,
+    "source": "valuation_tool_and_market_inputs",
+    "evidence_ids": [
+      "600036_FY2024_eastmoney_financials_balance_6afe41b5f9",
+      "600036_FY2024_eastmoney_financials_income_4823d2e9ca",
+      "600036_FY2024_eastmoney_financials_cashflow_1eeaa83979",
+      "pdf_section_02f40fcb770a",
+      "pdf_section_0b7b6373841a",
+      "pdf_section_b6fa9adb309e",
+      "pdf_section_b5954a6c18b4",
+      "pdf_section_74e55aecf4d9",
+      "pdf_section_72ba0a0243d7",
+      "600036_FY2024_cninfo_027bef3dcb",
+      "pdf_section_6cde3ec62f76",
+      "pdf_section_db2b7f4f1240"
+    ],
+    "findings": [
+      "Valuation availability: False.",
+      "Valuation method: not_available."
+    ],
+    "missing_inputs": [
+      "valuation_inputs"
+    ],
+    "impact_on_report": "Valuation section must list missing inputs and avoid target-price style conclusions.",
+    "owner_agent": "ValuationAgent",
+    "verified": false,
+    "reviewed_objections": []
+  },
+  "risk_analysis": {
+    "status": "complete",
+    "confidence": 0.72,
+    "source": "risk_claims_and_evidence",
+    "evidence_ids": [
+      "pdf_section_0b7b6373841a",
+      "pdf_section_74e55aecf4d9"
+    ],
+    "findings": [
+      "Risk-related claim evidence count: 2.",
+      "风险提示 PDF 片段显示：招商银行股份有限公司 2024年度报告（A股） 1 目录 目录 2 释义 2 重大风险提示 2 备查文件目录 3 重要提示 4 董事长致辞 7 行长致辞 10 第一章 公司简介 13 第二章 会计数据和财务指标摘要 18 第三章 管理层讨论与分析 18 3.1 总体经营情况分析 18 3.2 利润表分析 25 3.3 资产负债表分析 30 3.4 贷款质量分析 37 3.5 资本充足情况分析 40 3.6 分部经营业绩 40 3.7…；招商银行股份有限公司 2024年度报告（A股） 2 释义 释义 / 重大风险提示 / 备查文件目录 重大风险提示 本公司、本行、招行、招商银行： 招商银行股份有限公司 本集团： 招商银行及其子公司 中国证监会： 中国证券监督管理委员会 香港联交所： 香港联合交易所有限公司 香港上市规则： 香港联交所证券上市规则 招商永隆银行： 招商永隆银行有限公司 招商永隆集团： 招商永隆银行及其子公司 招银金租： 招银金融租赁有限公司 招银国际：…",
+      "PDF 文件中关于风险因素提供了以下参考信息： 招商银行股份有限公司 2024年度报告（A股） 1 目录 目录 2 释义 2 重大风险提示 2 备查文件目录 3 重要提示 4 董事长致辞 7 行长致辞 10 第一章 公司简介 13 第二章 会计数据和财务指标摘要 18 第三章 管理层讨论与分析 18 3.1 总体经营情况分析 18 3.2 利润表分析 25 3.3 资产负债表分析 30 3.4 贷款质量分析 37 3.5 资本充足情况分析 40 3.6 分部经营业绩 40 3.7…"
+    ],
+    "missing_inputs": [],
+    "impact_on_report": "Risk section can cite identified operational or market risk evidence.",
+    "owner_agent": "RiskAgent",
+    "verified": true,
+    "reviewed_objections": []
+  },
+  "role_outputs": {
+    "identity_profile": {
+      "status": "complete",
+      "confidence": 0.84,
+      "source": "official_disclosure_or_company_profile",
+      "evidence_ids": [
+        "600036_FY2024_eastmoney_financials_balance_6afe41b5f9",
+        "600036_FY2024_eastmoney_financials_income_4823d2e9ca",
+        "600036_FY2024_eastmoney_financials_cashflow_1eeaa83979",
+        "600036_FY2024_cninfo_027bef3dcb",
+        "pdf_section_02f40fcb770a",
+        "pdf_section_0b7b6373841a",
+        "pdf_section_b6fa9adb309e",
+        "pdf_section_b5954a6c18b4"
+      ],
+      "findings": [
+        "Resolved analysis target as 600036.SS for FY2024.",
+        "Official/company evidence records available: 13."
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "FinalAnswer may use company identity and business profile from verified evidence.",
+      "owner_agent": "IdentityAgent",
+      "verified": true,
+      "reviewed_objections": []
+    },
+    "three_statement_analysis": {
+      "status": "partial",
+      "confidence": 0.58,
+      "source": "financial_statement_view_and_metric_lineage",
+      "evidence_ids": [
+        "600036_FY2024_eastmoney_financials_balance_6afe41b5f9",
+        "600036_FY2024_eastmoney_financials_income_4823d2e9ca",
+        "600036_FY2024_eastmoney_financials_cashflow_1eeaa83979",
+        "600036_FY2024_cninfo_027bef3dcb",
+        "pdf_section_02f40fcb770a",
+        "pdf_section_0b7b6373841a",
+        "pdf_section_b6fa9adb309e",
+        "pdf_section_b5954a6c18b4",
+        "pdf_section_74e55aecf4d9",
+        "pdf_section_72ba0a0243d7"
+      ],
+      "findings": [
+        "Three-statement coverage income=False, balance=False, cash_flow=False.",
+        "Financial metric lineage count: 0.",
+        "Statement view coverage: {'statements': {}, 'has_three_statement_view': False, 'line_item_count': 0}."
+      ],
+      "missing_inputs": [
+        "income",
+        "balance",
+        "cash_flow"
+      ],
+      "impact_on_report": "Financial analysis must disclose missing statement coverage and avoid full three-statement conclusions.",
+      "owner_agent": "StatementAgent",
+      "verified": false,
+      "reviewed_objections": []
+    },
+    "peer_analysis": {
+      "status": "missing",
+      "confidence": 0.3,
+      "source": "peer_comparison_tool",
+      "evidence_ids": [
+        "600036_FY2024_eastmoney_financials_balance_6afe41b5f9",
+        "600036_FY2024_eastmoney_financials_income_4823d2e9ca",
+        "600036_FY2024_eastmoney_financials_cashflow_1eeaa83979"
+      ],
+      "findings": [
+        "Peer context contains 0 comparable companies."
+      ],
+      "missing_inputs": [
+        "peer_universe",
+        "peer_financial_metrics"
+      ],
+      "impact_on_report": "Peer section must be framed as a data gap or qualitative context, not a ranked conclusion.",
+      "owner_agent": "PeerAgent",
+      "verified": false,
+      "reviewed_objections": []
+    },
+    "valuation_analysis": {
+      "status": "partial",
+      "confidence": 0.5,
+      "source": "valuation_tool_and_market_inputs",
+      "evidence_ids": [
+        "600036_FY2024_eastmoney_financials_balance_6afe41b5f9",
+        "600036_FY2024_eastmoney_financials_income_4823d2e9ca",
+        "600036_FY2024_eastmoney_financials_cashflow_1eeaa83979",
+        "pdf_section_02f40fcb770a",
+        "pdf_section_0b7b6373841a",
+        "pdf_section_b6fa9adb309e",
+        "pdf_section_b5954a6c18b4",
+        "pdf_section_74e55aecf4d9",
+        "pdf_section_72ba0a0243d7",
+        "600036_FY2024_cninfo_027bef3dcb",
+        "pdf_section_6cde3ec62f76",
+        "pdf_section_db2b7f4f1240"
+      ],
+      "findings": [
+        "Valuation availability: False.",
+        "Valuation method: not_available."
+      ],
+      "missing_inputs": [
+        "valuation_inputs"
+      ],
+      "impact_on_report": "Valuation section must list missing inputs and avoid target-price style conclusions.",
+      "owner_agent": "ValuationAgent",
+      "verified": false,
+      "reviewed_objections": []
+    },
+    "risk_analysis": {
+      "status": "complete",
+      "confidence": 0.72,
+      "source": "risk_claims_and_evidence",
+      "evidence_ids": [
+        "pdf_section_0b7b6373841a",
+        "pdf_section_74e55aecf4d9"
+      ],
+      "findings": [
+        "Risk-related claim evidence count: 2.",
+        "风险提示 PDF 片段显示：招商银行股份有限公司 2024年度报告（A股） 1 目录 目录 2 释义 2 重大风险提示 2 备查文件目录 3 重要提示 4 董事长致辞 7 行长致辞 10 第一章 公司简介 13 第二章 会计数据和财务指标摘要 18 第三章 管理层讨论与分析 18 3.1 总体经营情况分析 18 3.2 利润表分析 25 3.3 资产负债表分析 30 3.4 贷款质量分析 37 3.5 资本充足情况分析 40 3.6 分部经营业绩 40 3.7…；招商银行股份有限公司 2024年度报告（A股） 2 释义 释义 / 重大风险提示 / 备查文件目录 重大风险提示 本公司、本行、招行、招商银行： 招商银行股份有限公司 本集团： 招商银行及其子公司 中国证监会： 中国证券监督管理委员会 香港联交所： 香港联合交易所有限公司 香港上市规则： 香港联交所证券上市规则 招商永隆银行： 招商永隆银行有限公司 招商永隆集团： 招商永隆银行及其子公司 招银金租： 招银金融租赁有限公司 招银国际：…",
+        "PDF 文件中关于风险因素提供了以下参考信息： 招商银行股份有限公司 2024年度报告（A股） 1 目录 目录 2 释义 2 重大风险提示 2 备查文件目录 3 重要提示 4 董事长致辞 7 行长致辞 10 第一章 公司简介 13 第二章 会计数据和财务指标摘要 18 第三章 管理层讨论与分析 18 3.1 总体经营情况分析 18 3.2 利润表分析 25 3.3 资产负债表分析 30 3.4 贷款质量分析 37 3.5 资本充足情况分析 40 3.6 分部经营业绩 40 3.7…"
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "Risk section can cite identified operational or market risk evidence.",
+      "owner_agent": "RiskAgent",
+      "verified": true,
+      "reviewed_objections": []
+    }
+  },
+  "claim_rejection_report": {
+    "input_claim_count": 12,
+    "accepted_claim_count": 12,
+    "rejected_claim_count": 0,
+    "rejected_claims": []
+  }
+}

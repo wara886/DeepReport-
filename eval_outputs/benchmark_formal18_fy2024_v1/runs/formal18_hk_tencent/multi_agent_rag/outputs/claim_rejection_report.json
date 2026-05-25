@@ -1,0 +1,35 @@
+{
+  "input_claim_count": 17,
+  "accepted_claim_count": 15,
+  "rejected_claim_count": 2,
+  "rejected_claims": [
+    {
+      "claim_id": "cl_0001",
+      "section_name": "financial_analysis",
+      "reasons": [
+        "missing_metric_lineage"
+      ],
+      "evidence_ids": [
+        "pdf_section_398d97c4f0c0"
+      ],
+      "metric_lineage_ids": [],
+      "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+      "suggested_data_source": "official filing or structured financial statement for target period",
+      "claim_text": "2024年腾讯归母净利润同比增长68%，达到194,073百万元人民币。"
+    },
+    {
+      "claim_id": "cl_0002",
+      "section_name": "financial_analysis",
+      "reasons": [
+        "missing_metric_lineage"
+      ],
+      "evidence_ids": [
+        "pdf_section_398d97c4f0c0"
+      ],
+      "metric_lineage_ids": [],
+      "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+      "suggested_data_source": "official filing or structured financial statement for target period",
+      "claim_text": "基本每股收益为20.938元人民币，稀释后为20.486元。"
+    }
+  ]
+}

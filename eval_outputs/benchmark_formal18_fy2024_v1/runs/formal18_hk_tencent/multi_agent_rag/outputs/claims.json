@@ -1,0 +1,228 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "strategy_business",
+    "claim_text": "年报/公告 PDF 抽取的主营业务与业务结构片段显示：waterhouseCoopers Certified Public Accountants and Registered Public Interest Entity Auditor PRINCIPAL BANKERS Bank of China Limited The Hongkong and Shanghai Banking Corporation Limited REGISTERED OFFICE Cricket Square…；t 31 December 2024 As at 31 December 2023 Year- on-year change As at 30 September 2024 Quarter- on-quarter change (in millions, unless specified) Combined MAU of Weixin and WeChat 1,385 1,343 3% 1,382 0.2% Mobile device…",
+    "evidence_ids": [
+      "pdf_section_25316346f545",
+      "pdf_section_7d683b65aa66"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "strategy_business",
+    "claim_text": "管理层讨论与经营情况 PDF 片段显示：CONTENTS 2 CORPORATE INFORMATION 3 FINANCIAL SUMMARY 4 CHAIRMAN’S STATEMENT 7 MANAGEMENT DISCUSSION AND ANALYSIS 26 DIRECTORS’ REPORT 80 CORPORATE GOVERNANCE REPORT 114 INDEPENDENT AUDITOR’S REPORT 123 CONSOLIDATED INCO…",
+    "evidence_ids": [
+      "pdf_section_e2911df06472"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "ownership_governance",
+    "claim_text": "股东结构、治理或管理层 PDF 片段显示：CONTENTS 2 CORPORATE INFORMATION 3 FINANCIAL SUMMARY 4 CHAIRMAN’S STATEMENT 7 MANAGEMENT DISCUSSION AND ANALYSIS 26 DIRECTORS’ REPORT 80 CORPORATE GOVERNANCE REPORT 114 INDEPENDENT AUDITOR’S REPORT 123 CONSOLIDATED INCO…；Tencent Holdings Limited 2 Corporate Information DIRECTORS Executive Director Ma Huateng (Chairman) Non-Executive Directors Jacobus Petrus (Koos) Bekker Charles St Leger Searle Independent Non-Executive Directors Li Don…",
+    "evidence_ids": [
+      "pdf_section_d36230aea32e",
+      "pdf_section_a19d216c69f0"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "risks",
+    "claim_text": "风险提示 PDF 片段显示：’s music streaming market with 121 million2 music subscribers. ‧ We expanded our evergreen games portfolio3 from 12 games in 2023 to 14 in 2024, while nurturing new games with evergreen potential. ‧ We upgraded our adve…",
+    "evidence_ids": [
+      "pdf_section_767809fe1617"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "financial_statements",
+    "claim_text": "财务报表 PDF 片段显示：N 3 FINANCIAL SUMMARY 4 CHAIRMAN’S STATEMENT 7 MANAGEMENT DISCUSSION AND ANALYSIS 26 DIRECTORS’ REPORT 80 CORPORATE GOVERNANCE REPORT 114 INDEPENDENT AUDITOR’S REPORT 123 CONSOLIDATED INCOME STATEMENT 124 CONSOLIDATED S…",
+    "evidence_ids": [
+      "pdf_section_08d3f1b37d2a"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "ownership_governance",
+    "claim_text": "PDF 文件中关于股权与治理结构提供了以下信息： Tencent Holdings Limited 4 Chairman’s Statement I am pleased to present our annual report for the year ended 31 December 2024 to the shareholders. RESULTS The Group’s audited profit attributable to equity holders of the…",
+    "evidence_ids": [
+      "pdf_section_398d97c4f0c0"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.72,
+    "notes": "来自 PDF insight，按 section type 分类提取的可引用内容"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "risks",
+    "claim_text": "PDF 文件中关于风险因素提供了以下参考信息： ’s music streaming market with 121 million2 music subscribers. ‧ We expanded our evergreen games portfolio3 from 12 games in 2023 to 14 in 2024, while nurturing new games with evergreen potential. ‧ We upgraded our adve…",
+    "evidence_ids": [
+      "pdf_section_767809fe1617"
+    ],
+    "numeric_values": {},
+    "risk_level": "high",
+    "confidence": 0.72,
+    "notes": "来自 PDF insight，按 section type 分类提取的可引用内容",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "valuation",
+    "claim_text": "0700.HK  估值不可用原因：当前公开证据缺少市值或股本口径、净利润、净资产/股东权益、收入，因此不能正式计算 P/E、P/B、P/S；报告应把这些缺口列为下一轮检索任务。",
+    "evidence_ids": [
+      "pdf_section_e2911df06472",
+      "pdf_section_08d3f1b37d2a",
+      "pdf_section_d36230aea32e",
+      "pdf_section_25316346f545",
+      "pdf_section_a19d216c69f0",
+      "pdf_section_7d683b65aa66",
+      "pdf_section_398d97c4f0c0",
+      "pdf_section_767809fe1617",
+      "pdf_section_9f2ffbf49cfb"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "最小估值模型缺口披露。",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0009",
+    "section_name": "business_overview",
+    "claim_text": "0700.HK 的证据覆盖包括 10 条记录，横跨 2 类来源。",
+    "evidence_ids": [
+      "00700_FY2024_hkex_annual_report_039e2f7c84",
+      "pdf_section_08d3f1b37d2a",
+      "pdf_section_25316346f545",
+      "pdf_section_398d97c4f0c0",
+      "pdf_section_767809fe1617",
+      "pdf_section_7d683b65aa66",
+      "pdf_section_9f2ffbf49cfb",
+      "pdf_section_a19d216c69f0",
+      "pdf_section_d36230aea32e",
+      "pdf_section_e2911df06472"
+    ],
+    "numeric_values": {
+      "evidence_count": 10.0,
+      "unique_sources": 2.0
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由证据覆盖统计生成。"
+  },
+  {
+    "claim_id": "cl_0010",
+    "section_name": "risks",
+    "claim_text": "PDF section: risk_factors 提示了相关风险或运营关注点。",
+    "evidence_ids": [
+      "pdf_section_767809fe1617"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "由来源内容识别风险信号。",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0011",
+    "section_name": "risks",
+    "claim_text": "PDF section: ownership_governance 提示了相关风险或运营关注点。",
+    "evidence_ids": [
+      "pdf_section_9f2ffbf49cfb"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "由来源内容识别风险信号。",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0012",
+    "section_name": "executive_summary",
+    "claim_text": "0700.HK 暂无完整执行摘要，以下基于已有证据和报告结构填充。关键财务指标已绑定 evidence_id/citation 并由 verifier 校验。",
+    "evidence_ids": [
+      "pdf_section_e2911df06472",
+      "pdf_section_08d3f1b37d2a",
+      "pdf_section_d36230aea32e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.7,
+    "notes": "执行摘要 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0013",
+    "section_name": "peer_compare",
+    "claim_text": "0700.HK 属于上市公司类别，同行可比分析框架基于收入增长/利润率/ROE/估值/杠杆等维度。当前公开证据尚未覆盖完整同行数据，以下为框架性分析。",
+    "evidence_ids": [
+      "pdf_section_e2911df06472",
+      "pdf_section_08d3f1b37d2a",
+      "pdf_section_d36230aea32e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "同行对比 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "peer_comparison"
+  },
+  {
+    "claim_id": "cl_0014",
+    "section_name": "valuation_sensitivity",
+    "claim_text": "敏感性分析框架覆盖宏观需求/成本费用/竞争格局/监管政策等变量。当前证据不足以量化各变量影响，以下说明缺失数据对敏感性判断的约束。",
+    "evidence_ids": [
+      "pdf_section_e2911df06472",
+      "pdf_section_08d3f1b37d2a",
+      "pdf_section_d36230aea32e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "敏感性分析 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0015",
+    "section_name": "conclusion",
+    "claim_text": "关于0700.HK 的投资结论需要综合主营业务增长和经营效率改善等驱动因素和市场竞争、成本波动和监管变化等约束条件。当前公开证据尚不完整，以下为基于现有信息的初步判断。",
+    "evidence_ids": [
+      "pdf_section_e2911df06472",
+      "pdf_section_08d3f1b37d2a",
+      "pdf_section_d36230aea32e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "投资结论 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  }
+]

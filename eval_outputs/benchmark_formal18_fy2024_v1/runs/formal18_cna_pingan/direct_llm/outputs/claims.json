@@ -1,0 +1,98 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "revenue",
+    "claim_text": "Operating revenue for FY2024 reached approximately 1,028.9 billion CNY, indicating strong top-line performance.",
+    "evidence_ids": [
+      "601318_FY2024_eastmoney_financials_income_0ce7f474c7"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "revenue"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "profit",
+    "claim_text": "Parent net profit for FY2024 was approximately 126.6 billion CNY, suggesting solid profitability.",
+    "evidence_ids": [
+      "601318_FY2024_eastmoney_financials_income_0ce7f474c7"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "profit"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "cash_flow",
+    "claim_text": "Net operating cash flow was positive at 382.5 billion CNY, while net investing cash flow was negative -416.3 billion CNY, indicating significant capital expenditure.",
+    "evidence_ids": [
+      "601318_FY2024_eastmoney_financials_cashflow_eb80795bfc"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "cash_flow"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "margin",
+    "claim_text": "Net profit margin computed at approximately 12.3% (126.6B / 1,028.9B), reflecting moderate margin.",
+    "evidence_ids": [
+      "601318_FY2024_eastmoney_financials_income_0ce7f474c7"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "margin"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "valuation",
+    "claim_text": "No valuation data (e.g., P/E, P/B) available from the provided evidence; market price or comparable metrics are absent.",
+    "evidence_ids": [],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "risk",
+    "claim_text": "Total liabilities as of FY2024 stand at 11,653 billion CNY against total assets of 12,958 billion CNY, implying a high leverage ratio of approximately 90%.",
+    "evidence_ids": [
+      "601318_FY2024_eastmoney_financials_balance_56ac006ff4"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "investment_rationale",
+    "claim_text": "The combination of strong operating cash flow and heavy investing outflows suggests the company is reinvesting in growth, but negative net free cash flow (operating minus investing) of -33.8 billion CNY may strain liquidity.",
+    "evidence_ids": [
+      "601318_FY2024_eastmoney_financials_cashflow_eb80795bfc"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  }
+]

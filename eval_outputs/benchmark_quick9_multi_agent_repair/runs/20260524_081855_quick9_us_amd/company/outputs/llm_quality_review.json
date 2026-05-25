@@ -1,0 +1,45 @@
+{
+  "model_status": "completed",
+  "llm_review_pass": true,
+  "total_score": 1.0,
+  "fatal_issue_count": 0,
+  "dimension_scores": {
+    "professional_report_likeness": 1.0,
+    "investment_insight": 1.0,
+    "fact_period_consistency": 1.0,
+    "company_report_requirement_fit": 1.0,
+    "chart_usefulness": 1.0,
+    "language_quality": 1.0
+  },
+  "verdict": "Below Professional Standard",
+  "issues": [
+    {
+      "issue_id": "llm_review_0001",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "报告缺乏投资洞察和原创分析，财务指标描述为主，未形成明确观点或建议。"
+    },
+    {
+      "issue_id": "llm_review_0002",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "同行对比和估值敏感性部分仅以'数据缺口说明'回避实质性分析，未达到研报要求。"
+    },
+    {
+      "issue_id": "llm_review_0003",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "图表（关键指标、结论置信度、证据来源）为统计性展示，对投资分析辅助作用有限。"
+    },
+    {
+      "issue_id": "llm_review_0004",
+      "severity": "warning",
+      "category": "llm_review",
+      "message": "语言部分存在重复表述（如多次出现'数据缺口说明'），可读性一般。"
+    }
+  ],
+  "schema_version": "llm_quality_review.v1",
+  "generated_at": "2026-05-24T08:26:01.205224+00:00",
+  "run_dir": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs",
+  "model": "deepseek-v4-flash"
+}

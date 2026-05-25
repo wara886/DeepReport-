@@ -1,0 +1,4 @@
+variant,run_count,evaluated_run_count,runtime_or_model_failure_count,delivery_failed_run_count,critical_claim_count,traceable_claim_count,micro_traceable_claim_rate_v1
+direct_llm,0,0,0,0,0,0,0.0
+single_agent_rag,0,0,0,0,0,0,0.0
+multi_agent_rag,2,2,0,0,15,14,0.9333

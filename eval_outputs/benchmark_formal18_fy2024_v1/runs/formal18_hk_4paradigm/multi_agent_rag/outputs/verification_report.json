@@ -1,0 +1,64 @@
+{
+  "passed": false,
+  "error_count": 16,
+  "warning_count": 7,
+  "errors": [
+    "Claim cl_0001 references missing evidence ids: pdf_table_pdf_tbl_ca8370e57ec8",
+    "Claim cl_0002 references missing evidence ids: pdf_table_pdf_tbl_d4a6553c1b20",
+    "Claim cl_0003 references missing evidence ids: pdf_section_d0eb63f9246a, pdf_section_a54881a87f88",
+    "Claim cl_0004 references missing evidence ids: pdf_section_ed10e0a23672",
+    "Claim cl_0005 references missing evidence ids: pdf_section_732125232415, pdf_section_705699924be1",
+    "Claim cl_0006 references missing evidence ids: pdf_section_0f3fb856a9d2",
+    "Claim cl_0007 references missing evidence ids: pdf_section_705699924be1",
+    "Claim cl_0008 references missing evidence ids: pdf_table_pdf_tbl_ca8370e57ec8, pdf_table_pdf_tbl_d4a6553c1b20",
+    "Claim cl_0009 references missing evidence ids: pdf_table_pdf_tbl_ca8370e57ec8, pdf_table_pdf_tbl_d4a6553c1b20",
+    "Claim cl_0010 references missing evidence ids: pdf_table_pdf_tbl_ca8370e57ec8, pdf_table_pdf_tbl_d4a6553c1b20",
+    "Claim cl_0011 references missing evidence ids: pdf_table_pdf_tbl_ca8370e57ec8, pdf_table_pdf_tbl_d4a6553c1b20",
+    "Claim cl_0012 references missing evidence ids: pdf_section_0f3fb856a9d2, pdf_section_705699924be1, pdf_section_732125232415, pdf_section_a54881a87f88, pdf_section_d0eb63f9246a, pdf_section_ed10e0a23672, pdf_table_pdf_tbl_ca8370e57ec8, pdf_table_pdf_tbl_d4a6553c1b20",
+    "Claim cl_0014 references missing evidence ids: pdf_section_ed10e0a23672, pdf_section_0f3fb856a9d2, pdf_section_732125232415",
+    "Claim cl_0015 references missing evidence ids: pdf_section_ed10e0a23672, pdf_section_0f3fb856a9d2, pdf_section_732125232415",
+    "Claim cl_0016 references missing evidence ids: pdf_section_ed10e0a23672, pdf_section_0f3fb856a9d2, pdf_section_732125232415",
+    "Claim cl_0017 references missing evidence ids: pdf_section_ed10e0a23672, pdf_section_0f3fb856a9d2, pdf_section_732125232415"
+  ],
+  "warnings": [
+    "Target symbol 6682.HK is not explicitly mentioned in report claims or markdown.",
+    "Target symbol mismatch: expected 6682.HK, but non-peer sections mention ticker-like tokens ANNUAL, HK, REPORT, REVI.",
+    "Claim cl_0001 numeric value total_assets=2016009.0 was not found in linked evidence.",
+    "Claim cl_0001 numeric value total_liabilities=3199008.0 was not found in linked evidence.",
+    "Claim cl_0001 numeric value equity=2016009.0 was not found in linked evidence.",
+    "Claim cl_0002 numeric value revenue=3.0 was not found in linked evidence.",
+    "Report has numeric claims but no charts were generated."
+  ],
+  "claim_count": 17,
+  "grounded_claim_count": 5,
+  "expected_symbol": "6682.HK",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 0,
+    "chart_text_consistency": {
+      "chart_count": 0,
+      "passed_chart_count": 0,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": []
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 0,
+      "results": []
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 0,
+      "details": []
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "valuation_not_available"
+    ],
+    "checks": {}
+  }
+}

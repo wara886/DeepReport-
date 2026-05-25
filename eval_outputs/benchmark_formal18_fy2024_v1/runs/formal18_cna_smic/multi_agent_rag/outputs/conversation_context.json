@@ -1,0 +1,39 @@
+{
+  "session_id": "18f24dac0edb",
+  "user_intent": "中芯国际 (688981.SS) formal FY2024 frozen-input report",
+  "symbol": "688981.SS",
+  "period": "FY2024",
+  "report_type": "company_stock_report",
+  "hard_constraints": [
+    "Only produce the requested company/stock research report type for this run.",
+    "Every material factual claim must be backed by an explicit evidence_id citation.",
+    "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+    "Keep verifier feedback active during revisions until the final verification passes.",
+    "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+    "Use frozen snapshot evidence only.",
+    "Cover executive summary, three statements or gaps, valuation or limitation, risks, and investment conclusion.",
+    "Emit explicitly labeled critical claims and body citations."
+  ],
+  "pinned_facts": [
+    "Target symbol: 688981.SS",
+    "Target period: FY2024",
+    "Report type: company_stock_report"
+  ],
+  "rejected_claims": [],
+  "verifier_feedback": [
+    "warnings: Target symbol 688981.SS is not explicitly mentioned in report claims or markdown.",
+    "warnings: Target symbol mismatch: expected 688981.SS, but non-peer sections mention ticker-like tokens SS.",
+    "revision_brief: - Warnings: Target symbol 688981.SS is not explicitly mentioned in report claims or markdown. - Warnings: Target symbol mismatch: expected 688981.SS, but non-peer sections mention ticker-like tokens SS."
+  ],
+  "open_questions": [],
+  "turns": [
+    {
+      "role": "user",
+      "content": "中芯国际 (688981.SS) formal FY2024 frozen-input report",
+      "metadata": {
+        "source": "run_request"
+      }
+    }
+  ],
+  "context_brief": "[ConversationMemory]\nUser intent:\n- 中芯国际 (688981.SS) formal FY2024 frozen-input report\nRun scope:\n- report_type=company_stock_report\n- symbol=688981.SS\n- period=FY2024\nHard constraints:\n- Only produce the requested company/stock research report type for this run.\n- Every material factual claim must be backed by an explicit evidence_id citation.\n- Do not invent numbers, dates, sources, ratings, or unsupported conclusions.\n- Keep verifier feedback active during revisions until the final verification passes.\n- Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.\n- Use frozen snapshot evidence only.\n- Cover executive summary, three statements or gaps, valuation or limitation, risks, and investment conclusion.\n- Emit explicitly labeled critical claims and body citations.\nPinned facts:\n- Target symbol: 688981.SS\n- Target period: FY2024\n- Report type: company_stock_report\nVerifier feedback to keep active:\n- warnings: Target symbol 688981.SS is not explicitly mentioned in report claims or markdown.\n- warnings: Target symbol mismatch: expected 688981.SS, but non-peer sections mention ticker-like tokens SS.\n- revision_brief: - Warnings: Target symbol 688981.SS is not explicitly mentioned in report claims or markdown. - Warnings: Target symbol mismatch: expected 688981.SS, but non-peer sections mention ticker-like tokens SS."
+}

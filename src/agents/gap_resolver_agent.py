@@ -41,12 +41,16 @@ class GapResolverAgent(BaseAgent):
         required_sections: List[str] = []
 
         table_types = _table_types(tables)
+        statement_gap_disclosed = _text_has_any(
+            markdown,
+            ["三表摘要暂不可用", "三表缺口", "未完整形成可引用证据", "three-statement data gap"],
+        )
         for table_type, section_name, label in [
             ("income_statement", "financial_statements", "income statement"),
             ("balance_sheet", "financial_statements", "balance sheet"),
-            ("cash_flow", "financial_statements", "cash flow statement"),
+            ("cash_flow_statement", "financial_statements", "cash flow statement"),
         ]:
-            if table_type not in table_types and not _text_has_any(markdown, [label, table_type, "利润表", "资产负债表", "现金流量表"]):
+            if table_type not in table_types and not statement_gap_disclosed:
                 gaps.append(_gap(table_type, "blocker", f"Missing {label} in artifacts and body."))
                 required_sections.append(section_name)
 

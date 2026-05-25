@@ -1,0 +1,51 @@
+{
+  "model_status": "completed",
+  "llm_review_pass": false,
+  "total_score": 1.0,
+  "fatal_issue_count": 2,
+  "dimension_scores": {
+    "professional_report_likeness": 1.0,
+    "investment_insight": 1.0,
+    "fact_period_consistency": 1.0,
+    "company_report_requirement_fit": 1.0,
+    "chart_usefulness": 1.0,
+    "language_quality": 1.0
+  },
+  "verdict": "Fail - 致命问题：大量暂无结论，期间错配",
+  "issues": [
+    {
+      "issue_id": "llm_review_0001",
+      "severity": "fatal",
+      "category": "content_hollowness",
+      "message": "报告在同行对比、估值分析、投资结论等部分大量出现'缺乏数据'、'无法判断'等表述，缺乏实质分析和投资洞察，不符合专业研报要求。"
+    },
+    {
+      "issue_id": "llm_review_0002",
+      "severity": "fatal",
+      "category": "period_mismatch",
+      "message": "报告虽以2026Q1为目标期间，但引用了2025年年报证据（如evidence_id: 300750_2026Q1_cninfo_ff323defb4），存在期间错配风险。"
+    },
+    {
+      "issue_id": "llm_review_0003",
+      "severity": "blocker",
+      "category": "generalization",
+      "message": "泛化质量检查未通过：pre_write_critic_passed失败。"
+    },
+    {
+      "issue_id": "llm_review_0004",
+      "severity": "warning",
+      "category": "symbol_consistency",
+      "message": "目标符号300750.SZ未在报告claims或正文中明确提及，存在符号一致性警告。"
+    },
+    {
+      "issue_id": "llm_review_0005",
+      "severity": "warning",
+      "category": "requirement_gap",
+      "message": "公司研报赛题要求包括同行对比、估值/敏感性、投资建议，本报告均缺失或仅说明缺少数据。"
+    }
+  ],
+  "schema_version": "llm_quality_review.v1",
+  "generated_at": "2026-05-24T07:19:22.748647+00:00",
+  "run_dir": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs",
+  "model": "deepseek-v4-flash"
+}

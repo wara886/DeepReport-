@@ -1,0 +1,19 @@
+{
+  "metrics": [],
+  "metric_count": 0,
+  "rejected_metrics": [],
+  "rejected_metric_count": 0,
+  "coverage": {
+    "required_metrics": [
+      "revenue",
+      "net_income",
+      "gross_margin",
+      "free_cash_flow"
+    ],
+    "present_metrics": [],
+    "has_core_metric_lineage": false,
+    "standard_metric_count": 0,
+    "standard_has_core_metric_lineage": false,
+    "rejected_metric_count": 0
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "overview": "Generate a company stock research report for 宁德时代 (300750.SZ) for 2026Q1. Tasks: discover evidence, analyze financials and valuation, assemble report, and verify.",
+  "research_topic": "Generate a company stock research report for 宁德时代 (300750.SZ) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+  "requirements": [
+    "Provide executive summary, risk assessment, and investment conclusion.",
+    "Cover three statements or explicitly disclose unavailable statement evidence.",
+    "Include valuation analysis or explicitly state why valuation is unavailable.",
+    "Bind critical conclusions to evidence IDs and citations used in report."
+  ],
+  "output_format": "markdown, html, json with citations",
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "deep_researcher",
+      "description": "Discover evidence: filings, financial records, market snapshots, recent news for 300750.SZ, period 2026Q1. Use retrieve_local_evidence and fetch_yahoo_market_snapshot tools. Output ranked evidence candidates with citation-ready records.",
+      "parameters": {
+        "symbol": "300750.SZ",
+        "period": "2026Q1",
+        "source_preferences": [
+          "local",
+          "yahoo"
+        ],
+        "ranking_mode": "relevance"
+      },
+      "dependencies": [],
+      "priority": 5,
+      "expected_output": "List of evidence records with evidence_id, source, content, date, and citation info."
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "deep_analyze",
+      "description": "Analyze evidence from task_001 to compute financial ratios, three-statement views, peer comparison, and valuation. Use tools: calculate_financial_ratios, build_trend_features, build_three_statement_view, build_peer_comparison, perform_company_valuation. Output claims with evidence_ids, metrics, tables, valuation model or explicit unavailability note.",
+      "parameters": {
+        "evidence_records": "from task_001",
+        "symbol": "300750.SZ",
+        "period": "2026Q1"
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 4,
+      "expected_output": "Structured claims with evidence IDs, financial metrics table, valuation model artifacts or gap statement."
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "final_answer",
+      "description": "Assemble the research report in Chinese using claims from task_002 and evidence from task_001. Include executive summary, risk assessment, investment conclusion, three-statement coverage or gap disclosure, valuation analysis or unavailability statement, and bind critical conclusions to evidence IDs. Use render_all_charts and attach_charts_to_report tools. Output Markdown, HTML, and JSON report payloads with references and compliance disclosure.",
+      "parameters": {
+        "claims": "from task_002",
+        "evidence": "from task_001",
+        "report_type": "company_stock_report",
+        "output_formats": [
+          "markdown",
+          "html",
+          "json"
+        ]
+      },
+      "dependencies": [
+        "task_002"
+      ],
+      "priority": 3,
+      "expected_output": "Markdown string, HTML string, JSON object with report content and citations."
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "verifier",
+      "description": "Verify the final report from task_003: check that every material factual claim has an evidence_id citation, no invented numbers/dates/sources, three-statement coverage or disclosure present, valuation analysis or gap stated, and compliance with requirements. Output pass/fail with revision brief if needed.",
+      "parameters": {
+        "report_artifacts": "from task_003",
+        "requirements": [
+          "Provide executive summary, risk assessment, and investment conclusion.",
+          "Cover three statements or explicitly disclose unavailable statement evidence.",
+          "Include valuation analysis or explicitly state why valuation is unavailable.",
+          "Bind critical conclusions to evidence IDs and citations used in report."
+        ]
+      },
+      "dependencies": [
+        "task_003"
+      ],
+      "priority": 5,
+      "expected_output": "Verification result: 'pass' or 'fail' with list of issues and suggestions."
+    }
+  ],
+  "data_sources": [
+    "local evidence retrieval (company filings, financial records)",
+    "Yahoo Finance market snapshot"
+  ],
+  "citations_required": true,
+  "final_outputs": [
+    "Markdown report",
+    "HTML report",
+    "JSON report with citations"
+  ],
+  "fallback_used": false
+}

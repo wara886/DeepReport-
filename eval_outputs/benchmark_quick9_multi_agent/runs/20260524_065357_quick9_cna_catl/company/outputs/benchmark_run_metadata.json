@@ -1,0 +1,290 @@
+{
+  "schema_version": "benchmark_quick9_run.v1",
+  "variant": "multi_agent",
+  "case": {
+    "case_id": "quick9_cna_catl",
+    "market": "CN-A",
+    "company_name": "宁德时代",
+    "canonical_symbol": "300750.SZ",
+    "period_policy": "latest_complete_existing_artifact"
+  },
+  "run_started_at": "2026-05-24T07:18:15.205365+00:00",
+  "target_period": "2026Q1",
+  "execution": {
+    "execution_mode": "collaborative",
+    "fast": true,
+    "enable_remote_data": true,
+    "model_config_path": "configs/model_backends.yaml",
+    "data_source_config_path": "configs/data_sources.yaml",
+    "retrieval_ranking_mode": "hybrid_rerank",
+    "engines": [
+      "local_real_data",
+      "cninfo_announcements",
+      "exchange_announcements",
+      "eastmoney_financials",
+      "yahoo_finance",
+      "eastmoney",
+      "independent_macro",
+      "local_evidence"
+    ]
+  },
+  "outputs_dir": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs",
+  "reports_dir": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\reports",
+  "status": "completed",
+  "result_paths": {
+    "task_plan": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\task_plan.json",
+    "task_route_context": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\task_route_context.json",
+    "task_trace": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\task_trace.jsonl",
+    "agent_collaboration_trace": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\agent_collaboration_trace.json",
+    "tool_trace": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\tool_trace.json",
+    "search_meta": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\search_meta.json",
+    "evidence": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\evidence.json",
+    "claims": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\claims.json",
+    "analysis_artifacts": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\analysis_artifacts.json",
+    "financial_metrics": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\financial_metrics.json",
+    "rejected_metrics": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\rejected_metrics.json",
+    "claim_rejection_report": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\claim_rejection_report.json",
+    "pdf_manifest": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\pdf_manifest.json",
+    "pdf_sections": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\pdf_sections.json",
+    "company_profile_extracted": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\company_profile_extracted.json",
+    "tables": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\tables.json",
+    "valuation_model": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\valuation_model.json",
+    "valuation_assumptions": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\valuation_assumptions.json",
+    "valuation_sensitivity": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\valuation_sensitivity.json",
+    "citations": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\citations.json",
+    "citations_md": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\citations.md",
+    "charts": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\charts.json",
+    "chart_consistency": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\chart_consistency.json",
+    "multimodal_consistency": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\multimodal_consistency.json",
+    "mcp_manifest": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\mcp_manifest.json",
+    "revision_history": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\revision_history.json",
+    "gap_resolution_trace": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\gap_resolution_trace.jsonl",
+    "gap_resolution_trace_json": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\gap_resolution_trace.json",
+    "data_repair_summary": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\data_repair_summary.json",
+    "repair_constraints": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\repair_constraints.json",
+    "research_blackboard": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\research_blackboard.json",
+    "company_report_scorecard": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\company_report_scorecard.json",
+    "conversation_context": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\conversation_context.json",
+    "durable_memory": "",
+    "report_md": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\reports\\report.md",
+    "report_html": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\reports\\report.html",
+    "report_json": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\reports\\report.json",
+    "verification_report": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\verification_report.json",
+    "run_summary": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_cna_catl\\company\\outputs\\run_summary.json"
+  },
+  "quality_pipeline": {
+    "quality_report": {
+      "objective_pass": false,
+      "total_score": 1.0
+    },
+    "llm_quality_review": {
+      "llm_review_pass": false,
+      "total_score": 1.0,
+      "model_status": "completed"
+    },
+    "delivery_gate": {
+      "delivery_pass": false,
+      "verifier_passed": true,
+      "objective_pass": false,
+      "llm_review_pass": false
+    },
+    "remediation_plan": {
+      "quality_feedback_used": true,
+      "required_fixes": [
+        "Add peer comparison metrics and explicit boundaries instead of framework-only text.",
+        "Rewrite hollow sections with evidence-backed business implications, investment judgment, and risk boundaries.",
+        "Investment conclusion must include direction, reasons, cited evidence, and risk constraints.",
+        "Prioritize fatal/blocker issues from the LLM review before final delivery."
+      ],
+      "failed_sections": [
+        "peer_comparison",
+        "valuation",
+        "sensitivity",
+        "risk",
+        "investment_conclusion"
+      ],
+      "memory_quality_feedback_used": false
+    },
+    "top_quality_issues": [
+      {
+        "issue_id": "llm_review_0001",
+        "severity": "fatal",
+        "category": "content_hollowness",
+        "message": "报告在同行对比、估值分析、投资结论等部分大量出现'缺乏数据'、'无法判断'等表述，缺乏实质分析和投资洞察，不符合专业研报要求。",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "llm_review_0002",
+        "severity": "fatal",
+        "category": "period_mismatch",
+        "message": "报告虽以2026Q1为目标期间，但引用了2025年年报证据（如evidence_id: 300750_2026Q1_cninfo_ff323defb4），存在期间错配风险。",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "generalization_0001",
+        "severity": "blocker",
+        "category": "generalization",
+        "message": "泛化质量检查未通过：pre_write_critic_passed",
+        "source": "objective"
+      },
+      {
+        "issue_id": "llm_review_0003",
+        "severity": "blocker",
+        "category": "generalization",
+        "message": "泛化质量检查未通过：pre_write_critic_passed失败。",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "llm_review_0005",
+        "severity": "warning",
+        "category": "requirement_gap",
+        "message": "公司研报赛题要求包括同行对比、估值/敏感性、投资建议，本报告均缺失或仅说明缺少数据。",
+        "source": "llm_review"
+      }
+    ]
+  },
+  "run_finished_at": "2026-05-24T07:19:41.084109+00:00",
+  "model": "deepseek-v4-flash",
+  "actual_report_period": "2026Q1",
+  "available_data_periods": [
+    "2026Q1"
+  ],
+  "source_attempts": {
+    "local_real_data": {
+      "mode": "local_real_data",
+      "raw_data_root": "data/raw/real_data",
+      "symbol": "300750.SZ",
+      "period": "2026Q1",
+      "record_count": 0,
+      "returned_hit_count": 0,
+      "failure_reason": "no_records_for_symbol_period",
+      "chunking_enabled": true,
+      "query_original": "300750.SZ 2026Q1 Discover evidence: filings, financial records, market snapshots, recent news for 300750.SZ, period 2026Q1. Use retrieve_local_evidence and fetch_yahoo_market_snapshot tools. Output ranked evidence candidates with citation-ready records.",
+      "query_adapted": "300750.SZ 2026Q1 Discover evidence: filings, financial records, market snapshots, recent news for 300750.SZ, period 2026Q1. Use retrieve_local_evidence and fetch_yahoo_market_snapshot tools. Output ranked evidence candidates with citation-ready records.",
+      "adapted_query": "300750.SZ 2026Q1 Discover evidence: filings, financial records, market snapshots, recent news for 300750.SZ, period 2026Q1. Use retrieve_local_evidence and fetch_yahoo_market_snapshot tools. Output ranked evidence candidates with citation-ready records.",
+      "query_terms_added": [],
+      "query_expansion_version": "finance_query_expansion_v1"
+    },
+    "cninfo_announcements": {
+      "mode": "cninfo_announcements",
+      "symbol": "300750.SZ",
+      "record_count": 3,
+      "failure_reason": "",
+      "query": "300750.SZ 2026Q1 Discover evidence: filings, financial records, market snapshots, recent news for 300750.SZ, period 2026Q1. Use retrieve_local_evidence and fetch_yahoo_market_snapshot tools. Output ranked evidence candidates with citation-ready records."
+    },
+    "exchange_announcements": {
+      "mode": "exchange_announcements",
+      "exchange": "szse",
+      "symbol": "300750",
+      "record_count": 10,
+      "failure_reason": "",
+      "query": "300750.SZ 2026Q1 Discover evidence: filings, financial records, market snapshots, recent news for 300750.SZ, period 2026Q1. Use retrieve_local_evidence and fetch_yahoo_market_snapshot tools. Output ranked evidence candidates with citation-ready records."
+    },
+    "eastmoney_financials": {
+      "mode": "eastmoney_financials",
+      "symbol": "300750.SZ",
+      "record_count": 3,
+      "failure_reason": "",
+      "tables": {
+        "income": {
+          "record_count": 20,
+          "report_name": "RPT_DMSK_FN_INCOME"
+        },
+        "balance": {
+          "record_count": 20,
+          "report_name": "RPT_DMSK_FN_BALANCE"
+        },
+        "cashflow": {
+          "record_count": 20,
+          "report_name": "RPT_DMSK_FN_CASHFLOW"
+        }
+      },
+      "query": "300750.SZ 2026Q1 Discover evidence: filings, financial records, market snapshots, recent news for 300750.SZ, period 2026Q1. Use retrieve_local_evidence and fetch_yahoo_market_snapshot tools. Output ranked evidence candidates with citation-ready records."
+    },
+    "yahoo_finance": {
+      "mode": "yahoo_finance",
+      "symbol": "300750.SZ",
+      "range": "1mo",
+      "interval": "1d",
+      "result_count": 2,
+      "has_financials": true
+    },
+    "eastmoney": {
+      "mode": "eastmoney",
+      "symbol": "300750.SZ",
+      "record_count": 0,
+      "failure_reason": "fetch_error",
+      "error": "Eastmoney request error: Remote end closed connection without response"
+    },
+    "independent_macro": {
+      "mode": "independent_macro",
+      "period": "2026Q1",
+      "source_meta": {
+        "fred": {
+          "mode": "fred",
+          "record_count": 4,
+          "errors": [],
+          "failure_reason": ""
+        },
+        "bls": {
+          "mode": "bls",
+          "record_count": 2,
+          "failure_reason": ""
+        },
+        "bea": {
+          "mode": "bea",
+          "record_count": 1,
+          "failure_reason": ""
+        }
+      },
+      "record_count": 6,
+      "failure_reason": "",
+      "query": "300750.SZ 2026Q1 Discover evidence: filings, financial records, market snapshots, recent news for 300750.SZ, period 2026Q1. Use retrieve_local_evidence and fetch_yahoo_market_snapshot tools. Output ranked evidence candidates with citation-ready records."
+    },
+    "local_evidence": {
+      "mode": "bm25",
+      "checkpoint_path": "data/outputs/checkpoints/reranker_checkpoint.json",
+      "checkpoint_used": false,
+      "fallback_used": false,
+      "query": "300750.SZ 2026Q1 Discover evidence: filings, financial records, market snapshots, recent news for 300750.SZ, period 2026Q1. Use retrieve_local_evidence and fetch_yahoo_market_snapshot tools. Output ranked evidence candidates with citation-ready records.",
+      "source_record_count": 0,
+      "record_count": 0,
+      "bm25_hit_count": 0,
+      "vector_hit_count": 0,
+      "chunking_enabled": true,
+      "chunk_count": 0,
+      "returned_hit_count": 0,
+      "failure_reason": "no_records_for_symbol_period",
+      "loaded_file_count": 0,
+      "skipped_files": [
+        "data\\curated\\filings.parquet",
+        "data\\curated\\financials.parquet",
+        "data\\curated\\market.parquet",
+        "data\\curated\\news.parquet"
+      ],
+      "load_errors": [
+        {
+          "path": "data\\curated\\filings.parquet",
+          "error": "Repetition level histogram size mismatch"
+        },
+        {
+          "path": "data\\curated\\financials.parquet",
+          "error": "Repetition level histogram size mismatch"
+        },
+        {
+          "path": "data\\curated\\market.parquet",
+          "error": "Repetition level histogram size mismatch"
+        },
+        {
+          "path": "data\\curated\\news.parquet",
+          "error": "Repetition level histogram size mismatch"
+        }
+      ],
+      "query_original": "300750.SZ 2026Q1 Discover evidence: filings, financial records, market snapshots, recent news for 300750.SZ, period 2026Q1. Use retrieve_local_evidence and fetch_yahoo_market_snapshot tools. Output ranked evidence candidates with citation-ready records.",
+      "query_adapted": "300750.SZ 2026Q1 Discover evidence: filings, financial records, market snapshots, recent news for 300750.SZ, period 2026Q1. Use retrieve_local_evidence and fetch_yahoo_market_snapshot tools. Output ranked evidence candidates with citation-ready records.",
+      "adapted_query": "300750.SZ 2026Q1 Discover evidence: filings, financial records, market snapshots, recent news for 300750.SZ, period 2026Q1. Use retrieve_local_evidence and fetch_yahoo_market_snapshot tools. Output ranked evidence candidates with citation-ready records.",
+      "query_terms_added": [],
+      "query_expansion_version": "finance_query_expansion_v1"
+    }
+  }
+}

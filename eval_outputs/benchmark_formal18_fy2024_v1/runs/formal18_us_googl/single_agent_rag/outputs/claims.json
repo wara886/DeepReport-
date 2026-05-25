@@ -1,0 +1,86 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "revenue",
+    "claim_text": "Revenue for FY2024 is $350,018,000,000.",
+    "evidence_ids": [
+      "sec_companyfacts_googl_565a4159b3"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "revenue"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "profit",
+    "claim_text": "Net income for FY2024 is $100,118,000,000.",
+    "evidence_ids": [
+      "sec_companyfacts_googl_565a4159b3"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "profit"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "cash_flow",
+    "claim_text": "Operating cash flow for FY2024 is $125,299,000,000.",
+    "evidence_ids": [
+      "sec_companyfacts_googl_565a4159b3"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "cash_flow"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "margin",
+    "claim_text": "Net profit margin is approximately 28.6% (net income / revenue).",
+    "evidence_ids": [
+      "sec_companyfacts_googl_565a4159b3"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "margin"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "valuation",
+    "claim_text": "Valuation cannot be computed due to missing market price data.",
+    "evidence_ids": [
+      "sec_companyfacts_googl_565a4159b3"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "investment_rationale",
+    "claim_text": "Operating cash flow covers capital expenditures (CapEx $52,535,000,000) by 2.4x, indicating strong cash generation.",
+    "evidence_ids": [
+      "sec_companyfacts_googl_565a4159b3"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.5,
+    "notes": "normalized one-shot formal claim",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  }
+]

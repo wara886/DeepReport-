@@ -1,0 +1,440 @@
+{
+  "schema_version": "benchmark_quick9_run.v1",
+  "variant": "multi_agent",
+  "evaluation_stage": "phase_2r_repair",
+  "case": {
+    "case_id": "quick9_us_amd",
+    "market": "US",
+    "company_name": "AMD",
+    "canonical_symbol": "AMD",
+    "period_policy": "fixed_target_period"
+  },
+  "run_started_at": "2026-05-24T08:21:36.178773+00:00",
+  "target_period": "2026Q1",
+  "execution": {
+    "execution_mode": "diagnostic_full",
+    "fast": true,
+    "enable_remote_data": true,
+    "model_config_path": "configs/model_backends.yaml",
+    "data_source_config_path": "configs/data_sources.yaml",
+    "retrieval_ranking_mode": "hybrid_rerank",
+    "engines": [
+      "local_real_data",
+      "sec_edgar",
+      "yahoo_finance",
+      "independent_macro",
+      "tavily",
+      "serper",
+      "local_evidence"
+    ]
+  },
+  "outputs_dir": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs",
+  "reports_dir": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\reports",
+  "status": "completed",
+  "result_paths": {
+    "task_plan": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\task_plan.json",
+    "task_route_context": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\task_route_context.json",
+    "task_trace": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\task_trace.jsonl",
+    "agent_collaboration_trace": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\agent_collaboration_trace.json",
+    "tool_trace": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\tool_trace.json",
+    "search_meta": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\search_meta.json",
+    "evidence": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\evidence.json",
+    "claims": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\claims.json",
+    "analysis_artifacts": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\analysis_artifacts.json",
+    "financial_metrics": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\financial_metrics.json",
+    "rejected_metrics": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\rejected_metrics.json",
+    "claim_rejection_report": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\claim_rejection_report.json",
+    "pdf_manifest": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\pdf_manifest.json",
+    "pdf_sections": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\pdf_sections.json",
+    "company_profile_extracted": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\company_profile_extracted.json",
+    "tables": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\tables.json",
+    "valuation_model": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\valuation_model.json",
+    "valuation_assumptions": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\valuation_assumptions.json",
+    "valuation_sensitivity": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\valuation_sensitivity.json",
+    "citations": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\citations.json",
+    "citations_md": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\citations.md",
+    "charts": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\charts.json",
+    "chart_consistency": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\chart_consistency.json",
+    "multimodal_consistency": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\multimodal_consistency.json",
+    "mcp_manifest": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\mcp_manifest.json",
+    "revision_history": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\revision_history.json",
+    "gap_resolution_trace": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\gap_resolution_trace.jsonl",
+    "gap_resolution_trace_json": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\gap_resolution_trace.json",
+    "data_repair_summary": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\data_repair_summary.json",
+    "repair_constraints": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\repair_constraints.json",
+    "research_blackboard": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\research_blackboard.json",
+    "company_report_scorecard": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\company_report_scorecard.json",
+    "conversation_context": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\conversation_context.json",
+    "durable_memory": "",
+    "report_md": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\reports\\report.md",
+    "report_html": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\reports\\report.html",
+    "report_json": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\reports\\report.json",
+    "verification_report": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\verification_report.json",
+    "run_summary": "eval_outputs\\benchmark_quick9_multi_agent_repair\\runs\\20260524_081855_quick9_us_amd\\company\\outputs\\run_summary.json"
+  },
+  "quality_pipeline": {
+    "quality_report": {
+      "objective_pass": true,
+      "total_score": 0.9676
+    },
+    "llm_quality_review": {
+      "llm_review_pass": true,
+      "total_score": 1.0,
+      "model_status": "completed"
+    },
+    "delivery_gate": {
+      "delivery_pass": true,
+      "verifier_passed": true,
+      "objective_pass": true,
+      "llm_review_pass": true
+    },
+    "remediation_plan": {
+      "quality_feedback_used": true,
+      "required_fixes": [
+        "Add peer comparison metrics and explicit boundaries instead of framework-only text."
+      ],
+      "failed_sections": [
+        "peer_comparison",
+        "valuation",
+        "sensitivity"
+      ],
+      "memory_quality_feedback_used": false
+    },
+    "top_quality_issues": [
+      {
+        "issue_id": "evidence_0001",
+        "severity": "warning",
+        "category": "evidence",
+        "message": "权威/一手来源占比偏低：0.17",
+        "source": "objective"
+      },
+      {
+        "issue_id": "llm_review_0001",
+        "severity": "warning",
+        "category": "llm_review",
+        "message": "报告缺乏投资洞察和原创分析，财务指标描述为主，未形成明确观点或建议。",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "llm_review_0002",
+        "severity": "warning",
+        "category": "llm_review",
+        "message": "同行对比和估值敏感性部分仅以'数据缺口说明'回避实质性分析，未达到研报要求。",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "llm_review_0003",
+        "severity": "warning",
+        "category": "llm_review",
+        "message": "图表（关键指标、结论置信度、证据来源）为统计性展示，对投资分析辅助作用有限。",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "llm_review_0004",
+        "severity": "warning",
+        "category": "llm_review",
+        "message": "语言部分存在重复表述（如多次出现'数据缺口说明'），可读性一般。",
+        "source": "llm_review"
+      }
+    ]
+  },
+  "delivery_rework": {
+    "rounds": [
+      {
+        "round": 1,
+        "trigger": "delivery_gate_failed",
+        "status": "completed",
+        "top_quality_issues": [
+          {
+            "issue_id": "llm_review_0001",
+            "severity": "fatal",
+            "category": "content_gap",
+            "message": "大量暂无结论：同行对比、估值敏感性、投资结论等多个核心部分仅有数据缺口说明，缺乏实质分析和结论，不符合专业研报标准。",
+            "source": "llm_review"
+          },
+          {
+            "issue_id": "evidence_0001",
+            "severity": "warning",
+            "category": "evidence",
+            "message": "权威/一手来源占比偏低：0.17",
+            "source": "objective"
+          },
+          {
+            "issue_id": "llm_review_0003",
+            "severity": "warning",
+            "category": "evidence",
+            "message": "权威/一手来源占比偏低（0.17），且3条FRED宏观数据未用于任何结论，存在冗余。",
+            "source": "llm_review"
+          },
+          {
+            "issue_id": "llm_review_0002",
+            "severity": "warning",
+            "category": "valuation",
+            "message": "计算得出的P/E约为551.2x，与证据中trailingPE=156.36严重不符，可能存在计算错误或口径不一致。",
+            "source": "llm_review"
+          },
+          {
+            "issue_id": "verifier_0006",
+            "severity": "warning",
+            "category": "verifier",
+            "message": "Target symbol mismatch: expected AMD, but non-peer sections mention ticker-like tokens FRED."
+          }
+        ],
+        "responsible_agents": [
+          {
+            "agent": "DeepAnalyzeAgent",
+            "reason": "period_mismatch, different_fiscal_period, unsupported_numeric"
+          },
+          {
+            "agent": "PeerAgent",
+            "reason": "peer_comparison, peer, comparison"
+          }
+        ],
+        "required_fixes": [
+          "Add a minimum valuation path, or explain the missing inputs and impact on investment judgment.",
+          "Add peer comparison metrics and explicit boundaries instead of framework-only text.",
+          "Investment conclusion must include direction, reasons, cited evidence, and risk constraints.",
+          "Prioritize fatal/blocker issues from the LLM review before final delivery."
+        ],
+        "rework_mode": "owner_routed_plus_full_pipeline_rerun",
+        "repair_type": "analysis_repair",
+        "handled": true,
+        "target_agents": [
+          "DeepAnalyzeAgent",
+          "PeerAgent"
+        ],
+        "target_agents_rerun": [
+          {
+            "agent": "DeepAnalyzeAgent",
+            "task_type": "deep_analyze",
+            "status": "completed"
+          },
+          {
+            "agent": "PeerAgent",
+            "task_type": "peer_analysis",
+            "status": "completed"
+          }
+        ],
+        "critic_rechecked": true,
+        "final_editor_rerun": true,
+        "llm_repair_attempted": true,
+        "claim_rebuild_attempted": true,
+        "rejected_claim_count": 1,
+        "remaining_unfixable_gaps": [],
+        "unfixable_reasons": [],
+        "escalated_full_pipeline_rerun": true,
+        "delivery_pass_after_round": true
+      }
+    ],
+    "quality_result": {
+      "quality_report": {
+        "objective_pass": true,
+        "total_score": 0.9676
+      },
+      "llm_quality_review": {
+        "llm_review_pass": true,
+        "total_score": 1.0,
+        "model_status": "completed"
+      },
+      "delivery_gate": {
+        "delivery_pass": true,
+        "verifier_passed": true,
+        "objective_pass": true,
+        "llm_review_pass": true
+      },
+      "remediation_plan": {
+        "quality_feedback_used": true,
+        "required_fixes": [
+          "Add peer comparison metrics and explicit boundaries instead of framework-only text."
+        ],
+        "failed_sections": [
+          "peer_comparison",
+          "valuation",
+          "sensitivity"
+        ],
+        "memory_quality_feedback_used": false
+      },
+      "top_quality_issues": [
+        {
+          "issue_id": "evidence_0001",
+          "severity": "warning",
+          "category": "evidence",
+          "message": "权威/一手来源占比偏低：0.17",
+          "source": "objective"
+        },
+        {
+          "issue_id": "llm_review_0001",
+          "severity": "warning",
+          "category": "llm_review",
+          "message": "报告缺乏投资洞察和原创分析，财务指标描述为主，未形成明确观点或建议。",
+          "source": "llm_review"
+        },
+        {
+          "issue_id": "llm_review_0002",
+          "severity": "warning",
+          "category": "llm_review",
+          "message": "同行对比和估值敏感性部分仅以'数据缺口说明'回避实质性分析，未达到研报要求。",
+          "source": "llm_review"
+        },
+        {
+          "issue_id": "llm_review_0003",
+          "severity": "warning",
+          "category": "llm_review",
+          "message": "图表（关键指标、结论置信度、证据来源）为统计性展示，对投资分析辅助作用有限。",
+          "source": "llm_review"
+        },
+        {
+          "issue_id": "llm_review_0004",
+          "severity": "warning",
+          "category": "llm_review",
+          "message": "语言部分存在重复表述（如多次出现'数据缺口说明'），可读性一般。",
+          "source": "llm_review"
+        }
+      ]
+    },
+    "reworked": true
+  },
+  "run_finished_at": "2026-05-24T08:26:17.811651+00:00",
+  "model": "deepseek-v4-flash",
+  "actual_report_period": "2026Q1",
+  "available_data_periods": [
+    "2026Q1"
+  ],
+  "source_attempts": {
+    "local_real_data": {
+      "mode": "local_real_data",
+      "raw_data_root": "data/raw/real_data",
+      "symbol": "AMD",
+      "period": "2026Q1",
+      "record_count": 0,
+      "returned_hit_count": 0,
+      "failure_reason": "no_records_for_symbol_period",
+      "chunking_enabled": true,
+      "query_original": "AMD 2026Q1 Collect company filings, market data, financial statements, and recent news evidence.",
+      "query_adapted": "AMD 2026Q1 Collect company filings, market data, financial statements, and recent news evidence. Advanced Micro Devices, Inc. Semiconductors Technology",
+      "adapted_query": "AMD 2026Q1 Collect company filings, market data, financial statements, and recent news evidence. Advanced Micro Devices, Inc. Semiconductors Technology",
+      "query_terms_added": [
+        "Advanced Micro Devices, Inc.",
+        "Semiconductors",
+        "Technology"
+      ],
+      "query_expansion_version": "finance_query_expansion_v1"
+    },
+    "sec_edgar": {
+      "mode": "sec_companyfacts",
+      "symbol": "AMD",
+      "cik": "0000002488",
+      "record_count": 1,
+      "failure_reason": "",
+      "query": "AMD 2026Q1 Collect company filings, market data, financial statements, and recent news evidence."
+    },
+    "yahoo_finance": {
+      "mode": "yahoo_finance",
+      "symbol": "AMD",
+      "range": "1mo",
+      "interval": "1d",
+      "result_count": 2,
+      "has_financials": true
+    },
+    "independent_macro": {
+      "mode": "independent_macro",
+      "period": "2026Q1",
+      "source_meta": {
+        "fred": {
+          "mode": "fred",
+          "record_count": 4,
+          "errors": [],
+          "failure_reason": ""
+        },
+        "bls": {
+          "mode": "bls",
+          "record_count": 2,
+          "failure_reason": ""
+        },
+        "bea": {
+          "mode": "bea",
+          "record_count": 1,
+          "failure_reason": ""
+        }
+      },
+      "record_count": 6,
+      "failure_reason": "",
+      "query": "AMD 2026Q1 Collect company filings, market data, financial statements, and recent news evidence."
+    },
+    "tavily": {
+      "mode": "tavily",
+      "search_depth": "basic",
+      "request_id": "96274d36-4fad-4a05-9954-5dff2ccbf833",
+      "response_time": 0.63,
+      "result_count": 5
+    },
+    "serper": {
+      "mode": "serper",
+      "result_count": 5,
+      "search_parameters": {
+        "q": "AMD 2026Q1 Collect company filings, market data, financial statements, and recent news evidence.",
+        "gl": "us",
+        "hl": "en",
+        "type": "search",
+        "num": 5,
+        "engine": "google"
+      }
+    },
+    "local_evidence": {
+      "mode": "hybrid_rerank",
+      "backend": "score_passthrough",
+      "model_name": "BAAI/bge-reranker-base",
+      "checkpoint_path": "data/outputs/checkpoints/reranker_checkpoint.json",
+      "checkpoint_used": false,
+      "fallback_used": true,
+      "score_components": [
+        "base_score"
+      ],
+      "feature_weights": {},
+      "vector_backend": "memory",
+      "vector_hit_count": 0,
+      "query": "AMD 2026Q1 Collect company filings, market data, financial statements, and recent news evidence. Advanced Micro Devices, Inc. Semiconductors Technology",
+      "source_record_count": 0,
+      "record_count": 0,
+      "bm25_hit_count": 0,
+      "chunking_enabled": true,
+      "chunk_count": 0,
+      "returned_hit_count": 0,
+      "failure_reason": "no_records_for_symbol_period",
+      "loaded_file_count": 0,
+      "skipped_files": [
+        "data\\curated\\filings.parquet",
+        "data\\curated\\financials.parquet",
+        "data\\curated\\market.parquet",
+        "data\\curated\\news.parquet"
+      ],
+      "load_errors": [
+        {
+          "path": "data\\curated\\filings.parquet",
+          "error": "Repetition level histogram size mismatch"
+        },
+        {
+          "path": "data\\curated\\financials.parquet",
+          "error": "Repetition level histogram size mismatch"
+        },
+        {
+          "path": "data\\curated\\market.parquet",
+          "error": "Repetition level histogram size mismatch"
+        },
+        {
+          "path": "data\\curated\\news.parquet",
+          "error": "Repetition level histogram size mismatch"
+        }
+      ],
+      "query_original": "AMD 2026Q1 Collect company filings, market data, financial statements, and recent news evidence.",
+      "query_adapted": "AMD 2026Q1 Collect company filings, market data, financial statements, and recent news evidence. Advanced Micro Devices, Inc. Semiconductors Technology",
+      "adapted_query": "AMD 2026Q1 Collect company filings, market data, financial statements, and recent news evidence. Advanced Micro Devices, Inc. Semiconductors Technology",
+      "query_terms_added": [
+        "Advanced Micro Devices, Inc.",
+        "Semiconductors",
+        "Technology"
+      ],
+      "query_expansion_version": "finance_query_expansion_v1"
+    }
+  }
+}

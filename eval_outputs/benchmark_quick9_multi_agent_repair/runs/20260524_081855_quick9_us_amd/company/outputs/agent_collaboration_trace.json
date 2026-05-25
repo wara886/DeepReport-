@@ -1,0 +1,828 @@
+{
+  "schema_version": "agent_collaboration_trace.v1",
+  "symbol": "AMD",
+  "period": "2026Q1",
+  "research_topic": "Generate a company stock research report for AMD (AMD) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+  "agent_count": 13,
+  "step_count": 13,
+  "agents": [
+    {
+      "step": 1,
+      "agent": "PlanningAgent",
+      "task_id": "task_000_planning",
+      "task_type": "planning",
+      "description": "Generate a company stock research report for AMD (AMD) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "status": "completed",
+      "duration_sec": 13.456,
+      "input_summary": {
+        "research_topic": "Generate a company stock research report for AMD (AMD) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion."
+      },
+      "output_keys": [
+        "plan"
+      ],
+      "output_summary": {
+        "keys": [
+          "plan"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [],
+      "objections": [],
+      "handoff_from": "",
+      "handoff_to": "DeepResearcherAgent",
+      "error": ""
+    },
+    {
+      "step": 2,
+      "agent": "DeepResearcherAgent",
+      "task_id": "task_001",
+      "task_type": "deep_researcher",
+      "description": "Collect company filings, market data, financial statements, and recent news evidence.",
+      "status": "completed",
+      "duration_sec": 41.187,
+      "input_summary": {
+        "symbol": "AMD",
+        "period": "2026Q1",
+        "query": "AMD 2026Q1 Collect company filings, market data, financial statements, and recent news evidence.",
+        "research_topic": "Generate a company stock research report for AMD (AMD) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+        "engines": [
+          "local_real_data",
+          "sec_edgar",
+          "yahoo_finance",
+          "independent_macro",
+          "tavily",
+          "serper",
+          "local_evidence"
+        ]
+      },
+      "output_keys": [
+        "evidence_candidates",
+        "query",
+        "search_meta"
+      ],
+      "output_summary": {
+        "keys": [
+          "evidence_candidates",
+          "query",
+          "search_meta"
+        ],
+        "react_used": false
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "evidence_candidates",
+        "market_route",
+        "search_meta"
+      ],
+      "objections": [],
+      "handoff_from": "PlanningAgent",
+      "handoff_to": "BrowserAgent",
+      "error": ""
+    },
+    {
+      "step": 3,
+      "agent": "BrowserAgent",
+      "task_id": "task_002",
+      "task_type": "browser",
+      "description": "Extract relevant text, tables, and citation snippets from selected sources.",
+      "status": "completed",
+      "duration_sec": 0.0,
+      "input_summary": {},
+      "output_keys": [
+        "evidence_records"
+      ],
+      "output_summary": {
+        "keys": [
+          "evidence_records"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "evidence_records",
+        "pdf_artifacts"
+      ],
+      "objections": [],
+      "handoff_from": "DeepResearcherAgent",
+      "handoff_to": "DeepAnalyzeAgent",
+      "error": ""
+    },
+    {
+      "step": 4,
+      "agent": "DeepAnalyzeAgent",
+      "task_id": "task_003",
+      "task_type": "deep_analyze",
+      "description": "Analyze financial performance, valuation, risks, trends, and peer context.",
+      "status": "completed",
+      "duration_sec": 10.149,
+      "input_summary": {
+        "symbol": "AMD",
+        "period": "2026Q1",
+        "max_records": 10
+      },
+      "output_keys": [
+        "analysis_artifacts",
+        "claims"
+      ],
+      "output_summary": {
+        "keys": [
+          "analysis_artifacts",
+          "claims"
+        ],
+        "react_used": false
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "analysis_artifacts",
+        "claims",
+        "coverage",
+        "identity_profile",
+        "peer_analysis",
+        "risk_analysis",
+        "role_outputs",
+        "three_statement_analysis",
+        "valuation_analysis"
+      ],
+      "objections": [],
+      "handoff_from": "BrowserAgent",
+      "handoff_to": "IdentityAgent",
+      "error": ""
+    },
+    {
+      "step": 5,
+      "agent": "IdentityAgent",
+      "task_id": "task_role_identity",
+      "task_type": "identity_profile",
+      "description": "Resolve company identity and business profile.",
+      "status": "completed",
+      "duration_sec": 0.0,
+      "input_summary": {
+        "symbol": "AMD",
+        "period": "2026Q1"
+      },
+      "output_keys": [
+        "identity_profile",
+        "role_outputs"
+      ],
+      "output_summary": {
+        "keys": [
+          "identity_profile",
+          "role_outputs"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [],
+      "objections": [],
+      "handoff_from": "DeepAnalyzeAgent",
+      "handoff_to": "PeerAgent",
+      "error": ""
+    },
+    {
+      "step": 6,
+      "agent": "PeerAgent",
+      "task_id": "task_role_peer",
+      "task_type": "peer_analysis",
+      "description": "Analyze peer coverage and comparison limits.",
+      "status": "completed",
+      "duration_sec": 0.0,
+      "input_summary": {
+        "symbol": "AMD",
+        "period": "2026Q1"
+      },
+      "output_keys": [
+        "peer_analysis",
+        "role_outputs"
+      ],
+      "output_summary": {
+        "keys": [
+          "peer_analysis",
+          "role_outputs"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [],
+      "objections": [],
+      "handoff_from": "IdentityAgent",
+      "handoff_to": "RiskAgent",
+      "error": ""
+    },
+    {
+      "step": 7,
+      "agent": "RiskAgent",
+      "task_id": "task_role_risk",
+      "task_type": "risk_analysis",
+      "description": "Analyze risk evidence and disclosure limits.",
+      "status": "completed",
+      "duration_sec": 0.0,
+      "input_summary": {
+        "symbol": "AMD",
+        "period": "2026Q1"
+      },
+      "output_keys": [
+        "risk_analysis",
+        "role_outputs"
+      ],
+      "output_summary": {
+        "keys": [
+          "risk_analysis",
+          "role_outputs"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [],
+      "objections": [],
+      "handoff_from": "PeerAgent",
+      "handoff_to": "StatementAgent",
+      "error": ""
+    },
+    {
+      "step": 8,
+      "agent": "StatementAgent",
+      "task_id": "task_role_statement",
+      "task_type": "three_statement_analysis",
+      "description": "Analyze three-statement coverage and period basis.",
+      "status": "completed",
+      "duration_sec": 0.0,
+      "input_summary": {
+        "symbol": "AMD",
+        "period": "2026Q1"
+      },
+      "output_keys": [
+        "role_outputs",
+        "three_statement_analysis"
+      ],
+      "output_summary": {
+        "keys": [
+          "role_outputs",
+          "three_statement_analysis"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [],
+      "objections": [],
+      "handoff_from": "RiskAgent",
+      "handoff_to": "ValuationAgent",
+      "error": ""
+    },
+    {
+      "step": 9,
+      "agent": "ValuationAgent",
+      "task_id": "task_role_valuation",
+      "task_type": "valuation_analysis",
+      "description": "Analyze valuation inputs and missing assumptions.",
+      "status": "completed",
+      "duration_sec": 0.0,
+      "input_summary": {
+        "symbol": "AMD",
+        "period": "2026Q1"
+      },
+      "output_keys": [
+        "role_outputs",
+        "valuation_analysis"
+      ],
+      "output_summary": {
+        "keys": [
+          "role_outputs",
+          "valuation_analysis"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [],
+      "objections": [],
+      "handoff_from": "StatementAgent",
+      "handoff_to": "CriticAgent",
+      "error": ""
+    },
+    {
+      "step": 10,
+      "agent": "CriticAgent",
+      "task_id": "task_004_pre_write_critic",
+      "task_type": "pre_write_critic",
+      "description": "Review the shared research blackboard before final writing.",
+      "status": "completed",
+      "duration_sec": 0.0,
+      "input_summary": {},
+      "output_keys": [
+        "pre_write_critic"
+      ],
+      "output_summary": {
+        "keys": [
+          "pre_write_critic"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "critic"
+      ],
+      "objections": [],
+      "handoff_from": "ValuationAgent",
+      "handoff_to": "FinalAnswerAgent",
+      "error": ""
+    },
+    {
+      "step": 11,
+      "agent": "FinalAnswerAgent",
+      "task_id": "task_004",
+      "task_type": "final_answer",
+      "description": "Generate the final research report with citations, charts, and structured sections.",
+      "status": "completed",
+      "duration_sec": 18.657,
+      "input_summary": {
+        "symbol": "AMD",
+        "period": "2026Q1",
+        "research_topic": "Generate a company stock research report for AMD (AMD) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+        "max_claims": 10
+      },
+      "output_keys": [
+        "html",
+        "markdown",
+        "report_json",
+        "summary"
+      ],
+      "output_summary": {
+        "keys": [
+          "html",
+          "markdown",
+          "report_json",
+          "summary"
+        ],
+        "quality_remediation_used": true
+      },
+      "memory_used": false,
+      "quality_feedback_used": true,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "markdown",
+        "report_json"
+      ],
+      "objections": [],
+      "handoff_from": "CriticAgent",
+      "handoff_to": "VerifierAgent",
+      "error": ""
+    },
+    {
+      "step": 12,
+      "agent": "VerifierAgent",
+      "task_id": "task_005",
+      "task_type": "verifier",
+      "description": "Check claim support, numeric consistency, citation coverage, and report completeness.",
+      "status": "completed",
+      "duration_sec": 7.231,
+      "input_summary": {
+        "period": "2026Q1",
+        "expected_symbol": "AMD"
+      },
+      "output_keys": [
+        "verification_report"
+      ],
+      "output_summary": {
+        "keys": [
+          "verification_report"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": false,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "gap_resolution_trace",
+        "verification_report"
+      ],
+      "objections": [],
+      "handoff_from": "FinalAnswerAgent",
+      "handoff_to": "GapResolverAgent",
+      "error": ""
+    },
+    {
+      "step": 13,
+      "agent": "GapResolverAgent",
+      "task_id": "task_gap_resolver_001",
+      "task_type": "gap_resolver",
+      "description": "Resolve data and delivery gaps for the generated report.",
+      "status": "completed",
+      "duration_sec": 0.0,
+      "input_summary": {
+        "symbol": "AMD",
+        "period": "2026Q1"
+      },
+      "output_keys": [
+        "data_repair_summary",
+        "gap_resolution_trace",
+        "repair_constraints",
+        "required_backfill_sections"
+      ],
+      "output_summary": {
+        "keys": [
+          "data_repair_summary",
+          "gap_resolution_trace",
+          "repair_constraints",
+          "required_backfill_sections"
+        ]
+      },
+      "memory_used": false,
+      "quality_feedback_used": true,
+      "tools_observed": [],
+      "blackboard_writes": [
+        "data_repair_summary",
+        "gap_resolution_trace",
+        "repair_constraints"
+      ],
+      "objections": [],
+      "handoff_from": "VerifierAgent",
+      "handoff_to": "",
+      "error": ""
+    }
+  ],
+  "handoffs": [
+    {
+      "from": "PlanningAgent",
+      "to": "DeepResearcherAgent",
+      "artifact_keys": [
+        "plan"
+      ]
+    },
+    {
+      "from": "DeepResearcherAgent",
+      "to": "BrowserAgent",
+      "artifact_keys": [
+        "evidence_candidates",
+        "query",
+        "search_meta"
+      ]
+    },
+    {
+      "from": "BrowserAgent",
+      "to": "DeepAnalyzeAgent",
+      "artifact_keys": [
+        "evidence_records"
+      ]
+    },
+    {
+      "from": "DeepAnalyzeAgent",
+      "to": "IdentityAgent",
+      "artifact_keys": [
+        "analysis_artifacts",
+        "claims"
+      ]
+    },
+    {
+      "from": "IdentityAgent",
+      "to": "PeerAgent",
+      "artifact_keys": [
+        "identity_profile",
+        "role_outputs"
+      ]
+    },
+    {
+      "from": "PeerAgent",
+      "to": "RiskAgent",
+      "artifact_keys": [
+        "peer_analysis",
+        "role_outputs"
+      ]
+    },
+    {
+      "from": "RiskAgent",
+      "to": "StatementAgent",
+      "artifact_keys": [
+        "risk_analysis",
+        "role_outputs"
+      ]
+    },
+    {
+      "from": "StatementAgent",
+      "to": "ValuationAgent",
+      "artifact_keys": [
+        "role_outputs",
+        "three_statement_analysis"
+      ]
+    },
+    {
+      "from": "ValuationAgent",
+      "to": "CriticAgent",
+      "artifact_keys": [
+        "role_outputs",
+        "valuation_analysis"
+      ]
+    },
+    {
+      "from": "CriticAgent",
+      "to": "FinalAnswerAgent",
+      "artifact_keys": [
+        "pre_write_critic"
+      ]
+    },
+    {
+      "from": "FinalAnswerAgent",
+      "to": "VerifierAgent",
+      "artifact_keys": [
+        "html",
+        "markdown",
+        "report_json",
+        "summary"
+      ]
+    },
+    {
+      "from": "VerifierAgent",
+      "to": "GapResolverAgent",
+      "artifact_keys": [
+        "verification_report"
+      ]
+    }
+  ],
+  "memory": {
+    "enabled": false,
+    "context_scope": "planner_router",
+    "used_by_agents": [],
+    "fact_boundary": "Memory is routing/context only; facts require evidence/citation/verifier."
+  },
+  "quality": {
+    "verification_passed": true,
+    "rework_rounds": 0,
+    "quality_feedback_used": true,
+    "blockers": [],
+    "remaining_gap_count": 0
+  },
+  "pre_write_rework_history": [],
+  "research_blackboard": {
+    "schema_version": "research_blackboard.v1",
+    "market_route": {
+      "market": "us",
+      "exchange": "US",
+      "data_source_plan": {
+        "symbol": "AMD",
+        "market": "us",
+        "exchange": "US",
+        "engines": [
+          "local_real_data",
+          "sec_edgar",
+          "yahoo_finance",
+          "independent_macro",
+          "tavily",
+          "local_evidence"
+        ],
+        "primary_sources": [
+          "sec_edgar",
+          "yahoo_finance"
+        ],
+        "free_public_only": true,
+        "requires_gap_explanation_when_missing": [
+          "income_statement",
+          "balance_sheet",
+          "cash_flow",
+          "valuation",
+          "peer_compare"
+        ]
+      },
+      "primary_sources": [
+        "sec_edgar",
+        "yahoo_finance"
+      ],
+      "planned_engines": [
+        "local_real_data",
+        "sec_edgar",
+        "yahoo_finance",
+        "independent_macro",
+        "tavily",
+        "serper",
+        "local_evidence"
+      ],
+      "attempted_engines": [
+        "local_real_data",
+        "sec_edgar",
+        "yahoo_finance",
+        "independent_macro",
+        "tavily",
+        "serper",
+        "local_evidence"
+      ],
+      "missing_primary_sources": [],
+      "route_coverage": 1.0
+    },
+    "company_identity": {
+      "symbol": "AMD",
+      "canonical_symbol": "AMD",
+      "company_name": "Advanced Micro Devices, Inc.",
+      "market": "us",
+      "exchange": "US",
+      "currency": "USD",
+      "country_region": "United States",
+      "is_listed": true,
+      "resolution_confidence": 1.0,
+      "data_source_plan": {
+        "symbol": "AMD",
+        "market": "us",
+        "exchange": "US",
+        "engines": [
+          "local_real_data",
+          "sec_edgar",
+          "yahoo_finance",
+          "independent_macro",
+          "tavily",
+          "local_evidence"
+        ],
+        "primary_sources": [
+          "sec_edgar",
+          "yahoo_finance"
+        ],
+        "free_public_only": true,
+        "requires_gap_explanation_when_missing": [
+          "income_statement",
+          "balance_sheet",
+          "cash_flow",
+          "valuation",
+          "peer_compare"
+        ]
+      },
+      "match_type": "symbol_token",
+      "needs_confirmation": false,
+      "reason": "resolved",
+      "sector": "Technology",
+      "industry": "Semiconductors",
+      "business_summary": "",
+      "official_sources": [
+        "sec_edgar",
+        "yahoo_finance"
+      ],
+      "latest_disclosure_period": "",
+      "entity_resolution": {
+        "requested_symbol": "AMD",
+        "research_topic": "Generate a company stock research report for AMD (AMD) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+        "resolved_symbol": "AMD",
+        "resolution_source": "symbol",
+        "topic_resolution": {
+          "input": "Generate a company stock research report for AMD (AMD) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+          "resolved": true,
+          "symbol": "AMD",
+          "company_name": "Advanced Micro Devices, Inc.",
+          "match_type": "symbol_token",
+          "confidence": 1.0,
+          "profile_path": "",
+          "sector": "Technology",
+          "industry": "Semiconductors",
+          "business_summary": "",
+          "period": "",
+          "ambiguous": false
+        },
+        "symbol_resolution": {
+          "input": "AMD",
+          "resolved": true,
+          "symbol": "AMD",
+          "company_name": "Advanced Micro Devices, Inc.",
+          "match_type": "symbol_token",
+          "confidence": 1.0,
+          "profile_path": "",
+          "sector": "Technology",
+          "industry": "Semiconductors",
+          "business_summary": "",
+          "period": "",
+          "ambiguous": false
+        },
+        "conflict": false
+      }
+    },
+    "industry_profile": {
+      "industry": "Semiconductors",
+      "sector": "Technology",
+      "business_summary": "AMD SEC company facts SEC companyfacts latest supported metrics for AMD: RevenueFromContractWithCustomerExcludingAssessedTax: 10253000000 (USD, 2026-03-28); NetIncomeLoss: 1383000000 (USD, 2026-03-28); Assets: 7964200...",
+      "confidence": 0.9,
+      "source_priority": "official_disclosure",
+      "evidence_ids": [
+        "sec_companyfacts_amd_680fceca36"
+      ]
+    },
+    "period_state": {
+      "target_period": "2026Q1",
+      "latest_available_disclosure_period": "2026Q1",
+      "financial_data_basis": "quarterly or latest available public disclosure",
+      "market_data_as_of": "2026-05-22",
+      "has_data_delay": false,
+      "notes": []
+    },
+    "role_outputs": {
+      "identity_profile": {
+        "status": "complete",
+        "confidence": 0.84,
+        "source": "official_disclosure_or_company_profile",
+        "evidence_ids": [
+          "sec_companyfacts_amd_680fceca36"
+        ],
+        "findings": [
+          "Resolved analysis target as AMD for 2026Q1.",
+          "Official/company evidence records available: 1."
+        ],
+        "missing_inputs": [],
+        "impact_on_report": "FinalAnswer may use company identity and business profile from verified evidence.",
+        "owner_agent": "IdentityAgent",
+        "verified": true
+      },
+      "three_statement_analysis": {
+        "status": "complete",
+        "confidence": 0.86,
+        "source": "financial_statement_view_and_metric_lineage",
+        "evidence_ids": [
+          "sec_companyfacts_amd_680fceca36"
+        ],
+        "findings": [
+          "Three-statement coverage income=True, balance=True, cash_flow=True.",
+          "Financial metric lineage count: 17.",
+          "盈利摘要：收入 10,253,000,000 USD；毛利率 52.82 pct；净利润 1,372,000,000 USD [AMD_2026Q1_yahoo_financials_e56c67e4fb]",
+          "资产负债摘要：总资产 79,642,000,000 USD；总负债 15,180,000,000 USD；权益 64,462,000,000 USD [AMD_2026Q1_yahoo_financials_e56c67e4fb]",
+          "现金流摘要：经营现金流 2,955,000,000 USD；自由现金流 2,566,000,000 USD；资本开支 389,000,000 USD [AMD_2026Q1_yahoo_financials_e56c67e4fb]",
+          "Statement view coverage: {'statements': {'income_statement': 5, 'balance_sheet': 5, 'cash_flow_statement': 6}, 'has_three_statement_view': True, 'line_item_count': 16}."
+        ],
+        "missing_inputs": [],
+        "impact_on_report": "Financial analysis can discuss income statement, balance sheet, and cash flow together.",
+        "owner_agent": "StatementAgent",
+        "verified": true
+      },
+      "peer_analysis": {
+        "status": "missing",
+        "confidence": 0.3,
+        "source": "peer_comparison_tool",
+        "evidence_ids": [
+          "sec_companyfacts_amd_680fceca36",
+          "AMD_2026Q1_yahoo_financials_e56c67e4fb",
+          "AMD_2026Q1_yahoo_finance_979d3a14e8"
+        ],
+        "findings": [
+          "Peer context contains 0 comparable companies."
+        ],
+        "missing_inputs": [
+          "peer_universe",
+          "peer_financial_metrics"
+        ],
+        "impact_on_report": "Peer section must be framed as a data gap or qualitative context, not a ranked conclusion.",
+        "owner_agent": "PeerAgent",
+        "verified": false
+      },
+      "valuation_analysis": {
+        "status": "partial",
+        "confidence": 0.5,
+        "source": "valuation_tool_and_market_inputs",
+        "evidence_ids": [
+          "sec_companyfacts_amd_680fceca36",
+          "AMD_2026Q1_yahoo_financials_e56c67e4fb",
+          "AMD_2026Q1_yahoo_finance_979d3a14e8"
+        ],
+        "findings": [
+          "Valuation availability: False.",
+          "Valuation method: not_available.",
+          "估值缺口：annual_or_ttm_free_cash_flow。"
+        ],
+        "missing_inputs": [
+          "annual_or_ttm_free_cash_flow"
+        ],
+        "impact_on_report": "Valuation section must list missing inputs and avoid target-price style conclusions.",
+        "owner_agent": "ValuationAgent",
+        "verified": false
+      },
+      "risk_analysis": {
+        "status": "complete",
+        "confidence": 0.72,
+        "source": "risk_claims_and_evidence",
+        "evidence_ids": [
+          "sec_companyfacts_amd_680fceca36",
+          "AMD_2026Q1_yahoo_financials_e56c67e4fb",
+          "AMD_2026Q1_yahoo_finance_979d3a14e8"
+        ],
+        "findings": [
+          "Risk-related claim evidence count: 3.",
+          "AMD 的主要风险包括三类：第一，行业竞争和供给扩张可能压缩高毛利业务的持续性；第二，宏观利率、资本开支周期和云厂商采购节奏会放大收入波动；第三，当前核心季度三表采用结构化降级来源，若后续一手公告与该数据不一致，盈利质量、自由现金流和估值结论都需要重算。"
+        ],
+        "missing_inputs": [],
+        "impact_on_report": "Risk section can cite identified operational or market risk evidence.",
+        "owner_agent": "RiskAgent",
+        "verified": true
+      }
+    },
+    "critic": {
+      "pre_write_passed": true,
+      "objections": [],
+      "recommendations": [
+        "行情数据只作为截至日市场输入，不得写成目标报告期财报事实。",
+        "估值不可计算时必须列出缺失输入和判断影响，不能只写暂无结论。",
+        "Peer role output is incomplete; frame peer comparison with data-gap limits.",
+        "Valuation role output is incomplete; avoid target-price conclusions and list missing inputs."
+      ]
+    }
+  }
+}

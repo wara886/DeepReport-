@@ -1,0 +1,13 @@
+{
+  "symbol": "6682.HK",
+  "period": "2026Q1",
+  "gap_count": 3,
+  "blocker_count": 3,
+  "warning_count": 0,
+  "required_backfill_sections": [
+    "financial_statements"
+  ],
+  "financial_metric_count": 0,
+  "table_types": [],
+  "source_failure_count": 0
+}

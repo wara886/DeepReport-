@@ -1,0 +1,59 @@
+{
+  "input_claim_count": 19,
+  "accepted_claim_count": 16,
+  "rejected_claim_count": 3,
+  "rejected_claims": [
+    {
+      "claim_id": "cl_0001",
+      "section_name": "financial_analysis",
+      "reasons": [
+        "numeric_values_not_in_metric_lineage:total_assets_billion,total_liabilities_billion"
+      ],
+      "evidence_ids": [
+        "300750_FY2024_eastmoney_financials_balance_197f35da8c"
+      ],
+      "metric_lineage_ids": [
+        "300750.sz_fy2024_total_assets_300750.sz_fy2024_balance_300750_fy2024_eastmoney_financials_balance_197f35da8c_2024-12-31_00:00:00",
+        "300750.sz_fy2024_total_liabilities_300750.sz_fy2024_balance_300750_fy2024_eastmoney_financials_balance_197f35da8c_2024-12-31_00:00:00"
+      ],
+      "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+      "suggested_data_source": "official filing or structured financial statement for target period",
+      "claim_text": "2024年总资产7866.58亿元，总负债5132.02亿元，资产负债率65.2%。"
+    },
+    {
+      "claim_id": "cl_0002",
+      "section_name": "financial_analysis",
+      "reasons": [
+        "numeric_values_not_in_metric_lineage:revenue_billion,net_profit_billion"
+      ],
+      "evidence_ids": [
+        "300750_FY2024_eastmoney_financials_income_85c3eb6f1c"
+      ],
+      "metric_lineage_ids": [
+        "300750.sz_fy2024_revenue_300750.sz_fy2024_income_300750_fy2024_eastmoney_financials_income_85c3eb6f1c_2024-12-31_00:00:00",
+        "300750.sz_fy2024_net_income_300750.sz_fy2024_income_300750_fy2024_eastmoney_financials_income_85c3eb6f1c_2024-12-31_00:00:00"
+      ],
+      "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+      "suggested_data_source": "official filing or structured financial statement for target period",
+      "claim_text": "2024年营业收入3620.13亿元，净利润507.45亿元，净利率14.0%。"
+    },
+    {
+      "claim_id": "cl_0012",
+      "section_name": "valuation_sensitivity",
+      "reasons": [
+        "numeric_values_not_in_metric_lineage:net_income_delta_1pct"
+      ],
+      "evidence_ids": [
+        "300750_FY2024_eastmoney_financials_balance_197f35da8c",
+        "300750_FY2024_eastmoney_financials_income_85c3eb6f1c",
+        "300750_FY2024_eastmoney_financials_cashflow_197af30d0d"
+      ],
+      "metric_lineage_ids": [
+        "300750.sz_fy2024_net_income_300750.sz_fy2024_income_300750_fy2024_eastmoney_financials_income_85c3eb6f1c_2024-12-31_00:00:00"
+      ],
+      "responsible_agent": "DeepAnalyzeAgent+StatementAgent",
+      "suggested_data_source": "official filing or structured financial statement for target period",
+      "claim_text": "300750.SZ FY2024 敏感性分析显示，当前净利率约为 14.0%；若净利率变动 1pct，净利润方向性影响约为 3.62B。对科技公司应重点跟踪收入增速、毛利率和研发费用率；对消费品公司应重点跟踪收入增速、净利率和渠道价格。"
+    }
+  ]
+}

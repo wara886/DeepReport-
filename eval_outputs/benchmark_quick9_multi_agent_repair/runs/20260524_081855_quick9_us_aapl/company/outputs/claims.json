@@ -1,0 +1,380 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "financial_analysis",
+    "claim_text": "AAPL SEC companyfacts 显示，最新可用收入指标约为 254.94 billion USD，期间截止 2026-03-28。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44"
+    ],
+    "numeric_values": {
+      "revenue": 254940000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.86,
+    "notes": "由 SEC EDGAR companyfacts 结构化事实生成。",
+    "metric_lineage_ids": [
+      "aapl_2026q1_revenue_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ],
+    "input_metric_lineage_ids": [
+      "aapl_2026q1_revenue_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ]
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "financial_analysis",
+    "claim_text": "AAPL SEC companyfacts 显示，最新可用净利润指标约为 71.67 billion USD，期间截止 2026-03-28。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44"
+    ],
+    "numeric_values": {
+      "net_income": 71675000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.84,
+    "notes": "由 SEC EDGAR companyfacts 结构化事实生成。",
+    "metric_lineage_ids": [
+      "aapl_2026q1_net_income_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ],
+    "input_metric_lineage_ids": [
+      "aapl_2026q1_net_income_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ]
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "financial_statements",
+    "claim_text": "AAPL SEC companyfacts 资产负债表指标显示，资产约为 371.08 billion USD，现金及等价物约为 45.57 billion USD。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44"
+    ],
+    "numeric_values": {
+      "assets": 371082000000.0,
+      "cash_and_equivalents": 45572000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.82,
+    "notes": "由 SEC EDGAR companyfacts 结构化事实生成。",
+    "metric_lineage_ids": [
+      "aapl_2026q1_total_assets_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_cash_and_equivalents_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ],
+    "input_metric_lineage_ids": [
+      "aapl_2026q1_total_assets_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_cash_and_equivalents_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ]
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "financial_statements",
+    "claim_text": "系统已构建三表视图，覆盖 16 个核心项目。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a"
+    ],
+    "numeric_values": {
+      "statement_line_item_count": 16.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.74,
+    "notes": "由 build_three_statement_view 生成覆盖结论。",
+    "input_metric_lineage_ids": [
+      "aapl_2026q1_revenue_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_net_income_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_free_cash_flow_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_operating_cash_flow_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_gross_margin_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_total_assets_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_total_liabilities_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31"
+    ]
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "financial_statements",
+    "claim_text": "AAPL 2026Q1 利润表摘要：收入约为 254.94B，净利润约为 71.67B。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a"
+    ],
+    "numeric_values": {
+      "revenue": 254940000000.0,
+      "net_income": 71675000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.82,
+    "notes": "由标准化三表行生成，必须写入正文三表摘要。",
+    "metric_lineage_ids": [
+      "aapl_2026q1_revenue_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_net_income_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ],
+    "input_metric_lineage_ids": [
+      "aapl_2026q1_revenue_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_net_income_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ]
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "financial_statements",
+    "claim_text": "AAPL 2026Q1 资产负债表摘要：总资产约为 371.08B，总负债约为 264.59B，现金及等价物约为 45.57B。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a"
+    ],
+    "numeric_values": {
+      "total_assets": 371082000000.0,
+      "total_liabilities": 264591000000.0,
+      "cash_and_equivalents": 45572000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.82,
+    "notes": "由标准化三表行生成，必须写入正文三表摘要。",
+    "metric_lineage_ids": [
+      "aapl_2026q1_total_assets_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_total_liabilities_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_cash_and_equivalents_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ],
+    "input_metric_lineage_ids": [
+      "aapl_2026q1_total_assets_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_total_liabilities_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_cash_and_equivalents_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ]
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "financial_statements",
+    "claim_text": "AAPL 2026Q1 现金流量表摘要：经营现金流约为 82.63B，自由现金流约为 78.28B，资本开支约为 4.34B。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a"
+    ],
+    "numeric_values": {
+      "operating_cash_flow": 82627000000.0,
+      "free_cash_flow": 78283000000.0,
+      "capex": 4344000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.82,
+    "notes": "现金流量表摘要或缺口说明，必须写入正文三表摘要。",
+    "metric_lineage_ids": [
+      "aapl_2026q1_operating_cash_flow_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_free_cash_flow_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_capex_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ],
+    "input_metric_lineage_ids": [
+      "aapl_2026q1_operating_cash_flow_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_free_cash_flow_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_capex_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ]
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "financial_statements",
+    "claim_text": "AAPL 三表视图显示，净利润约为 71.67B，自由现金流约为 78.28B。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a"
+    ],
+    "numeric_values": {
+      "net_income_billion": 71675000000.0,
+      "free_cash_flow_billion": 78283000000.0
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由三表视图计算生成。",
+    "metric_lineage_ids": [
+      "aapl_2026q1_net_income_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_free_cash_flow_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ],
+    "input_metric_lineage_ids": [
+      "aapl_2026q1_net_income_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_free_cash_flow_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ]
+  },
+  {
+    "claim_id": "cl_0009",
+    "section_name": "financial_analysis",
+    "claim_text": "AAPL 2026Q1 财务分析显示，净利率约为 28.1%，自由现金流/净利润约为 109.2%；盈利质量较强，但结论依赖结构化季度三表数据，需等待一手公告复核。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a"
+    ],
+    "numeric_values": {
+      "revenue": 254940000000.0,
+      "net_income": 71675000000.0,
+      "free_cash_flow": 78283000000.0,
+      "net_margin_pct": 28.114458303914645
+    },
+    "risk_level": "medium",
+    "confidence": 0.74,
+    "notes": "由三表视图和 metric lineage 派生的财务分析结论；官方季度 filing 缺失时保持降级说明。",
+    "metric_lineage_ids": [
+      "aapl_2026q1_revenue_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_net_income_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_free_cash_flow_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ],
+    "input_metric_lineage_ids": [
+      "aapl_2026q1_revenue_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_net_income_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_free_cash_flow_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ]
+  },
+  {
+    "claim_id": "cl_0010",
+    "section_name": "valuation",
+    "claim_text": "AAPL 2026Q1 最小估值模型以公开行情市值（单位：十亿美元）和三表数据为输入，P/E 约为 63.3x、P/S 约为 17.8x；该结果仅用于相对估值校验，不构成目标价。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a",
+      "AAPL_2026Q1_yahoo_finance_6ed4496f98"
+    ],
+    "numeric_values": {
+      "pe": 63.2821650706662,
+      "ps": 17.791437912606888
+    },
+    "risk_level": "medium",
+    "confidence": 0.7,
+    "notes": "最小估值模型：market cap + net income/equity/revenue。",
+    "input_metric_lineage_ids": [
+      "aapl_2026q1_revenue_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_net_income_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_free_cash_flow_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_operating_cash_flow_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_gross_margin_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_total_assets_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_total_liabilities_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31"
+    ]
+  },
+  {
+    "claim_id": "cl_0011",
+    "section_name": "executive_summary",
+    "claim_text": "AAPL 2026Q1 核心摘要：收入约 254.94B，净利润约 71.67B，净利率约 28.1%；模型结论为“中性观察”。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a",
+      "AAPL_2026Q1_yahoo_finance_6ed4496f98"
+    ],
+    "numeric_values": {
+      "revenue": 254940000000.0,
+      "net_income": 71675000000.0
+    },
+    "risk_level": "medium",
+    "confidence": 0.76,
+    "notes": "由三表和估值模型生成的执行摘要，不使用空壳 backfill。",
+    "metric_lineage_ids": [
+      "aapl_2026q1_revenue_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_net_income_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ],
+    "input_metric_lineage_ids": [
+      "aapl_2026q1_revenue_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28",
+      "aapl_2026q1_net_income_aapl_2026q1_sec_companyfacts_sec_companyfacts_aapl_6b0bc1fa44_2026-03-28"
+    ]
+  },
+  {
+    "claim_id": "cl_0012",
+    "section_name": "business_overview",
+    "claim_text": "AAPL 的证据覆盖包括 3 条记录，横跨 2 类来源。",
+    "evidence_ids": [
+      "AAPL_2026Q1_yahoo_finance_6ed4496f98",
+      "AAPL_2026Q1_yahoo_financials_710459470a",
+      "sec_companyfacts_aapl_6b0bc1fa44"
+    ],
+    "numeric_values": {
+      "evidence_count": 3.0,
+      "unique_sources": 2.0
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由证据覆盖统计生成。",
+    "input_metric_lineage_ids": [
+      "aapl_2026q1_revenue_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_net_income_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_free_cash_flow_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_operating_cash_flow_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_gross_margin_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_total_assets_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31",
+      "aapl_2026q1_total_liabilities_aapl_2026q1_yahoo_financials_aapl_2026q1_yahoo_financials_710459470a_2026-03-31"
+    ]
+  },
+  {
+    "claim_id": "cl_0013",
+    "section_name": "strategy_business",
+    "claim_text": "AAPL 业务覆盖上市公司领域，核心竞争维度包括收入增长/盈利能力/资产效率/现金流/治理质量。当前报告基于公开资料归纳，分析方法论适用于该行业。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a",
+      "AAPL_2026Q1_yahoo_finance_6ed4496f98"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "战略与业务 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0014",
+    "section_name": "ownership_governance",
+    "claim_text": "AAPL 治理复核应聚焦董事会监督、股权稀释、管理层激励、重大关联交易和信息披露及时性；当前证据链将治理事项作为风险约束纳入投资结论，而不把治理信息缺口写成确定性负面判断。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a",
+      "AAPL_2026Q1_yahoo_finance_6ed4496f98"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.6,
+    "notes": "股权与治理 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0015",
+    "section_name": "peer_compare",
+    "claim_text": "AAPL 属于上市公司类别，同行可比分析框架基于收入增长/利润率/ROE/估值/杠杆等维度。当前公开证据尚未覆盖完整同行数据，以下为框架性分析。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a",
+      "AAPL_2026Q1_yahoo_finance_6ed4496f98"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "同行对比 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0016",
+    "section_name": "risks",
+    "claim_text": "AAPL 的主要风险包括三类：第一，行业竞争和供给扩张可能压缩高毛利业务的持续性；第二，宏观利率、资本开支周期和云厂商采购节奏会放大收入波动；第三，当前核心季度三表采用结构化降级来源，若后续一手公告与该数据不一致，盈利质量、自由现金流和估值结论都需要重算。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a",
+      "AAPL_2026Q1_yahoo_finance_6ed4496f98"
+    ],
+    "numeric_values": {},
+    "risk_level": "high",
+    "confidence": 0.66,
+    "notes": "风险 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0017",
+    "section_name": "conclusion",
+    "claim_text": "关于AAPL 的投资结论需要综合主营业务增长和经营效率改善等驱动因素和市场竞争、成本波动和监管变化等约束条件。当前公开证据尚不完整，以下为基于现有信息的初步判断。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a",
+      "AAPL_2026Q1_yahoo_finance_6ed4496f98"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "投资结论 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0018",
+    "section_name": "conclusion",
+    "claim_text": "关于AAPL 的投资结论需要综合主营业务增长和经营效率改善等驱动因素和市场竞争、成本波动和监管变化等约束条件。当前公开证据尚不完整，以下为基于现有信息的初步判断。",
+    "evidence_ids": [
+      "sec_companyfacts_aapl_6b0bc1fa44",
+      "AAPL_2026Q1_yahoo_financials_710459470a",
+      "AAPL_2026Q1_yahoo_finance_6ed4496f98"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "投资结论 backfill——primary 未生成时的兜底文本"
+  }
+]

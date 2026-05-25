@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 import hashlib
 import json
 import os
+import re
 import socket
 from typing import Any, Dict, Iterable, List
 from urllib import error, parse, request
@@ -346,11 +347,12 @@ def fetch_sec_companyfacts_evidence(
     latest_dates = [str(item.get("filed") or item.get("end") or "") for item in metrics.values() if isinstance(item, dict)]
     publish_time = max([item for item in latest_dates if item] or [""])
     metric_text = "; ".join(f"{name}: {item.get('value')} ({item.get('unit')}, {item.get('end')})" for name, item in metrics.items())
+    metric_scope = f"{period} supported metrics" if period else "latest supported metrics"
     hit = _record(
         evidence_id=f"sec_companyfacts_{symbol.lower()}_{hashlib.sha1(metric_text.encode('utf-8')).hexdigest()[:10]}",
         source_type="sec_companyfacts",
         title=f"{symbol} SEC company facts",
-        content=f"SEC companyfacts latest supported metrics for {symbol}: {metric_text}.",
+        content=f"SEC companyfacts {metric_scope} for {symbol}: {metric_text}.",
         source_url=url,
         publish_time=publish_time,
         symbol=symbol,
@@ -380,6 +382,8 @@ def _latest_sec_metrics(facts: Dict[str, Any], period: str = "") -> Dict[str, Di
         if not rows:
             continue
         latest = _select_sec_metric_row(rows, period=period)
+        if not latest:
+            continue
         output[metric] = {
             "value": latest.get("val"),
             "unit": latest.get("unit", ""),
@@ -387,6 +391,8 @@ def _latest_sec_metrics(facts: Dict[str, Any], period: str = "") -> Dict[str, Di
             "filed": latest.get("filed", ""),
             "form": latest.get("form", ""),
             "frame": latest.get("frame", ""),
+            "fy": latest.get("fy", ""),
+            "fp": latest.get("fp", ""),
         }
     output = _drop_stale_duplicate_revenue_metric(output)
     return output
@@ -409,6 +415,21 @@ def _drop_stale_duplicate_revenue_metric(metrics: Dict[str, Dict[str, Any]]) -> 
 
 
 def _select_sec_metric_row(rows: List[Dict[str, Any]], period: str = "") -> Dict[str, Any]:
+    fiscal_year = _fiscal_year(period)
+    if fiscal_year is not None:
+        annual = [
+            row
+            for row in rows
+            if str(row.get("fy") or "") == str(fiscal_year)
+            and str(row.get("fp") or "").upper() == "FY"
+            and str(row.get("form") or "").upper() in {"10-K", "10-K/A", "20-F", "20-F/A"}
+        ]
+        annual.sort(
+            key=lambda row: (str(row.get("filed") or ""), str(row.get("end") or "")),
+            reverse=True,
+        )
+        return annual[0] if annual else {}
+
     target = _period_target_date(period)
     if not target:
         rows.sort(key=lambda row: str(row.get("filed") or row.get("end") or ""), reverse=True)
@@ -450,6 +471,16 @@ def _period_target_date(period: str | None) -> date | None:
     if "Q4" in text or "FY" in text or "ANNUAL" in text:
         return date(year, 12, 31)
     return None
+
+
+def _fiscal_year(period: str | None) -> int | None:
+    """Return a requested fiscal year only for annual-period expressions."""
+
+    text = str(period or "").strip().upper()
+    if "FY" not in text and "ANNUAL" not in text:
+        return None
+    match = re.search(r"(?:FY\s*)?(20\d{2})(?:\s*FY|\s*ANNUAL)?", text)
+    return int(match.group(1)) if match else None
 
 
 def _parse_iso_date(raw: Any) -> date | None:

@@ -126,3 +126,43 @@ independent_sources:
     assert payload.hits[0]["metadata"]["metrics"]["Revenues"]["value"] == 100
     assert payload.hits[0]["source_authority"] == "official"
     assert payload.meta["failure_reason"] == ""
+
+
+def test_sec_companyfacts_fy_period_selects_fiscal_year_annual_record(monkeypatch, tmp_path):
+    config_path = tmp_path / "data_sources.yaml"
+    config_path.write_text(
+        """
+independent_sources:
+  company:
+    sec_edgar:
+      companyfacts_base_url: https://data.sec.gov/api/xbrl/companyfacts
+      cik_map:
+        AAPL: "0000320193"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            values = [
+                {"val": 80, "end": "2023-09-30", "filed": "2024-11-01", "form": "10-K", "fy": 2024, "fp": "FY"},
+                {"val": 90, "end": "2024-09-28", "filed": "2024-11-01", "form": "10-K", "fy": 2024, "fp": "FY"},
+                {"val": 30, "end": "2024-12-28", "filed": "2025-01-31", "form": "10-Q", "fy": 2025, "fp": "Q1"},
+            ]
+            return json.dumps({"facts": {"us-gaap": {"Revenues": {"units": {"USD": values}}}}}).encode("utf-8")
+
+    monkeypatch.setattr("src.data.independent_sources.request.urlopen", lambda req, timeout: FakeResponse())
+
+    payload = fetch_sec_companyfacts_evidence(symbol="AAPL", period="FY2024", config_path=str(config_path))
+
+    revenue = payload.hits[0]["metadata"]["metrics"]["Revenues"]
+    assert revenue["value"] == 90
+    assert revenue["end"] == "2024-09-28"
+    assert revenue["fy"] == 2024
+    assert revenue["fp"] == "FY"

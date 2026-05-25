@@ -1,0 +1,2 @@
+Consider using the pymupdf_layout package for a greatly improved page layout analysis.
+{"variant": "multi_agent", "case_count": 9, "delivery_pass_rate": 0.0, "benchmark_report": "eval_outputs\\benchmark_quick9_multi_agent\\benchmark_report.md"}

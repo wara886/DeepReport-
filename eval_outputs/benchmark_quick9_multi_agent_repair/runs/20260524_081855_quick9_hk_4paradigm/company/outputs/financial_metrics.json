@@ -1,0 +1,211 @@
+{
+  "metrics": [
+    {
+      "metric_lineage_id": "6682.hk_2026q1_revenue_pdf_tbl_219d2cbb797f_nodate",
+      "metric_name": "revenue",
+      "value": 5260650.0,
+      "unit": "CNY",
+      "period": "2026Q1",
+      "source_period": "2026Q1",
+      "period_match": null,
+      "source_table_id": "pdf_tbl_219d2cbb797f",
+      "source_evidence_id": "pdf_table_pdf_tbl_219d2cbb797f",
+      "calculation_formula": "reported PDF revenue",
+      "confidence": 0.86,
+      "symbol": "6682.HK",
+      "report_date": "",
+      "notice_date": "",
+      "raw_field_keys": [
+        "period"
+      ]
+    },
+    {
+      "metric_lineage_id": "6682.hk_2026q1_gross_profit_pdf_tbl_219d2cbb797f_nodate",
+      "metric_name": "gross_profit",
+      "value": 2244829.0,
+      "unit": "CNY",
+      "period": "2026Q1",
+      "source_period": "2026Q1",
+      "period_match": null,
+      "source_table_id": "pdf_tbl_219d2cbb797f",
+      "source_evidence_id": "pdf_table_pdf_tbl_219d2cbb797f",
+      "calculation_formula": "reported PDF gross profit",
+      "confidence": 0.86,
+      "symbol": "6682.HK",
+      "report_date": "",
+      "notice_date": "",
+      "raw_field_keys": [
+        "period"
+      ]
+    },
+    {
+      "metric_lineage_id": "6682.hk_2026q1_gross_margin_pdf_tbl_219d2cbb797f_nodate",
+      "metric_name": "gross_margin",
+      "value": 42.672084,
+      "unit": "pct",
+      "period": "2026Q1",
+      "source_period": "2026Q1",
+      "period_match": null,
+      "source_table_id": "pdf_tbl_219d2cbb797f",
+      "source_evidence_id": "pdf_table_pdf_tbl_219d2cbb797f",
+      "calculation_formula": "gross_profit / revenue",
+      "confidence": 0.78,
+      "symbol": "6682.HK",
+      "report_date": "",
+      "notice_date": "",
+      "raw_field_keys": [
+        "period"
+      ]
+    },
+    {
+      "metric_lineage_id": "6682.hk_2026q1_revenue_pdf_tbl_944dca671aaf_nodate",
+      "metric_name": "revenue",
+      "value": 4.0,
+      "unit": "CNY",
+      "period": "2026Q1",
+      "source_period": "2026Q1",
+      "period_match": null,
+      "source_table_id": "pdf_tbl_944dca671aaf",
+      "source_evidence_id": "pdf_table_pdf_tbl_944dca671aaf",
+      "calculation_formula": "reported PDF revenue",
+      "confidence": 0.86,
+      "symbol": "6682.HK",
+      "report_date": "",
+      "notice_date": "",
+      "raw_field_keys": [
+        "period"
+      ]
+    },
+    {
+      "metric_lineage_id": "6682.hk_2026q1_gross_profit_pdf_tbl_944dca671aaf_nodate",
+      "metric_name": "gross_profit",
+      "value": 2244829.0,
+      "unit": "CNY",
+      "period": "2026Q1",
+      "source_period": "2026Q1",
+      "period_match": null,
+      "source_table_id": "pdf_tbl_944dca671aaf",
+      "source_evidence_id": "pdf_table_pdf_tbl_944dca671aaf",
+      "calculation_formula": "reported PDF gross profit",
+      "confidence": 0.86,
+      "symbol": "6682.HK",
+      "report_date": "",
+      "notice_date": "",
+      "raw_field_keys": [
+        "period"
+      ]
+    },
+    {
+      "metric_lineage_id": "6682.hk_2026q1_gross_margin_pdf_tbl_944dca671aaf_nodate",
+      "metric_name": "gross_margin",
+      "value": 56120725.0,
+      "unit": "pct",
+      "period": "2026Q1",
+      "source_period": "2026Q1",
+      "period_match": null,
+      "source_table_id": "pdf_tbl_944dca671aaf",
+      "source_evidence_id": "pdf_table_pdf_tbl_944dca671aaf",
+      "calculation_formula": "gross_profit / revenue",
+      "confidence": 0.78,
+      "symbol": "6682.HK",
+      "report_date": "",
+      "notice_date": "",
+      "raw_field_keys": [
+        "period"
+      ]
+    },
+    {
+      "metric_lineage_id": "6682.hk_2026q1_total_assets_pdf_tbl_88e15bc07637_nodate",
+      "metric_name": "total_assets",
+      "value": 7587645.0,
+      "unit": "CNY",
+      "period": "2026Q1",
+      "source_period": "2026Q1",
+      "period_match": null,
+      "source_table_id": "pdf_tbl_88e15bc07637",
+      "source_evidence_id": "pdf_table_pdf_tbl_88e15bc07637",
+      "calculation_formula": "reported PDF total assets",
+      "confidence": 0.86,
+      "symbol": "6682.HK",
+      "report_date": "",
+      "notice_date": "",
+      "raw_field_keys": [
+        "period"
+      ]
+    },
+    {
+      "metric_lineage_id": "6682.hk_2026q1_total_liabilities_pdf_tbl_337ac5282adb_nodate",
+      "metric_name": "total_liabilities",
+      "value": 2516757.0,
+      "unit": "CNY",
+      "period": "2026Q1",
+      "source_period": "2026Q1",
+      "period_match": null,
+      "source_table_id": "pdf_tbl_337ac5282adb",
+      "source_evidence_id": "pdf_table_pdf_tbl_337ac5282adb",
+      "calculation_formula": "reported PDF total liabilities",
+      "confidence": 0.86,
+      "symbol": "6682.HK",
+      "report_date": "",
+      "notice_date": "",
+      "raw_field_keys": [
+        "period"
+      ]
+    },
+    {
+      "metric_lineage_id": "6682.hk_2026q1_equity_pdf_tbl_337ac5282adb_nodate",
+      "metric_name": "equity",
+      "value": 5070888.0,
+      "unit": "CNY",
+      "period": "2026Q1",
+      "source_period": "2026Q1",
+      "period_match": null,
+      "source_table_id": "pdf_tbl_337ac5282adb",
+      "source_evidence_id": "pdf_table_pdf_tbl_337ac5282adb",
+      "calculation_formula": "reported PDF equity",
+      "confidence": 0.86,
+      "symbol": "6682.HK",
+      "report_date": "",
+      "notice_date": "",
+      "raw_field_keys": [
+        "period"
+      ]
+    }
+  ],
+  "metric_count": 9,
+  "rejected_metrics": [
+    {
+      "metric_name": "market_embedded_financials",
+      "target_period": "2026Q1",
+      "source_evidence_id": "6682.HK_2026Q1_yahoo_financials_f25a3dbb9b",
+      "reason": "market_financials_not_allowed_as_statement_primary_evidence"
+    },
+    {
+      "metric_name": "market_embedded_financials",
+      "target_period": "2026Q1",
+      "source_evidence_id": "6682.HK_2026Q1_yahoo_finance_922edde4c5",
+      "reason": "market_financials_not_allowed_as_statement_primary_evidence"
+    }
+  ],
+  "rejected_metric_count": 2,
+  "coverage": {
+    "required_metrics": [
+      "revenue",
+      "net_income",
+      "gross_margin",
+      "free_cash_flow"
+    ],
+    "present_metrics": [
+      "equity",
+      "gross_margin",
+      "gross_profit",
+      "revenue",
+      "total_assets",
+      "total_liabilities"
+    ],
+    "has_core_metric_lineage": false,
+    "standard_metric_count": 9,
+    "standard_has_core_metric_lineage": false,
+    "rejected_metric_count": 2
+  }
+}

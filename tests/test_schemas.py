@@ -39,6 +39,23 @@ def test_claim_round_trip():
     assert obj.to_dict() == raw
 
 
+def test_formal_benchmark_claim_round_trip_includes_critical_contract():
+    raw = {
+        "claim_id": "cl_revenue",
+        "section_name": "financial_analysis",
+        "claim_text": "FY2024 revenue was disclosed.",
+        "evidence_ids": ["ev_annual"],
+        "numeric_values": {"revenue": 100.0},
+        "risk_level": "low",
+        "confidence": 0.95,
+        "notes": "formal benchmark label",
+        "is_critical": True,
+        "critical_claim_type": "revenue",
+    }
+
+    assert ClaimItem.from_dict(raw).to_dict() == raw
+
+
 def test_chart_round_trip():
     raw = {
         "chart_id": "ch_001",

@@ -1,0 +1,16 @@
+{
+  "symbol": "0020.HK",
+  "period": "FY2024",
+  "gap_count": 3,
+  "blocker_count": 3,
+  "warning_count": 0,
+  "required_backfill_sections": [
+    "financial_statements",
+    "valuation"
+  ],
+  "financial_metric_count": 2,
+  "table_types": [
+    "balance_sheet"
+  ],
+  "source_failure_count": 0
+}

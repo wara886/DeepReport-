@@ -1,0 +1,150 @@
+{
+  "engines": [
+    "local_real_data",
+    "sec_edgar",
+    "yahoo_finance",
+    "independent_macro",
+    "tavily",
+    "serper",
+    "local_evidence"
+  ],
+  "engine_meta": {
+    "local_real_data": {
+      "mode": "local_real_data",
+      "raw_data_root": "data/raw/real_data",
+      "symbol": "TSLA",
+      "period": "2026Q1",
+      "record_count": 0,
+      "returned_hit_count": 0,
+      "failure_reason": "no_records_for_symbol_period",
+      "chunking_enabled": true,
+      "query_original": "TSLA 2026Q1 Collect company filings, market data, financial statements, and recent news evidence.",
+      "query_adapted": "TSLA 2026Q1 Collect company filings, market data, financial statements, and recent news evidence. Tesla, Inc. Auto Manufacturers Consumer Cyclical",
+      "adapted_query": "TSLA 2026Q1 Collect company filings, market data, financial statements, and recent news evidence. Tesla, Inc. Auto Manufacturers Consumer Cyclical",
+      "query_terms_added": [
+        "Tesla, Inc.",
+        "Auto Manufacturers",
+        "Consumer Cyclical"
+      ],
+      "query_expansion_version": "finance_query_expansion_v1"
+    },
+    "sec_edgar": {
+      "mode": "sec_companyfacts",
+      "symbol": "TSLA",
+      "cik": "0001318605",
+      "record_count": 1,
+      "failure_reason": "",
+      "query": "TSLA 2026Q1 Collect company filings, market data, financial statements, and recent news evidence."
+    },
+    "yahoo_finance": {
+      "mode": "yahoo_finance",
+      "symbol": "TSLA",
+      "range": "1mo",
+      "interval": "1d",
+      "result_count": 2,
+      "has_financials": true
+    },
+    "independent_macro": {
+      "mode": "independent_macro",
+      "period": "2026Q1",
+      "source_meta": {
+        "fred": {
+          "mode": "fred",
+          "record_count": 4,
+          "errors": [],
+          "failure_reason": ""
+        },
+        "bls": {
+          "mode": "bls",
+          "record_count": 2,
+          "failure_reason": ""
+        },
+        "bea": {
+          "mode": "bea",
+          "record_count": 1,
+          "failure_reason": ""
+        }
+      },
+      "record_count": 6,
+      "failure_reason": "",
+      "query": "TSLA 2026Q1 Collect company filings, market data, financial statements, and recent news evidence."
+    },
+    "tavily": {
+      "mode": "tavily",
+      "search_depth": "basic",
+      "request_id": "78fa3713-326a-42b9-a3f2-85f9cb43ce47",
+      "response_time": 0.67,
+      "result_count": 5
+    },
+    "serper": {
+      "mode": "serper",
+      "result_count": 5,
+      "search_parameters": {
+        "q": "TSLA 2026Q1 Collect company filings, market data, financial statements, and recent news evidence.",
+        "gl": "us",
+        "hl": "en",
+        "type": "search",
+        "num": 5,
+        "engine": "google"
+      }
+    },
+    "local_evidence": {
+      "mode": "hybrid_rerank",
+      "backend": "score_passthrough",
+      "model_name": "BAAI/bge-reranker-base",
+      "checkpoint_path": "data/outputs/checkpoints/reranker_checkpoint.json",
+      "checkpoint_used": false,
+      "fallback_used": true,
+      "score_components": [
+        "base_score"
+      ],
+      "feature_weights": {},
+      "vector_backend": "memory",
+      "vector_hit_count": 0,
+      "query": "TSLA 2026Q1 Collect company filings, market data, financial statements, and recent news evidence. Tesla, Inc. Auto Manufacturers Consumer Cyclical",
+      "source_record_count": 0,
+      "record_count": 0,
+      "bm25_hit_count": 0,
+      "chunking_enabled": true,
+      "chunk_count": 0,
+      "returned_hit_count": 0,
+      "failure_reason": "no_records_for_symbol_period",
+      "loaded_file_count": 0,
+      "skipped_files": [
+        "data\\curated\\filings.parquet",
+        "data\\curated\\financials.parquet",
+        "data\\curated\\market.parquet",
+        "data\\curated\\news.parquet"
+      ],
+      "load_errors": [
+        {
+          "path": "data\\curated\\filings.parquet",
+          "error": "Repetition level histogram size mismatch"
+        },
+        {
+          "path": "data\\curated\\financials.parquet",
+          "error": "Repetition level histogram size mismatch"
+        },
+        {
+          "path": "data\\curated\\market.parquet",
+          "error": "Repetition level histogram size mismatch"
+        },
+        {
+          "path": "data\\curated\\news.parquet",
+          "error": "Repetition level histogram size mismatch"
+        }
+      ],
+      "query_original": "TSLA 2026Q1 Collect company filings, market data, financial statements, and recent news evidence.",
+      "query_adapted": "TSLA 2026Q1 Collect company filings, market data, financial statements, and recent news evidence. Tesla, Inc. Auto Manufacturers Consumer Cyclical",
+      "adapted_query": "TSLA 2026Q1 Collect company filings, market data, financial statements, and recent news evidence. Tesla, Inc. Auto Manufacturers Consumer Cyclical",
+      "query_terms_added": [
+        "Tesla, Inc.",
+        "Auto Manufacturers",
+        "Consumer Cyclical"
+      ],
+      "query_expansion_version": "finance_query_expansion_v1"
+    }
+  },
+  "total_hits_before_dedupe": 19,
+  "returned_hits": 6
+}

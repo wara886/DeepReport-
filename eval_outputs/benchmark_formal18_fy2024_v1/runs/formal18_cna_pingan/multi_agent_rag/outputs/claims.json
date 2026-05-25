@@ -1,0 +1,175 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "strategy_business",
+    "claim_text": "管理层讨论与经营情况 PDF 片段显示：目录 关于我们 经营情况讨论及分析 公司管治 财务报表 其他信息 i ii 1 2 3 4 8 10 13 14 95 107 110 130 144 释义 重要提示 我们是谁 公司使命 时代机遇 公司战略 经营亮点 董事长致辞 荣誉与奖项 财务摘要 公司治理报告 股本变动及股东情况 董事、监事、高级管理人员和员工情况 董事会报告和重要事项 监事会报告 16 20 26 60 70 75 88 93 综合金融 医疗养老 业绩综述 内含…",
+    "evidence_ids": [
+      "pdf_section_804d2f9f4494"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "ownership_governance",
+    "claim_text": "股东结构、治理或管理层 PDF 片段显示：目录 关于我们 经营情况讨论及分析 公司管治 财务报表 其他信息 i ii 1 2 3 4 8 10 13 14 95 107 110 130 144 释义 重要提示 我们是谁 公司使命 时代机遇 公司战略 经营亮点 董事长致辞 荣誉与奖项 财务摘要 公司治理报告 股本变动及股东情况 董事、监事、高级管理人员和员工情况 董事会报告和重要事项 监事会报告 16 20 26 60 70 75 88 93 综合金融 医疗养老 业绩综述 内含…；指 方正证券股份有限公司，是新方正集团的子公司 卜蜂集团有限公司 指 Charoen Pokphand Group Company Limited，是卜蜂集团的母公司 元 指 除特别注明外，为人民币元 中国会计准则 指 中华人民共和国财政部颁布的《企业会计准则》及其他相关规例 国际财务报告准则 指 国际会计准则理事会颁布的《国际财务报告准则》 规模保费 指 公司签发保单所收取的全部保费，即进行重大风险测试前和保险混合合同分拆前的 保费…",
+    "evidence_ids": [
+      "pdf_section_b7d3b01ec65e",
+      "pdf_section_787060a737e4"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "financial_statements",
+    "claim_text": "财务报表 PDF 片段显示：目录 关于我们 经营情况讨论及分析 公司管治 财务报表 其他信息 i ii 1 2 3 4 8 10 13 14 95 107 110 130 144 释义 重要提示 我们是谁 公司使命 时代机遇 公司战略 经营亮点 董事长致辞 荣誉与奖项 财务摘要 公司治理报告 股本变动及股东情况 董事、监事、高级管理人员和员工情况 董事会报告和重要事项 监事会报告 16 20 26 60 70 75 88 93 综合金融 医疗养老 业绩综述 内含…",
+    "evidence_ids": [
+      "pdf_section_6e969f271571"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "ownership_governance",
+    "claim_text": "PDF 文件中关于股权与治理结构提供了以下信息： 目录 关于我们 经营情况讨论及分析 公司管治 财务报表 其他信息 i ii 1 2 3 4 8 10 13 14 95 107 110 130 144 释义 重要提示 我们是谁 公司使命 时代机遇 公司战略 经营亮点 董事长致辞 荣誉与奖项 财务摘要 公司治理报告 股本变动及股东情况 董事、监事、高级管理人员和员工情况 董事会报告和重要事项 监事会报告 16 20 26 60 70 75 88 93 综合金融 医疗养老 业绩综述 内含…",
+    "evidence_ids": [
+      "pdf_section_b7d3b01ec65e"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.72,
+    "notes": "来自 PDF insight，按 section type 分类提取的可引用内容"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "valuation",
+    "claim_text": "601318.SS  估值不可用原因：当前公开证据缺少市值或股本口径、净利润、净资产/股东权益、收入，因此不能正式计算 P/E、P/B、P/S；报告应把这些缺口列为下一轮检索任务。",
+    "evidence_ids": [
+      "601318_FY2024_eastmoney_financials_balance_56ac006ff4",
+      "601318_FY2024_eastmoney_financials_income_0ce7f474c7",
+      "601318_FY2024_eastmoney_financials_cashflow_eb80795bfc",
+      "pdf_section_804d2f9f4494",
+      "pdf_section_6e969f271571",
+      "pdf_section_b7d3b01ec65e",
+      "pdf_section_787060a737e4",
+      "pdf_section_7a77497c2bc6",
+      "pdf_section_a49176f8301c"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "最小估值模型缺口披露。",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "business_overview",
+    "claim_text": "601318.SS 的证据覆盖包括 10 条记录，横跨 3 类来源。",
+    "evidence_ids": [
+      "601318_FY2024_cninfo_6c52de6e74",
+      "601318_FY2024_eastmoney_financials_balance_56ac006ff4",
+      "601318_FY2024_eastmoney_financials_cashflow_eb80795bfc",
+      "601318_FY2024_eastmoney_financials_income_0ce7f474c7",
+      "pdf_section_6e969f271571",
+      "pdf_section_787060a737e4",
+      "pdf_section_7a77497c2bc6",
+      "pdf_section_804d2f9f4494",
+      "pdf_section_a49176f8301c",
+      "pdf_section_b7d3b01ec65e"
+    ],
+    "numeric_values": {
+      "evidence_count": 10.0,
+      "unique_sources": 3.0
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由证据覆盖统计生成。"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "executive_summary",
+    "claim_text": "601318.SS 暂无完整执行摘要，以下基于已有证据和报告结构填充。关键财务指标已绑定 evidence_id/citation 并由 verifier 校验。",
+    "evidence_ids": [
+      "601318_FY2024_eastmoney_financials_balance_56ac006ff4",
+      "601318_FY2024_eastmoney_financials_income_0ce7f474c7",
+      "601318_FY2024_eastmoney_financials_cashflow_eb80795bfc"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.7,
+    "notes": "执行摘要 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "peer_compare",
+    "claim_text": "601318.SS 属于上市公司类别，同行可比分析框架基于收入增长/利润率/ROE/估值/杠杆等维度。当前公开证据尚未覆盖完整同行数据，以下为框架性分析。",
+    "evidence_ids": [
+      "601318_FY2024_eastmoney_financials_balance_56ac006ff4",
+      "601318_FY2024_eastmoney_financials_income_0ce7f474c7",
+      "601318_FY2024_eastmoney_financials_cashflow_eb80795bfc"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "同行对比 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "peer_comparison"
+  },
+  {
+    "claim_id": "cl_0009",
+    "section_name": "valuation_sensitivity",
+    "claim_text": "敏感性分析框架覆盖宏观需求/成本费用/竞争格局/监管政策等变量。当前证据不足以量化各变量影响，以下说明缺失数据对敏感性判断的约束。",
+    "evidence_ids": [
+      "601318_FY2024_eastmoney_financials_balance_56ac006ff4",
+      "601318_FY2024_eastmoney_financials_income_0ce7f474c7",
+      "601318_FY2024_eastmoney_financials_cashflow_eb80795bfc"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "敏感性分析 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0010",
+    "section_name": "risks",
+    "claim_text": "601318.SS 的主要风险包括三类：第一，行业竞争和供给扩张可能压缩高毛利业务的持续性；第二，宏观利率、资本开支周期和云厂商采购节奏会放大收入波动；第三，当前核心季度三表采用结构化降级来源，若后续一手公告与该数据不一致，盈利质量、自由现金流和估值结论都需要重算。",
+    "evidence_ids": [
+      "601318_FY2024_eastmoney_financials_balance_56ac006ff4",
+      "601318_FY2024_eastmoney_financials_income_0ce7f474c7",
+      "601318_FY2024_eastmoney_financials_cashflow_eb80795bfc"
+    ],
+    "numeric_values": {},
+    "risk_level": "high",
+    "confidence": 0.66,
+    "notes": "风险 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0011",
+    "section_name": "conclusion",
+    "claim_text": "关于601318.SS 的投资结论需要综合主营业务增长和经营效率改善等驱动因素和市场竞争、成本波动和监管变化等约束条件。当前公开证据尚不完整，以下为基于现有信息的初步判断。",
+    "evidence_ids": [
+      "601318_FY2024_eastmoney_financials_balance_56ac006ff4",
+      "601318_FY2024_eastmoney_financials_income_0ce7f474c7",
+      "601318_FY2024_eastmoney_financials_cashflow_eb80795bfc"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "投资结论 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  }
+]

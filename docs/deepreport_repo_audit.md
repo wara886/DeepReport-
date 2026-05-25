@@ -3,14 +3,14 @@
 Stage: `Stage -1`
 Reference repository: `references/DeepReport_ref/`
 Reference commit: `afc6ee7`
-Audit date: 2026-04-16
+Audit date: 2026-05-20
 
 ## Completion Check
 
 - `references/DeepReport_ref/` exists locally.
-- Clone was skipped because the reference repository was already present.
-- Before this audit, Stage -1 was not complete because `docs/deepreport_repo_audit.md` and `docs/deepreport_skeleton_mapping.md` did not exist.
-- This document records the required repository audit for Stage -1.
+- Clone was executed successfully from `https://github.com/wisdom-pan/DeepReport.git`.
+- Reference commit audited: `afc6ee7`.
+- This document records the required Stage -1 repository audit before further skeleton claims or architecture reuse.
 
 ## Real Directory Structure
 
@@ -89,6 +89,20 @@ Key behavior:
 - Saves generated HTML reports into `config.output_dir`, defaulting to `./reports`.
 
 The orchestration is application-centric: `DeepReportApp.generate_report()` creates a plan, executes tasks, assembles `report_data`, and delegates HTML rendering.
+
+## Multi-Agent Architecture Judgment
+
+DeepReport has multiple named agents and a clear task split, but the audited implementation is best described as **multi-agent workflow orchestration**, not fully autonomous Agent2Agent collaboration.
+
+Evidence from the code:
+
+- `DeepReportApp.generate_report()` owns the end-to-end flow.
+- `_execute_research_plan()` iterates through planner-generated tasks and dispatches them by `task_type`.
+- Sub-agents do not negotiate with each other directly; they are invoked by the application loop.
+- There is no shared blackboard, objection protocol, responsibility router, or hard pre-write critic gate in the reference implementation.
+- `SearchManager` does run search engines concurrently, but that is tool fan-out rather than agent collaboration.
+
+Useful architectural takeaway: preserve the role boundaries (`PlanningAgent`, researcher/browser/analyzer/final writer), but Open DeepReport++ needs stronger collaboration semantics if it wants to claim autonomous multi-agent behavior: a shared verified blackboard, role-owned writes, blocking review, targeted rework, and traceable responsibility.
 
 ## Configuration Entry
 

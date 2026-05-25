@@ -1,0 +1,46 @@
+{
+  "passed": false,
+  "error_count": 4,
+  "warning_count": 1,
+  "errors": [
+    "Missing required header in report: ## Executive Summary",
+    "Missing required header in report: ## Financial Analysis",
+    "Missing required header in report: ## Risk Assessment",
+    "Missing required company-report header for claim section: valuation"
+  ],
+  "warnings": [
+    "Claim cl_0005 has no evidence_ids."
+  ],
+  "claim_count": 7,
+  "grounded_claim_count": 0,
+  "expected_symbol": "TSLA",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 0,
+    "chart_text_consistency": {
+      "chart_count": 0,
+      "passed_chart_count": 0,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": []
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 0,
+      "results": []
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 0,
+      "details": []
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "valuation_not_available"
+    ],
+    "checks": {}
+  }
+}

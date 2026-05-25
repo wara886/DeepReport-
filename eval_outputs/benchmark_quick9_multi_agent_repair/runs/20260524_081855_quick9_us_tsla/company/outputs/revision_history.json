@@ -1,0 +1,7 @@
+[
+  {
+    "round": 1,
+    "revision_request": "- Warnings: Target symbol mismatch: expected TSLA, but non-peer sections mention ticker-like tokens FRED.\n- Fix recommendations: Remove or properly cite industry classification and business description from appropriate sources (e.g., SEC 10-K).\n- Fix recommendations: For gross margin, provide evidence from income statement (e.g., cost of revenue) or remove the metric.\n- Fix recommendations: Ensure all balance sheet items have direct evidence; total liabilities and equity should be derived from assets and known equity or cited from sources that contain them.\n- Fix recommendations: The investment conclusion '中性观察' should be based on a supported valuation model with evidence.\n- LLM warnings: Claim '模型结论为中性观察' is not backed by any evidence; it should be supported by analysis or citation.\n- LLM warnings: Claims in '股权结构与公司治理' and '战略与主营业务' cite general evidence but the specific claims are not directly supported by those sources.\n- LLM errors: Claim 'Tesla, Inc.（TSLA） 属于Consumer Cyclical / Auto Manufacturers口径' cites sec_companyfacts_tsla_f31cc88549 but that evidence does not contain industry classification.",
+    "passed_after_round": true
+  }
+]

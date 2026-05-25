@@ -1,0 +1,95 @@
+{
+  "overview": "Generate a company stock research report for 腾讯控股 (0700.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+  "research_topic": "Generate a company stock research report for 腾讯控股 (0700.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+  "requirements": [
+    "Provide executive summary, risk assessment, and investment conclusion.",
+    "Cover three statements or explicitly disclose unavailable statement evidence.",
+    "Include valuation analysis or explicitly state why valuation is unavailable.",
+    "Bind critical conclusions to evidence IDs and citations used in report."
+  ],
+  "output_format": "markdown, html, json with citations",
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "deep_researcher",
+      "description": "Search for and collect financial filings, earnings reports, market data, and recent news for 0700.HK for the period 2026Q1. Use evidence_discovery skill to retrieve local evidence and fetch Yahoo market snapshot. Output ranked evidence candidates with citation-ready evidence records.",
+      "parameters": {
+        "symbol": "0700.HK",
+        "period": "2026Q1",
+        "source_preferences": [
+          "yahoo_finance",
+          "company_filings"
+        ],
+        "ranking_mode": "relevance"
+      },
+      "dependencies": [],
+      "priority": 5,
+      "expected_output": "List of evidence records with fields: evidence_id, source, content, date, reliability_score."
+    },
+    {
+      "task_id": "task_002",
+      "task_type": "deep_analyze",
+      "description": "Using evidence from task_001, compute financial ratios, build three-statement view (income, balance, cash flow), perform peer comparison and valuation analysis. Output evidence-backed claims for each statement line item, valuation metrics, and risk factors. If data gaps exist, explicitly note them. Every numeric claim must retain evidence_ids.",
+      "parameters": {
+        "symbol": "0700.HK",
+        "period": "2026Q1",
+        "raw_data_root": "from task_001"
+      },
+      "dependencies": [
+        "task_001"
+      ],
+      "priority": 4,
+      "expected_output": "Structured claims: each with claim_text, evidence_ids, category (financial_ratio, three_statement, valuation, peer_comp). Also a summary of data gaps."
+    },
+    {
+      "task_id": "task_003",
+      "task_type": "final_answer",
+      "description": "Assemble the final research report using claims from task_002. Produce Markdown, HTML, and JSON outputs with sections: Executive Summary, Risk Assessment, Investment Conclusion, Three-Statement Coverage (or gap disclosure), Valuation Analysis (or limitation statement), and Compliance Disclosure. Bind critical conclusions to evidence IDs. Use report_assembly skill with chart rendering. Do not invent unsupported sections.",
+      "parameters": {
+        "report_type": "company_stock_report",
+        "symbol": "0700.HK",
+        "period": "2026Q1",
+        "format": [
+          "markdown",
+          "html",
+          "json"
+        ]
+      },
+      "dependencies": [
+        "task_002"
+      ],
+      "priority": 3,
+      "expected_output": "Three files: report.md, report.html, report.json each containing full report with citations and compliance disclosure."
+    },
+    {
+      "task_id": "task_004",
+      "task_type": "verifier",
+      "description": "Verify that the final report meets all constraints: every material factual claim has an explicit evidence_id citation; no invented numbers, dates, sources; executive summary, risk assessment, investment conclusion present; three-statement coverage or gap disclosure; valuation analysis or limitation statement; critical conclusions bound to evidence IDs. If verification fails, provide detailed revision feedback.",
+      "parameters": {
+        "report_type": "company_stock_report",
+        "compliance_rules": [
+          "citations_required",
+          "no_hallucination",
+          "section_coverage"
+        ]
+      },
+      "dependencies": [
+        "task_003"
+      ],
+      "priority": 2,
+      "expected_output": "Verification report: pass/fail with list of issues if any."
+    }
+  ],
+  "data_sources": [
+    "Yahoo Finance market snapshot for 0700.HK",
+    "Tencent financial filings (quarterly reports, annual reports) for 2026Q1",
+    "Local evidence database for historical financials and peer comparisons"
+  ],
+  "citations_required": true,
+  "final_outputs": [
+    "Markdown report with embedded citations",
+    "HTML report with charts and citations",
+    "JSON report with structured data and citations"
+  ],
+  "fallback_used": false
+}

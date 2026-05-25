@@ -1,0 +1,14 @@
+[
+  {
+    "gap_type": "valuation",
+    "severity": "blocker",
+    "message": "Valuation is unavailable but body lacks a clear reason.",
+    "route": "final_answer"
+  },
+  {
+    "gap_type": "data_source_failure",
+    "severity": "warning",
+    "message": "independent_macro: partial_source_failures",
+    "route": "final_answer"
+  }
+]

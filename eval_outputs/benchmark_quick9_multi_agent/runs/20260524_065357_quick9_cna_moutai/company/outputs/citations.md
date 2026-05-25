@@ -1,0 +1,42 @@
+## 参考来源
+
+- [pdf_section_f4043d6cc947] PDF section: business_overview (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF
+  - 支持结论: cl_0001, cl_0004, cl_0015
+- [pdf_section_11106e5862bd] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF
+  - 支持结论: cl_0002, cl_0005, cl_0015
+- [pdf_section_26241cb79200] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF
+  - 支持结论: cl_0002, cl_0015
+- [pdf_section_455f3e5fc697] PDF section: financial_statements (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF
+  - 支持结论: cl_0003, cl_0015
+- [600519_2026Q1_eastmoney_financials_income_1fd3a55f5e] 600519 Eastmoney income financial table (eastmoney_financials/official, 2026-04-25 00:00:00) - https://data.eastmoney.com/bbsj/600519.html
+  - 支持结论: cl_0006, cl_0009, cl_0010, cl_0011, cl_0012, cl_0013, cl_0014, cl_0015, cl_0016, cl_0017, cl_0018
+- [600519_2026Q1_eastmoney_financials_balance_fad1514bae] 600519 Eastmoney balance financial table (eastmoney_financials/official, 2026-04-25 00:00:00) - https://data.eastmoney.com/bbsj/600519.html
+  - 支持结论: cl_0007, cl_0009, cl_0010, cl_0011, cl_0012, cl_0013, cl_0014, cl_0015, cl_0016, cl_0017, cl_0018
+- [600519_2026Q1_eastmoney_financials_cashflow_3ec64ecbbb] 600519 Eastmoney cashflow financial table (eastmoney_financials/official, 2026-04-25 00:00:00) - https://data.eastmoney.com/bbsj/600519.html
+  - 支持结论: cl_0008, cl_0009, cl_0010, cl_0011, cl_0012, cl_0013, cl_0014, cl_0015, cl_0016, cl_0017, cl_0018
+- [600519_2026Q1_cninfo_4f7e837a05] 贵州茅台2026年第一季度报告 (cninfo_announcement/official, 1777046400000) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF
+  - 支持结论: cl_0015
+- [600519_2026Q1_cninfo_ab4566bc68] 贵州茅台2025年年度报告（英文版） (cninfo_announcement/official, 1776355200000) - http://static.cninfo.com.cn/finalpage/2026-04-17/1225114733.PDF
+  - 支持结论: cl_0015
+- [600519_2026Q1_cninfo_ba21bf4403] 贵州茅台2025年年度报告 (cninfo_announcement/official, 1776355200000) - http://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF
+  - 支持结论: cl_0015
+- [pdf_section_fbbb7ae7a1c2] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF
+  - 支持结论: 未关联
+- [pdf_section_32a2b75cb3b6] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF
+  - 支持结论: 未关联
+- [pdf_section_17176690f30a] PDF section: financial_statements (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF
+  - 支持结论: 未关联
+- [pdf_section_0f1b6d1e0502] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-25/1225187851.PDF
+  - 支持结论: 未关联
+- [pdf_section_ef426ef4a9af] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF
+  - 支持结论: 未关联
+- [pdf_section_a45fce556994] PDF section: risk_factors (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF
+  - 支持结论: 未关联
+- [pdf_section_6c2492109d61] PDF section: management_discussion (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF
+  - 支持结论: 未关联
+- [pdf_section_bebb12fff2de] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF
+  - 支持结论: 未关联
+- [pdf_section_0501cb5ef175] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF
+  - 支持结论: 未关联
+- [pdf_section_8523cfad322b] PDF section: ownership_governance (pdf_section/unknown, ) - http://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF
+  - 支持结论: 未关联

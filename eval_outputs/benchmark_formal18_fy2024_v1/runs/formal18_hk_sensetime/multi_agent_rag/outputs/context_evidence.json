@@ -1,0 +1,571 @@
+[
+  {
+    "evidence_id": "00020_FY2024_hkex_annual_report_6c0dcd66b0",
+    "sample_id": "00020_FY2024_hkex_annual_report_6c0dcd66b0",
+    "symbol": "0020.HK",
+    "period": "FY2024",
+    "source_type": "hkex_annual_report",
+    "title": "2024 ANNUAL REPORT",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042400917.pdf",
+    "publish_time": "2025-04-24",
+    "content": "HKEX official annual report for 00020, released 2025-04-24. [PDF page 11] 10 SENSETIME GROUP INC. | ANNUAL REPORT 2024 Chairman’s Statement Computer Vision In 2024, we continued to focus on the highest quality businesses in Computer Vision while capturing new industry development opportunities. Computer Vision revenue accounted for 29.5% of the Group’s total revenue. Our strategy is two-pronged: first, we are deeply engaged in mature industries with strong differentiation, high profit margins and abundant cash flow in the domestic market; second, we will continue to expand our overseas markets and carefully cultivate a wider range of overseas partners and a more sustainable growth model, especially for those who can bring in recurring service and licensing revenues. This strategic adjustment has significantly improved the customer repurchase rate in the Computer Vision segment, which increased by 31 percentage points in 2024 compared to 2023. In addition, our long-term customer base expanded significantly, with 389 multi-year partners (cooperation > 3 years), representing approximately 40% of total Computer Vision clientele. These outcomes underscore the successful translation of our new strategy in the Computer Vision business is being turned into sustainable business results. At the same time, leveraging our leading multimodal large models, we have maintained a leading edge in Computer Vision. SenseTime has held the number one market share in China’s computer vision market for eight consecutive years. In the national ministry level evaluations in 2024, SenseTime achieved the first prize of science and technology excellence. Our goal is to maintain our technological leadership in Computer Vision and achieve steady, high-quality, and sustainable growth. • Smart Hardware Interaction: SenseTime is accelerating its deployment in smart hardware applications, including robots, smart glasses, and smart cabin. Since beta testing, the system has already been integrated by over 70 enterprises, with plans to expand access to more customers upon official product release. At the same time, our new smart cabin product powered by SenseNova multimodal large model at its inception secured partnership with a top EV manufacturer that was worth hundreds of million RMB. • Intelligent Marketing: The combination of SenseTime’s multimodal large model and digital human technology empowers e-commerce marketing by integrating AI-generated content and precise recommendation algorithms, providing merchants with efficient digital marketing solutions and enabling immersive consumer interactions. In 2024, the total duration of AI-generated videos for smart marketing increased by 805% year-on- year, driving a 94% YoY growth in GMV (Gross Merchandise Value). For example, during this year’s Spring Festival, our digital human solution maintained steady revenue generation for a brand, significantly improving retail conversion rates. [PDF page 86] 85 SENSETIME GROUP INC. | ANNUAL REPORT 2024 Independent Auditor’s Report To the Shareholders of SenseTime Group Inc. (incorporated in the Cayman Islands with limited liability) OPINION What we have audited The consolidated financial statements of SenseTime Group Inc. (the “Company”) and its subsidiaries (the “Group”), which are set out on pages 96 to 234, comprise: • the consolidated balance sheet as at 31 December 2024; • the consolidated income statement for the year then ended; • the consolidated statement of comprehensive loss for the year then ended; • the consolidated statement of changes in equity for the year then ended; • the consolidated statement of cash flows for the year then ended; and • the notes to the consolidated financial statements, comprising material accounting policy information and other explanatory information. Our opinion In our opinion, the consolidated financial statements give a true and fair view of the consolidated financial position of the Group as at 31 December 2024, and of its consolidated financial performance and its consolidated cash flows for the year then ended in accordance with IFRS Accounting Standards and have been properly prepared in compliance with the disclosure requirements of the Hong Kong Companies Ordinance. [PDF page 212] 211 SENSETIME GROUP INC. | ANNUAL REPORT 2024 Notes to the Consolidated Financial Statements 36 CASH FLOW INFORMATION (a) Cash used in operations Year ended 31 December 2024 2023 RMB’000 RMB’000 Loss before income tax (4,299,666) (6,504,162) Adjustments for – Depreciation of property, plant and equipment (Note 17) 1,071,154 900,163 – Amortisation of intangible assets (Note 19) 215,334 184,614 – Depreciation of right-of-use assets (Note 18) 139,203 165,147 – Provision for impairment of financial assets and contract assets (Note 3.1(b)(iv)) 780,956 1,835,246 – Provision for impairment of inventories (Note 22) 39,701 26,835 – Share of loss of investments accounted for using the equity method (Note 13) 4,376 20,813 – Share-based compensation expenses (Note 8) 177,726 323,995 – Finance costs (Note 11) 179,932 146,661 – Finance income (Note 11) (449,010) (341,977) – Fair value (gains)/losses on financial assets at fair value through profit or loss (Note 10) (162,996) 724,426 – Changes on net asset value of investment funds attributable to limited partners (Note 10) (27,803) 10,363 – Dividend income (Note 9) (8,956) (12,697) – Losses on disposal of property, plant and equipment (Note 10) 3,714 4,499 – (Gains)/losses on early termination of leasing contracts (Note 10) (1,462) 2,372 – Fair value losses on preferred share 35,114 32,110 – Gains on disposal of associate 81 – – Gains on disposal of subsidiaries (Note 10) (242,901) – – Net foreign exchange gains (37,797) (30,638) (2,583,300) (2,512,230) Changes in operating assets and liabilities – Increase in trade and other receivables (1,554,653) (812,983) – Decrease in long-term receivables 105,809 249,136 – Decrease in contract assets 4,115 17,633 – (Increase)/decrease in inventories (16,000) 84,526 – Decrease in restricted cash 13,160 – – Increase/(decrease) in long-term payables 38,989 (6,536) – Increase/(decrease) in trade and other payables 115,201 (230,407) – Increase in contract liabilities 40,843 7,728 – Decrease in deferred revenue (64,876) (9,196) Net cash used in operations (3,900,712) (3,212,329) [PDF page 21] 20 SENSETIME GROUP INC. | ANNUAL REPORT 2024 Management Discussion and Analysis Year ended December 31, 2024 compared to Year ended December 31, 2023 Trade receivables’ aging analysis based on date of revenue recognition is as follows: Year ended December 31 2024 2023 RMB million RMB million Up to 6 months 863.4 1,039.7 6 months to 1 year 278.4 242.9 1 to 2 years 262.5 1,891.9 2 to 3 years 1,748.2 3,195.9 More than 3 years 3,821.1 1,541.6 6,973.6 7,912.0 As of December 31, 2024, the aging of our gross trade receivables has worsened, compared to that as of December 31, 2023. A significant portion of our historical revenue was derived from Smart City, which typically features a long payment cycle as required by the customers’ internal financial management and payment approval processes. Although our overall cash collection has maintained a relatively healthy momentum since 2023, cash collections for relatively long outstanding receivables remain challenging, as some of our customers, especially those from or are exposed to the public sector, face temporary budget constraints. LIQUIDITY AND FINANCIAL RESOURCES We have historically funded our cash requirements principally from capital contribution from Shareholders. We had cash and cash equivalents of RMB8,888.0 million and term deposits of RMB2,970.5 million as of December 31, 2024, compared to the balance of RMB9,423.5 million and RMB1,099.9 million as of December 31, 2023. The following table sets forth a summary of our cash flows for the years indicated: Year ended December 31 2024 2023 RMB million RMB million Net cash used in operating activities (3,926.7) (3,234.3) Net cash (used in)/generated from investing activities (2,796.5) 3,458.4 Net cash generated from financing activities 6,259.9 1,083.6 Net (decrease)/increase in cash and cash equivalents (463.3) 1,307.7 Cash and cash equivalents at the beginning of the year 9,423.5 7,962.8 Exchange changes on cash and cash equivalents (72.2) 153.0 Cash and cash equivalents at the end of the year 8,888.0 9,423.5 [PDF page 97] 96 SENSETIME GROUP INC. | ANNUAL REPORT 2024 Consolidated Income Statement Year ended 31 December Note 2024 2023 RMB’000 RMB’000 Revenue 5(a), 6(b) 3,772,101 3,405,842 Cost of sales 7 (2,152,404) (1,905,055) Gross profit 1,619,697 1,500,787 Selling expenses 7 (654,693) (818,731) Administrative expenses 7 (1,463,598) (1,510,855) Research and development expenses 7 (4,131,884) (3,465,766) Net impairment losses on financial assets and contract assets 3.1(b) (780,956) (1,835,246) Other income 9 343,351 291,500 Other gains/(losses) - net 10 538,829 (808,244) Operating loss (4,529,254) (6,646,555) Finance income 11 449,010 341,977 Finance cost 11 (179,932) (146,661) Finance income – net 11 269,078 195,316 Share of losses of investments accounted for using the equity method 13 (4,376) (20,813) Fair value losses of preferred share 30 (35,114) (32,110) Loss before income tax (4,299,666) (6,504,162) Income tax (expenses)/credit 14 (6,918) 9,492 Loss for the year (4,306,584) (6,494,670) Loss is attributable to: Equity holders of the Company (4,278,383) (6,440,159) Non-controlling interests (28,201) (54,511) (4,306,584) (6,494,670) Loss per share for loss attributable to equity holders of the Company Basic and diluted loss per share (RMB) 15 (0.13) (0.20) The above consolidated income statement should be read in conjunction with the accompanying notes. [PDF page 110] 109 SENSETIME GROUP INC. | ANNUAL REPORT 2024 Notes to the Consolidated Financial Statements 3 FINANCIAL RISK MANAGEMENT (CONTINUED) 3.1 Financial risk factors (continued) (a) Market risk (continued) (ii) Cash flow and fair value interest rate risk (continued) The preferred shares issued by a subsidiary and net asset value attributable to limited partners expose the Group to fair value interest rate risk. Please refer to Note 30 for the fair value of these financial liabilities. (iii) Price risk The Group is exposed to equity price risk mainly arising from investments held by the Group that are classified as financial assets at fair value through profit or loss (“FVPL”) (Note 26). The investments are made either for strategic purposes, or for the purpose of achieving investment yield and balancing the Group’s liquidity level simultaneously. Each investment is managed by senior management of the Group on a case by case basis. The Group performed sensitivity test to changes in unobservable input in determining the fair value of FVPL. The sensitivity test results are disclosed in Note 3.3(c). (b) Credit risk Credit risk arises from cash and cash equivalents, restricted cash, term deposits, structured deposits, as well as notes receivables, trade receivables and contract assets and other receivables. The carrying amount of each class of the above financial assets represents the Group’s maximum exposure to credit risk in relation to the corresponding class of financial assets. Risk Management To manage this risk, cash and cash equivalents, restricted cash, term deposits and structured deposits are mainly placed with state-owned or reputable financial institutions in Mainland China and reputable international financial institutions outside of Mainland China. To manage risk arising from trade receivables, the Group has policies in place to ensure that credit terms are made to counterparties with an appropriate credit history and management performs ongoing credit evaluations of the counterparties. The credit period granted to the customers is usually around 90 to 270 days and the credit quality of these customers is assessed, which takes into account their financial position, past experience and other factors. In view of the collection history of receivables due from them, to measure the expected credit losses, trade receivables have been grouped based on shared credit risk characteristics and aging. Trade receivables are written off when there is no reasonable expectation of recovery. Impairment losses on trade receivables are presented as net impairment losses within operating loss. Subsequent recoveries of amounts previously written off are credited against the same line item. [PDF page 121] 120 SENSETIME GROUP INC. | ANNUAL REPORT 2024 Notes to the Consolidated Financial Statements 4 CRITICAL ACCOUNTING ESTIMATES AND JUDGEMENTS The preparation of consolidated financial statements requires the use of accounting estimates which, by definition, will seldom equal the actual results. Management also needs to exercise judgement in applying the Group’s accounting policies. Estimates and judgements are continually evaluated. They are based on historical experience and other factors, including expectations of future events that may have a financial impact on the entity and that are believed to be reasonable under the circumstances. 4.1 Impairment assessment of financial assets measured at amortised cost The impairment provisions for trade and other receivables, contract assets and long-term receivables are based on assumptions about the expected loss rates. The Group uses judgment in making these assumptions and selecting the inputs to the impairment calculation, based on the Group’s past history, existing market conditions as well as forward looking estimates at the end of each reporting period. For details of the key assumptions and inputs used, see Note 3.1(b). Changes in these assumptions and estimates could materially affect the result of the assessment and it may be necessary to make additional impairment charge to the consolidated income statement. In assessing forward-looking information, the Group considers different macroeconomic scenarios and weights. The Group regularly monitors and reviews critical macroeconomic assumptions and parameters related to the measurement of expected credit loss, including the economic policies, macroeconomic indicators, industry risks, and changes in customer conditions, etc. 4.2 Fair value measurement of financial assets at fair value through profit or loss The fair value measurement of financial assets that are not traded in an active market is determined by using valuation techniques. The Group uses its judgment to select a variety of methods and make assumptions that are mainly based on market conditions existing at the end of each reporting period. Changes in these assumptions and estimates could materially affect the respective fair value of these investments. Details of the assumptions and estimates in determination of the fair value are disclosed in Note 3.3. 4.3 Fair value of preferred share liabilities and other financial liabilities As disclosed in Note 30, the fair value of preferred share liabilities and other financial liabilities at the dates of issue and balance sheet dates were determined based on the valuation performed by management/ an independent valuer, using valuation techniques. The Group uses its judgments to select a variety of methods and make assumptions that are mainly based on market conditions existing at the end of each reporting period. The Group has used Discounted Cash Flow Method (“DCF Method”) followed by option pricing models to determine the fair value of preferred share liabilities issued by a subsidiary and asset-based approach to determine the fair value of net asset value of investment funds to limited partners, which involved the use of significant accounting estimates and judgments. [PDF page 186] 185 SENSETIME GROUP INC. | ANNUAL REPORT 2024 Notes to the Consolidated Financial Statements 26 FINANCIAL ASSETS AT FAIR VALUE THROUGH PROFIT OR LOSS (CONTINUED) (d) Amounts recognised in the consolidated income statement During the year ended 31 December 2024, the following (losses)/gains were recognised in the consolidated income statement: Year ended 31 December 2024 2023 RMB’000 RMB’000 Fair value (losses)/gains on investments in: Debt investments 172,070 (555,787) Equity investments (28,404) (200,176) Structured deposits 19,330 31,537 162,996 (724,426) (e) Risk exposure and fair value measurements Information about the Group’s exposure to financial risk and information about the methods and assumptions used in determining fair value are set out in Note 3.3. (f) Accounting policies of financial assets at fair value through profit or loss (i) Classification The Group classifies its financial assets in the following measurement categories: • those to be measured subsequently at fair value (either through OCI, or through profit or loss); and • those to be measured at amortised cost. The classification depends on the entity’s business model for managing the financial assets and the contractual terms of the cash flows. For assets measured at fair value, gains and losses will either be recorded in profit or loss or OCI. For investments in equity instruments that are not held for trading, this will depend on whether the Group has made an irrevocable election at the time of initial recognition to account for the equity investment at FVOCI. The Group reclassifies debt investments when and only when its business model for managing those assets changes.",
+    "trust_level": "high",
+    "score": 0.0,
+    "key_points": [
+      "HKEX official annual report for 00020, released 2025-04-24",
+      "[PDF page 11] 10 SENSETIME GROUP INC",
+      "| ANNUAL REPORT 2024 Chairman’s Statement Computer Vision In 2024, we continued to focus on the highest quality businesses in Computer Vision while capturing new industry development opportunities"
+    ],
+    "metadata": {
+      "source_quality": {
+        "source_authority": "official",
+        "authority_level": "primary",
+        "authority_score": 1.0,
+        "trust_level": "high",
+        "source_document_type": "annual_report",
+        "allowed_claim_types": [
+          "balance_sheet",
+          "business_context",
+          "cash_flow",
+          "event",
+          "financial_metric",
+          "financial_statement",
+          "guidance",
+          "management_commentary",
+          "profit",
+          "revenue",
+          "risk"
+        ],
+        "reason": "official filing, structured financial record, or exchange disclosure"
+      },
+      "freshness": {
+        "source_timestamp": "2025-04-24",
+        "data_cutoff": "FY2024",
+        "freshness_days": 395,
+        "freshness_bucket": "stale"
+      },
+      "evidence_scope": "unknown"
+    },
+    "source_authority": "official",
+    "authority_level": "primary",
+    "authority_score": 1.0,
+    "source_document_type": "annual_report",
+    "allowed_claim_types": [
+      "balance_sheet",
+      "business_context",
+      "cash_flow",
+      "event",
+      "financial_metric",
+      "financial_statement",
+      "guidance",
+      "management_commentary",
+      "profit",
+      "revenue",
+      "risk"
+    ],
+    "source_timestamp": "2025-04-24",
+    "data_cutoff": "FY2024",
+    "freshness_days": 395,
+    "freshness_bucket": "stale",
+    "evidence_scope": "unknown"
+  },
+  {
+    "evidence_id": "pdf_section_3b35f4918508",
+    "sample_id": "pdf_section_3b35f4918508",
+    "source_type": "pdf_section",
+    "title": "PDF section: management_discussion",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042400917.pdf",
+    "publish_time": "",
+    "content": "Corporate information 2 Five-year financial summary 4 Chairman’s statement 5 Management discussion and analysis 14 Corporate governance report 26 Directors’ report 45 Independent auditor’s report 85 Consolidated income statement 96 Consolidated statement of comprehensive loss 97 Consolidated balance sheet 98 Consolidated statement of changes in equity 100 Consolidated statement of cash flows 102 Notes to the consolidated financial statements 104 Definitions 235 Contents",
+    "symbol": "0020.HK",
+    "period": "FY2024",
+    "trust_level": "high",
+    "metadata": {
+      "section_id": "3b35f4918508",
+      "section_type": "management_discussion",
+      "page": 2,
+      "matched_keyword": "management discussion",
+      "source_evidence_id": "00020_FY2024_hkex_annual_report_6c0dcd66b0",
+      "extraction_method": "pymupdf_text_keyword_window"
+    }
+  },
+  {
+    "evidence_id": "pdf_section_aa62d820564d",
+    "sample_id": "pdf_section_aa62d820564d",
+    "source_type": "pdf_section",
+    "title": "PDF section: financial_statements",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042400917.pdf",
+    "publish_time": "",
+    "content": "rate information 2 Five-year financial summary 4 Chairman’s statement 5 Management discussion and analysis 14 Corporate governance report 26 Directors’ report 45 Independent auditor’s report 85 Consolidated income statement 96 Consolidated statement of comprehensive loss 97 Consolidated balance sheet 98 Consolidated statement of changes in equity 100 Consolidated statement of cash flows 102 Notes to the consolidated financial statements 104 Definitions 235 Contents",
+    "symbol": "0020.HK",
+    "period": "FY2024",
+    "trust_level": "high",
+    "metadata": {
+      "section_id": "aa62d820564d",
+      "section_type": "financial_statements",
+      "page": 2,
+      "matched_keyword": "financial statements",
+      "source_evidence_id": "00020_FY2024_hkex_annual_report_6c0dcd66b0",
+      "extraction_method": "pymupdf_text_keyword_window"
+    }
+  },
+  {
+    "evidence_id": "pdf_section_b2bade0f3abb",
+    "sample_id": "pdf_section_b2bade0f3abb",
+    "source_type": "pdf_section",
+    "title": "PDF section: ownership_governance",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042400917.pdf",
+    "publish_time": "",
+    "content": "Corporate information 2 Five-year financial summary 4 Chairman’s statement 5 Management discussion and analysis 14 Corporate governance report 26 Directors’ report 45 Independent auditor’s report 85 Consolidated income statement 96 Consolidated statement of comprehensive loss 97 Consolidated balance sheet 98 Consolidated statement of changes in equity 100 Consolidated statement of cash flows 102 Notes to the consolidated financial statements 104 Definitions 235 Contents",
+    "symbol": "0020.HK",
+    "period": "FY2024",
+    "trust_level": "high",
+    "metadata": {
+      "section_id": "b2bade0f3abb",
+      "section_type": "ownership_governance",
+      "page": 2,
+      "matched_keyword": "governance",
+      "source_evidence_id": "00020_FY2024_hkex_annual_report_6c0dcd66b0",
+      "extraction_method": "pymupdf_text_keyword_window"
+    }
+  },
+  {
+    "evidence_id": "pdf_section_b5a75e76cd23",
+    "sample_id": "pdf_section_b5a75e76cd23",
+    "source_type": "pdf_section",
+    "title": "PDF section: business_overview",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042400917.pdf",
+    "publish_time": "",
+    "content": "2 SENSETIME GROUP INC. | ANNUAL REPORT 2024 Corporate Information AUDITOR PricewaterhouseCoopers Certified Public Accountants Registered Public Interest Entity Auditor 22/F, Prince’s Building Central Hong Kong REGISTERED OFFICE Vistra (Cayman) Limited P.O. Box 31119 Grand Pavilion Hibiscus Way, 802 West Bay Road, Grand Cayman KY1-1205 Cayman Islands HEAD OFFICE AND PRINCIPAL PLACE OF BUSINESS IN THE PRC No. 1900 Hongmei Road Xuhui District Shanghai 200233 PRC HEAD OFFICE AND PRINCIPAL PLACE OF BUSINESS IN HONG KONG 2/F, Harbour View 1 12 Science Park East Avenue Hong Kong Science & Technology Park Shatin Hong Kong HONG KONG LEGAL ADVISOR Clifford Chance 27/F, Jardine House One Connaught Place Central Hong Kong COMPLIANCE ADVISOR Haitong International Capital Limited Suites 3001-3006 and 3015-3016 One Int",
+    "symbol": "0020.HK",
+    "period": "FY2024",
+    "trust_level": "high",
+    "metadata": {
+      "section_id": "b5a75e76cd23",
+      "section_type": "business_overview",
+      "page": 3,
+      "matched_keyword": "business",
+      "source_evidence_id": "00020_FY2024_hkex_annual_report_6c0dcd66b0",
+      "extraction_method": "pymupdf_text_keyword_window"
+    }
+  },
+  {
+    "evidence_id": "pdf_section_5810c5d6296e",
+    "sample_id": "pdf_section_5810c5d6296e",
+    "source_type": "pdf_section",
+    "title": "PDF section: ownership_governance",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042400917.pdf",
+    "publish_time": "",
+    "content": "of the Board) Dr. WANG Xiaogang (王曉剛) Mr. XU Bing (徐冰) Dr. LIN Dahua (林達華) Non-executive Director Ms. FAN Yuanyuan (范瑗瑗) Independent non-executive Directors Prof. XUE Lan (薛瀾) Mr. LYN Frank Yee Chon (林怡仲) AUDIT COMMITTEE Mr. LYN Frank Yee Chon (林怡仲) (Chairperson) Ms. FAN Yuanyuan (范瑗瑗) REMUNERATION COMMITTEE Dr. XU Li (徐立) Mr. LYN Frank Yee Chon (林怡仲) NOMINATION COMMITTEE Dr. XU Li (徐立) Prof. XUE Lan (薛瀾) CORPORATE GOVERNANCE COMMITTEE Prof. XUE Lan (薛瀾) (Chairperson) Mr. LYN Frank Yee Chon (林怡仲) JOINT COMPANY SECRETARIES Ms. LIN Jiemin (林潔敏) Ms. WONG Wai Yee Ella (黃慧兒) AUTHORIZED REPRESENTATIVES Mr. XU Bing (徐冰) Ms. LIN Jiemin (林潔敏)",
+    "symbol": "0020.HK",
+    "period": "FY2024",
+    "trust_level": "high",
+    "metadata": {
+      "section_id": "5810c5d6296e",
+      "section_type": "ownership_governance",
+      "page": 3,
+      "matched_keyword": "governance",
+      "source_evidence_id": "00020_FY2024_hkex_annual_report_6c0dcd66b0",
+      "extraction_method": "pymupdf_text_keyword_window"
+    }
+  },
+  {
+    "evidence_id": "pdf_section_44865c85cf46",
+    "sample_id": "pdf_section_44865c85cf46",
+    "source_type": "pdf_section",
+    "title": "PDF section: business_overview",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042400917.pdf",
+    "publish_time": "",
+    "content": "ark Evaluation 2024 Annual Report” released by SuperCLUE; and ranked first on the OpenCompass Multimodal Leaderboard, surpassing GPT-4o. Substantial decline in model costs has also catalyzed explosive growth in applications. With respect to applications and products, we concentrated our efforts to develop two different categories: productivity tools and interactive tools. The former directly enhances productivity in business scenarios such as enterprise copilot assistants, finance, and public service, with customers’ willingness to pay for applications and products having increased by six-fold compared to 2023, as represented by the aggregate amount of order value. On the other hand, the latter empowers business partners with a 2B2C strategy, enhancing user experience and fulfilling user demands in intelligent companionship, smart hardw",
+    "symbol": "0020.HK",
+    "period": "FY2024",
+    "trust_level": "high",
+    "metadata": {
+      "section_id": "44865c85cf46",
+      "section_type": "business_overview",
+      "page": 6,
+      "matched_keyword": "business",
+      "source_evidence_id": "00020_FY2024_hkex_annual_report_6c0dcd66b0",
+      "extraction_method": "pymupdf_text_keyword_window"
+    }
+  },
+  {
+    "evidence_id": "pdf_table_pdf_tbl_3de8c6182580",
+    "sample_id": "pdf_table_pdf_tbl_3de8c6182580",
+    "source_type": "pdf_statement_table",
+    "title": "PDF table: balance_sheet",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0424/2025042400917.pdf",
+    "publish_time": "",
+    "content": "balance_sheet extracted from PDF page 5: total_assets=38478637.0; total_liabilities=59411177.0",
+    "symbol": "0020.HK",
+    "period": "FY2024",
+    "trust_level": "high",
+    "metadata": {
+      "table_id": "pdf_tbl_3de8c6182580",
+      "table_type": "balance_sheet",
+      "rows": [
+        {
+          "statement": "balance_sheet",
+          "line_item": "total_assets",
+          "label": "Total assets",
+          "value": 38478637.0,
+          "raw_row": [
+            "",
+            "Total assets",
+            "",
+            "",
+            "38,478,637",
+            "36,944,319",
+            "37,426,993",
+            "32,888,024",
+            "34,599,511"
+          ]
+        },
+        {
+          "statement": "balance_sheet",
+          "line_item": "total_liabilities",
+          "label": "Total liabilities",
+          "value": 59411177.0,
+          "raw_row": [
+            "",
+            "Total liabilities",
+            "",
+            "",
+            "59,411,177",
+            "4,957,235",
+            "8,413,133",
+            "9,732,551",
+            "10,957,806"
+          ]
+        }
+      ],
+      "raw_rows": [
+        [
+          "SE",
+          "NSETIME GROU",
+          "P",
+          "INC. | ANNUAL REPORT 2024",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        [
+          "F",
+          "ive-Yea",
+          "r",
+          "Financial Sum",
+          "mary",
+          "",
+          "",
+          "",
+          ""
+        ],
+        [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "For the yea",
+          "r ended Dece",
+          "mber 31,",
+          ""
+        ],
+        [
+          "",
+          "",
+          "",
+          "",
+          "2020",
+          "2021",
+          "2022",
+          "2023",
+          "2024"
+        ],
+        [
+          "",
+          "",
+          "",
+          "",
+          "RMB’000",
+          "RMB’000",
+          "RMB’000",
+          "RMB’000",
+          "RMB’000"
+        ],
+        [
+          "",
+          "Continuing ope",
+          "r",
+          "ations",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        [
+          "",
+          "Revenue",
+          "",
+          "",
+          "3,446,165",
+          "4,700,263",
+          "3,808,510",
+          "3,405,842",
+          "3,772,101"
+        ],
+        [
+          "",
+          "Gross profit",
+          "",
+          "",
+          "2,432,084",
+          "3,277,638",
+          "2,542,267",
+          "1,500,787",
+          "1,619,697"
+        ],
+        [
+          "",
+          "Loss before inc",
+          "o",
+          "me tax (",
+          "12,319,017) (",
+          "17,141,544)",
+          "(6,332,812)",
+          "(6,504,162)",
+          "(4,299,666"
+        ],
+        [
+          "",
+          "Income tax cred",
+          "it",
+          "s/(expenses)",
+          "160,670",
+          "(35,506)",
+          "239,822",
+          "9,492",
+          "(6,918"
+        ],
+        [
+          "",
+          "Loss for the yea",
+          "r",
+          "from continuing operations (",
+          "12,158,347) (",
+          "17,177,050)",
+          "(6,092,990)",
+          "(6,494,670)",
+          "(4,306,584"
+        ],
+        [
+          "",
+          "Losses attributa",
+          "b",
+          "le to:",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        [
+          "",
+          "Equity holders o",
+          "f",
+          "the Company (",
+          "12,158,193) (",
+          "17,140,086)",
+          "(6,044,796)",
+          "(6,440,159)",
+          "(4,278,383"
+        ],
+        [
+          "",
+          "Non-controlling",
+          "in",
+          "terests",
+          "(154)",
+          "(36,964)",
+          "(48,194)",
+          "(54,511)",
+          "(28,201"
+        ],
+        [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "For the yea",
+          "r ended Dece",
+          "mber 31,",
+          ""
+        ],
+        [
+          "",
+          "",
+          "",
+          "",
+          "2020",
+          "2021",
+          "2022",
+          "2023",
+          "2024"
+        ],
+        [
+          "",
+          "",
+          "",
+          "",
+          "RMB’000",
+          "RMB’000",
+          "RMB’000",
+          "RMB’000",
+          "RMB’000"
+        ],
+        [
+          "",
+          "Total assets",
+          "",
+          "",
+          "38,478,637",
+          "36,944,319",
+          "37,426,993",
+          "32,888,024",
+          "34,599,511"
+        ],
+        [
+          "",
+          "Total liabilities",
+          "",
+          "",
+          "59,411,177",
+          "4,957,235",
+          "8,413,133",
+          "9,732,551",
+          "10,957,806"
+        ],
+        [
+          "",
+          "Total (deficits)/e",
+          "q",
+          "uity (",
+          "20,932,540)",
+          "31,987,084",
+          "29,013,860",
+          "23,155,473",
+          "23,641,705"
+        ],
+        [
+          "",
+          "Non-controlling",
+          "in",
+          "terests",
+          "135,693",
+          "94,573",
+          "43,636",
+          "(3,947)",
+          "180,931"
+        ],
+        [
+          "",
+          "(Deficits)/Equity",
+          "a",
+          "ttributable to",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        [
+          "",
+          "equity holders",
+          "",
+          "of the Company (",
+          "21,068,233)",
+          "31,892,511",
+          "28,970,224",
+          "23,159,420",
+          "23,460,774"
+        ],
+        [
+          "FI",
+          "NANCIAL HI",
+          "G",
+          "HLIGHTS",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        [
+          "O",
+          "ur revenue incre",
+          "as",
+          "ed to RMB3,772.1 million in",
+          "2024 from RM",
+          "B3,405.8 millio",
+          "n in 2023. Our",
+          "gross profit in",
+          "creased to"
+        ],
+        [
+          "R",
+          "MB1,619.7 millio",
+          "n",
+          "in 2024 from RMB1,500.8 m",
+          "illion in 2023.",
+          "Our loss for the",
+          "year decrease",
+          "d to RMB4,30",
+          "6.6 million i"
+        ],
+        [
+          "20",
+          "24 from RMB6,",
+          "4",
+          "94.7 million in 2023. Our nega",
+          "tive adjusted E",
+          "BITDA decrea",
+          "sed to RMB3,0",
+          "89.2 million in",
+          "2024 from"
+        ],
+        [
+          "R",
+          "MB4,369.0 millio",
+          "n",
+          "in 2023, whereas our adjuste",
+          "d net loss dec",
+          "reased to RMB",
+          "4,252.7 million",
+          "in 2024 from",
+          "RMB5,414"
+        ],
+        [
+          "mi",
+          "llion in 2023.",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ]
+      ],
+      "unit": "raw",
+      "currency": "CNY",
+      "page": 5,
+      "source_evidence_id": "00020_FY2024_hkex_annual_report_6c0dcd66b0",
+      "extraction_method": "pdfplumber_extract_tables_statement_heuristic_v1",
+      "confidence": 0.9
+    }
+  }
+]

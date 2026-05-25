@@ -1,0 +1,8 @@
+case_id,market,canonical_symbol,status,category,detail,outputs_dir
+quick9_hk_sensetime,HK,0020.HK,not_run,not_run,,
+quick9_hk_4paradigm,HK,6682.HK,not_run,not_run,,
+quick9_hk_tencent,HK,0700.HK,evaluated,quality_gate_blocker,,G:\cord\DeepReport_plus\data\outputs\multi_agent\runs\20260522_230921_0700.hk_2026q1_collaborative\outputs
+quick9_cna_moutai,CN-A,600519.SS,evaluated,citation_or_evidence_gap,,G:\cord\DeepReport_plus\data\outputs\multi_agent\runs\20260522_205204_600519.ss_2026q1_collaborative\outputs
+quick9_cna_moutai,CN-A,600519.SS,evaluated,quality_gate_blocker,,G:\cord\DeepReport_plus\data\outputs\multi_agent\runs\20260522_205204_600519.ss_2026q1_collaborative\outputs
+quick9_cna_catl,CN-A,300750.SZ,not_run,not_run,,
+quick9_cna_pingan,CN-A,601318.SS,not_run,not_run,,

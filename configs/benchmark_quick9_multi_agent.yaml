@@ -1,0 +1,98 @@
+benchmark:
+  id: quick9_multi_agent
+  phase: existing_artifact_evaluator
+  description: Cross-market company-report benchmark configuration for historical multi-agent artifacts.
+  metric_scope: artifact_derived_v0
+  existing_run_roots:
+    - data/outputs/multi_agent/runs/**/outputs
+    - eval_outputs/**/company/outputs
+  excluded_run_roots:
+    - eval_outputs/benchmark_*/**/company/outputs
+  required_sections:
+    - executive_summary
+    - risk
+    - investment_conclusion
+    - three_statement_summary
+    - valuation_or_reason
+  execution:
+    variant: multi_agent
+    target_period: 2026Q1
+    execution_mode: collaborative
+    fast: true
+    enable_remote_data: true
+    model_config_path: configs/model_backends.yaml
+    app_config_path: configs/app.yaml
+    data_source_config_path: configs/data_sources.yaml
+    raw_data_root: data/raw/real_data
+    retrieval_ranking_mode: hybrid_rerank
+    engines_by_market:
+      US:
+        - local_real_data
+        - sec_edgar
+        - yahoo_finance
+        - independent_macro
+        - tavily
+        - serper
+        - local_evidence
+      HK:
+        - local_real_data
+        - yahoo_finance
+        - independent_macro
+        - tavily
+        - serper
+        - local_evidence
+      CN-A:
+        - local_real_data
+        - cninfo_announcements
+        - exchange_announcements
+        - eastmoney_financials
+        - yahoo_finance
+        - eastmoney
+        - independent_macro
+        - local_evidence
+  cases:
+    - case_id: quick9_us_aapl
+      market: US
+      company_name: Apple
+      canonical_symbol: AAPL
+      period_policy: latest_complete_existing_artifact
+    - case_id: quick9_us_amd
+      market: US
+      company_name: AMD
+      canonical_symbol: AMD
+      period_policy: latest_complete_existing_artifact
+    - case_id: quick9_us_tsla
+      market: US
+      company_name: Tesla
+      canonical_symbol: TSLA
+      period_policy: latest_complete_existing_artifact
+    - case_id: quick9_hk_sensetime
+      market: HK
+      company_name: 商汤科技
+      canonical_symbol: 0020.HK
+      period_policy: latest_complete_existing_artifact
+    - case_id: quick9_hk_4paradigm
+      market: HK
+      company_name: 第四范式
+      canonical_symbol: 6682.HK
+      period_policy: latest_complete_existing_artifact
+    - case_id: quick9_hk_tencent
+      market: HK
+      company_name: 腾讯控股
+      canonical_symbol: 0700.HK
+      period_policy: latest_complete_existing_artifact
+    - case_id: quick9_cna_moutai
+      market: CN-A
+      company_name: 贵州茅台
+      canonical_symbol: 600519.SS
+      period_policy: latest_complete_existing_artifact
+    - case_id: quick9_cna_catl
+      market: CN-A
+      company_name: 宁德时代
+      canonical_symbol: 300750.SZ
+      period_policy: latest_complete_existing_artifact
+    - case_id: quick9_cna_pingan
+      market: CN-A
+      company_name: 中国平安
+      canonical_symbol: 601318.SS
+      period_policy: latest_complete_existing_artifact

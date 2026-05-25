@@ -174,6 +174,8 @@ class MultiAgentOrchestrator:
         enable_remote_data: bool = True,
         data_source_config_path: str = "configs/data_sources.yaml",
         quality_remediation_plan: Dict[str, Any] | None = None,
+        claim_contract: str = "",
+        allow_document_enrichment: bool = True,
     ) -> Dict[str, str]:
         quality_remediation_plan = quality_remediation_plan or _read_existing_quality_remediation_plan(self.output_dir)
         entity_resolution = _resolve_run_identity(research_topic=research_topic, symbol=symbol, raw_data_root=self.raw_data_root)
@@ -191,6 +193,8 @@ class MultiAgentOrchestrator:
                 data_source_config_path=data_source_config_path,
                 entity_resolution=entity_resolution,
                 quality_remediation_plan=quality_remediation_plan,
+                claim_contract=claim_contract,
+                allow_document_enrichment=allow_document_enrichment,
             )
         if execution_mode == "collaborative":
             return self._run_dynamic(
@@ -205,6 +209,8 @@ class MultiAgentOrchestrator:
                 data_source_config_path=data_source_config_path,
                 entity_resolution=entity_resolution,
                 quality_remediation_plan=quality_remediation_plan,
+                claim_contract=claim_contract,
+                allow_document_enrichment=allow_document_enrichment,
                 collaborative=True,
             )
         if execution_mode == "diagnostic_full":
@@ -220,6 +226,8 @@ class MultiAgentOrchestrator:
                 data_source_config_path=data_source_config_path,
                 entity_resolution=entity_resolution,
                 quality_remediation_plan=quality_remediation_plan,
+                claim_contract=claim_contract,
+                allow_document_enrichment=allow_document_enrichment,
                 collaborative=True,
                 diagnostic_full=True,
             )
@@ -751,6 +759,8 @@ class MultiAgentOrchestrator:
         quality_remediation_plan: Dict[str, Any] | None = None,
         collaborative: bool = False,
         diagnostic_full: bool = False,
+        claim_contract: str = "",
+        allow_document_enrichment: bool = True,
     ) -> Dict[str, str]:
         self.trace = []
         run_started_at = time.perf_counter()
@@ -852,6 +862,8 @@ class MultiAgentOrchestrator:
             "data_source_config_path": data_source_config_path,
             "entity_resolution": entity_resolution,
             "quality_remediation_plan": quality_remediation_plan or {},
+            "claim_contract": str(claim_contract or ""),
+            "allow_document_enrichment": bool(allow_document_enrichment),
             "collaborative_mode": bool(collaborative),
             "diagnostic_full_mode": bool(diagnostic_full),
             "research_blackboard": initialize_research_blackboard(
@@ -895,13 +907,21 @@ class MultiAgentOrchestrator:
         self._write_json("analysis_artifacts.json", state.get("analysis_artifacts", {}))
         analysis_artifacts = state.get("analysis_artifacts", {})
         pdf_artifacts = state.get("pdf_artifacts")
-        if not isinstance(pdf_artifacts, dict):
+        if not isinstance(pdf_artifacts, dict) and bool(state.get("allow_document_enrichment", True)):
             pdf_artifacts = build_pdf_artifacts(
                 records=list(evidence_records) if isinstance(evidence_records, list) else [],
                 cache_dir=self.output_dir / "pdf_cache",
                 max_pdfs=2 if fast else 4,
                 max_pages=6 if fast else 12,
             )
+        if not isinstance(pdf_artifacts, dict):
+            pdf_artifacts = {
+                "pdf_manifest": [],
+                "pdf_sections": [],
+                "pdf_tables": [],
+                "company_profile_extracted": {},
+                "meta": {"document_enrichment_disabled": True},
+            }
         pdf_manifest_path = self._write_json("pdf_manifest.json", pdf_artifacts.get("pdf_manifest", []))
         pdf_sections_path = self._write_json("pdf_sections.json", pdf_artifacts.get("pdf_sections", []))
         company_profile_extracted_path = self._write_json(
@@ -1169,7 +1189,7 @@ class MultiAgentOrchestrator:
                 state,
                 result.output,
             )
-            if enriched.task_type == "browser":
+            if enriched.task_type == "browser" and bool(state.get("allow_document_enrichment", True)):
                 attach_pdf_artifacts_to_state(state=state)
                 state["research_blackboard"] = update_blackboard_for_task(
                     state.get("research_blackboard", {}),
@@ -1985,6 +2005,9 @@ def enrich_task_parameters(
         params.setdefault("reader_max_records", int(profile["browser_reader_max_records"]))
         params.setdefault("reader_max_chars", int(profile["browser_reader_max_chars"]))
         params.setdefault("max_llm_records", int(profile["browser_max_llm_records"]))
+        if not bool(state.get("allow_document_enrichment", True)):
+            params["use_reader"] = False
+            params["use_pdf_reader"] = False
     elif task.task_type == "deep_analyze":
         if not isinstance(params.get("evidence_records"), list) or not params.get("evidence_records"):
             params["evidence_records"] = list(state.get("evidence_records", []))
@@ -1996,6 +2019,7 @@ def enrich_task_parameters(
         params.setdefault("max_tokens", int(profile["analyze_max_tokens"]))
         params.setdefault("use_react", bool(profile.get("analyze_use_react", False)))
         params.setdefault("react_max_steps", int(profile.get("analyze_react_max_steps", 3)))
+        params.setdefault("claim_contract", str(state.get("claim_contract", "")))
     elif task.task_type in {
         "identity_profile",
         "three_statement_analysis",

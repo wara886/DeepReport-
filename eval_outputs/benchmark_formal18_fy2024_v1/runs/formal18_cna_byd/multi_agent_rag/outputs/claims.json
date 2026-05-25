@@ -1,0 +1,175 @@
+[
+  {
+    "claim_id": "cl_0001",
+    "section_name": "strategy_business",
+    "claim_text": "管理层讨论与经营情况 PDF 片段显示：比亚迪股份有限公司2024 年年度报告全文 6 目录 第一节 重要提示、目录和释义 ................................................... 5 第二节 公司简介和主要财务指标 ................................................. 9 第三节 管理层讨论与分析 ..........................................…",
+    "evidence_ids": [
+      "pdf_section_b661e15516c0"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0002",
+    "section_name": "ownership_governance",
+    "claim_text": "股东结构、治理或管理层 PDF 片段显示：比亚迪股份有限公司2024 年年度报告全文 2 董事长致辞 致尊敬的各位股东： 本人欣然向股东呈报我们截至二零二四年十二月三十一日止年度的报告。 1. 行业分析及回顾 二零二四年，全球经济呈现缓慢复苏态势，但保护主义上升给国际贸易增添诸多不确定性。国内经济平稳增长， 全年国内生产总值顺利实现同比增长5.0%，以新质生产力为代表的新经济蓬勃发展，但国内有效需求不足，新旧动 能转换给各行各业的发展带来一定挑战。 年内，作为中国国民经济的战…；年是我们成立第三十周年，三十载风雨兼程，三十载砥砺前行。作为创新型科技企业，二零二四年我 们的研发投入约为542 亿元，同比上升35.68%，累计研发投入超1,800 亿元。凭借“敢想、敢干、敢坚持”的工程师 精神和超12 万名研发工程师的努力，比亚迪从电池、电子到新能源汽车，无一不成为行业的引领者，打破国外品牌 统治地位，重塑全球市场新格局。 二零二四年是我们继续高速发展的一年。截至二零二四年十二月三十一日止年度，本集团营业额约人民…",
+    "evidence_ids": [
+      "pdf_section_d161532810f9",
+      "pdf_section_80955285101b"
+    ],
+    "numeric_values": {},
+    "risk_level": "low",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。"
+  },
+  {
+    "claim_id": "cl_0003",
+    "section_name": "risks",
+    "claim_text": "风险提示 PDF 片段显示：比亚迪股份有限公司2024 年年度报告全文 5 2024 年年度报告 第一节 重要提示、目录和释义 公司董事会、监事会及董事、监事、高级管理人员保证年度报告内容的真 实、准确、完整，不存在虚假记载、误导性陈述或重大遗漏，并承担个别和连 带的法律责任。 公司负责人王传福、主管会计工作负责人周亚琳及会计机构负责人（会计 主管人员）刘惠声明：保证本年度报告中财务报告的真实、准确、完整。 所有董事均已出席了审议本报告的董事会会议。 公司不存在…",
+    "evidence_ids": [
+      "pdf_section_ab49bde85950"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.73,
+    "notes": "由 PDF section artifact 转换为 claim；仍保留原始 section/evidence_id 供审计。",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0004",
+    "section_name": "ownership_governance",
+    "claim_text": "PDF 文件中关于股权与治理结构提供了以下信息： 比亚迪股份有限公司2024 年年度报告全文 2 董事长致辞 致尊敬的各位股东： 本人欣然向股东呈报我们截至二零二四年十二月三十一日止年度的报告。 1. 行业分析及回顾 二零二四年，全球经济呈现缓慢复苏态势，但保护主义上升给国际贸易增添诸多不确定性。国内经济平稳增长， 全年国内生产总值顺利实现同比增长5.0%，以新质生产力为代表的新经济蓬勃发展，但国内有效需求不足，新旧动 能转换给各行各业的发展带来一定挑战。 年内，作为中国国民经济的战…",
+    "evidence_ids": [
+      "pdf_section_d161532810f9"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.72,
+    "notes": "来自 PDF insight，按 section type 分类提取的可引用内容"
+  },
+  {
+    "claim_id": "cl_0005",
+    "section_name": "risks",
+    "claim_text": "PDF 文件中关于风险因素提供了以下参考信息： 比亚迪股份有限公司2024 年年度报告全文 5 2024 年年度报告 第一节 重要提示、目录和释义 公司董事会、监事会及董事、监事、高级管理人员保证年度报告内容的真 实、准确、完整，不存在虚假记载、误导性陈述或重大遗漏，并承担个别和连 带的法律责任。 公司负责人王传福、主管会计工作负责人周亚琳及会计机构负责人（会计 主管人员）刘惠声明：保证本年度报告中财务报告的真实、准确、完整。 所有董事均已出席了审议本报告的董事会会议。 公司不存在…",
+    "evidence_ids": [
+      "pdf_section_ab49bde85950"
+    ],
+    "numeric_values": {},
+    "risk_level": "high",
+    "confidence": 0.72,
+    "notes": "来自 PDF insight，按 section type 分类提取的可引用内容",
+    "is_critical": true,
+    "critical_claim_type": "risk"
+  },
+  {
+    "claim_id": "cl_0006",
+    "section_name": "valuation",
+    "claim_text": "002594.SZ  估值不可用原因：当前公开证据缺少市值或股本口径、净利润、净资产/股东权益、收入，因此不能正式计算 P/E、P/B、P/S；报告应把这些缺口列为下一轮检索任务。",
+    "evidence_ids": [
+      "002594_FY2024_eastmoney_financials_balance_fad0b73368",
+      "002594_FY2024_eastmoney_financials_income_75aa272415",
+      "002594_FY2024_eastmoney_financials_cashflow_8bedecabaf",
+      "pdf_section_d161532810f9",
+      "pdf_section_80955285101b",
+      "pdf_section_74e093b15fa2",
+      "pdf_section_ab49bde85950",
+      "pdf_section_eff08c4dc23a",
+      "pdf_section_b661e15516c0"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.68,
+    "notes": "最小估值模型缺口披露。",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0007",
+    "section_name": "business_overview",
+    "claim_text": "002594.SZ 的证据覆盖包括 10 条记录，横跨 3 类来源。",
+    "evidence_ids": [
+      "002594_FY2024_cninfo_d090bade3a",
+      "002594_FY2024_eastmoney_financials_balance_fad0b73368",
+      "002594_FY2024_eastmoney_financials_cashflow_8bedecabaf",
+      "002594_FY2024_eastmoney_financials_income_75aa272415",
+      "pdf_section_74e093b15fa2",
+      "pdf_section_80955285101b",
+      "pdf_section_ab49bde85950",
+      "pdf_section_b661e15516c0",
+      "pdf_section_d161532810f9",
+      "pdf_section_eff08c4dc23a"
+    ],
+    "numeric_values": {
+      "evidence_count": 10.0,
+      "unique_sources": 3.0
+    },
+    "risk_level": "low",
+    "confidence": 0.76,
+    "notes": "由证据覆盖统计生成。"
+  },
+  {
+    "claim_id": "cl_0008",
+    "section_name": "executive_summary",
+    "claim_text": "002594.SZ 暂无完整执行摘要，以下基于已有证据和报告结构填充。关键财务指标已绑定 evidence_id/citation 并由 verifier 校验。",
+    "evidence_ids": [
+      "002594_FY2024_eastmoney_financials_balance_fad0b73368",
+      "002594_FY2024_eastmoney_financials_income_75aa272415",
+      "002594_FY2024_eastmoney_financials_cashflow_8bedecabaf"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.7,
+    "notes": "执行摘要 backfill——primary 未生成时的兜底文本"
+  },
+  {
+    "claim_id": "cl_0009",
+    "section_name": "peer_compare",
+    "claim_text": "002594.SZ 属于上市公司类别，同行可比分析框架基于收入增长/利润率/ROE/估值/杠杆等维度。当前公开证据尚未覆盖完整同行数据，以下为框架性分析。",
+    "evidence_ids": [
+      "002594_FY2024_eastmoney_financials_balance_fad0b73368",
+      "002594_FY2024_eastmoney_financials_income_75aa272415",
+      "002594_FY2024_eastmoney_financials_cashflow_8bedecabaf"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "同行对比 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "peer_comparison"
+  },
+  {
+    "claim_id": "cl_0010",
+    "section_name": "valuation_sensitivity",
+    "claim_text": "敏感性分析框架覆盖宏观需求/成本费用/竞争格局/监管政策等变量。当前证据不足以量化各变量影响，以下说明缺失数据对敏感性判断的约束。",
+    "evidence_ids": [
+      "002594_FY2024_eastmoney_financials_balance_fad0b73368",
+      "002594_FY2024_eastmoney_financials_income_75aa272415",
+      "002594_FY2024_eastmoney_financials_cashflow_8bedecabaf"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.63,
+    "notes": "敏感性分析 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "valuation"
+  },
+  {
+    "claim_id": "cl_0011",
+    "section_name": "conclusion",
+    "claim_text": "关于002594.SZ 的投资结论需要综合主营业务增长和经营效率改善等驱动因素和市场竞争、成本波动和监管变化等约束条件。当前公开证据尚不完整，以下为基于现有信息的初步判断。",
+    "evidence_ids": [
+      "002594_FY2024_eastmoney_financials_balance_fad0b73368",
+      "002594_FY2024_eastmoney_financials_income_75aa272415",
+      "002594_FY2024_eastmoney_financials_cashflow_8bedecabaf"
+    ],
+    "numeric_values": {},
+    "risk_level": "medium",
+    "confidence": 0.66,
+    "notes": "投资结论 backfill——primary 未生成时的兜底文本",
+    "is_critical": true,
+    "critical_claim_type": "investment_rationale"
+  }
+]

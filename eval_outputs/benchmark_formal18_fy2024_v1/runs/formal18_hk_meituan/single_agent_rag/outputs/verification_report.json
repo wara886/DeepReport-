@@ -1,0 +1,47 @@
+{
+  "passed": false,
+  "error_count": 3,
+  "warning_count": 3,
+  "errors": [
+    "Missing required header in report: ## Financial Analysis",
+    "Missing required header in report: ## Risk Assessment",
+    "Missing required company-report header for claim section: valuation"
+  ],
+  "warnings": [
+    "No financial_analysis claims found.",
+    "Target symbol 3690.HK is not explicitly mentioned in report claims or markdown.",
+    "Target symbol mismatch: expected 3690.HK, but non-peer sections mention ticker-like tokens ANNUAL, REPORT."
+  ],
+  "claim_count": 8,
+  "grounded_claim_count": 0,
+  "expected_symbol": "3690.HK",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 0,
+    "chart_text_consistency": {
+      "chart_count": 0,
+      "passed_chart_count": 0,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": []
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 0,
+      "results": []
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 0,
+      "details": []
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "valuation_not_available"
+    ],
+    "checks": {}
+  }
+}

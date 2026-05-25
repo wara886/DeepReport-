@@ -4,7 +4,12 @@ from pathlib import Path
 import pandas as pd
 
 from src.agents.deep_analyze_agent import apply_evidence_gate
-from src.agents.research_blackboard import initialize_research_blackboard, update_blackboard_for_task
+from src.agents.research_blackboard import (
+    apply_pre_write_critic,
+    initialize_research_blackboard,
+    quality_generalization_checks,
+    update_blackboard_for_task,
+)
 from src.data.company_universe import resolve_company_identifier_with_diagnostics, resolve_symbol
 from src.data.financial_statement_metrics import build_standard_financial_metrics
 from src.evaluation.valuation_audit import audit_valuation_model
@@ -474,6 +479,20 @@ def test_blackboard_market_route_attempted_engines_backfills_from_search_meta():
     updated = update_blackboard_for_task(board, "deep_researcher", state, {"search_meta": state["search_meta"]})
 
     assert updated["market_route"]["attempted_engines"] == ["cninfo_announcements", "eastmoney_financials"]
+
+
+def test_quality_generalization_does_not_fail_a_critic_that_never_ran():
+    board = initialize_research_blackboard(symbol="AAPL", period="2026Q1")
+
+    skipped = quality_generalization_checks({"research_blackboard": board})
+    reviewed = quality_generalization_checks(
+        {"research_blackboard": apply_pre_write_critic(board, {"passed": False, "objections": [{"severity": "blocker"}]})}
+    )
+
+    assert skipped["pre_write_critic_passed"]["passed"] is True
+    assert skipped["pre_write_critic_passed"]["available"] is False
+    assert reviewed["pre_write_critic_passed"]["passed"] is False
+    assert reviewed["pre_write_critic_passed"]["available"] is True
 
 
 def test_hkex_identity_filter_rejects_other_company_pdf_hit():

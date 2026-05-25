@@ -1,0 +1,41 @@
+{
+  "session_id": "d322d12ecc0f",
+  "user_intent": "Generate a company stock research report for 第四范式 (6682.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+  "symbol": "6682.HK",
+  "period": "2026Q1",
+  "report_type": "company_stock_report",
+  "hard_constraints": [
+    "Only produce the requested company/stock research report type for this run.",
+    "Every material factual claim must be backed by an explicit evidence_id citation.",
+    "Do not invent numbers, dates, sources, ratings, or unsupported conclusions.",
+    "Keep verifier feedback active during revisions until the final verification passes.",
+    "Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.",
+    "Provide executive summary, risk assessment, and investment conclusion.",
+    "Cover three statements or explicitly disclose unavailable statement evidence.",
+    "Include valuation analysis or explicitly state why valuation is unavailable.",
+    "Bind critical conclusions to evidence IDs and citations used in report."
+  ],
+  "pinned_facts": [
+    "Target symbol: 6682.HK",
+    "Target period: 2026Q1",
+    "Report type: company_stock_report"
+  ],
+  "rejected_claims": [],
+  "verifier_feedback": [
+    "warnings: No financial_analysis claims found.",
+    "warnings: Target symbol 6682.HK is not explicitly mentioned in report claims or markdown.",
+    "warnings: Target symbol mismatch: expected 6682.HK, but non-peer sections mention ticker-like tokens FRED, HK, UNRATE.",
+    "revision_brief: - Warnings: No financial_analysis claims found. - Warnings: Target symbol 6682.HK is not explicitly mentioned in report claims or markdown. - Warnings: Target symbol mismatch: expected 6682.HK, but non-peer sections mention ticker-like tokens FRED, HK, UNRATE."
+  ],
+  "open_questions": [],
+  "turns": [
+    {
+      "role": "user",
+      "content": "Generate a company stock research report for 第四范式 (6682.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "metadata": {
+        "source": "run_request"
+      }
+    }
+  ],
+  "context_brief": "[ConversationMemory]\nUser intent:\n- Generate a company stock research report for 第四范式 (6682.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.\nRun scope:\n- report_type=company_stock_report\n- symbol=6682.HK\n- period=2026Q1\nHard constraints:\n- Only produce the requested company/stock research report type for this run.\n- Every material factual claim must be backed by an explicit evidence_id citation.\n- Do not invent numbers, dates, sources, ratings, or unsupported conclusions.\n- Keep verifier feedback active during revisions until the final verification passes.\n- Final artifacts must include Markdown, HTML, JSON, citations, charts, and compliance disclosure.\n- Provide executive summary, risk assessment, and investment conclusion.\n- Cover three statements or explicitly disclose unavailable statement evidence.\n- Include valuation analysis or explicitly state why valuation is unavailable.\n- Bind critical conclusions to evidence IDs and citations used in report.\nPinned facts:\n- Target symbol: 6682.HK\n- Target period: 2026Q1\n- Report type: company_stock_report\nVerifier feedback to keep active:\n- warnings: No financial_analysis claims found.\n- warnings: Target symbol 6682.HK is not explicitly mentioned in report claims or markdown.\n- warnings: Target symbol mismatch: expected 6682.HK, but non-peer sections mention ticker-like tokens FRED, HK, UNRATE.\n- revision_brief: - Warnings: No financial_analysis claims found. - Warnings: Target symbol 6682.HK is not explicitly mentioned in report claims or markdown. - Warnings: Target symbol mismatch: expected 6682.HK, but non-peer sections mention ticker-like tokens FRED, HK, UNRATE."
+}

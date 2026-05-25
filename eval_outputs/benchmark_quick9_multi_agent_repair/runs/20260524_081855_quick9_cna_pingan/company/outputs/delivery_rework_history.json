@@ -1,0 +1,96 @@
+[
+  {
+    "round": 1,
+    "trigger": "delivery_gate_failed",
+    "status": "completed",
+    "top_quality_issues": [
+      {
+        "issue_id": "llm_review_0001",
+        "severity": "fatal",
+        "category": "llm_review",
+        "message": "内容空洞：大量段落为'数据缺口说明'，缺乏实质性分析和投资洞察",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "llm_review_0002",
+        "severity": "fatal",
+        "category": "llm_review",
+        "message": "大量暂无结论：同行对比、估值、估值敏感性均无法给出有效结论",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "llm_review_0003",
+        "severity": "warning",
+        "category": "llm_review",
+        "message": "图表无用：关键指标、结论置信度、证据来源结构图对投资分析无实质帮助",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "llm_review_0004",
+        "severity": "warning",
+        "category": "llm_review",
+        "message": "原创分析缺失：报告基本是数据罗列和PDF片段，没有深度解读或独到观点",
+        "source": "llm_review"
+      },
+      {
+        "issue_id": "llm_review_0005",
+        "severity": "warning",
+        "category": "llm_review",
+        "message": "公司报告要求部分不满足：同行对比和估值章节缺失，风险分析过于泛泛",
+        "source": "llm_review"
+      }
+    ],
+    "responsible_agents": [
+      {
+        "agent": "DeepAnalyzeAgent",
+        "reason": "period_mismatch, different_fiscal_period, unsupported_numeric"
+      },
+      {
+        "agent": "PeerAgent",
+        "reason": "peer_comparison, peer, comparison"
+      },
+      {
+        "agent": "RiskAgent",
+        "reason": "risk"
+      }
+    ],
+    "required_fixes": [
+      "Add peer comparison metrics and explicit boundaries instead of framework-only text.",
+      "Rewrite hollow sections with evidence-backed business implications, investment judgment, and risk boundaries.",
+      "Prioritize fatal/blocker issues from the LLM review before final delivery."
+    ],
+    "rework_mode": "owner_routed",
+    "repair_type": "analysis_repair",
+    "handled": true,
+    "target_agents": [
+      "DeepAnalyzeAgent",
+      "PeerAgent",
+      "RiskAgent"
+    ],
+    "target_agents_rerun": [
+      {
+        "agent": "DeepAnalyzeAgent",
+        "task_type": "deep_analyze",
+        "status": "completed"
+      },
+      {
+        "agent": "PeerAgent",
+        "task_type": "peer_analysis",
+        "status": "completed"
+      },
+      {
+        "agent": "RiskAgent",
+        "task_type": "risk_analysis",
+        "status": "completed"
+      }
+    ],
+    "critic_rechecked": true,
+    "final_editor_rerun": true,
+    "llm_repair_attempted": true,
+    "claim_rebuild_attempted": true,
+    "rejected_claim_count": 1,
+    "remaining_unfixable_gaps": [],
+    "unfixable_reasons": [],
+    "delivery_pass_after_round": true
+  }
+]

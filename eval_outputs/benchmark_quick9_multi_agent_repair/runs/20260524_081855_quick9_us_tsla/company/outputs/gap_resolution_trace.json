@@ -1,0 +1,13 @@
+[
+  {
+    "gap_id": "revision_round_0001",
+    "gap_type": "verifier_feedback",
+    "claim_id": "",
+    "route": "final_answer",
+    "action": "revise_language",
+    "attempt": 1,
+    "max_attempts": 1,
+    "status": "resolved_or_downgraded",
+    "message": "- Warnings: Target symbol mismatch: expected TSLA, but non-peer sections mention ticker-like tokens FRED.\n- Fix recommendations: Remove or properly cite industry classification and business description from appropriate sources (e.g., SEC 10-K).\n- Fix recommendations: For gross margin, provide evidence from income statement (e.g., cost of revenue) or remove the metric.\n- Fix recommendations: Ensure all balance sheet items have direct evidence; total liabilities and equity should be derived from a"
+  }
+]

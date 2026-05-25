@@ -1,0 +1,495 @@
+{
+  "schema_version": "research_blackboard.v1",
+  "symbol": "3690.HK",
+  "target_period": "FY2024",
+  "company_identity": {
+    "symbol": "3690.HK",
+    "canonical_symbol": "3690.HK",
+    "company_name": "",
+    "market": "hk",
+    "exchange": "HKEX",
+    "currency": "HKD",
+    "country_region": "Hong Kong",
+    "is_listed": true,
+    "resolution_confidence": 0.62,
+    "data_source_plan": {
+      "symbol": "3690.HK",
+      "market": "hk",
+      "exchange": "HKEX",
+      "engines": [
+        "local_real_data",
+        "hkex_announcements",
+        "yahoo_finance",
+        "tavily",
+        "serper",
+        "local_evidence"
+      ],
+      "primary_sources": [
+        "hkex_announcements",
+        "yahoo_finance",
+        "tavily",
+        "serper"
+      ],
+      "free_public_only": true,
+      "requires_gap_explanation_when_missing": [
+        "income_statement",
+        "balance_sheet",
+        "cash_flow",
+        "valuation",
+        "peer_compare"
+      ]
+    },
+    "match_type": "hk_code",
+    "needs_confirmation": true,
+    "reason": "matched_hk_code",
+    "sector": "",
+    "industry": "",
+    "business_summary": "",
+    "official_sources": [
+      "hkex_announcements",
+      "yahoo_finance",
+      "tavily",
+      "serper"
+    ],
+    "latest_disclosure_period": "",
+    "entity_resolution": {
+      "requested_symbol": "3690.HK",
+      "research_topic": "美团 (3690.HK) formal FY2024 frozen-input report",
+      "resolved_symbol": "3690.HK",
+      "resolution_source": "fallback",
+      "topic_resolution": {
+        "input": "美团 (3690.HK) formal FY2024 frozen-input report",
+        "resolved": false,
+        "symbol": "",
+        "company_name": "",
+        "match_type": "none",
+        "confidence": 0.0,
+        "candidate_symbols": [
+          "0700.HK",
+          "600519.SS",
+          "AMD"
+        ],
+        "reason": "no_match"
+      },
+      "symbol_resolution": {
+        "input": "3690.HK",
+        "resolved": false,
+        "symbol": "",
+        "company_name": "",
+        "match_type": "none",
+        "confidence": 0.0,
+        "candidate_symbols": [
+          "0700.HK",
+          "600519.SS",
+          "AMD"
+        ],
+        "reason": "no_match"
+      },
+      "conflict": false
+    }
+  },
+  "market_route": {
+    "market": "hk",
+    "exchange": "HKEX",
+    "data_source_plan": {
+      "symbol": "3690.HK",
+      "market": "hk",
+      "exchange": "HKEX",
+      "engines": [
+        "local_real_data",
+        "hkex_announcements",
+        "yahoo_finance",
+        "tavily",
+        "serper",
+        "local_evidence"
+      ],
+      "primary_sources": [
+        "hkex_announcements",
+        "yahoo_finance",
+        "tavily",
+        "serper"
+      ],
+      "free_public_only": true,
+      "requires_gap_explanation_when_missing": [
+        "income_statement",
+        "balance_sheet",
+        "cash_flow",
+        "valuation",
+        "peer_compare"
+      ]
+    },
+    "primary_sources": [
+      "hkex_announcements",
+      "yahoo_finance",
+      "tavily",
+      "serper"
+    ],
+    "planned_engines": [
+      "formal_snapshot_bm25"
+    ],
+    "attempted_engines": [
+      "formal_snapshot_bm25"
+    ],
+    "missing_primary_sources": [
+      "hkex_announcements",
+      "yahoo_finance",
+      "tavily",
+      "serper"
+    ],
+    "route_coverage": 1.0
+  },
+  "industry_profile": {
+    "industry": "",
+    "sector": "",
+    "business_summary": "",
+    "confidence": 0.45,
+    "source_priority": "identity",
+    "evidence_ids": []
+  },
+  "period_state": {
+    "target_period": "FY2024",
+    "latest_available_disclosure_period": "",
+    "financial_data_basis": "",
+    "market_data_as_of": "",
+    "has_data_delay": false,
+    "notes": []
+  },
+  "coverage": {
+    "evidence_count": 1,
+    "official_evidence_count": 1,
+    "source_types": [
+      "hkex_annual_report"
+    ],
+    "three_statement": {
+      "income": false,
+      "balance": false,
+      "cash_flow": false
+    },
+    "peer_compare": {
+      "available": true,
+      "reason": ""
+    },
+    "valuation": {
+      "available": false,
+      "method": "",
+      "missing_inputs": []
+    },
+    "risk": {
+      "available": true,
+      "evidence_ids": [
+        "03690_FY2024_hkex_annual_report_8e4e651b17"
+      ]
+    }
+  },
+  "role_outputs": {
+    "identity_profile": {
+      "status": "complete",
+      "confidence": 0.84,
+      "source": "official_disclosure_or_company_profile",
+      "evidence_ids": [
+        "03690_FY2024_hkex_annual_report_8e4e651b17"
+      ],
+      "findings": [
+        "Resolved analysis target as 3690.HK for FY2024.",
+        "Official/company evidence records available: 1."
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "FinalAnswer may use company identity and business profile from verified evidence.",
+      "owner_agent": "IdentityAgent",
+      "verified": true
+    },
+    "three_statement_analysis": {
+      "status": "partial",
+      "confidence": 0.58,
+      "source": "financial_statement_view_and_metric_lineage",
+      "evidence_ids": [
+        "03690_FY2024_hkex_annual_report_8e4e651b17"
+      ],
+      "findings": [
+        "Three-statement coverage income=False, balance=False, cash_flow=False.",
+        "Financial metric lineage count: 0.",
+        "Statement view coverage: {'statements': {}, 'has_three_statement_view': False, 'line_item_count': 0}."
+      ],
+      "missing_inputs": [
+        "income",
+        "balance",
+        "cash_flow"
+      ],
+      "impact_on_report": "Financial analysis must disclose missing statement coverage and avoid full three-statement conclusions.",
+      "owner_agent": "StatementAgent",
+      "verified": false
+    },
+    "peer_analysis": {
+      "status": "missing",
+      "confidence": 0.3,
+      "source": "peer_comparison_tool",
+      "evidence_ids": [
+        "03690_FY2024_hkex_annual_report_8e4e651b17"
+      ],
+      "findings": [
+        "Peer context contains 0 comparable companies."
+      ],
+      "missing_inputs": [
+        "peer_universe",
+        "peer_financial_metrics"
+      ],
+      "impact_on_report": "Peer section must be framed as a data gap or qualitative context, not a ranked conclusion.",
+      "owner_agent": "PeerAgent",
+      "verified": false
+    },
+    "valuation_analysis": {
+      "status": "partial",
+      "confidence": 0.5,
+      "source": "valuation_tool_and_market_inputs",
+      "evidence_ids": [
+        "03690_FY2024_hkex_annual_report_8e4e651b17"
+      ],
+      "findings": [
+        "Valuation availability: False.",
+        "Valuation method: not_available."
+      ],
+      "missing_inputs": [
+        "valuation_inputs"
+      ],
+      "impact_on_report": "Valuation section must list missing inputs and avoid target-price style conclusions.",
+      "owner_agent": "ValuationAgent",
+      "verified": false
+    },
+    "risk_analysis": {
+      "status": "complete",
+      "confidence": 0.72,
+      "source": "risk_claims_and_evidence",
+      "evidence_ids": [
+        "03690_FY2024_hkex_annual_report_8e4e651b17"
+      ],
+      "findings": [
+        "Risk-related claim evidence count: 1.",
+        "3690.HK 的主要风险包括三类：第一，行业竞争和供给扩张可能压缩高毛利业务的持续性；第二，宏观利率、资本开支周期和云厂商采购节奏会放大收入波动；第三，当前核心季度三表采用结构化降级来源，若后续一手公告与该数据不一致，盈利质量、自由现金流和估值结论都需要重算。"
+      ],
+      "missing_inputs": [],
+      "impact_on_report": "Risk section can cite identified operational or market risk evidence.",
+      "owner_agent": "RiskAgent",
+      "verified": true
+    }
+  },
+  "agent_writes": [
+    {
+      "agent": "DeepResearcherAgent",
+      "task_type": "deep_researcher",
+      "writes": [
+        "evidence_candidates",
+        "search_meta",
+        "market_route"
+      ],
+      "evidence_count": 0,
+      "claim_count": 0,
+      "output_keys": [
+        "evidence_candidates",
+        "query",
+        "search_meta"
+      ]
+    },
+    {
+      "agent": "BrowserAgent",
+      "task_type": "browser",
+      "writes": [
+        "evidence_records",
+        "pdf_artifacts"
+      ],
+      "evidence_count": 1,
+      "claim_count": 0,
+      "output_keys": [
+        "evidence_records"
+      ]
+    },
+    {
+      "agent": "BrowserAgent",
+      "task_type": "browser",
+      "writes": [
+        "evidence_records",
+        "pdf_artifacts"
+      ],
+      "evidence_count": 1,
+      "claim_count": 0,
+      "output_keys": [
+        "evidence_records"
+      ]
+    },
+    {
+      "agent": "DeepAnalyzeAgent",
+      "task_type": "deep_analyze",
+      "writes": [
+        "claims",
+        "analysis_artifacts",
+        "coverage",
+        "role_outputs",
+        "identity_profile",
+        "three_statement_analysis",
+        "peer_analysis",
+        "valuation_analysis",
+        "risk_analysis"
+      ],
+      "evidence_count": 1,
+      "claim_count": 10,
+      "output_keys": [
+        "analysis_artifacts",
+        "claims"
+      ]
+    },
+    {
+      "agent": "identity_profile",
+      "task_type": "identity_profile",
+      "writes": [
+        "role_outputs",
+        "identity_profile"
+      ],
+      "evidence_count": 1,
+      "claim_count": 10,
+      "output_keys": [
+        "identity_profile",
+        "role_outputs"
+      ]
+    },
+    {
+      "agent": "peer_analysis",
+      "task_type": "peer_analysis",
+      "writes": [
+        "role_outputs",
+        "peer_analysis"
+      ],
+      "evidence_count": 1,
+      "claim_count": 10,
+      "output_keys": [
+        "peer_analysis",
+        "role_outputs"
+      ]
+    },
+    {
+      "agent": "risk_analysis",
+      "task_type": "risk_analysis",
+      "writes": [
+        "role_outputs",
+        "risk_analysis"
+      ],
+      "evidence_count": 1,
+      "claim_count": 10,
+      "output_keys": [
+        "risk_analysis",
+        "role_outputs"
+      ]
+    },
+    {
+      "agent": "three_statement_analysis",
+      "task_type": "three_statement_analysis",
+      "writes": [
+        "role_outputs",
+        "three_statement_analysis"
+      ],
+      "evidence_count": 1,
+      "claim_count": 10,
+      "output_keys": [
+        "role_outputs",
+        "three_statement_analysis"
+      ]
+    },
+    {
+      "agent": "valuation_analysis",
+      "task_type": "valuation_analysis",
+      "writes": [
+        "role_outputs",
+        "valuation_analysis"
+      ],
+      "evidence_count": 1,
+      "claim_count": 10,
+      "output_keys": [
+        "role_outputs",
+        "valuation_analysis"
+      ]
+    },
+    {
+      "agent": "CriticAgent",
+      "task_type": "pre_write_critic",
+      "writes": [
+        "critic"
+      ],
+      "objection_count": 2
+    },
+    {
+      "agent": "FinalAnswerAgent",
+      "task_type": "final_answer",
+      "writes": [
+        "markdown",
+        "report_json"
+      ],
+      "evidence_count": 1,
+      "claim_count": 10,
+      "output_keys": [
+        "html",
+        "markdown",
+        "report_json",
+        "summary"
+      ]
+    },
+    {
+      "agent": "VerifierAgent",
+      "task_type": "verifier",
+      "writes": [
+        "verification_report",
+        "gap_resolution_trace"
+      ],
+      "evidence_count": 1,
+      "claim_count": 10,
+      "output_keys": [
+        "verification_report"
+      ]
+    },
+    {
+      "agent": "GapResolverAgent",
+      "task_type": "gap_resolver",
+      "writes": [
+        "gap_resolution_trace",
+        "data_repair_summary",
+        "repair_constraints"
+      ],
+      "evidence_count": 1,
+      "claim_count": 10,
+      "output_keys": [
+        "data_repair_summary",
+        "gap_resolution_trace",
+        "repair_constraints",
+        "required_backfill_sections"
+      ]
+    }
+  ],
+  "critic": {
+    "pre_write_passed": true,
+    "objections": [
+      {
+        "category": "industry_profile",
+        "field": "industry_profile",
+        "target_agent": "IdentityAgent",
+        "severity": "warning",
+        "blocking": false,
+        "required_action": "raise industry confidence or constrain report language",
+        "message": "行业画像置信度偏低，FinalAnswer 只能引用已验证主营业务，不得按关键词扩展行业。"
+      },
+      {
+        "category": "three_statement",
+        "field": "role_outputs.three_statement_analysis",
+        "target_agent": "StatementAgent",
+        "severity": "warning",
+        "blocking": false,
+        "required_action": "complete statement coverage or disclose missing statements",
+        "message": "三表覆盖不完整：income, balance, cash_flow。"
+      }
+    ],
+    "recommendations": [
+      "正文说明未覆盖的主数据源及其对三表、估值或同行判断的影响。",
+      "三表缺项必须写明已尝试来源、缺失项目和对投资判断的影响。",
+      "估值不可计算时必须列出缺失输入和判断影响，不能只写暂无结论。",
+      "Three-statement role output is incomplete; disclose missing inputs and avoid full coverage claims.",
+      "Peer role output is incomplete; frame peer comparison with data-gap limits.",
+      "Valuation role output is incomplete; avoid target-price conclusions and list missing inputs."
+    ]
+  }
+}

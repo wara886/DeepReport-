@@ -1,0 +1,23 @@
+[
+  {
+    "evidence_id": "sec_companyfacts_googl_565a4159b3",
+    "sample_id": "sec_companyfacts_googl_565a4159b3",
+    "source_type": "sec_companyfacts",
+    "symbol": "GOOGL",
+    "period": "FY2024",
+    "title": "GOOGL SEC company facts",
+    "publish_time": "2025-02-05",
+    "content": "SEC companyfacts FY2024 supported metrics for GOOGL: RevenueFromContractWithCustomerExcludingAssessedTax: 350018000000 (USD, 2024-12-31); NetIncomeLoss: 100118000000 (USD, 2024-12-31); Assets: 450256000000 (USD, 2024-12-31); CashAndCashEquivalentsAtCarryingValue: 23466000000 (USD, 2024-12-31); NetCashProvidedByUsedInOperatingActivities: 125299000000 (USD, 2024-12-31); PaymentsToAcquirePropertyPlantAndEquipment: 52535000000 (USD, 2024-12-31).",
+    "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001652044.json",
+    "trust_level": "high",
+    "source_timestamp": "2025-02-05",
+    "data_cutoff": "2025-02-05",
+    "freshness_days": 473,
+    "freshness_bucket": "stale",
+    "evidence_scope": "company",
+    "source_authority": "official",
+    "authority_level": "primary",
+    "source_document_type": "sec_companyfacts",
+    "authority_score": 1.0
+  }
+]

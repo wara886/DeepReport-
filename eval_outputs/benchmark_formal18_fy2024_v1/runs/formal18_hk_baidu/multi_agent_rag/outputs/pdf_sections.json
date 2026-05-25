@@ -1,0 +1,112 @@
+[
+  {
+    "section_id": "497fe54e912d",
+    "evidence_id": "09888_FY2024_hkex_annual_report_a0649ee209",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf",
+    "page": 1,
+    "section_type": "risk_factors",
+    "matched_keyword": "risk",
+    "snippet": "our weighted voting rights structure, our share capital comprises Class A ordinary shares and Class B ordinary shares. Each Class A ordinary share entitles the holder to exercise one vote, and each Class B ordinary share entitles the holder to exercise 10 votes, respectively, on all matters subject to the vote at general meetings of the Company. Shareholders and prospective investors should be aware of the potential risks of investing in a company with a weighted voting rights structure. Our American depositary shares, each representing eight of our Class A ordinary shares, are listed on Nasdaq in the United States under the symbol BIDU. Baidu, Inc. 百度集團股份有限公司 (A company controlled through weighted voting rights and incorporated in the Cayman Islands with limited liability) (Stock Codes: 9888 (HKD counter) and 89888 (RMB counter)) A",
+    "extraction_method": "pymupdf_text_keyword_window"
+  },
+  {
+    "section_id": "70f1ffb9d784",
+    "evidence_id": "09888_FY2024_hkex_annual_report_a0649ee209",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf",
+    "page": 1,
+    "section_type": "financial_statements",
+    "matched_keyword": "financial statements",
+    "snippet": "Exchange of Hong Kong Limited. This document is available on the websites of the Hong Kong Stock Exchange (http://www.hkexnews.hk) and our website (https://ir.baidu.com/). Summary content: Section A: Extracted Form 20-F 2 — Extracted sections of Form 20-F 3 — Exhibit 8.1 252 — Exhibit 12.1 253 — Exhibit 12.2 254 — Exhibit 13.1 255 — Exhibit 13.2 256 — Exhibit 15.1 257 — Exhibit 15.2 258 — Exhibit 15.3 259 Section B: Financial statements 260 — Independent auditor’s report 262 — Consolidated financial statements for the fiscal year ended December 31, 2024 266 — Notes to the consolidated financial statements 272 By order of the Board Baidu, Inc. Mr. Robin Yanhong Li Chairman of the Board and Chief Executive Officer Hong Kong, March 28, 2025 As at the date of this announcement, the board of directors of the Company comprises Mr. Robin Yanhong Li as dir",
+    "extraction_method": "pymupdf_text_keyword_window"
+  },
+  {
+    "section_id": "00a0866b705f",
+    "evidence_id": "09888_FY2024_hkex_annual_report_a0649ee209",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf",
+    "page": 1,
+    "section_type": "ownership_governance",
+    "matched_keyword": "shareholder",
+    "snippet": "upon the whole or any part of the contents of this announcement. Under our weighted voting rights structure, our share capital comprises Class A ordinary shares and Class B ordinary shares. Each Class A ordinary share entitles the holder to exercise one vote, and each Class B ordinary share entitles the holder to exercise 10 votes, respectively, on all matters subject to the vote at general meetings of the Company. Shareholders and prospective investors should be aware of the potential risks of investing in a company with a weighted voting rights structure. Our American depositary shares, each representing eight of our Class A ordinary shares, are listed on Nasdaq in the United States under the symbol BIDU. Baidu, Inc. 百度集團股份有限公司 (A company controlled through weighted voting rights and incorporated in the Cayman Islands with limited liabi",
+    "extraction_method": "pymupdf_text_keyword_window"
+  },
+  {
+    "section_id": "8098c1227e19",
+    "evidence_id": "09888_FY2024_hkex_annual_report_a0649ee209",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf",
+    "page": 3,
+    "section_type": "financial_statements",
+    "matched_keyword": "financial statements",
+    "snippet": "icate by check mark whether the registrant is a large accelerated filer, an accelerated filer, a non-accelerated filer or an emerging growth company. See definition of “large accelerated filer,” “accelerated filer” “emerging growth company” in Rule 12b-2 of the Exchange Act. Large accelerated filer È Accelerated filer ‘ Non-accelerated filer ‘ Emerging growth company ‘ If an emerging growth company that prepares its financial statements in accordance with U.S. GAAP, indicate by check mark if the registrant has elected not to use the extended transition period for complying with any new or revised financial accounting standards† provided pursuant to Section 13(a) of the Exchange Act. ‘ † The term “new or revised financial accounting standard” refers to any update issued by the Financial Accounting Standards Board to its Accounting Standards Codifica",
+    "extraction_method": "pymupdf_text_keyword_window"
+  },
+  {
+    "section_id": "719d0ec03faa",
+    "evidence_id": "09888_FY2024_hkex_annual_report_a0649ee209",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf",
+    "page": 4,
+    "section_type": "risk_factors",
+    "matched_keyword": "risk",
+    "snippet": ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 207 Item 9. The Offer and Listing . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 209 Item 10. Additional Information . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 209 Item 11. Quantitative and Qualitative Disclosures about Market Risk . . . . . . . . . . . . . . . . . . . . . . . . 224 Item 12. Description of Securities Other than Equity Securities . . . . . . . . . . . . . . . . . . . . . . . . . . . . 225 PART II . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 230 Item 13. Defaults, Dividend Arrearages and Delinquencies . . . . . . . . .",
+    "extraction_method": "pymupdf_text_keyword_window"
+  },
+  {
+    "section_id": "a71bec3e4f23",
+    "evidence_id": "09888_FY2024_hkex_annual_report_a0649ee209",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf",
+    "page": 4,
+    "section_type": "financial_statements",
+    "matched_keyword": "financial statements",
+    "snippet": ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 233 Item 16K. Cybersecurity . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 233 PART III . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 234 Item 17. Financial Statements . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 234 Item 18. Financial Statements . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 234 Item 19. Exhibits . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 234 SIGNATURE",
+    "extraction_method": "pymupdf_text_keyword_window"
+  },
+  {
+    "section_id": "75d2776d304a",
+    "evidence_id": "09888_FY2024_hkex_annual_report_a0649ee209",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf",
+    "page": 4,
+    "section_type": "ownership_governance",
+    "matched_keyword": "shareholder",
+    "snippet": ". . . . . . . . . 90 Item 4A. Unresolved Staff Comments . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 155 Item 5. Operating and Financial Review and Prospects . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 155 Item 6. Directors, Senior Management and Employees . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 190 Item 7. Major Shareholders and Related Party Transactions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 205 Item 8. Financial Information . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 207 Item 9. The Offer and Listing . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 209 Item 10. Additional Information . . . .",
+    "extraction_method": "pymupdf_text_keyword_window"
+  },
+  {
+    "section_id": "e43b47ef569d",
+    "evidence_id": "09888_FY2024_hkex_annual_report_a0649ee209",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf",
+    "page": 5,
+    "section_type": "risk_factors",
+    "matched_keyword": "risk",
+    "snippet": "ers to the number of mobile devices that launched our mobile apps during a given month; • “our company” refers to Baidu, Inc., which is not a PRC operating company but a Cayman Islands holding company with operations primarily conducted through (i) our mainland China subsidiaries and (ii) contractual arrangements with the variable interest entities, or the VIEs, based in mainland China. This structure entails unique risks to investors, see “Item 3.D. Key Information—Risk Factors—Risks Related to our Corporate Structure” for more details; • “RMB” or “Renminbi” refers to the legal currency of mainland China; • “SFO” refers to the Securities and Futures Ordinance (Chapter 571 of the Laws of Hong Kong), as amended or supplemented from time to time; • “shares” or “ordinary shares” refer to our ordinary shares, which include both Class A",
+    "extraction_method": "pymupdf_text_keyword_window"
+  },
+  {
+    "section_id": "e79257d7628f",
+    "evidence_id": "09888_FY2024_hkex_annual_report_a0649ee209",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf",
+    "page": 6,
+    "section_type": "business_overview",
+    "matched_keyword": "business",
+    "snippet": "identify these forward-looking statements by terminology such as “may,” “will,” “expect,” “anticipate,” “future,” “intend,” “plan,” “believe,” “estimate,” “is/are likely to” or other similar expressions. We have based these forward-looking statements largely on our current expectations and projections about future events and financial trends that we believe may affect our financial condition, results of operations, business strategy and financial needs. These forward-looking statements include, but are not limited to: • our operations and business prospects; • our business and operating strategies and our ability to implement such strategies; • our ability to develop and manage our operations and business; • competition for, among other things, capital, technology and skilled personnel; • our ability to control costs; • our ability to",
+    "extraction_method": "pymupdf_text_keyword_window"
+  },
+  {
+    "section_id": "303eb3e5b79d",
+    "evidence_id": "09888_FY2024_hkex_annual_report_a0649ee209",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf",
+    "page": 6,
+    "section_type": "risk_factors",
+    "matched_keyword": "risk",
+    "snippet": "ion for, among other things, capital, technology and skilled personnel; • our ability to control costs; • our ability to identify and conduct investments and acquisitions, obtain regulatory approvals from government authorities, as well as integrate acquired target(s); • changes to regulatory and operating conditions in the industry and geographical markets in which we operate; • our dividend policy; and • all other risks and uncertainties described in “Item 3.D. Key Information—Risk Factors.” We would like to caution you not to place undue reliance on these forward-looking statements and you should read these statements in conjunction with the risk factors disclosed in “Item 3.D. Key Information—Risk Factors.” Those risks are not exhaustive. We operate in a rapidly evolving environment. New risks emerge from time to time and it is",
+    "extraction_method": "pymupdf_text_keyword_window"
+  },
+  {
+    "section_id": "3d82495dc2fc",
+    "evidence_id": "09888_FY2024_hkex_annual_report_a0649ee209",
+    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0328/2025032802704.pdf",
+    "page": 6,
+    "section_type": "financial_statements",
+    "matched_keyword": "financial statements",
+    "snippet": "China and other consolidated affiliated entities in which we do not have any equity ownership but whose financial results have been consolidated into our consolidated financial statements based solely on contractual arrangements in accordance with U.S. GAAP. These variable interest entities include, but are not limited to, Beijing Baidu Netcom Science Technology Co., Ltd., or Baidu Netcom, Beijing Perusal Technology Co., Ltd., or Beijing Perusal, Beijing iQIYI Science & Technology Co., Ltd., or Beijing iQIYI. See “Item 4. Information on the Company—C. Organizational Structure” for an illustrative dia",
+    "extraction_method": "pymupdf_text_keyword_window"
+  }
+]

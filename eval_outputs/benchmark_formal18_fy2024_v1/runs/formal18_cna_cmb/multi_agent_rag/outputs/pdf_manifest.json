@@ -1,0 +1,20 @@
+[
+  {
+    "evidence_id": "600036_FY2024_cninfo_027bef3dcb",
+    "source_type": "cninfo_announcement",
+    "title": "招商银行股份有限公司2024年度报告",
+    "source_url": "http://static.cninfo.com.cn/finalpage/2025-03-26/1222895154.PDF",
+    "publish_time": "2025-03-26",
+    "status": "cached",
+    "cache_status": "cached",
+    "extraction_status": "extracted",
+    "file_path": "eval_outputs\\benchmark_formal18_fy2024_v1\\runs\\formal18_cna_cmb\\multi_agent_rag\\outputs\\pdf_cache\\44a8759c94e1ba92.pdf",
+    "sha256": "44a8759c94e1ba92f1d96897ca3778592d9a7eb33b53420c19268f0b140d81c3",
+    "size_bytes": 6215121,
+    "download_time": "2026-05-24T14:01:07.143541+00:00",
+    "page_count": 362,
+    "pages_read": 6,
+    "section_count": 9,
+    "table_count": 0
+  }
+]

@@ -1,0 +1,225 @@
+{
+  "passed": true,
+  "error_count": 0,
+  "warning_count": 2,
+  "errors": [],
+  "warnings": [
+    "Target symbol 600519.SS is not explicitly mentioned in report claims or markdown.",
+    "Target symbol mismatch: expected 600519.SS, but non-peer sections mention ticker-like tokens SS."
+  ],
+  "claim_count": 18,
+  "grounded_claim_count": 8,
+  "expected_symbol": "600519.SS",
+  "multimodal_consistency": {
+    "passed": true,
+    "chart_count": 3,
+    "chart_text_consistency": {
+      "chart_count": 3,
+      "passed_chart_count": 3,
+      "failed_chart_count": 0,
+      "passed": true,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "title": "关键指标",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "title": "结论置信度",
+          "passed": true,
+          "issues": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "title": "证据来源结构",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    },
+    "chart_lineage": {
+      "passed": true,
+      "chart_count": 3,
+      "results": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "claim_confidence_bar",
+          "passed": true,
+          "errors": []
+        },
+        {
+          "chart_id": "evidence_source_mix",
+          "passed": true,
+          "errors": []
+        }
+      ]
+    },
+    "table_backed_financial_charts": {
+      "passed": true,
+      "checked_chart_count": 1,
+      "details": [
+        {
+          "chart_id": "key_metrics_bar",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    }
+  },
+  "valuation_audit": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "valuation_not_available"
+    ],
+    "checks": {}
+  },
+  "llm_used": true,
+  "entity_resolution": {
+    "requested_symbol": "600519.SS",
+    "research_topic": "Generate a company stock research report for 贵州茅台 (600519.SS) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+    "resolved_symbol": "600519.SS",
+    "resolution_source": "symbol",
+    "topic_resolution": {
+      "input": "Generate a company stock research report for 贵州茅台 (600519.SS) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "resolved": true,
+      "symbol": "600519.SS",
+      "company_name": "Kweichow Moutai Co., Ltd.",
+      "match_type": "alias_contains",
+      "confidence": 0.665,
+      "profile_path": "",
+      "sector": "Consumer Staples",
+      "industry": "Distillers & Vintners",
+      "business_summary": "",
+      "period": "",
+      "ambiguous": false
+    },
+    "symbol_resolution": {
+      "input": "600519.SS",
+      "resolved": true,
+      "symbol": "600519.SS",
+      "company_name": "Kweichow Moutai Co., Ltd.",
+      "match_type": "symbol_exact",
+      "confidence": 1.0,
+      "profile_path": "",
+      "sector": "Consumer Staples",
+      "industry": "Distillers & Vintners",
+      "business_summary": "",
+      "period": "",
+      "ambiguous": false
+    },
+    "conflict": false
+  },
+  "context_pack_meta": {
+    "claims": {
+      "input_count": 18,
+      "packed_count": 2,
+      "dropped_count": 16,
+      "packed_ids": [
+        "cl_0010",
+        "cl_0011"
+      ],
+      "dropped_ids": [
+        "cl_0012",
+        "cl_0006",
+        "cl_0007",
+        "cl_0008",
+        "cl_0015",
+        "cl_0014",
+        "cl_0009",
+        "cl_0002",
+        "cl_0001",
+        "cl_0003",
+        "cl_0004",
+        "cl_0005",
+        "cl_0013",
+        "cl_0017",
+        "cl_0018",
+        "cl_0016"
+      ],
+      "used_chars": 2115,
+      "total_chars": 2600
+    },
+    "evidence": {
+      "input_count": 20,
+      "packed_count": 2,
+      "dropped_count": 18,
+      "packed_ids": [
+        "600519_2026Q1_cninfo_4f7e837a05",
+        "600519_2026Q1_cninfo_ab4566bc68"
+      ],
+      "dropped_ids": [
+        "600519_2026Q1_cninfo_ba21bf4403",
+        "pdf_section_11106e5862bd",
+        "pdf_section_26241cb79200",
+        "pdf_section_455f3e5fc697",
+        "pdf_section_f4043d6cc947",
+        "600519_2026Q1_eastmoney_financials_income_1fd3a55f5e",
+        "600519_2026Q1_eastmoney_financials_balance_fad1514bae",
+        "600519_2026Q1_eastmoney_financials_cashflow_3ec64ecbbb",
+        "pdf_section_fbbb7ae7a1c2",
+        "pdf_section_32a2b75cb3b6",
+        "pdf_section_17176690f30a",
+        "pdf_section_0f1b6d1e0502",
+        "pdf_section_ef426ef4a9af",
+        "pdf_section_a45fce556994",
+        "pdf_section_6c2492109d61",
+        "pdf_section_bebb12fff2de",
+        "pdf_section_0501cb5ef175",
+        "pdf_section_8523cfad322b"
+      ],
+      "used_chars": 4982,
+      "total_chars": 5200,
+      "prioritized_evidence_count": 10,
+      "prioritized_dropped_ids": [
+        "pdf_section_f4043d6cc947",
+        "pdf_section_11106e5862bd",
+        "pdf_section_26241cb79200",
+        "pdf_section_455f3e5fc697",
+        "pdf_section_f4043d6cc947",
+        "pdf_section_11106e5862bd",
+        "600519_2026Q1_eastmoney_financials_income_1fd3a55f5e",
+        "600519_2026Q1_eastmoney_financials_balance_fad1514bae",
+        "600519_2026Q1_eastmoney_financials_cashflow_3ec64ecbbb",
+        "600519_2026Q1_eastmoney_financials_income_1fd3a55f5e",
+        "600519_2026Q1_eastmoney_financials_balance_fad1514bae",
+        "600519_2026Q1_eastmoney_financials_cashflow_3ec64ecbbb",
+        "600519_2026Q1_eastmoney_financials_income_1fd3a55f5e",
+        "600519_2026Q1_eastmoney_financials_balance_fad1514bae",
+        "600519_2026Q1_eastmoney_financials_cashflow_3ec64ecbbb",
+        "600519_2026Q1_eastmoney_financials_income_1fd3a55f5e",
+        "600519_2026Q1_eastmoney_financials_balance_fad1514bae",
+        "600519_2026Q1_eastmoney_financials_cashflow_3ec64ecbbb",
+        "600519_2026Q1_eastmoney_financials_income_1fd3a55f5e",
+        "600519_2026Q1_eastmoney_financials_balance_fad1514bae"
+      ]
+    }
+  },
+  "llm_passed": true,
+  "llm_errors": [],
+  "llm_warnings": [],
+  "fix_recommendations": [],
+  "rework_required": false,
+  "evidence_gaps": [
+    {
+      "gap_id": "gap_0002_entity_or_period_mismatch",
+      "gap_type": "entity_or_period_mismatch",
+      "description": "Target symbol mismatch: expected 600519.SS, but non-peer sections mention ticker-like tokens SS.",
+      "claim_id": "",
+      "required_source_type": [],
+      "required_fields": [
+        "Target symbol mismatch: expected 600519.SS, but non-peer sections mention ticker"
+      ],
+      "suggested_queries": [],
+      "blocking": false,
+      "status": "open"
+    }
+  ],
+  "revision_brief": "- Warnings: Target symbol 600519.SS is not explicitly mentioned in report claims or markdown.\n- Warnings: Target symbol mismatch: expected 600519.SS, but non-peer sections mention ticker-like tokens SS."
+}

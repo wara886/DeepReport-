@@ -1,0 +1,24 @@
+## 参考来源
+
+- [pdf_section_25316346f545] PDF section: business_overview (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0408/2025040800667.pdf
+  - 支持结论: cl_0001, cl_0008, cl_0009
+- [pdf_section_7d683b65aa66] PDF section: business_overview (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0408/2025040800667.pdf
+  - 支持结论: cl_0001, cl_0008, cl_0009
+- [pdf_section_e2911df06472] PDF section: management_discussion (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0408/2025040800667.pdf
+  - 支持结论: cl_0002, cl_0008, cl_0009, cl_0012, cl_0013, cl_0014, cl_0015
+- [pdf_section_d36230aea32e] PDF section: ownership_governance (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0408/2025040800667.pdf
+  - 支持结论: cl_0003, cl_0008, cl_0009, cl_0012, cl_0013, cl_0014, cl_0015
+- [pdf_section_a19d216c69f0] PDF section: ownership_governance (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0408/2025040800667.pdf
+  - 支持结论: cl_0003, cl_0008, cl_0009
+- [pdf_section_767809fe1617] PDF section: risk_factors (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0408/2025040800667.pdf
+  - 支持结论: cl_0004, cl_0007, cl_0008, cl_0009, cl_0010
+- [pdf_section_08d3f1b37d2a] PDF section: financial_statements (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0408/2025040800667.pdf
+  - 支持结论: cl_0005, cl_0008, cl_0009, cl_0012, cl_0013, cl_0014, cl_0015
+- [pdf_section_398d97c4f0c0] PDF section: ownership_governance (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0408/2025040800667.pdf
+  - 支持结论: cl_0006, cl_0008, cl_0009
+- [pdf_section_9f2ffbf49cfb] PDF section: ownership_governance (pdf_section/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0408/2025040800667.pdf
+  - 支持结论: cl_0008, cl_0009, cl_0011
+- [00700_FY2024_hkex_annual_report_039e2f7c84] ANNUAL REPORT 2024 (hkex_annual_report/official, 2025-04-08) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0408/2025040800667.pdf
+  - 支持结论: cl_0009
+- [pdf_table_pdf_tbl_e5fb62e4f402] PDF table: balance_sheet (pdf_statement_table/unknown, ) - https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0408/2025040800667.pdf
+  - 支持结论: 未关联

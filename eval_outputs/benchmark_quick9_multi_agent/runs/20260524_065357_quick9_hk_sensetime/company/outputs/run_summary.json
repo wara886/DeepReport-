@@ -1,0 +1,98 @@
+{
+  "research_topic": "Generate a company stock research report for 商汤科技 (0020.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+  "symbol": "0020.HK",
+  "period": "2026Q1",
+  "model": "deepseek-v4-flash",
+  "execution_mode": "collaborative",
+  "performance_profile": "fast",
+  "agent_count": 13,
+  "planned_task_count": 5,
+  "completed_task_count": 5,
+  "trace_count": 7,
+  "evidence_count": 6,
+  "claim_count": 9,
+  "citation_count": 6,
+  "chart_count": 3,
+  "pdf_artifact_meta": {
+    "candidate_pdf_count": 0,
+    "processed_pdf_count": 0,
+    "cached_pdf_count": 0,
+    "extracted_pdf_count": 0,
+    "section_count": 0,
+    "table_count": 0,
+    "statement_table_count": 0
+  },
+  "multimodal_consistency_passed": true,
+  "mcp_tool_count": 9,
+  "search_engines": [
+    "local_real_data",
+    "yahoo_finance",
+    "independent_macro",
+    "tavily",
+    "serper",
+    "local_evidence"
+  ],
+  "retrieval_ranking_mode": "hybrid_rerank",
+  "revision_rounds": 0,
+  "verification_passed": true,
+  "evidence_gap_count": 1,
+  "company_report_overall_score": 0.5667,
+  "entity_resolution": {
+    "requested_symbol": "0020.HK",
+    "research_topic": "Generate a company stock research report for 商汤科技 (0020.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+    "resolved_symbol": "0020.HK",
+    "resolution_source": "fallback",
+    "topic_resolution": {
+      "input": "Generate a company stock research report for 商汤科技 (0020.HK) for 2026Q1, with citations, three-statement coverage or disclosed gaps, valuation limitations, risks, and investment conclusion.",
+      "resolved": false,
+      "symbol": "",
+      "company_name": "",
+      "match_type": "none",
+      "confidence": 0.0,
+      "candidate_symbols": [
+        "0700.HK",
+        "600519.SS",
+        "AAPL",
+        "AMD",
+        "GOOGL",
+        "MSFT",
+        "NVDA",
+        "TSLA"
+      ],
+      "reason": "no_match"
+    },
+    "symbol_resolution": {
+      "input": "0020.HK",
+      "resolved": false,
+      "symbol": "",
+      "company_name": "",
+      "match_type": "none",
+      "confidence": 0.0,
+      "candidate_symbols": [
+        "0700.HK",
+        "600519.SS",
+        "AAPL",
+        "AMD",
+        "GOOGL",
+        "MSFT",
+        "NVDA",
+        "TSLA"
+      ],
+      "reason": "no_match"
+    },
+    "conflict": false
+  },
+  "research_blackboard": {
+    "pre_write_critic_passed": false,
+    "industry_profile_confidence": 0.62
+  },
+  "conversation_brief_chars": 1724,
+  "durable_memory_enabled": false,
+  "durable_memory_context_scope": "planner_router",
+  "skill_registry_enabled": true,
+  "skill_count": 6,
+  "total_duration_sec": 207.895,
+  "quality_remediation_plan_path": "eval_outputs\\benchmark_quick9_multi_agent\\runs\\20260524_065357_quick9_hk_sensetime\\company\\outputs\\quality_remediation_plan.json",
+  "quality_feedback_used": true,
+  "memory_quality_feedback_used": true
+}
