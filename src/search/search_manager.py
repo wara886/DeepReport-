@@ -358,7 +358,7 @@ def serper_search(
 
     api_key = str(resolve_config_value(serper_cfg, "api_key", "")).strip()
     if not api_key:
-        raise RuntimeError("missing Serper API key: set SERPER_API_KEY in DeepReport_plus/.env")
+        raise RuntimeError("missing Serper API key: set SERPER_API_KEY in .env")
 
     base_url = str(serper_cfg.get("base_url") or "https://google.serper.dev/search").rstrip("/")
     max_results = int(serper_cfg.get("max_results") or topk)
@@ -445,7 +445,7 @@ def metaso_search(
 
     api_key = str(resolve_config_value(metaso_cfg, "api_key", "")).strip()
     if not api_key:
-        raise RuntimeError("missing Metaso API key: set METASO_API_KEY in DeepReport_plus/.env")
+        raise RuntimeError("missing Metaso API key: set METASO_API_KEY in .env")
 
     max_results = int(metaso_cfg.get("max_results") or topk)
     max_results = min(max(topk, 1), max_results) if max_results > 0 else topk
@@ -513,7 +513,7 @@ def sogou_search(
 
     api_key = str(resolve_config_value(sogou_cfg, "api_key", "")).strip()
     if not api_key:
-        raise RuntimeError("missing Sogou API key: set SOGOU_API_KEY in DeepReport_plus/.env")
+        raise RuntimeError("missing Sogou API key: set SOGOU_API_KEY in .env")
 
     max_results = int(sogou_cfg.get("max_results") or topk)
     max_results = min(max(topk, 1), max_results) if max_results > 0 else topk
@@ -626,7 +626,7 @@ def eastmoney_search(
     fields = "f57,f58,f43,f44,f45,f46,f47,f48,f60,f116,f117,f162,f167,f168,f170,f173"
     url = f"https://push2.eastmoney.com/api/qt/stock/get?{parse.urlencode({'secid': secid, 'fields': fields})}"
     headers = {
-        "User-Agent": "Mozilla/5.0 DeepReportPlus/0.1",
+        "User-Agent": "Mozilla/5.0 FinSight/0.1",
         "Accept": "application/json,text/plain,*/*",
         "Referer": "https://quote.eastmoney.com/",
     }
@@ -749,7 +749,7 @@ def cninfo_announcement_search(
         "isHLtitle": "true",
     }
     headers = {
-        "User-Agent": "Mozilla/5.0 DeepReportPlus/0.1",
+        "User-Agent": "Mozilla/5.0 FinSight/0.1",
         "Accept": "application/json,text/plain,*/*",
         "X-Requested-With": "XMLHttpRequest",
         "Referer": "http://www.cninfo.com.cn/new/commonUrl/pageOfSearch",
@@ -872,7 +872,7 @@ def eastmoney_financials_search(
         }
         url = f"{base_url}?{parse.urlencode(params)}"
         headers = {
-            "User-Agent": "Mozilla/5.0 DeepReportPlus/0.1",
+            "User-Agent": "Mozilla/5.0 FinSight/0.1",
             "Accept": "application/json,text/plain,*/*",
             "Referer": "https://data.eastmoney.com/",
         }
@@ -1152,7 +1152,7 @@ def _cninfo_org_id(code: str, config: Dict[str, Any], timeout: float) -> str:
     url = str(config.get("stock_list_url") or "")
     if not url:
         return ""
-    headers = {"User-Agent": "Mozilla/5.0 DeepReportPlus/0.1", "Accept": "application/json,text/plain,*/*"}
+    headers = {"User-Agent": "Mozilla/5.0 FinSight/0.1", "Accept": "application/json,text/plain,*/*"}
     try:
         payload = _get_json(url, headers=headers, timeout=timeout, engine="cninfo_stock_list")
     except Exception:
@@ -1185,7 +1185,7 @@ def _sse_announcement_search(code: str, period: str, topk: int, query: str, conf
     }
     url = f"{base_url}?{parse.urlencode(params)}"
     headers = {
-        "User-Agent": "Mozilla/5.0 DeepReportPlus/0.1",
+        "User-Agent": "Mozilla/5.0 FinSight/0.1",
         "Accept": "application/json,text/plain,*/*",
         "Referer": "https://www.sse.com.cn/",
     }
@@ -1233,7 +1233,7 @@ def _szse_announcement_search(code: str, period: str, topk: int, query: str, con
         "pageNum": 1,
     }
     headers = {
-        "User-Agent": "Mozilla/5.0 DeepReportPlus/0.1",
+        "User-Agent": "Mozilla/5.0 FinSight/0.1",
         "Accept": "application/json,text/plain,*/*",
         "Content-Type": "application/json",
         "Referer": "https://www.szse.cn/disclosure/listed/notice/",

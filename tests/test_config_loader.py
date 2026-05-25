@@ -5,7 +5,7 @@ def test_load_local_debug_yaml():
     config = load_config("configs/local_debug.yaml")
     assert config["runtime"]["mode"] == "local_debug"
     assert config["generation"]["backend"] == "mock"
-    assert config["project"]["name"] == "open-deepreport-plus"
+    assert config["project"]["name"] == "finsight-multiagent"
 
 
 def test_app_yaml_contains_durable_memory_defaults():

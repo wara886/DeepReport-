@@ -1,7 +1,0 @@
-[
-  {
-    "round": 1,
-    "revision_request": "- Warnings: No financial_analysis claims found.\n- Warnings: Target symbol 002594.SZ is not explicitly mentioned in report claims or markdown.\n- Warnings: Target symbol mismatch: expected 002594.SZ, but non-peer sections mention ticker-like tokens SZ.\n- Fix recommendations: Correct claim cl_0007 to reflect the actual number of cited evidence records (8) or provide additional evidence to reach 10.\n- Fix recommendations: Consider adding financial analysis claims (e.g., revenue, profit) using the eastmoney financial evidence to strengthen the report.\n- LLM warnings: No financial_analysis claims found despite available financial evidence.\n- LLM warnings: Target symbol 002594.SZ is mentioned in the markdown, resolving previous symbol mismatch warning.\n- LLM errors: Claim cl_0007 states '10条记录' but only 8 evidence_ids are cited in its evidence_ids list. The numeric_values field also claims 10 but actual count is 8.",
-    "passed_after_round": false
-  }
-]

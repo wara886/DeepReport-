@@ -26,7 +26,7 @@ class ChromaIndex:
             import chromadb  # type: ignore
 
             self._client = chromadb.EphemeralClient()
-            self._collection = self._client.get_or_create_collection(name="deepreport_local_evidence")
+            self._collection = self._client.get_or_create_collection(name="finsight_local_evidence")
             self._backend = "chromadb"
         except Exception:
             self._client = None

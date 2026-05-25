@@ -142,7 +142,7 @@ def _cache_pdf(source_url: str, cache_root: Path, timeout: float) -> tuple[Path,
     if not source_url:
         raise ValueError("missing PDF source_url")
     if source_url.startswith(("http://", "https://")):
-        req = request.Request(source_url, headers={"User-Agent": "DeepReportPlus/0.1"}, method="GET")
+        req = request.Request(source_url, headers={"User-Agent": "FinSight/0.1"}, method="GET")
         try:
             with request.urlopen(req, timeout=timeout) as resp:
                 data = resp.read()

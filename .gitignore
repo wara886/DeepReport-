@@ -13,15 +13,21 @@ build/
 
 artifacts/
 reports/
-eval_outputs/post_fix*/
-eval_outputs/chat_*/
-eval_outputs/runtime_source_health*
-eval_outputs/*summary*
-eval_outputs/key_and_source_smoke*
-eval_outputs/web_link_test_*/
-eval_outputs/next_data_review*/
+
+# Runtime/evaluation outputs are local unless explicitly published evidence.
+eval_outputs/*
+!eval_outputs/benchmark_formal18_fy2024_v1/
+eval_outputs/benchmark_formal18_fy2024_v1/*
+!eval_outputs/benchmark_formal18_fy2024_v1/formal_benchmark_report.md
+!eval_outputs/benchmark_formal18_fy2024_v1/formal_failures.csv
+!eval_outputs/benchmark_formal18_fy2024_v1/formal_results_by_market.csv
+!eval_outputs/benchmark_formal18_fy2024_v1/formal_results_overall.csv
+!eval_outputs/benchmark_formal18_fy2024_v1/formal_runs.jsonl
+!eval_outputs/benchmark_formal18_fy2024_v1/formal_secondary_metrics.csv
+!eval_outputs/benchmark_formal18_fy2024_v1/snapshot_validation.json
+
 memory/
-references/DeepReport_ref/
+references/*_ref/
 data/outputs/
 data/outputs_real/
 data/reports/
@@ -30,6 +36,7 @@ data/evaluation/
 data/evaluation/**/runs/
 data/curated_real/
 data/features_real/
+data/benchmark_sources/
 
 *.zip
 *.tgz

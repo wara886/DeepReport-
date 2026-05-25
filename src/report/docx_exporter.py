@@ -12,7 +12,7 @@ import zipfile
 def export_markdown_to_docx(
     markdown: str,
     output_path: str | Path,
-    title: str = "DeepReport++ Research Report",
+    title: str = "FinSight Research Report",
     metadata: Dict[str, Any] | None = None,
 ) -> Path:
     """Export a readable DOCX from a Markdown report.
@@ -200,5 +200,5 @@ def _core_xml(title: str) -> str:
 def _app_xml() -> str:
     return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
-  <Application>DeepReport++</Application>
+  <Application>FinSight</Application>
 </Properties>"""

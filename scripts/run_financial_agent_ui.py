@@ -1,4 +1,4 @@
-"""Run the local DeepReport+ financial multi-agent web UI."""
+"""Run the local FinSight financial multi-agent web UI."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from src.app.web_ui import run_ui_server
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the DeepReport+ local web UI.")
+    parser = argparse.ArgumentParser(description="Run the FinSight local web UI.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)
     parser.add_argument("--config-path", default="configs/model_backends.yaml")
@@ -31,7 +31,7 @@ def main() -> int:
         config_path=args.config_path,
         memory_root=args.memory_root,
     )
-    print(f"DeepReport+ UI running at {url}")
+    print(f"FinSight UI running at {url}")
     print("Open the URL in your browser, then click Run Multi-Agent Report.")
     try:
         server.serve_forever()

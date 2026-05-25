@@ -150,7 +150,7 @@ class ModelAdapter:
             return ModelResponse(
                 success=False,
                 model=self.model_name,
-                error="missing API key: set DEEPSEEK_API_KEY in DeepReport_plus/.env",
+                error="missing API key: set DEEPSEEK_API_KEY in .env",
             )
 
         payload: Dict[str, Any] = {

@@ -1,275 +1,106 @@
-# Open DeepReport++：证据驱动的公司研报多智能体系统
+# FinSight：多智能体金融研报生成与质量评估系统
 
-> 本项目受开源项目 `DeepReport` 的工程组织方式启发，复用的是模块职责拆分、配置方式与运行入口思路，不直接复制其业务逻辑。
+FinSight 是一个面向公司与个股研报生成的证据驱动 Multi-Agent 系统。系统将资料检索、证据规范化、财务分析、估值建模、报告写作、引用校验和缺口修复拆成可观测阶段，输出 Markdown / HTML / JSON 报告，并保留 evidence、claim、citation、valuation、verification 与 trace 产物。
 
-Open DeepReport++ 面向公司与个股研究报告生成场景。它解决的核心问题不是“让大模型写一篇看起来像研报的文章”，而是让报告中的关键事实、财务数字、估值输入和图表结论都能够追溯来源，并在证据不足或质量不达标时拒绝交付。
+*A reproducible Multi-Agent RAG system for financial research report generation, citation verification, valuation consistency, and benchmark-driven quality gates.*
 
-```text
-公司 / 报告期输入
-  -> 资料搜集与标准化
-  -> 检索筛选与来源管理
-  -> 结构化结论与财务分析
-  -> 中文研报写作与图表导出
-  -> 事实 / 数值 / 估值 / 图表核验
-  -> 客观质量评分 + 模型复核
-  -> 交付判定、返工记录与运行追踪
-```
+## Highlights
 
-当前最成熟的范围是公司/个股研报主链，输出 Markdown、HTML 与结构化报告产物；行业与宏观研究、训练增强能力仍属于扩展方向。
+- Multi-Agent 研报生成链路：Planner、Retriever、Analyzer、Writer、Verifier 与 Repair 协同工作。
+- Evidence / Claim / Citation 可追溯中间产物，关键数值保留来源与审计路径。
+- Formal-18 冻结评测 Harness，固定输入上比较三种生成方案。
+- 9 个金融工具的 MCP-style tools boundary，支持本地发现与调用。
+- Skill Registry 与 Planner / Router 集成，能力提示和实际工具执行分离。
+- 默认关闭的 Durable Memory，上下文与事实证据严格隔离。
 
-## 项目亮点
+## Formal-18 Frozen Benchmark
 
-### 1. 证据优先，而不是自由生成
-
-研报场景容易出现无来源结论、财务期间混用、数字口径错误和估值不可复算等问题。本项目先将资料转成标准化证据，再生成可引用的结构化结论，最后组织成报告正文。这样一来，报告错误可以定位到资料、检索、分析、写作或校验环节，而不是只能重新提示模型“写得更可靠一点”。
-
-### 2. 受控多智能体协作，而不是角色名称堆叠
-
-系统包含规划、研究、资料整理、财务分析、写作、校验、写前质疑与缺口修复等职责。不同角色通过共享研究状态传递公司主体、报告期、三表覆盖、同行比较、估值可用性和风险缺口，并保留协作与工具调用轨迹。
-
-默认流程优先保证稳定与可复核；需要诊断时，再展开更细的身份、三表、同行、估值和风险视角。
-
-### 3. 可切换检索与本地降级
-
-检索层支持关键词检索、向量检索、融合排序与重排等模式，并保留命中来源、报告期和数值来源关系。向量组件、网页读取或外部模型不可用时，系统会回退到本地可运行路径，并在产物中记录降级原因，而不是静默降低报告质量。
-
-### 4. 三层质量门禁与失败可定位
-
-报告交付需要同时经过：
-
-1. **规则核验**：事实引用、数值支撑、报告期、图表来源和估值输入检查。
-2. **客观质量评估**：结构、证据、财务深度、多模态一致性、专业表达与合规披露评分。
-3. **模型复核**：识别规则较难覆盖的空洞章节、逻辑断裂与表达质量问题。
-
-质量不达标时，系统输出问题清单、修复约束和返工记录，便于复盘究竟是资料不够、分析不完整，还是写作没有正确消费已有证据。
-
-## 架构概览
-
-```mermaid
-flowchart LR
-    A[公司与报告期] --> B[规划与来源路由]
-    B --> C[资料检索与标准化]
-    C --> D[证据库与检索排序]
-    D --> E[财务分析与结构化结论]
-    E --> F[报告写作与图表导出]
-    F --> G[规则核验]
-    G --> H[客观质量评估]
-    H --> I[模型复核与交付门禁]
-    I -->|通过| J[Markdown / HTML / JSON]
-    I -->|不通过| K[缺口修复与返工记录]
-    K --> F
-    E -.共享研究状态.-> F
-    C -.运行轨迹.-> I
-```
-
-## 给代码审阅者与 ChatGPT 的阅读路径
-
-如果你想在较短时间理解这个项目，建议按下面顺序阅读：
-
-| 优先级 | 阅读目标 | 入口文件 |
-| --- | --- | --- |
-| 1 | 理解多角色如何编排、如何输出协作轨迹 | [`src/agents/multi_agent_orchestrator.py`](src/agents/multi_agent_orchestrator.py) |
-| 2 | 理解共享研究状态、写前质疑和角色责任边界 | [`src/agents/research_blackboard.py`](src/agents/research_blackboard.py) |
-| 3 | 理解最终交付为什么通过或失败 | [`src/evaluation/delivery_gate.py`](src/evaluation/delivery_gate.py) |
-| 4 | 理解客观质量评分覆盖哪些维度 | [`src/evaluation/report_quality.py`](src/evaluation/report_quality.py) |
-| 5 | 理解证据如何转成结构化财务结论 | [`src/agents/deep_analyze_agent.py`](src/agents/deep_analyze_agent.py) |
-| 6 | 理解事实与数值核验逻辑 | [`src/agents/verifier_agent.py`](src/agents/verifier_agent.py) |
-| 7 | 理解关键词、向量、融合和重排切换路径 | [`src/retrieval/retrieve.py`](src/retrieval/retrieve.py) |
-| 8 | 理解数值来源追踪与可复算关系 | [`src/features/financial_metric_lineage.py`](src/features/financial_metric_lineage.py) |
-| 9 | 理解自然语言入口与网页工作台 | [`src/app/agent_chat.py`](src/app/agent_chat.py)、[`src/app/web_ui.py`](src/app/web_ui.py) |
-
-进一步阅读：
-
-- [`docs/financial_multi_agent_detailed_guide.md`](docs/financial_multi_agent_detailed_guide.md)：系统能力与实现说明。
-- [`docs/multi_agent_competition_alignment.md`](docs/multi_agent_competition_alignment.md)：多智能体证据、差距与边界。
-- [`docs/cloud_training.md`](docs/cloud_training.md)：离线训练与本地回退约束。
-
-## 核心模块
-
-```text
-configs/        模型、数据源、报告、校验与训练配置
-scripts/        本地演示、评估、回归和服务启动脚本
-src/agents/     规划、研究、分析、写作、校验、缺口修复与协作状态
-src/app/        命令行流水线、自然语言入口与网页工作台
-src/data/       数据获取、标准化、来源策略与财务质量处理
-src/features/   三表、指标来源、同行、估值和风险特征
-src/retrieval/  证据存储、分块、关键词/向量/融合/重排检索
-src/evaluation/ 规则核验、质量评分、交付门禁和回归评估
-src/report/     引用、图表、合规说明与报告导出
-src/schemas/    证据、结论、报告、图表和任务数据契约
-tests/          核心流程与质量规则测试
-```
-
-## 可运行能力
-
-| 能力 | 当前状态 |
-| --- | --- |
-| 公司/个股研报生成，输出 Markdown / HTML / JSON | 可运行 |
-| 证据记录、结构化结论、引用表、图表与验证报告导出 | 可运行 |
-| 关键词、向量、融合排序与重排检索切换 | 可运行，部分能力为可选依赖 |
-| 规划、研究、分析、写作、校验与缺口修复协作链路 | 可运行 |
-| 共享研究状态、工具调用、协作与返工轨迹 | 可运行 |
-| 规则核验、客观质量评分、模型复核和最终交付判定 | 可运行 |
-| 本地网页工作台与自然语言任务入口 | 可运行 |
-| 训练增强模块 | 仅面向离线训练与回退接入，不是本地主链依赖 |
-| 任意公司稳定高质量交付 | 尚未完成，仍受数据覆盖与泛化质量影响 |
-
-## 质量证据与诚实边界
-
-本项目刻意保留“能证明什么”和“仍不能证明什么”的边界。
-
-| 验证类型 | 当前结果 | 结论 |
-| --- | --- | --- |
-| 三公司运行记忆消融 | AAPL、GOOGL、MSFT 各进行开启/关闭对照；检查表均值 `86.77% -> 89.51%`，平均耗时 `123.80s -> 118.79s`，规则核验通过率两侧均为 `66.67%` | 记忆在小样本中改善检查表表现与耗时，不能据此声称事实准确率或最终通过率提高 |
-| AMD 单样本修复验收 | 修复后的样本通过三层交付门禁，客观质量评分 `0.9667` | 可证明该样本满足当前交付条件，仍有正文深度和权威来源覆盖警告 |
-| 跨市场泛化回归 | 一轮 8 个跨行业/跨市场案例中，最终交付通过数为 `0/8` | 已建立泛化检查，但系统尚不具备稳定跨市场交付能力 |
-
-### Fixed Quick-9 Multi-Agent 跨市场诊断
-
-2026-05-24 完成固定 9 公司样本的当前 `multi_agent` 路线实跑，覆盖美股、港股与 A 股。本轮使用在线可用数据源进行工程诊断，不是冻结证据快照上的公平方案对比，也未运行 `Direct LLM` 或 `Single-Agent RAG` baseline。下表是对原九案产物按修正后的八项确定性交付合同进行的只读重算结果，不重新运行 Agent 或取数。
-
-| 指标 | Overall | US | HK | CN-A |
-| --- | ---: | ---: | ---: | ---: |
-| Delivery Pass Rate | `100.00%` | `100.00%` | `100.00%` | `100.00%` |
-| Objective Quality Score | `94.84` | `96.76` | `87.83` | `99.92` |
-| Traceable Claim Rate (artifact-derived) | `97.77%` | `100.00%` | `100.00%` | `93.31%` |
-
-结果显示，九案均完成 artifacts 写出并满足八项确定性交付要求，但这不等于达到正式质量标准：九案均仍带有客观质量诊断，A 股三案存在关键结论引用缺口。初版可追溯率基于现有 sidecar 产物统计，不等同于正式冻结数据集上的 `Traceable Claim Rate v1`。
-
-结果文件：[`eval_outputs/benchmark_quick9_multi_agent_reassessed/benchmark_report.md`](eval_outputs/benchmark_quick9_multi_agent_reassessed/benchmark_report.md)。原始旧口径记录由修复对照报告保留用于审计。
-
-### Phase 2R：进入正式 benchmark 前的修复评测
-
-在不引入 baseline variant 和冻结快照的前提下，项目进一步执行了修复评测：修正 `Delivery Pass Rate` 与客观质量/可追溯指标重复绑定的问题，将未执行的写前质疑与真实失败区分开；同时用 `diagnostic_full` 和一轮已有返工链路重跑固定九例，并为港股显式尝试 `hkex_announcements` 路线。
-
-| 指标 | 原记录值 | 按修正合同重算原产物 | 修复后重跑 | 实际修复变化 |
-| --- | ---: | ---: | ---: | ---: |
-| Delivery Pass Rate | `0.00%` | `100.00%` | `100.00%` | `0.00 pp` |
-| Objective Quality Score | `94.84` | `94.84` | `95.86` | `+1.02` |
-| Traceable Claim Rate (artifact-derived) | `97.77%` | `97.77%` | `85.91%` | `-11.86 pp` |
-
-这组结果不能写成“修复使交付通过率从 0% 提升至 100%”：原始 `0%` 主要来自评测合同把独立诊断重复计入交付门禁。修复后九例均满足八项确定性交付检查，但仍有五例出现引用/证据诊断，港股初版可追溯率仅 `64.44%`；`0020.HK` 与 `0700.HK` 已尝试港交所公告路线但未得到匹配结果，`6682.HK` 在返工阶段取得匹配结果。这些问题随后进入 Phase 3 冻结对照处理，正式结果见下节。
-
-结果文件：[`eval_outputs/benchmark_quick9_multi_agent_repair/benchmark_report.md`](eval_outputs/benchmark_quick9_multi_agent_repair/benchmark_report.md)、[`eval_outputs/benchmark_quick9_multi_agent_repair/repair_comparison.md`](eval_outputs/benchmark_quick9_multi_agent_repair/repair_comparison.md)。
-
-### Phase 3：Formal-18 冻结输入正式对照
-
-项目已完成 formal-18 固定对照：使用 `FY2024` 冻结证据快照，覆盖美股、港股、A 股各六家公司，统一运行 `direct_llm`、`single_agent_rag`、`multi_agent_rag`。快照版本为 `formal18_fy2024_v1`，`18/18` 案例就绪且 SHA-256 校验通过；54 个方案/案例运行单元全部完成评测，运行时不得联网补证。
+Formal-18 使用 `formal18_fy2024_v1` 冻结证据快照，覆盖 US、HK、CN-A 各 6 个 FY2024 case。`18/18` case 就绪并通过 SHA-256 校验，三种方案共 `54/54` 个评测单元完成。
 
 | Variant | Delivery Pass Rate | Objective Quality Score | Traceable Claim Rate v1 |
 | --- | ---: | ---: | ---: |
-| Direct LLM | `16.67%` | `51.21` | `29.66%` |
-| Single-Agent RAG | `27.78%` | `52.52` | `34.89%` |
-| Multi-Agent RAG | `72.22%` | `86.27` | `70.01%` |
+| Direct LLM | 16.67% | 51.21 | 29.66% |
+| Single-Agent RAG | 27.78% | 52.52 | 34.89% |
+| Multi-Agent RAG | 72.22% | 86.27 | 70.01% |
 
-`Traceable Claim Rate v1` 只统计带显式关键结论标签、引用指向冻结 evidence、正文使用引用且数值审计通过的 claim；表中主指标按 18 个固定案例的 case-level rate 做宏平均。Multi-Agent RAG 在该冻结协议下三项主指标均高于两条 one-shot baseline，但尚有 5 个案例未通过交付门禁，港股可追溯率为 `37.80%`、A 股交付通过率为 `50.00%`，不能表述为生产级稳定交付或投资准确率证明。
+该结果证明 Multi-Agent RAG 在这一离线冻结协议下的报告交付与关键结论可追溯性更好，不代表实时生产稳定性、投资建议准确率或线上数据覆盖能力。正式协议、快照和结果见 [formal_benchmark_protocol.md](docs/formal_benchmark_protocol.md)、[snapshot_manifest.json](data/benchmarks/frozen_fy2024_v1/snapshot_manifest.json) 与 [formal_benchmark_report.md](eval_outputs/benchmark_formal18_fy2024_v1/formal_benchmark_report.md)。
 
-正式结果与复现依据：[`eval_outputs/benchmark_formal18_fy2024_v1/formal_benchmark_report.md`](eval_outputs/benchmark_formal18_fy2024_v1/formal_benchmark_report.md)、[`docs/formal_benchmark_protocol.md`](docs/formal_benchmark_protocol.md)、[`data/benchmarks/frozen_fy2024_v1/snapshot_manifest.json`](data/benchmarks/frozen_fy2024_v1/snapshot_manifest.json)。
+## Architecture
 
-## 快速开始
+```mermaid
+flowchart LR
+    A[Company / Period] --> B[Planner]
+    B --> C[Retriever + Evidence Normalizer]
+    C --> D[Financial Analysis + Valuation]
+    D --> E[Claim Table]
+    E --> F[Writer + Charts + Citations]
+    F --> G[Verifier + Quality Gate]
+    G -->|Pass| H[Markdown / HTML / JSON]
+    G -->|Gap| I[Repair]
+    I --> C
+```
 
-### 1. 安装
+系统首先生成结构化 evidence 与 claims，再组装报告并执行数值、引用、图表与交付门禁校验。更多实现说明见 [architecture.md](docs/architecture.md) 与 [evidence_claim_citation_schema.md](docs/evidence_claim_citation_schema.md)。
 
-```bash
+## Quick Start
+
+```powershell
 python -m venv .venv
 pip install -e .
-```
-
-可选能力：
-
-```bash
-pip install -e ".[browser,local_rag,pdf,docx]"
-python -m playwright install chromium
-```
-
-### 2. 配置
-
-复制环境变量示例文件，在本地填写需要使用的模型或搜索服务密钥：
-
-```bash
-copy .env.example .env
-```
-
-密钥文件不会被提交到仓库。没有远程密钥时，仍可使用本地样例与降级链路完成基础调试。
-
-### 3. 运行多智能体报告演示
-
-```bash
 python scripts/run_multi_agent_demo.py --symbol AAPL --period 2025Q4 --execution-mode dynamic --fast
 ```
 
-### 4. 启动网页工作台
+启动网页工作台：
 
-```bash
+```powershell
 python scripts/run_financial_agent_ui.py --host 127.0.0.1 --port 8787
 ```
 
-网页端可输入类似任务：
+运行核心回归测试：
 
-```text
-生成 AMD 最新财报研报，并检查数值来源、估值依据和风险结论。
+```powershell
+python -m pytest -q
 ```
 
-网页工作台支持选择协作模式与完整诊断模式，用于查看共享研究状态、角色协作、工具调用和返工轨迹。
+运行冻结快照上的 Formal-18 协议需要配置可用生成后端；runner 只消费落盘快照，不在评测时联网补证：
 
-### 5. 运行核心测试
-
-```bash
-python -m pytest -q tests/test_multi_agent_workflow.py tests/test_delivery_gate.py tests/test_report_quality.py tests/test_web_ui.py
-```
-
-### 6. 运行 Fixed Quick-9 多智能体诊断
-
-```bash
-python scripts/run_quick9_multi_agent_benchmark.py --config configs/benchmark_quick9_multi_agent.yaml --output-root eval_outputs/benchmark_quick9_multi_agent
-
-# 不重跑 Agent，仅按现行评测合同重新汇总既有九案产物
-python scripts/run_quick9_multi_agent_benchmark.py --config configs/benchmark_quick9_multi_agent.yaml --reassess-source-root eval_outputs/benchmark_quick9_multi_agent --output-root eval_outputs/benchmark_quick9_multi_agent_reassessed
-```
-
-该命令只运行当前 `multi_agent` variant，并输出总体/分市场指标、失败分类与每案例运行元数据。
-
-### 7. 构建 Formal-18 冻结快照与正式对照
-
-```bash
-python scripts/stage_formal18_fy2024_evidence.py --config configs/benchmark_formal18_fy2024.yaml
-python scripts/build_frozen_snapshot.py --config configs/benchmark_formal18_fy2024.yaml
+```powershell
 python scripts/run_formal_benchmark.py --config configs/benchmark_formal18_fy2024.yaml
 ```
 
-第一条命令是显式联网 staging，后两条只使用已落盘 evidence；正式运行仅在 formal-18 的 `FY2024` 冻结 evidence 完整且 hash 校验通过后执行三方案对照。当前 manifest 已为 `18/18` 且校验通过，结果产物位于 `eval_outputs/benchmark_formal18_fy2024_v1/`。
+## Key Artifacts
 
-## 输出产物
-
-一次完整公司报告运行会生成以下类型的产物：
-
-| 产物类型 | 用途 |
+| Artifact | Purpose |
 | --- | --- |
-| 报告正文与网页版本 | 阅读与展示最终研报 |
-| 标准化证据与结构化结论 | 追踪事实依据与分析来源 |
-| 财务指标、估值和图表元数据 | 复核数值、图表与估值链路 |
-| 引用表与验证报告 | 检查结论是否得到来源支持 |
-| 质量报告与交付判定 | 判断报告是否允许交付 |
-| 协作、工具调用和返工轨迹 | 诊断失败环节与修复过程 |
+| `evidence.json` | 规范化来源与证据记录 |
+| `claims.json` / `citations.json` | 可验证结论与引用绑定 |
+| `valuation_model.json` / `financial_metrics.json` | 估值和财务数值链路 |
+| `charts.json` / `chart_consistency.json` | 图表生成与一致性核验 |
+| `verification_report.json` / `task_trace.jsonl` | 质量门禁和 Agent 执行轨迹 |
+| `eval_outputs/benchmark_formal18_fy2024_v1/` | 正式冻结评测汇总证据 |
 
-本地输出目录与运行产物默认不作为源码提交内容，避免仓库被临时结果和敏感运行上下文污染。
+## Limits And Boundaries
 
-## 当前限制
+- Formal-18 是离线冻结快照评测，不等同于线上数据源稳定性或实时覆盖证明。
+- 港股在当前正式结果中的关键结论可追溯率仍较弱，A 股仍有交付失败案例。
+- Memory 默认关闭；启用时只提供规划上下文，不作为事实来源或引用替代。
+- MCP-style 接口提供工具边界，不声称为完整生产级 MCP 平台。
+- 系统用于可复核研究报告生成与质量评估，不构成投资建议。
 
-- 公司研报主链成熟度高于行业与宏观报告链路。
-- 外部公开数据源存在可用性、时效性和市场覆盖差异。
-- 向量检索与远程模型均为可选增强能力，本地闭环优先保证可运行与可复核。
-- 质量门禁能阻止一批不合格报告，但不能替代正式投研中的持牌审核、合规审批和人工判断。
-- 当前仍需要扩大固定评测集，补充检索策略对照和跨市场数据覆盖。
+历史 Quick-9 与 Phase 2R 诊断结果仅用于内部修复追踪，见 [ablation_and_diagnostics.md](docs/ablation_and_diagnostics.md)。
 
-## 设计原则
+## Documentation
 
-1. 先证据，后结论，再写作。
-2. 先规则核验，后模型增强。
-3. 事实来源与历史记忆严格分离。
-4. 数据不足时披露缺口，不生成虚假确定性。
-5. 任何质量提升必须通过固定样本和对照评估说明边界。
+| Document | Topic |
+| --- | --- |
+| [architecture.md](docs/architecture.md) | 多智能体链路与产物流 |
+| [evidence_claim_citation_schema.md](docs/evidence_claim_citation_schema.md) | Evidence / Claim / Citation 契约 |
+| [formal_benchmark_protocol.md](docs/formal_benchmark_protocol.md) | Formal-18 冻结评测协议 |
+| [mcp_style_tools.md](docs/mcp_style_tools.md) | 工具边界与 HTTP JSON-RPC 表面 |
+| [skill_registry_design.md](docs/skill_registry_design.md) | Skill 提示与编排集成 |
+| [memory_boundary.md](docs/memory_boundary.md) | Durable memory 证据边界 |
+| [limitations.md](docs/limitations.md) | 可声明结果与限制 |
 
-## 致谢
+## Acknowledgement
 
-项目在工程骨架审计阶段参考了开源项目 `DeepReport` 的组织思路，并基于公司研报场景重新设计了数据契约、分析逻辑、质量门禁与评测闭环。
+本项目早期工程组织曾参考 `DeepReport` 的模块划分思路，但金融研报任务链路、证据契约、质量门禁、评测协议和 MCP-style 工具边界均围绕本项目重新实现。

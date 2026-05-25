@@ -24,7 +24,7 @@ def dispatch_jsonrpc(payload: Dict[str, Any], manager: MCPManager) -> Dict[str, 
         if method == "initialize":
             result = {
                 "protocolVersion": "local-mcp-v1",
-                "serverInfo": {"name": "DeepReportPlusMCP", "version": "0.1.0"},
+                "serverInfo": {"name": "FinSightMCPStyle", "version": "0.1.0"},
                 "capabilities": {"tools": True},
             }
         elif method in {"tools/list", "list_tools"}:
@@ -63,12 +63,12 @@ def create_mcp_handler(manager: MCPManager | None = None) -> type[BaseHTTPReques
     resolved_manager = manager or build_default_mcp_manager()
 
     class MCPRequestHandler(BaseHTTPRequestHandler):
-        server_version = "DeepReportPlusMCP/0.1"
+        server_version = "FinSightMCPStyle/0.1"
 
         def do_GET(self) -> None:
             path = urlparse(self.path).path
             if path in {"/", "/health"}:
-                self._send_json({"status": "ok", "service": "DeepReportPlusMCP"})
+                self._send_json({"status": "ok", "service": "FinSightMCPStyle"})
             elif path in {"/manifest", "/mcp/manifest", "/tools", "/mcp/tools"}:
                 self._send_json(
                     {

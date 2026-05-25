@@ -1,4 +1,4 @@
-"""Runtime source and key health check for DeepReport++.
+"""Runtime source and key health check for FinSight.
 
 The script only reports whether credentials are present and whether each
 configured runtime source can return a small response. It masks secrets and
@@ -40,7 +40,7 @@ KEYS = [
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check DeepReport++ runtime source health.")
+    parser = argparse.ArgumentParser(description="Check FinSight runtime source health.")
     parser.add_argument("--output", default="", help="Optional JSON output path.")
     parser.add_argument("--markdown-output", default="", help="Optional Markdown summary path.")
     parser.add_argument("--config", default="configs/data_sources.yaml")

@@ -265,7 +265,7 @@ def _is_target_cn_financial_table(record: Dict[str, Any], period: str) -> bool:
 
 
 def _fetch_hkex_stock_directory() -> Dict[str, Dict[str, Any]]:
-    req = request.Request(_HKEX_STOCK_LIST_URL, headers={"User-Agent": "Mozilla/5.0 DeepReportPlus/0.1"}, method="GET")
+    req = request.Request(_HKEX_STOCK_LIST_URL, headers={"User-Agent": "Mozilla/5.0 FinSight/0.1"}, method="GET")
     with request.urlopen(req, timeout=30) as response:
         payload = json.loads(response.read().decode("utf-8-sig"))
     return {
@@ -296,7 +296,7 @@ def _query_hkex_documents(stock_id: str, period: str) -> List[Dict[str, Any]]:
         "lang": "E",
     }
     url = f"{_HKEX_SEARCH_URL}?{parse.urlencode(params)}"
-    req = request.Request(url, headers={"User-Agent": "Mozilla/5.0 DeepReportPlus/0.1", "Referer": "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en"}, method="GET")
+    req = request.Request(url, headers={"User-Agent": "Mozilla/5.0 FinSight/0.1", "Referer": "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en"}, method="GET")
     with request.urlopen(req, timeout=30) as response:
         payload = json.loads(response.read().decode("utf-8"))
     rows = json.loads(str(payload.get("result") or "[]"))
@@ -311,7 +311,7 @@ def _is_hkex_annual_report(record: Dict[str, Any], code: str, period: str) -> bo
 
 
 def _download_and_extract_hkex_pdf(source_url: str, period: str, max_passages: int = 8, max_chars: int = 26000) -> Dict[str, Any]:
-    req = request.Request(source_url, headers={"User-Agent": "Mozilla/5.0 DeepReportPlus/0.1"}, method="GET")
+    req = request.Request(source_url, headers={"User-Agent": "Mozilla/5.0 FinSight/0.1"}, method="GET")
     with request.urlopen(req, timeout=90) as response:
         data = response.read()
     try:

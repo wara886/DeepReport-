@@ -31,7 +31,7 @@ REQUIRED_DOCX = [
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run DeepReport++ local competition packaging smoke.")
+    parser = argparse.ArgumentParser(description="Run FinSight local competition packaging smoke.")
     parser.add_argument("--config", "--config-path", dest="config_path", default="configs/model_backends.yaml")
     parser.add_argument("--output-dir", default="eval_outputs/competition_local_packaging_smoke")
     parser.add_argument("--symbol", default="AAPL")

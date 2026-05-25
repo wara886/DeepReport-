@@ -74,7 +74,7 @@ def render_html_report(
 </head>
 <body>
   <h1>{escape(title)}</h1>
-  <p>由 Open DeepReport++ 多智能体系统生成。</p>
+  <p>由 FinSight 多智能体金融研报系统生成。</p>
   {body}
 </body>
 </html>"""

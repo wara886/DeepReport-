@@ -1,4 +1,4 @@
-"""Run the local DeepReport+ MCP-style tool server."""
+"""Run the local FinSight MCP-style tool server."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def main() -> int:
     args = parser.parse_args()
 
     server, url = run_mcp_server(host=args.host, port=args.port)
-    print(f"DeepReport+ MCP server running at {url}")
+    print(f"FinSight MCP-style server running at {url}")
     print(f"Manifest: {url}/mcp/manifest")
     print(f"JSON-RPC: {url}/mcp/rpc")
     try:

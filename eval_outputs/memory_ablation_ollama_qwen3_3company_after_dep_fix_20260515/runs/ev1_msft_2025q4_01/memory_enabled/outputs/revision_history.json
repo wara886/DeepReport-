@@ -1,7 +1,0 @@
-[
-  {
-    "round": 1,
-    "revision_request": "- Errors: Missing required header in report: ## Executive Summary\n- Errors: Missing required header in report: ## Risk Assessment\n- Fix recommendations: 建议补充资本支出数据以解释自由现金流与经营现金流差异\n- Fix recommendations: 需确认同行毛利率数据来源并标注统计时间范围\n- Fix recommendations: 建议补充当前股价数据以完善估值分析\n- LLM warnings: 自由现金流(28.4B)与经营现金流(33.6B)存在差异，需确认数据口径是否一致\n- LLM warnings: 同行对比中亚马逊毛利率65.2%与谷歌67.8%的对比数据需核实来源可靠性\n- LLM warnings: 估值观察部分缺少当前股价数据，PE计算需补充完整信息",
-    "passed_after_round": false
-  }
-]

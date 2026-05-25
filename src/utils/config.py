@@ -1,4 +1,4 @@
-"""YAML config loader for Open DeepReport++."""
+"""YAML config loader for FinSight."""
 
 from __future__ import annotations
 

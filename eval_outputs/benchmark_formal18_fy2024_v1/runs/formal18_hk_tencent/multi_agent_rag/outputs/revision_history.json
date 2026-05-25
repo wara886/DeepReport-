@@ -1,7 +1,0 @@
-[
-  {
-    "round": 1,
-    "revision_request": "- Warnings: No financial_analysis claims found.\n- Warnings: Target symbol 0700.HK is not explicitly mentioned in report claims or markdown.\n- Warnings: Target symbol mismatch: expected 0700.HK, but non-peer sections mention ticker-like tokens AND, ANNUAL, HK, INCO, INCOME, MAU, OFFICE, REPORT.\n- Fix recommendations: Correct evidence_count in cl_0009 to match the number of cited evidence_ids (8).\n- Fix recommendations: Ensure 0700.HK is explicitly referenced in report body where applicable.\n- Fix recommendations: Review non-peer sections for unintended ticker fragments.\n- LLM warnings: No financial_analysis claims found.\n- LLM warnings: Non-peer sections mention ticker-like tokens (e.g., AND, INCO, MAU).",
-    "passed_after_round": false
-  }
-]
