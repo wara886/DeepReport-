@@ -1,9 +1,0 @@
-{
-  "schema_version": "formal_numeric_audit.v1",
-  "claims": [
-    {
-      "claim_id": "cl_0010",
-      "supported": true
-    }
-  ]
-}

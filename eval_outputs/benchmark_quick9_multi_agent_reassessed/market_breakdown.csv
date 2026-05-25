@@ -1,5 +1,0 @@
-market,case_count,quality_evaluable_count,delivery_pass_rate,objective_quality_score,traceable_claim_rate_artifact_derived
-Overall,9,9,1.0,94.84,0.9777
-US,3,3,1.0,96.76,1.0
-HK,3,3,1.0,87.83,1.0
-CN-A,3,3,1.0,99.92,0.9331

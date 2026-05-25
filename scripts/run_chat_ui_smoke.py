@@ -17,7 +17,7 @@ from src.app.web_ui import run_ui_server
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run /api/chat smoke tests for the DeepReport++ workbench.")
+    parser = argparse.ArgumentParser(description="Run /api/chat smoke tests for the FinSight workbench.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--config-path", default="configs/model_backends.yaml")

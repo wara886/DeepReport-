@@ -1,4 +1,4 @@
-"""Evaluate objective quality for a generated DeepReport++ run."""
+"""Evaluate objective quality for a generated FinSight run."""
 
 from __future__ import annotations
 

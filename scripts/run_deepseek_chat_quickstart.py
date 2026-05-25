@@ -61,7 +61,7 @@ def main() -> int:
 
     # ── Step 2: Launch Chat UI ───────────────────────────────────────────
     print("=" * 60)
-    print("Step 2/2: Starting DeepReport++ Chat UI...")
+    print("Step 2/2: Starting FinSight Chat UI...")
     print("=" * 60)
 
     server, url = run_ui_server(

@@ -136,7 +136,7 @@ def create_ui_handler(
         return visible
 
     class WebUIHandler(BaseHTTPRequestHandler):
-        server_version = "DeepReportWebUI/0.3"
+        server_version = "FinSightWebUI/0.3"
 
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)

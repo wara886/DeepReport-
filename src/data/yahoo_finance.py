@@ -44,7 +44,7 @@ def fetch_yahoo_chart_snapshot(
     req = request.Request(
         url,
         headers={
-            "User-Agent": "OpenDeepReportPlus/0.1",
+            "User-Agent": "FinSight/0.1",
             "Accept": "application/json",
         },
         method="GET",
@@ -282,7 +282,7 @@ def _fetch_via_urllib(symbol: str, timeout: int = 12) -> Dict[str, Any]:
     req = request.Request(
         url,
         headers={
-            "User-Agent": "OpenDeepReportPlus/0.1",
+            "User-Agent": "FinSight/0.1",
             "Accept": "application/json",
         },
         method="GET",

@@ -1,4 +1,0 @@
-variant,delivery_pass_rate,objective_quality_score,traceable_claim_rate_v1
-direct_llm,,,
-single_agent_rag,,,
-multi_agent_rag,1.0,90.66,0.95

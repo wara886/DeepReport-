@@ -237,7 +237,7 @@ def read_url_with_jina(url: str, max_chars: int = 4000, config_path: str = "conf
         reader_url,
         headers={
             "Accept": "text/plain",
-            "User-Agent": "DeepReportPlus/0.1",
+            "User-Agent": "FinSight/0.1",
         },
         method="GET",
     )
@@ -279,7 +279,7 @@ def read_pdf_content(
             temp_path = tmp.name
         req = request.Request(
             pdf_path_or_url,
-            headers={"User-Agent": "DeepReportPlus/0.1"},
+            headers={"User-Agent": "FinSight/0.1"},
             method="GET",
         )
         try:

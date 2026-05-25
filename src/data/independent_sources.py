@@ -546,7 +546,7 @@ def _resolve_api_key(config: Dict[str, Any], key: str, default_env: str) -> str:
 def _sec_user_agent(config: Dict[str, Any]) -> str:
     env_name = str(config.get("user_agent_env") or "SEC_USER_AGENT")
     configured = os.environ.get(env_name, "").strip()
-    return configured or str(config.get("user_agent") or "DeepReportPlus/0.1 contact@example.com")
+    return configured or str(config.get("user_agent") or "FinSight/0.1 contact@example.com")
 
 
 def _resolve_cik(symbol: str, raw_data_root: str, config: Dict[str, Any]) -> str:
@@ -572,7 +572,7 @@ def _latest_observation(observations: Any) -> Dict[str, Any]:
 
 
 def _get_json(url: str, headers: Dict[str, str] | None = None, timeout: float = 20) -> Dict[str, Any]:
-    req = request.Request(url, headers=headers or {"User-Agent": "DeepReportPlus/0.1"}, method="GET")
+    req = request.Request(url, headers=headers or {"User-Agent": "FinSight/0.1"}, method="GET")
     try:
         with request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
@@ -609,7 +609,7 @@ def _post_json(url: str, payload: Dict[str, Any], headers: Dict[str, str], timeo
 
 
 def _get_text(url: str, timeout: float = 12) -> str:
-    req = request.Request(url, headers={"User-Agent": "DeepReportPlus/0.1"}, method="GET")
+    req = request.Request(url, headers={"User-Agent": "FinSight/0.1"}, method="GET")
     try:
         with request.urlopen(req, timeout=timeout) as resp:
             return resp.read().decode("utf-8", errors="replace")

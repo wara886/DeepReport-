@@ -1,7 +1,0 @@
-[
-  {
-    "round": 1,
-    "revision_request": "- Fix recommendations: Verify revenue figures in evidence_1 for unit consistency\n- Fix recommendations: Cross-check operating cash flow figures between evidence_5 and claim_5\n- Fix recommendations: Confirm evidence_11 contains complete net debt/EBITDA data\n- Fix recommendations: Standardize units for all financial metrics across evidence and claims\n- LLM warnings: Evidence_1 contains conflicting metrics (revenue $126.3B vs claim's $128B)\n- LLM warnings: Evidence_5 shows $38.1B operating cash flow vs claim's $285B\n- LLM warnings: Evidence_11 references missing data for net debt/EBITDA\n- LLM warnings: Evidence_12 shows $31.2B free cash flow vs claim's $220B",
-    "passed_after_round": true
-  }
-]

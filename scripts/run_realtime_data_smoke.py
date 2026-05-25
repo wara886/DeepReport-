@@ -22,7 +22,7 @@ from src.search import SearchManager
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run DeepReport++ independent realtime data smoke.")
+    parser = argparse.ArgumentParser(description="Run FinSight independent realtime data smoke.")
     parser.add_argument("--symbol", default="AAPL")
     parser.add_argument("--period", default="2025Q4")
     parser.add_argument("--output-dir", default="eval_outputs/realtime_data_smoke")

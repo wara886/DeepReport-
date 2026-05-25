@@ -1,7 +1,0 @@
-[
-  {
-    "round": 1,
-    "revision_request": "- Warnings: No financial_analysis claims found.\n- Warnings: Target symbol 601318.SS is not explicitly mentioned in report claims or markdown.\n- Warnings: Target symbol mismatch: expected 601318.SS, but non-peer sections mention ticker-like tokens SS.\n- Fix recommendations: Revise claim cl_0006 to use correct evidence count (8) and source count (4).\n- Fix recommendations: Consider adding financial analysis claims from available financial data evidence.\n- LLM warnings: No financial_analysis claims found.\n- LLM errors: Claim cl_0006: claim_text states '10 条记录' but evidence_ids list only 8 items; numeric_values evidence_count=10 is unsupported. Also unique_sources=3 is inaccurate (at least 4 source types exist).",
-    "passed_after_round": false
-  }
-]

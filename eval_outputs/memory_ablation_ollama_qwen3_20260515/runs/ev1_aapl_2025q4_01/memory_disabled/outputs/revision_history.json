@@ -1,7 +1,0 @@
-[
-  {
-    "round": 1,
-    "revision_request": "- Errors: Missing required header in report: ## Executive Summary\n- Fix recommendations: Update financial statement dates to match available data\n- Fix recommendations: Add note about missing equity structure details in company profile\n- Fix recommendations: Verify consistency between valuation sensitivity analysis and referenced evidence\n- LLM warnings: Evidence ID 11 (Investment Conclusion) references 2025 Q4 data but current financial statements only show 2023 data\n- LLM warnings: Equity structure section lacks detailed data - needs additional information",
-    "passed_after_round": false
-  }
-]
