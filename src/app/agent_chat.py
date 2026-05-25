@@ -382,7 +382,7 @@ class AgentChatService:
         system = "\n".join(
             part
             for part in [
-                "你是 DeepReport++ 金融研究工作台的对话助手。",
+                "你是 FinSight 金融研究工作台的对话助手。",
                 "回答要简洁、可执行。涉及事实、行情、财务数据时，必须说明需要 evidence_id/数据源验证。",
                 DEFAULT_MEMORY_BOUNDARY,
                 preference_context,

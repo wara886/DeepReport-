@@ -13,7 +13,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list():
     init = dispatch_jsonrpc({"jsonrpc": "2.0", "id": 1, "method": "initialize"}, manager)
     tools = dispatch_jsonrpc({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, manager)
 
-    assert init["result"]["serverInfo"]["name"] == "DeepReportPlusMCP"
+    assert init["result"]["serverInfo"]["name"] == "FinSightMCPStyle"
     assert tools["result"]["tools"]
     assert any(item["name"] == "finance__fetch_yahoo_market_snapshot" for item in tools["result"]["tools"])
     assert all("inputSchema" in item for item in tools["result"]["tools"])

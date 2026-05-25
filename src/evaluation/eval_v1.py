@@ -158,7 +158,7 @@ def write_eval_schema(path: str | Path) -> Path:
 
     schema = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "DeepReport++ Stage12 eval_v1 case schema",
+        "title": "FinSight Stage12 eval_v1 case schema",
         "type": "object",
         "required": [
             "case_id",

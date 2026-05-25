@@ -358,7 +358,7 @@ def serper_search(
 
     api_key = str(resolve_config_value(serper_cfg, "api_key", "")).strip()
     if not api_key:
-        raise RuntimeError("missing Serper API key: set SERPER_API_KEY in DeepReport_plus/.env")
+        raise RuntimeError("missing Serper API key: set SERPER_API_KEY in .env")
 
     base_url = str(serper_cfg.get("base_url") or "https://google.serper.dev/search").rstrip("/")
     max_results = int(serper_cfg.get("max_results") or topk)
@@ -445,7 +445,7 @@ def metaso_search(
 
     api_key = str(resolve_config_value(metaso_cfg, "api_key", "")).strip()
     if not api_key:
-        raise RuntimeError("missing Metaso API key: set METASO_API_KEY in DeepReport_plus/.env")
+        raise RuntimeError("missing Metaso API key: set METASO_API_KEY in .env")
 
     max_results = int(metaso_cfg.get("max_results") or topk)
     max_results = min(max(topk, 1), max_results) if max_results > 0 else topk
@@ -513,7 +513,7 @@ def sogou_search(
 
     api_key = str(resolve_config_value(sogou_cfg, "api_key", "")).strip()
     if not api_key:
-        raise RuntimeError("missing Sogou API key: set SOGOU_API_KEY in DeepReport_plus/.env")
+        raise RuntimeError("missing Sogou API key: set SOGOU_API_KEY in .env")
 
     max_results = int(sogou_cfg.get("max_results") or topk)
     max_results = min(max(topk, 1), max_results) if max_results > 0 else topk

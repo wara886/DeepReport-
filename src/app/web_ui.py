@@ -1,4 +1,4 @@
-"""Local Chat-first web workbench for DeepReport++."""
+"""Local chat-first web workbench for FinSight."""
 
 from __future__ import annotations
 
@@ -1484,7 +1484,7 @@ def render_index_html() -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DeepReport++ Chat Workbench</title>
+  <title>FinSight Chat Workbench</title>
   <style>
     :root {
       --bg: #080808;
@@ -2146,7 +2146,7 @@ def render_index_html() -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Open DeepReport++</title>
+  <title>FinSight</title>
   <style>
     :root {
       color-scheme: dark;
@@ -2853,7 +2853,7 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 if __name__ == "__main__":
     server, url = run_ui_server()
-    print(f"DeepReport++ web UI: {url}")
+    print(f"FinSight web UI: {url}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

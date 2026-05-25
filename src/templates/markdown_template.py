@@ -21,7 +21,7 @@ def render_markdown_report(
     lines: List[str] = []
     lines.append(f"# {title}")
     lines.append("")
-    lines.append("由 Open DeepReport++ 多智能体系统生成。")
+    lines.append("由 FinSight 多智能体金融研报系统生成。")
     lines.append("")
 
     for section in default_company_outline():
