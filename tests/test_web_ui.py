@@ -591,6 +591,45 @@ def test_chat_api_returns_fallback_response_without_key(tmp_path):
     assert body["memory_used"]["enabled"] is True
 
 
+def test_chat_api_parses_formal_company_name_and_fiscal_year_without_running(tmp_path):
+    config = _write_model_config(tmp_path)
+    server, url = run_ui_server(
+        port=0,
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        config_path=str(config),
+        memory_root=str(tmp_path / "memory"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps(
+            {
+                "message": "\u8bf7\u751f\u6210\u817e\u8baf\u63a7\u80a1 FY2024 \u516c\u53f8\u7814\u62a5",
+                "memory_enabled": False,
+                "allow_report_run": False,
+                "enable_remote_data": False,
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        req = request.Request(
+            f"{url}/api/chat",
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert body["parsed_task"]["symbol"] == "0700.HK"
+    assert body["parsed_task"]["period"] == "2024Q4"
+    assert body["parsed_task"]["should_run"] is True
+
+
 def test_chat_api_routes_report_run_and_returns_trace(monkeypatch, tmp_path):
     captured = {}
 

@@ -18,6 +18,34 @@ logger = getLogger(__name__)
 REPORT_TERMS = ("研报", "财报", "报告", "research report", "company report", "annual report", "quarterly report")
 GENERATION_TERMS = ("生成", "写", "撰写", "出一份", "做一份", "最新", "run", "create", "write", "generate")
 LATEST_TERMS = ("最新财报", "最新", "最近", "latest", "most recent")
+KNOWN_COMPANY_ALIASES = {
+    "\u82f9\u679c\u516c\u53f8": "AAPL",
+    "\u82f9\u679c": "AAPL",
+    "\u5fae\u8f6f": "MSFT",
+    "\u8c37\u6b4c": "GOOGL",
+    "alphabet": "GOOGL",
+    "\u82f1\u4f1f\u8fbe\u516c\u53f8": "NVDA",
+    "\u82f1\u4f1f\u8fbe": "NVDA",
+    "\u8d85\u5fae\u534a\u5bfc\u4f53": "AMD",
+    "\u7279\u65af\u62c9": "TSLA",
+    "\u5546\u6c64\u79d1\u6280": "0020.HK",
+    "\u5546\u6c64": "0020.HK",
+    "\u7b2c\u56db\u8303\u5f0f": "6682.HK",
+    "\u817e\u8baf\u63a7\u80a1": "0700.HK",
+    "\u817e\u8baf": "0700.HK",
+    "\u5c0f\u7c73\u96c6\u56e2": "1810.HK",
+    "\u5c0f\u7c73": "1810.HK",
+    "\u7f8e\u56e2": "3690.HK",
+    "\u767e\u5ea6\u96c6\u56e2": "9888.HK",
+    "\u767e\u5ea6": "9888.HK",
+    "\u8d35\u5dde\u8305\u53f0": "600519.SS",
+    "\u8305\u53f0": "600519.SS",
+    "\u5b81\u5fb7\u65f6\u4ee3": "300750.SZ",
+    "\u6bd4\u4e9a\u8fea": "002594.SZ",
+    "\u4e2d\u56fd\u5e73\u5b89": "601318.SS",
+    "\u62db\u5546\u94f6\u884c": "600036.SS",
+    "\u4e2d\u82af\u56fd\u9645": "688981.SS",
+}
 
 
 @dataclass(frozen=True)
@@ -124,52 +152,53 @@ def latest_available_report_period(
 
 
 def _parse_symbol(text: str, fallback: str) -> tuple[str, float, str]:
-    compact = text.upper().replace(" ", "")
-    unicode_name_map = {
-        "\u82f1\u4f1f\u8fbe": "NVDA",
-        "\u82f1\u4f1f\u8fbe\u516c\u53f8": "NVDA",
-        "\u7279\u65af\u62c9": "TSLA",
-        "\u82f9\u679c": "AAPL",
-        "\u5fae\u8f6f": "MSFT",
-        "\u8d35\u5dde\u8305\u53f0": "600519.SS",
-        "\u8305\u53f0": "600519.SS",
-    }
-    for name, symbol in unicode_name_map.items():
-        if name in text:
-            return symbol, 0.34, f"识别到中文名 {name} -> {symbol}"
-    # Chinese company name -> symbol mappings
-    cn_name_map = {
-        "英伟达": "NVDA",
-        "苹果": "AAPL",
-        "微软": "MSFT",
-        "谷歌": "GOOGL",
-        "亚马逊": "AMZN",
-        "特斯拉": "TSLA",
-        "meta": "META",
-        "脸书": "META",
-        "腾讯": "0700.HK",
-        "阿里巴巴": "BABA",
-    }
-    for cn_name, symbol in cn_name_map.items():
-        if cn_name in text.lower() or cn_name in text:
-            return symbol, 0.34, f"识别到中文名 {cn_name} -> {symbol}"
-    if "贵州茅台" in text or "茅台" in text or "600519" in compact:
-        return "600519.SS", 0.34, "识别到贵州茅台/600519"
-    if re.search(r"\bAMD\b", text, flags=re.IGNORECASE):
-        return "AMD", 0.34, "识别到 AMD"
-    explicit = re.search(r"\b([A-Z]{1,5}(?:\.[A-Z]{1,3})?)\b", text.upper())
+    explicit_exchange_code = re.search(r"(?<![A-Z0-9])(\d{4,6}\.(?:HK|SS|SH|SZ))(?![A-Z0-9])", text.upper())
+    if explicit_exchange_code:
+        symbol = _normalize_symbol(explicit_exchange_code.group(1))
+        return symbol, 0.38, f"识别到完整股票代码 {symbol}"
+
+    bare_cn_code = re.search(r"(?<!\d)([036]\d{5})(?!\d)", text)
+    if bare_cn_code:
+        symbol = _normalize_symbol(bare_cn_code.group(1))
+        return symbol, 0.34, f"识别到 A 股代码 {symbol}"
+
+    lowered = text.lower()
+    for name, symbol in sorted(KNOWN_COMPANY_ALIASES.items(), key=lambda item: len(item[0]), reverse=True):
+        if name.lower() in lowered:
+            return symbol, 0.36, f"识别到公司名称 {name} -> {symbol}"
+
+    explicit = re.search(r"(?<![A-Z0-9])([A-Z]{1,5}(?:\.[A-Z]{1,3})?)(?![A-Z0-9])", text.upper())
     if explicit:
-        token = explicit.group(1)
-        if token not in {"Q", "AI"}:
+        token = _normalize_symbol(explicit.group(1))
+        if token not in {"Q", "AI", "FY", "ANNUAL", "FULL", "YEAR"}:
             return token, 0.28, f"识别到股票代码 {token}"
-    cn_code = re.search(r"(?<!\d)([036]\d{5})(?!\d)", text)
-    if cn_code:
-        return f"{cn_code.group(1)}.SS", 0.28, f"识别到 A 股代码 {cn_code.group(1)}"
     fallback_symbol = str(fallback or "AAPL").strip().upper()
     return fallback_symbol, 0.08, f"沿用当前标的 {fallback_symbol}"
 
 
 def _parse_period(text: str, fallback: str, today: date, symbol: str = "") -> tuple[str, float, str]:
+    explicit_period = _parse_explicit_period(text)
+    if explicit_period:
+        return explicit_period
+    if any(term.lower() in text.lower() for term in LATEST_TERMS):
+        period = latest_available_report_period(symbol=symbol, today=today)
+        return period, 0.24, f"按当前日期选择最新可生成报告期 {period}"
+    # Implicit latest: report+generation intent but no period specified
+    lowered = text.lower()
+    if any(term.lower() in lowered for term in REPORT_TERMS) and any(
+        term.lower() in lowered for term in GENERATION_TERMS
+    ):
+        period = latest_available_report_period(symbol=symbol, today=today)
+        return period, 0.20, f"研报意图但未指定期间，默认最新可生成报告期 {period}"
+    fallback_period = str(fallback or latest_completed_period(today)).strip().upper()
+    return fallback_period, 0.08, f"沿用当前期间 {fallback_period}"
+
+
+def _parse_explicit_period(text: str) -> tuple[str, float, str] | None:
+    fiscal_year = re.search(r"(?i)(?<![A-Z0-9])FY\s*[-_/]?\s*(20\d{2})(?!\d)", text)
+    if fiscal_year:
+        period = f"{fiscal_year.group(1)}Q4"
+        return period, 0.28, f"识别到财年 FY{fiscal_year.group(1)}，按年度报告期映射为 {period}"
     explicit_cn = re.search(r"\b(20\d{2}|\d{2})\s*(?:\u5e74)?\s*[Qq]\s*([1-4])\b", text)
     if explicit_cn:
         year = explicit_cn.group(1)
@@ -187,18 +216,11 @@ def _parse_period(text: str, fallback: str, today: date, symbol: str = "") -> tu
     annual = _parse_year_only(text)
     if annual:
         return annual, 0.24, f"识别到年度财报口径 {annual}"
-    if any(term.lower() in text.lower() for term in LATEST_TERMS):
-        period = latest_available_report_period(symbol=symbol, today=today)
-        return period, 0.24, f"按当前日期选择最新可生成报告期 {period}"
-    # Implicit latest: report+generation intent but no period specified
-    lowered = text.lower()
-    if any(term.lower() in lowered for term in REPORT_TERMS) and any(
-        term.lower() in lowered for term in GENERATION_TERMS
-    ):
-        period = latest_available_report_period(symbol=symbol, today=today)
-        return period, 0.20, f"研报意图但未指定期间，默认最新可生成报告期 {period}"
-    fallback_period = str(fallback or latest_completed_period(today)).strip().upper()
-    return fallback_period, 0.08, f"沿用当前期间 {fallback_period}"
+    english_annual = re.search(r"(?i)(?<!\d)(20\d{2})(?!\d).{0,20}\b(?:annual report|full year|fiscal year)\b", text)
+    if english_annual:
+        period = f"{english_annual.group(1)}Q4"
+        return period, 0.24, f"识别到年度报告口径 {period}"
+    return None
 
 
 def _parse_chinese_quarter(text: str) -> str | None:
@@ -228,6 +250,19 @@ def _parse_year_only(text: str) -> str | None:
     if not match:
         return None
     return f"{_normalize_year(match.group(1))}Q4"
+
+
+def _normalize_symbol(raw: str) -> str:
+    symbol = str(raw or "").strip().upper()
+    hk = re.fullmatch(r"(\d{1,5})\.HK", symbol)
+    if hk:
+        return f"{hk.group(1).zfill(4)}.HK"
+    cn = re.fullmatch(r"([036]\d{5})(?:\.(SS|SH|SZ))?", symbol)
+    if cn:
+        code = cn.group(1)
+        suffix = ".SS" if code.startswith("6") else ".SZ"
+        return f"{code}{suffix}"
+    return symbol
 
 
 def _normalize_year(raw: str) -> int:
@@ -319,6 +354,7 @@ def llm_parse_chat_task(
         )
 
     today = today or date.today()
+    rule_task = parse_chat_task(message, current_symbol, current_period, today)
 
     # Fast path: skip LLM call if message clearly has no report intent at all
     lowered = text.lower()
@@ -331,9 +367,9 @@ def llm_parse_chat_task(
         "You are a precise intent parser for a financial report system. "
         "Extract structured data from user messages about stock research reports.\n\n"
         "Output a JSON object with:\n"
-        '- "symbol": stock ticker (e.g., "NVDA", "600519.SS", "AMD", "AAPL"). '
+        '- "symbol": stock ticker (e.g., "NVDA", "600519.SS", "0700.HK", "AMD", "AAPL"). '
         "For Chinese company names use the correct ticker. Empty string if unknown.\n"
-        '- "period": reporting period like "2025Q4" or "2026Q1". If user says a year like "2025年" without quarter, use the Q4 of that year (e.g. "2025年腾讯的财报" → "2025Q4"). Empty string if not specified.\n'
+        '- "period": reporting period like "2025Q4" or "2026Q1". Map "FY2024" and a year-only annual report request to "2024Q4". Empty string if not specified.\n'
         '- "wants_latest": boolean, true if user implies latest/most recent\n'
         '- "generation_intent": boolean, true if user wants to GENERATE a report\n'
         '- "report_intent": boolean, true if about financial reports\n'
@@ -358,22 +394,26 @@ def llm_parse_chat_task(
             raise RuntimeError(f"expected dict, got {type(result).__name__}")
 
         # ── symbol ───────────────────────────────────────────────────────
+        routed_symbol, routed_symbol_conf, routed_symbol_note = _parse_symbol(text, current_symbol)
         raw_symbol = str(result.get("symbol") or "").strip().upper()
-        if not raw_symbol:
-            symbol = current_symbol
-            symbol_note = f"LLM未识别到公司，沿用当前标的 {current_symbol}"
+        if routed_symbol_conf >= 0.25:
+            symbol = routed_symbol
+            symbol_note = routed_symbol_note
+        elif not raw_symbol:
+            symbol = _normalize_symbol(current_symbol)
+            symbol_note = f"LLM未识别到公司，沿用当前标的 {symbol}"
         else:
-            symbol = raw_symbol
-            # Normalise A-share codes: 600519 → 600519.SS
-            if re.match(r"^[036]\d{5}$", symbol):
-                symbol = f"{symbol}.SS"
+            symbol = _normalize_symbol(raw_symbol)
             symbol_note = f"LLM识别标的 {symbol}"
 
         # ── period ───────────────────────────────────────────────────────
         raw_period = str(result.get("period") or "").strip().upper()
         wants_latest = bool(result.get("wants_latest", False))
+        explicit_period = _parse_explicit_period(text)
 
-        if re.match(r"^20\d{2}Q[1-4]$", raw_period):
+        if explicit_period:
+            period, _, period_note = explicit_period
+        elif re.match(r"^20\d{2}Q[1-4]$", raw_period):
             period = raw_period
             period_note = f"LLM识别期间 {period}"
         elif wants_latest:
@@ -396,11 +436,13 @@ def llm_parse_chat_task(
 
         # ── intent & confidence ──────────────────────────────────────────
         direct_report_request = _looks_like_direct_report_request(text)
-        generation_intent = bool(result.get("generation_intent", False))
-        report_intent = bool(result.get("report_intent", False)) or direct_report_request
+        generation_intent = bool(result.get("generation_intent", False)) or _has_generation_intent(text)
+        report_intent = bool(result.get("report_intent", False)) or _has_report_intent(text) or direct_report_request
         confidence = min(0.99, float(result.get("confidence", 0.0)))
         if direct_report_request:
             confidence = max(confidence, 0.82)
+        if rule_task.should_run:
+            confidence = max(confidence, rule_task.confidence)
         llm_reason = str(result.get("reason", "")).strip()
 
         should_run = bool(report_intent and confidence >= 0.68 and (generation_intent or direct_report_request))
