@@ -89,4 +89,15 @@ def test_agent_chat_routes_chinese_report_and_review_terms(tmp_path):
 
     assert service._route("请生成贵州茅台最新财报研报", allow_report_run=True)["mode"] == "report_run"
     assert service._route("generate 600519 latest company report", allow_report_run=True)["mode"] == "report_run"
-    assert service._route("复盘一下报告引用和评测问题", allow_report_run=True)["mode"] == "rag"
+    assert service._route("根据报告引用证据总结一下", allow_report_run=True)["mode"] == "rag"
+
+    review = service.handle_chat(
+        message="检查最近报告的质量问题和 citation gap",
+        session_id="s2",
+        user_id="u1",
+        symbol="AMD",
+        period="2025Q4",
+        memory_enabled=False,
+        allow_report_run=True,
+    )
+    assert review["mode"] == "quality_review"

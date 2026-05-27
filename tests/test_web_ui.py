@@ -116,6 +116,8 @@ def test_latest_run_dirs_prefers_newer_run_when_latest_pointer_is_stale(tmp_path
     second["report_dir"].mkdir(parents=True, exist_ok=True)
     (first["output_dir"] / "run_summary.json").write_text('{"symbol":"AAPL"}', encoding="utf-8")
     (second["output_dir"] / "run_summary.json").write_text('{"symbol":"AMD"}', encoding="utf-8")
+    (first["report_dir"] / "report.md").write_text("# AAPL", encoding="utf-8")
+    (second["report_dir"] / "report.md").write_text("# AMD", encoding="utf-8")
     stale = {"output_dir": str(first["output_dir"]), "report_dir": str(first["report_dir"])}
     output_root.mkdir(parents=True, exist_ok=True)
     (output_root / "latest_run.json").write_text(json.dumps(stale), encoding="utf-8")
@@ -130,6 +132,146 @@ def test_latest_run_dirs_prefers_newer_run_when_latest_pointer_is_stale(tmp_path
 
     assert latest["output_dir"] == second["output_dir"]
     assert latest["report_dir"] == second["report_dir"]
+
+
+def test_chat_api_general_dialogue_does_not_create_run_or_override_latest(tmp_path):
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    seed_run = _create_run_dirs(output_root, report_root, "AAPL", "2025Q4", "collaborative")
+    (seed_run["output_dir"] / "run_summary.json").write_text(
+        json.dumps({"symbol": "AAPL", "period": "2025Q4", "verification_passed": True}),
+        encoding="utf-8",
+    )
+    (seed_run["report_dir"] / "report.md").write_text("# AAPL", encoding="utf-8")
+    _finalize_run_dirs(
+        seed_run,
+        output_root,
+        report_root,
+        "AAPL",
+        "2025Q4",
+        "collaborative",
+        {"delivery_gate": {"delivery_pass": True}},
+    )
+    run_count_before = len(list((output_root / "runs").iterdir()))
+
+    config = _write_model_config(tmp_path)
+    server, url = run_ui_server(
+        port=0,
+        output_dir=str(output_root),
+        report_dir=str(report_root),
+        config_path=str(config),
+        memory_root=str(tmp_path / "memory"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps(
+            {
+                "message": "你好，今天市场有什么值得关注？",
+                "memory_enabled": True,
+                "allow_report_run": True,
+                "enable_remote_data": True,
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        req = request.Request(
+            f"{url}/api/chat",
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with request.urlopen(req, timeout=5) as resp:
+            chat_body = json.loads(resp.read().decode("utf-8"))
+
+        with request.urlopen(f"{url}/api/latest", timeout=5) as resp:
+            latest_body = json.loads(resp.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    run_count_after = len(list((output_root / "runs").iterdir()))
+    assert chat_body["mode"] == "chat"
+    assert run_count_after == run_count_before
+    assert latest_body["summary"]["symbol"] == "AAPL"
+    assert latest_body["summary"]["period"] == "2025Q4"
+
+
+def test_chat_api_quality_review_reads_artifacts_without_new_run(tmp_path):
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    seed_run = _create_run_dirs(output_root, report_root, "AMD", "2025Q4", "collaborative")
+    (seed_run["output_dir"] / "run_summary.json").write_text(
+        json.dumps({"symbol": "AMD", "period": "2025Q4", "verification_passed": True}),
+        encoding="utf-8",
+    )
+    (seed_run["output_dir"] / "quality_report.json").write_text(json.dumps({"total_score": 0.86}), encoding="utf-8")
+    (seed_run["output_dir"] / "delivery_gate.json").write_text(
+        json.dumps({"delivery_pass": False, "issues": [{"severity": "blocker", "message": "missing citation"}]}),
+        encoding="utf-8",
+    )
+    (seed_run["output_dir"] / "verification_report.json").write_text(
+        json.dumps({"passed": False, "evidence_gaps": [{"claim_id": "c1"}]}),
+        encoding="utf-8",
+    )
+    (seed_run["output_dir"] / "claims.json").write_text(
+        json.dumps([{"claim_id": "c1", "evidence_ids": []}]),
+        encoding="utf-8",
+    )
+    (seed_run["output_dir"] / "citations.json").write_text(
+        json.dumps([{"evidence_id": "ev1", "title": "source"}]),
+        encoding="utf-8",
+    )
+    (seed_run["report_dir"] / "report.md").write_text("# AMD", encoding="utf-8")
+    _finalize_run_dirs(
+        seed_run,
+        output_root,
+        report_root,
+        "AMD",
+        "2025Q4",
+        "collaborative",
+        {"delivery_gate": {"delivery_pass": False}},
+    )
+    run_count_before = len(list((output_root / "runs").iterdir()))
+
+    config = _write_model_config(tmp_path)
+    server, url = run_ui_server(
+        port=0,
+        output_dir=str(output_root),
+        report_dir=str(report_root),
+        config_path=str(config),
+        memory_root=str(tmp_path / "memory"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps(
+            {
+                "message": "检查最近报告质量问题和引用缺口",
+                "memory_enabled": True,
+                "allow_report_run": True,
+                "enable_remote_data": True,
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        req = request.Request(
+            f"{url}/api/chat",
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    run_count_after = len(list((output_root / "runs").iterdir()))
+    assert body["mode"] == "quality_review"
+    assert run_count_after == run_count_before
+    assert body["result"]["delivery_gate"]["delivery_pass"] is False
+    assert "blocker" in body["answer"] or "阻塞" in body["answer"]
 
 
 def test_chat_engine_reset_treats_hk_defaults_as_auto_selected():
@@ -626,7 +768,8 @@ def test_chat_api_parses_formal_company_name_and_fiscal_year_without_running(tmp
         thread.join(timeout=2)
 
     assert body["parsed_task"]["symbol"] == "0700.HK"
-    assert body["parsed_task"]["period"] == "2024Q4"
+    assert body["parsed_task"]["period"] == "FY2024"
+    assert body["parsed_task"]["period_kind"] == "fiscal_year"
     assert body["parsed_task"]["should_run"] is True
 
 
@@ -659,7 +802,16 @@ def test_chat_api_routes_report_run_and_returns_trace(monkeypatch, tmp_path):
             (self.report_dir / "report.md").write_text("# Fake report", encoding="utf-8")
             return {"verification_passed": True, "report_md": str(self.report_dir / "report.md")}
 
+    def fake_quality(*args, **kwargs):
+        return {
+            "quality_report": {"objective_pass": True},
+            "llm_quality_review": {"llm_review_pass": True},
+            "delivery_gate": {"delivery_pass": True},
+            "top_quality_issues": [],
+        }
+
     monkeypatch.setattr("src.app.web_ui.MultiAgentOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr("src.app.web_ui.run_delivery_quality_pipeline", fake_quality)
     config = _write_model_config(tmp_path)
     server, url = run_ui_server(
         port=0,
@@ -696,8 +848,7 @@ def test_chat_api_routes_report_run_and_returns_trace(monkeypatch, tmp_path):
     assert any(item["detail"] == "start_multi_agent_report_run" for item in body["tool_trace"])
     assert any(item["stage"] == "verify" for item in body["tool_trace"])
     assert body["result"]["verification_passed"] is True
-    assert "delivery_gate" in body["result"]
-    assert body["latest"]["delivery_gate"]["delivery_pass"] is False
+    assert body["result"]["delivery_gate"]["delivery_pass"] is True
     assert body["parsed_task"]["symbol"] == "600519.SS"
     assert body["parsed_task"]["period"] == "2025Q4"
     assert captured["enable_remote_data"] is True

@@ -16,6 +16,74 @@ agent_model:
   extra_body:
     think: false
 
+model_profiles:
+  flash:
+    provider: ollama
+    mode: openai_compatible_chat
+    model_name: qwen3:8b
+    model_name_env: OLLAMA_MODEL
+    base_url: http://127.0.0.1:11434/v1
+    base_url_env: OLLAMA_BASE_URL
+    api_key: ollama
+    api_key_env: OLLAMA_API_KEY
+    max_tokens: 4096
+    max_tokens_env: OLLAMA_MAX_TOKENS
+    temperature: 0.2
+    temperature_env: OLLAMA_TEMPERATURE
+    timeout: 180
+    retry: 0
+    extra_body:
+      think: false
+  pro:
+    provider: ollama
+    mode: openai_compatible_chat
+    model_name: qwen3:8b
+    model_name_env: OLLAMA_MODEL_PRO
+    base_url: http://127.0.0.1:11434/v1
+    base_url_env: OLLAMA_BASE_URL
+    api_key: ollama
+    api_key_env: OLLAMA_API_KEY
+    max_tokens: 4096
+    max_tokens_env: OLLAMA_MAX_TOKENS
+    temperature: 0.2
+    temperature_env: OLLAMA_TEMPERATURE
+    timeout: 180
+    retry: 0
+    extra_body:
+      think: false
+
+agent_model_routes:
+  defaults:
+    preview: flash
+    delivery: flash
+  chat:
+    preview: flash
+    delivery: flash
+  task_parser:
+    preview: flash
+    delivery: flash
+  planning:
+    preview: flash
+    delivery: flash
+  research:
+    preview: flash
+    delivery: flash
+  browser:
+    preview: flash
+    delivery: flash
+  deep_analyze:
+    preview: flash
+    delivery: pro
+  final_answer:
+    preview: flash
+    delivery: pro
+  verifier:
+    preview: flash
+    delivery: pro
+  llm_report_review:
+    preview: flash
+    delivery: pro
+
 writer_backend:
   mode: template_only
   common:

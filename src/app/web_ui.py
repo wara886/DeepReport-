@@ -174,6 +174,7 @@ def create_ui_handler(
             enable_remote_data = bool(payload.get("enable_remote_data", False))
             engines = _parse_engines(payload.get("engines") or default_engines_for_symbol(symbol, enable_remote_data))
             execution_mode = str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE)
+            execution_tier = str(payload.get("execution_tier") or "delivery")
             _mark_active_run(
                 session_id,
                 symbol=symbol,
@@ -189,6 +190,7 @@ def create_ui_handler(
                 config_path=config_path,
                 memory_enabled=bool(payload.get("memory_enabled", False)),
                 memory_root=str(Path(memory_root) / "durable"),
+                execution_tier=execution_tier,
             )
             run_kwargs = {
                     "research_topic": topic,
@@ -240,11 +242,40 @@ def create_ui_handler(
             period = str(payload.get("period") or latest_completed_period()).strip().upper()
             allow_report_run = bool(payload.get("allow_report_run", True))
             enable_remote_data = bool(payload.get("enable_remote_data", True))
+            if _looks_like_quality_review_request(message):
+                engines = _parse_engines(payload.get("engines") or default_engines_for_symbol(symbol, enable_remote_data))
+                response = chat_service.handle_chat(
+                    message=message,
+                    session_id=session_id,
+                    user_id=user_id,
+                    symbol=symbol,
+                    period=period,
+                    memory_enabled=bool(payload.get("memory_enabled", True)),
+                    allow_report_run=False,
+                    orchestrator=None,
+                    engines=engines,
+                    fast=bool(payload.get("fast", True)),
+                    execution_mode=str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE),
+                    enable_remote_data=enable_remote_data,
+                    data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
+                )
+                self._send_json(response)
+                return
             pending_task = pending_report_tasks.get(session_id)
             confirmed_pending = bool(allow_report_run and pending_task and _is_confirmation_message(message))
             chat_message = message
             if confirmed_pending:
-                symbol = str(pending_task.get("symbol") or symbol).strip().upper()
+                pending_symbol = str(pending_task.get("symbol") or "").strip().upper()
+                if not pending_symbol:
+                    self._send_json(
+                        {
+                            "mode": "confirm_report",
+                            "answer": "还缺少公司身份信息，请先提供公司名称或 ticker（含交易所）再确认生成。",
+                            "parsed_task": pending_task,
+                        }
+                    )
+                    return
+                symbol = pending_symbol
                 period = str(pending_task.get("period") or period).strip().upper()
                 payload["topic"] = str(pending_task.get("research_topic") or f"生成 {symbol} {period} 公司财报研报")
                 chat_message = str(payload["topic"])
@@ -329,6 +360,7 @@ def create_ui_handler(
                     return
                 if confirmed_pending or parsed_task.should_run:
                     execution_mode = str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE)
+                    execution_tier = str(payload.get("execution_tier") or "delivery")
                     run_paths = _create_run_dirs(output_root, report_root, symbol, period, execution_mode)
                     orchestrator = MultiAgentOrchestrator(
                         output_dir=str(run_paths["output_dir"]),
@@ -336,6 +368,7 @@ def create_ui_handler(
                         config_path=config_path,
                         memory_enabled=bool(payload.get("memory_enabled", True)),
                         memory_root=str(Path(memory_root) / "durable"),
+                        execution_tier=execution_tier,
                     )
                     run_kwargs = {
                         "research_topic": str(payload.get("topic") or parsed_task.research_topic or chat_message),
@@ -402,97 +435,24 @@ def create_ui_handler(
                     finally:
                         _clear_active_run(session_id)
                     return
-            orchestrator = None
-            run_paths = None
-            marked_active = False
-            if allow_report_run:
-                execution_mode = str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE)
-                run_paths = _create_run_dirs(output_root, report_root, symbol, period, execution_mode)
-                orchestrator = MultiAgentOrchestrator(
-                    output_dir=str(run_paths["output_dir"]),
-                    report_dir=str(run_paths["report_dir"]),
-                    config_path=config_path,
-                    memory_enabled=bool(payload.get("memory_enabled", True)),
-                    memory_root=str(Path(memory_root) / "durable"),
-                )
-                _mark_active_run(
-                    session_id,
-                    symbol=symbol,
-                    period=period,
-                    topic=chat_message,
-                    execution_mode=execution_mode,
-                    source="chat",
-                )
-                marked_active = True
-            try:
-                response = chat_service.handle_chat(
-                    message=chat_message,
-                    session_id=session_id,
-                    user_id=user_id,
-                    symbol=symbol,
-                    period=period,
-                    memory_enabled=bool(payload.get("memory_enabled", True)),
-                    allow_report_run=allow_report_run,
-                    orchestrator=orchestrator,
-                    engines=engines,
-                    fast=bool(payload.get("fast", True)),
-                    execution_mode=str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE),
-                    enable_remote_data=enable_remote_data,
-                    data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
-                )
-                if parsed_task.should_run or parsed_task.needs_confirmation:
-                    response["parsed_task"] = parsed_task.to_dict()
-                if response.get("mode") == "report_run":
-                    quality_output_root = run_paths["output_dir"] if run_paths else output_root
-                    quality_report_root = run_paths["report_dir"] if run_paths else report_root
-                    quality_result = run_delivery_quality_pipeline(
-                        quality_output_root,
-                        quality_report_root,
-                        config_path,
-                        durable_memory_store=getattr(orchestrator, "durable_memory", None),
-                        memory_enabled=bool(payload.get("memory_enabled", True)),
-                    )
-                    rework_result = run_delivery_rework_loop(
-                        orchestrator=orchestrator,
-                        output_path=quality_output_root,
-                        report_path=quality_report_root,
-                        config_path=config_path,
-                        initial_quality_result=quality_result,
-                        run_kwargs={
-                            "research_topic": str(payload.get("topic") or parsed_task.research_topic or message),
-                            "symbol": symbol,
-                            "period": period,
-                            "execution_mode": str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE),
-                            "fast": bool(payload.get("fast", True)),
-                            "search_engines": engines,
-                            "enable_remote_data": enable_remote_data,
-                            "data_source_config_path": str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
-                        },
-                        durable_memory_store=getattr(orchestrator, "durable_memory", None) if orchestrator is not None else None,
-                        memory_enabled=bool(payload.get("memory_enabled", True)),
-                    )
-                    if rework_result.get("quality_result"):
-                        quality_result = rework_result["quality_result"]
-                    if isinstance(response.get("result"), dict):
-                        response["result"].update(quality_result)
-                        response["result"]["delivery_rework"] = rework_result
-                    if run_paths:
-                        _finalize_run_dirs(
-                            run_paths,
-                            output_root,
-                            report_root,
-                            symbol,
-                            period,
-                            str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE),
-                            quality_result,
-                        )
-                    if marked_active:
-                        _clear_active_run(session_id)
-                    response["latest"] = _latest_payload()
-                self._send_json(response)
-            finally:
-                if marked_active:
-                    _clear_active_run(session_id)
+            response = chat_service.handle_chat(
+                message=chat_message,
+                session_id=session_id,
+                user_id=user_id,
+                symbol=symbol,
+                period=period,
+                memory_enabled=bool(payload.get("memory_enabled", True)),
+                allow_report_run=False,
+                orchestrator=None,
+                engines=engines,
+                fast=bool(payload.get("fast", True)),
+                execution_mode=str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE),
+                enable_remote_data=enable_remote_data,
+                data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
+            )
+            if parsed_task.should_run or parsed_task.needs_confirmation:
+                response["parsed_task"] = parsed_task.to_dict()
+            self._send_json(response)
 
         def _send_artifact(self, relative_name: str) -> None:
             name = unquote(relative_name)
@@ -1207,7 +1167,7 @@ def _latest_run_dirs(output_root: Path, report_root: Path) -> Dict[str, Path]:
     if isinstance(latest, dict):
         output_dir = Path(str(latest.get("output_dir") or ""))
         report_dir = Path(str(latest.get("report_dir") or ""))
-        if output_dir.exists() and report_dir.exists():
+        if output_dir.exists() and report_dir.exists() and _run_has_completed_artifacts(output_dir, report_dir):
             if newest:
                 try:
                     latest_key = _run_id_time_key(output_dir.parent.name)
@@ -1237,6 +1197,8 @@ def _newest_run_dirs(output_root: Path, report_root: Path) -> Dict[str, Path] | 
         report_dir = report_runs / output_run.name / "reports"
         if not output_dir.exists() or not report_dir.exists():
             continue
+        if not _run_has_completed_artifacts(output_dir, report_dir):
+            continue
         try:
             candidates.append((_run_id_time_key(output_run.name), max(output_dir.stat().st_mtime, report_dir.stat().st_mtime), output_dir, report_dir))
         except OSError:
@@ -1250,6 +1212,12 @@ def _newest_run_dirs(output_root: Path, report_root: Path) -> Dict[str, Path] | 
 def _run_id_time_key(run_id: str) -> str:
     match = re.match(r"(\d{8}_\d{6})", str(run_id or ""))
     return match.group(1) if match else ""
+
+
+def _run_has_completed_artifacts(output_dir: Path, report_dir: Path) -> bool:
+    summary = output_dir / "run_summary.json"
+    has_report = any((report_dir / name).exists() for name in ("report.md", "report.html", "report.json"))
+    return summary.exists() and has_report
 
 
 def _make_run_id(symbol: str, period: str, execution_mode: str) -> str:
@@ -2674,6 +2642,20 @@ def _should_reset_engines_for_parsed_task(has_parsed_task: bool, raw_engines: An
 def validate_period_for_report(raw_period: str, today: date | None = None) -> Dict[str, Any]:
     raw = str(raw_period or "").strip().upper()
     today = today or date.today()
+    fy_match = re.fullmatch(r"FY(20\d{2})", raw)
+    if fy_match:
+        year = int(fy_match.group(1))
+        if year < today.year:
+            return {"ok": True, "message": "", "suggested_periods": []}
+        suggested = [f"{today.year - 1}Q4", f"FY{today.year - 1}"]
+        return {
+            "ok": False,
+            "message": (
+                f"{raw} 尚未结束，不能生成正式财报口径研报。"
+                f"可改为最近已结束报告期 {suggested[0]}，或使用完整财年 {suggested[1]}。"
+            ),
+            "suggested_periods": suggested,
+        }
     if len(raw) != 6 or raw[4] != "Q" or not raw[:4].isdigit() or raw[-1] not in "1234":
         return {"ok": True, "message": "", "suggested_periods": []}
     quarter_end = period_target_date(raw)
@@ -2709,6 +2691,24 @@ def _looks_like_report_request(text: str) -> bool:
     return any(
         term in lowered
         for term in ["研报", "财报", "报告", "年报", "季报", "research report", "company report", "annual report", "quarterly report"]
+    )
+
+
+def _looks_like_quality_review_request(text: str) -> bool:
+    lowered = str(text or "").lower()
+    return any(
+        term in lowered
+        for term in [
+            "检查最近报告",
+            "复盘最近报告",
+            "质量问题",
+            "引用是否完整",
+            "quality review",
+            "quality gate",
+            "delivery gate",
+            "verification report",
+            "citation gap",
+        ]
     )
 
 
@@ -2754,12 +2754,31 @@ def _is_confirmation_message(text: str) -> bool:
 
 
 def _confirmation_prompt(symbol: str, period: str, engines: List[str]) -> str:
+    identity = resolve_company_identity(symbol or "", default=symbol or "")
+    period_upper = str(period or "").strip().upper()
+    if period_upper.startswith("FY"):
+        period_kind = "fiscal_year"
+    elif re.match(r"^20\d{2}Q[1-4]$", period_upper):
+        period_kind = "quarter"
+    else:
+        period_kind = "latest"
+    period_label = {
+        "fiscal_year": "财年口径",
+        "quarter": "季度口径",
+        "latest": "最新口径",
+    }.get(period_kind, "未确定")
+    resolved_symbol = str(identity.canonical_symbol or symbol or "")
+    company_name = str(identity.company_name or "未确认")
+    exchange = str(identity.exchange or "未确认")
     return (
-        "我识别到你可能想生成研报，但还需要确认参数：\n"
-        f"- 标的：{symbol}\n"
-        f"- 期间：{period}\n"
+        "我识别到你可能想生成公司/个股研报，请先确认参数：\n"
+        f"- 公司名称：{company_name}\n"
+        f"- ticker：{resolved_symbol}\n"
+        f"- 交易所：{exchange}\n"
+        f"- 报告期：{period_upper}\n"
+        f"- 期间口径：{period_label}\n"
         f"- 数据源：{', '.join(engines)}\n"
-        "请回复确认，或回复“是”，我会直接启动多智能体生成。"
+        "请回复确认，或回复“是”，我会启动报告生成。"
     )
 
 

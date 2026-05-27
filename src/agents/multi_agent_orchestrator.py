@@ -122,12 +122,15 @@ class MultiAgentOrchestrator:
         memory_max_context_chars: int | None = None,
         skill_registry: SkillRegistry | None = None,
         skill_registry_config_path: str | None = "configs/skill_registry.yaml",
+        execution_tier: str = "delivery",
     ):
         self.output_dir = Path(output_dir)
         self.report_dir = Path(report_dir)
         self.config_path = config_path
         self.raw_data_root = raw_data_root
         self.app_config_path = app_config_path
+        self.execution_tier = "preview" if str(execution_tier or "").lower() == "preview" else "delivery"
+        self.model_route_config = load_config(config_path).get("agent_model_routes", {})
         self.memory_config = _load_durable_memory_config(
             app_config_path=app_config_path,
             memory_enabled=memory_enabled,
@@ -139,26 +142,43 @@ class MultiAgentOrchestrator:
             max_domain_items=self.memory_config.max_domain_items,
             max_episodic_items=self.memory_config.max_episodic_items,
         )
-        self.model = model or ModelAdapter.from_config(config_path=config_path)
+        if model is not None:
+            self.model = model
+            planning_model = model
+            research_model = model
+            browser_model = model
+            analyze_model = model
+            final_model = model
+            verifier_model = model
+        else:
+            self.model = self._build_role_model("chat")
+            planning_model = self._build_role_model("planning")
+            research_model = self._build_role_model("research")
+            browser_model = self._build_role_model("browser")
+            analyze_model = self._build_role_model("deep_analyze")
+            final_model = self._build_role_model("final_answer")
+            verifier_model = self._build_role_model("verifier")
         self.tool_registry = build_core_tool_registry()
         self.skill_registry = skill_registry or build_financial_skill_registry(config_path=skill_registry_config_path)
         self.mcp_manager = MCPManager.from_tool_registry(self.tool_registry, namespace="finance")
         self.search_manager = search_manager or SearchManager.with_local_sources()
         self.agents = {
-            "planning": PlanningAgent(model=self.model),
-            "research": DeepResearcherAgent(model=self.model, search_manager=self.search_manager),
-            "browser": BrowserAgent(model=self.model),
-            "analyze": DeepAnalyzeAgent(model=self.model, tool_registry=self.tool_registry),
+            "planning": PlanningAgent(model=planning_model),
+            "research": DeepResearcherAgent(model=research_model, search_manager=self.search_manager),
+            "browser": BrowserAgent(model=browser_model),
+            "analyze": DeepAnalyzeAgent(model=analyze_model, tool_registry=self.tool_registry),
             "identity": IdentityAgent(),
             "statement": StatementAgent(),
             "peer": PeerAgent(),
             "valuation": ValuationAgent(),
             "risk": RiskAgent(),
-            "final_answer": FinalAnswerAgent(model=self.model),
+            "final_answer": FinalAnswerAgent(model=final_model),
             "critic": CriticAgent(),
-            "verifier": VerifierAgent(model=self.model),
+            "verifier": VerifierAgent(model=verifier_model),
             "gap_resolver": GapResolverAgent(),
         }
+        self.agent_name_to_key = {agent.name: key for key, agent in self.agents.items()}
+        self.model_usage_by_agent = self._build_model_usage_by_agent(model is not None)
         self.trace: List[Dict[str, Any]] = []
 
     def run(
@@ -245,6 +265,73 @@ class MultiAgentOrchestrator:
                 quality_remediation_plan=quality_remediation_plan,
             )
         raise ValueError(f"Unsupported execution_mode: {execution_mode}")
+
+    def _build_role_model(self, role: str) -> ModelAdapter:
+        profile = self._select_profile_for_role(role)
+        adapter = ModelAdapter.from_profile(profile=profile, config_path=self.config_path, fallback_section="agent_model")
+        adapter.route_profile = profile
+        return adapter
+
+    def _select_profile_for_role(self, role: str) -> str:
+        routes = self.model_route_config if isinstance(self.model_route_config, dict) else {}
+        defaults = routes.get("defaults", {}) if isinstance(routes.get("defaults"), dict) else {}
+        default_profile = str(defaults.get(self.execution_tier) or defaults.get("delivery") or "flash")
+        role_route = routes.get(role)
+        if isinstance(role_route, str):
+            return role_route
+        if isinstance(role_route, dict):
+            return str(role_route.get(self.execution_tier) or role_route.get("delivery") or default_profile)
+        return default_profile
+
+    def _build_model_usage_by_agent(self, injected_model: bool) -> Dict[str, Dict[str, Any]]:
+        llm_roles = {
+            "planning": self.agents.get("planning"),
+            "research": self.agents.get("research"),
+            "browser": self.agents.get("browser"),
+            "deep_analyze": self.agents.get("analyze"),
+            "final_answer": self.agents.get("final_answer"),
+            "verifier": self.agents.get("verifier"),
+        }
+        usage: Dict[str, Dict[str, Any]] = {}
+        for role, agent in llm_roles.items():
+            model = getattr(agent, "model", None)
+            usage[role] = {
+                "model_name": str(getattr(model, "model_name", "")),
+                "route_profile": str(getattr(model, "route_profile", "injected") if injected_model else getattr(model, "route_profile", "")),
+                "model_fallback_used": bool(getattr(model, "model_fallback_used", False)),
+                "model_enabled": model is not None,
+            }
+        for role in ["identity", "statement", "peer", "valuation", "risk", "critic", "gap_resolver"]:
+            usage[role] = {
+                "model_name": "",
+                "route_profile": "rule_only",
+                "model_fallback_used": False,
+                "model_enabled": False,
+            }
+        return usage
+
+    def _runtime_execution_summary(self) -> Dict[str, Any]:
+        executed_keys: List[str] = []
+        for item in self.trace:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("agent_key") or "")
+            if not key:
+                key = self.agent_name_to_key.get(str(item.get("agent") or ""), "")
+            if key and key not in executed_keys:
+                executed_keys.append(key)
+        model_usage = {key: self.model_usage_by_agent.get(key, {}) for key in executed_keys}
+        fallback_used = any(
+            bool((self.model_usage_by_agent.get(key, {}) or {}).get("model_fallback_used", False))
+            for key in executed_keys
+        )
+        return {
+            "registered_agent_count": len(self.agents),
+            "executed_agent_count": len(executed_keys),
+            "executed_agents": executed_keys,
+            "model_usage_by_agent": model_usage,
+            "model_fallback_used": fallback_used,
+        }
 
     def _run_static(
         self,
@@ -663,8 +750,9 @@ class MultiAgentOrchestrator:
             "research_topic": research_topic,
             "symbol": symbol,
             "period": period,
-            "model": self.model.model_name,
+            "model": getattr(self.model, "model_name", ""),
             "execution_mode": "static",
+            "execution_tier": self.execution_tier,
             "agent_count": len(self.agents),
             "trace_count": len(self.trace),
             "evidence_count": len(evidence_records) if isinstance(evidence_records, list) else 0,
@@ -697,6 +785,7 @@ class MultiAgentOrchestrator:
             "skill_count": len(self.skill_registry.names()),
             "total_duration_sec": round(time.perf_counter() - run_started_at, 3),
         }
+        summary.update(self._runtime_execution_summary())
         if self.memory_config.enabled:
             durable_memory_artifacts = self.durable_memory.persist_run(
                 state={
@@ -1031,8 +1120,9 @@ class MultiAgentOrchestrator:
             "research_topic": research_topic,
             "symbol": symbol,
             "period": period,
-            "model": self.model.model_name,
+            "model": getattr(self.model, "model_name", ""),
             "execution_mode": "diagnostic_full" if diagnostic_full else "collaborative" if collaborative else "dynamic",
+            "execution_tier": self.execution_tier,
             "performance_profile": "fast" if fast else "default",
             "agent_count": len(self.agents),
             "planned_task_count": len(tasks),
@@ -1075,6 +1165,7 @@ class MultiAgentOrchestrator:
             "skill_count": len(self.skill_registry.names()),
             "total_duration_sec": round(time.perf_counter() - run_started_at, 3),
         }
+        summary.update(self._runtime_execution_summary())
         durable_memory_artifacts: Dict[str, str] = {}
         if self.memory_config.enabled:
             durable_memory_artifacts = self.durable_memory.persist_run(
@@ -1304,6 +1395,7 @@ class MultiAgentOrchestrator:
         self.trace.append(
             {
                 "agent": agent.name,
+                "agent_key": agent_key,
                 "task": task.to_dict(),
                 "status": result.status.value,
                 "error": result.error,

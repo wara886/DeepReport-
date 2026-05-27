@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 from src.evaluation.report_quality import resolve_run_paths
 from src.models.model_adapter import ModelAdapter
+from src.utils.config import load_config
 
 
 REVIEW_DIMENSIONS = [
@@ -46,7 +47,7 @@ def review_report_with_llm_from_paths(
     outputs_path = Path(outputs_dir)
     reports_path = Path(reports_dir)
     artifacts = _load_review_artifacts(outputs_path, reports_path)
-    adapter = model or ModelAdapter.from_config(config_path=config_path)
+    adapter = model or _build_review_adapter(outputs_path=outputs_path, config_path=config_path)
     base = {
         "schema_version": "llm_quality_review.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -70,6 +71,25 @@ def review_report_with_llm_from_paths(
     normalized = _apply_artifact_guard(normalized, artifacts)
     normalized.update(base)
     return normalized
+
+
+def _build_review_adapter(outputs_path: Path, config_path: str) -> ModelAdapter:
+    config = load_config(config_path)
+    routes = config.get("agent_model_routes") if isinstance(config, dict) else {}
+    defaults = routes.get("defaults", {}) if isinstance(routes, dict) and isinstance(routes.get("defaults"), dict) else {}
+    summary = _read_json(outputs_path / "run_summary.json", default={})
+    tier = str(summary.get("execution_tier") or "delivery").lower() if isinstance(summary, dict) else "delivery"
+    role_route = routes.get("llm_report_review") if isinstance(routes, dict) else None
+    if isinstance(role_route, dict):
+        profile = str(role_route.get(tier) or role_route.get("delivery") or defaults.get(tier) or defaults.get("delivery") or "flash")
+    elif isinstance(role_route, str):
+        profile = role_route
+    else:
+        profile = str(defaults.get(tier) or defaults.get("delivery") or "flash")
+    try:
+        return ModelAdapter.from_profile(profile=profile, config_path=config_path, fallback_section="agent_model")
+    except Exception:
+        return ModelAdapter.from_config(config_path=config_path)
 
 
 def write_llm_review_outputs(run_dir: str | Path, review: Dict[str, Any] | None = None) -> Dict[str, str]:

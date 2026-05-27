@@ -59,6 +59,8 @@ class ModelAdapter:
         self.max_tokens = int(max_tokens)
         self.temperature = float(temperature)
         self.extra_body = dict(extra_body or {})
+        self.route_profile = ""
+        self.model_fallback_used = False
 
     @classmethod
     def from_config(
@@ -77,6 +79,38 @@ class ModelAdapter:
         if not isinstance(section_config, dict):
             raise KeyError(f"Model config section not found: {section}")
 
+        return cls._build_from_section_config(section_config)
+
+    @classmethod
+    def from_profile(
+        cls,
+        profile: str,
+        config_path: str | Path = "configs/model_backends.yaml",
+        fallback_section: str = "agent_model",
+        env_path: str | Path | None = None,
+    ) -> "ModelAdapter":
+        """Build an adapter from ``model_profiles.<profile>`` with fallback."""
+
+        config_path = Path(config_path)
+        load_env_files(config_path=config_path, env_path=env_path)
+        config = load_config(config_path)
+        profiles = config.get("model_profiles")
+        profile_config = profiles.get(profile) if isinstance(profiles, dict) else None
+        fallback_used = False
+        if not isinstance(profile_config, dict):
+            fallback_used = True
+            section_config = config.get(fallback_section)
+            if not isinstance(section_config, dict):
+                raise KeyError(f"Model config fallback section not found: {fallback_section}")
+        else:
+            section_config = profile_config
+        adapter = cls._build_from_section_config(section_config)
+        adapter.route_profile = profile
+        adapter.model_fallback_used = fallback_used
+        return adapter
+
+    @classmethod
+    def _build_from_section_config(cls, section_config: Dict[str, Any]) -> "ModelAdapter":
         return cls(
             provider=str(section_config.get("provider", "openai_compatible")),
             model_name=str(resolve_config_value(section_config, "model_name", "deepseek-v4-flash")),

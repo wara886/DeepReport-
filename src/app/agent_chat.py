@@ -13,11 +13,12 @@ import json
 import math
 from pathlib import Path
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from src.models.model_adapter import ModelAdapter
 from src.app.chat_task_parser import latest_completed_period, parse_chat_task
 from src.retrieval.chroma_index import cosine_similarity, embed_texts
+from src.utils.config import load_config
 
 
 DEFAULT_MEMORY_BOUNDARY = "Memory is context only and never substitutes for evidence_id citations or verifier gates."
@@ -267,7 +268,11 @@ class AgentChatService:
         self.short_term: Dict[str, ShortTermChatMemory] = {}
         self.long_term = LongTermChatMemory(memory_root)
         self.preferences = UserPreferenceMemory(memory_root)
-        self.model = ModelAdapter.from_config(config_path=config_path)
+        try:
+            profile = _resolve_chat_profile(config_path)
+            self.model = ModelAdapter.from_profile(profile=profile, config_path=config_path, fallback_section="agent_model")
+        except Exception:
+            self.model = ModelAdapter.from_config(config_path=config_path)
 
     def handle_chat(
         self,
@@ -294,6 +299,8 @@ class AgentChatService:
         changed_preferences = self.preferences.extract_and_save(user_id, text) if memory_enabled else []
         recalled = self.long_term.recall(user_id=user_id, query=text, symbol=symbol, period=period) if memory_enabled else []
         route = self._route(text=text, allow_report_run=allow_report_run)
+        if _looks_like_quality_review_text(text):
+            route = {"mode": "quality_review", "reason": "review existing report quality artifacts"}
         trace = [
             {"stage": "think", "detail": f"route={route['mode']} reason={route['reason']}"},
             {"stage": "observe", "detail": f"short_turns={len(stm.turns)} long_recall={len(recalled)} preferences={len(changed_preferences)}"},
@@ -301,7 +308,10 @@ class AgentChatService:
 
         result_payload: Dict[str, Any] = {}
         citations: List[Dict[str, Any]] = []
-        if route["mode"] == "report_run" and orchestrator is not None:
+        if route["mode"] == "quality_review":
+            answer, result_payload, citations = self._answer_quality_review()
+            trace.append({"stage": "action", "detail": "quality_review_artifacts"})
+        elif route["mode"] == "report_run" and orchestrator is not None:
             trace.append({"stage": "action", "detail": "start_multi_agent_report_run"})
             result_payload = orchestrator.run(
                 research_topic=text,
@@ -371,6 +381,108 @@ class AgentChatService:
             return {"mode": "tool_call", "reason": "tool-like intent; v1 answers through chat unless report run is requested"}
         return {"mode": "chat", "reason": "general dialogue"}
 
+    def _answer_quality_review(self) -> Tuple[str, Dict[str, Any], List[Dict[str, Any]]]:
+        latest_dirs = self._latest_valid_run_dirs()
+        if latest_dirs is None:
+            answer = (
+                "当前没有可复盘的已完成报告。"
+                "请先完成一次报告生成，再让我读取质量门禁与引用结果。"
+            )
+            return answer, {"status": "empty"}, []
+
+        output_dir, report_dir = latest_dirs
+        summary = _read_json(output_dir / "run_summary.json") or {}
+        quality_report = _read_json(output_dir / "quality_report.json") or {}
+        delivery_gate = _read_json(output_dir / "delivery_gate.json") or {}
+        verification_report = _read_json(output_dir / "verification_report.json") or {}
+        claims = _read_json(output_dir / "claims.json") or []
+        citations = _read_json(output_dir / "citations.json") or []
+
+        blockers: List[str] = []
+        for issue in delivery_gate.get("issues", []) if isinstance(delivery_gate, dict) else []:
+            if not isinstance(issue, dict):
+                continue
+            severity = str(issue.get("severity") or "").lower()
+            if severity in {"fatal", "blocker"}:
+                message = str(issue.get("message") or "").strip()
+                if message:
+                    blockers.append(message)
+        evidence_gaps = verification_report.get("evidence_gaps", []) if isinstance(verification_report, dict) else []
+        claim_citation_gaps = 0
+        if isinstance(claims, list):
+            claim_citation_gaps = sum(
+                1
+                for item in claims
+                if isinstance(item, dict)
+                and not list(item.get("evidence_ids") or [])
+            )
+
+        status = "通过" if delivery_gate.get("delivery_pass") is True else "未通过"
+        lines = [
+            f"最近有效报告：{summary.get('symbol', '')} {summary.get('period', '')}",
+            f"交付门禁：{status}",
+            f"客观质量分：{quality_report.get('total_score', 'N/A')}",
+            f"Verifier通过：{verification_report.get('passed', False)}",
+            f"缺证据claim数：{len(evidence_gaps) if isinstance(evidence_gaps, list) else 0}",
+            f"缺引用claim数：{claim_citation_gaps}",
+        ]
+        if blockers:
+            lines.append("阻塞问题：" + " | ".join(blockers[:3]))
+        if delivery_gate.get("delivery_pass") is not True:
+            lines.append("建议：先修复 blocker/fatal，再重跑 delivery gate。")
+        lines.append("边界说明：以上判断仅基于最近报告 artifacts，不引入新外部事实。")
+        answer = "\n".join(lines)
+        payload = {
+            "status": "ok",
+            "output_dir": str(output_dir),
+            "report_dir": str(report_dir),
+            "summary": summary if isinstance(summary, dict) else {},
+            "quality_report": quality_report if isinstance(quality_report, dict) else {},
+            "delivery_gate": delivery_gate if isinstance(delivery_gate, dict) else {},
+            "verification_report": verification_report if isinstance(verification_report, dict) else {},
+            "claim_count": len(claims) if isinstance(claims, list) else 0,
+            "citation_count": len(citations) if isinstance(citations, list) else 0,
+        }
+        return answer, payload, citations if isinstance(citations, list) else []
+
+    def _latest_valid_run_dirs(self) -> Tuple[Path, Path] | None:
+        pointer = _read_json(self.output_root / "latest_run.json") or {}
+        if isinstance(pointer, dict):
+            output_dir = Path(str(pointer.get("output_dir") or ""))
+            report_dir = Path(str(pointer.get("report_dir") or ""))
+            if self._is_valid_run_dir(output_dir, report_dir):
+                return output_dir, report_dir
+
+        output_runs = self.output_root / "runs"
+        report_runs = self.report_root / "runs"
+        if not output_runs.exists() or not report_runs.exists():
+            return None
+        candidates: List[Tuple[str, float, Path, Path]] = []
+        for run_dir in output_runs.iterdir():
+            output_dir = run_dir / "outputs"
+            report_dir = report_runs / run_dir.name / "reports"
+            if not self._is_valid_run_dir(output_dir, report_dir):
+                continue
+            try:
+                key_match = re.match(r"(\d{8}_\d{6})", run_dir.name)
+                time_key = key_match.group(1) if key_match else ""
+                mtime = max(output_dir.stat().st_mtime, report_dir.stat().st_mtime)
+                candidates.append((time_key, mtime, output_dir, report_dir))
+            except OSError:
+                continue
+        if not candidates:
+            return None
+        _key, _mtime, output_dir, report_dir = max(candidates, key=lambda item: (item[0], item[1]))
+        return output_dir, report_dir
+
+    @staticmethod
+    def _is_valid_run_dir(output_dir: Path, report_dir: Path) -> bool:
+        if not output_dir.exists() or not report_dir.exists():
+            return False
+        if not (output_dir / "run_summary.json").exists():
+            return False
+        return any((report_dir / name).exists() for name in ("report.md", "report.html", "report.json"))
+
     def _answer(
         self,
         text: str,
@@ -400,6 +512,34 @@ class AgentChatService:
         if route["mode"] == "rag":
             context_hint = " 当前没有可用模型响应，已保留你的检索意图；正式报告事实仍需 evidence_id 支撑。"
         return f"已收到：{text[:180]}。{context_hint}".strip()
+
+
+def _resolve_chat_profile(config_path: str) -> str:
+    config = load_config(config_path)
+    routes = config.get("agent_model_routes") if isinstance(config, dict) else {}
+    defaults = routes.get("defaults", {}) if isinstance(routes, dict) and isinstance(routes.get("defaults"), dict) else {}
+    chat_route = routes.get("chat") if isinstance(routes, dict) else None
+    if isinstance(chat_route, dict):
+        return str(chat_route.get("delivery") or chat_route.get("preview") or defaults.get("delivery") or "flash")
+    if isinstance(chat_route, str):
+        return chat_route
+    return str(defaults.get("delivery") or "flash")
+
+
+def _looks_like_quality_review_text(text: str) -> bool:
+    lowered = str(text or "").lower()
+    terms = [
+        "检查最近报告",
+        "复盘最近报告",
+        "质量问题",
+        "引用是否完整",
+        "delivery gate",
+        "quality review",
+        "quality gate",
+        "verification report",
+        "citation gap",
+    ]
+    return any(term in lowered for term in terms)
 
 
 def _extract_preferences(text: str) -> List[Dict[str, Any]]:
