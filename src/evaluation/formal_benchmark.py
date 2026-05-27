@@ -128,7 +128,7 @@ def run_formal_benchmark(
     validation = validate_frozen_snapshot(snapshot, require_complete=True)
     if not validation.get("valid"):
         raise ValueError("formal benchmark cannot run: " + "; ".join(validation.get("validation_issues", [])))
-    out = Path(output_root or benchmark.get("output_root") or "eval_outputs/benchmark_formal18_fy2024_v1")
+    out = Path(output_root or benchmark.get("output_root") or "bench/formal18_fy24")
     out.mkdir(parents=True, exist_ok=True)
     (out / "snapshot_validation.json").write_text(json.dumps(validation, ensure_ascii=False, indent=2), encoding="utf-8")
     runtime_model = model or ModelAdapter.from_config(str(benchmark.get("model_config_path") or "configs/model_backends.yaml"))

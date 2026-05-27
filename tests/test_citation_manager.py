@@ -55,3 +55,43 @@ def test_build_citation_artifacts_appends_references_once():
     assert "[ev_fin] Financials" in artifacts["markdown"]
     assert "<h2>参考来源</h2>" in artifacts["html"]
     assert artifacts["citations"][0]["claim_ids"] == ["cl_0001"]
+
+
+def test_build_citations_preserves_pdf_page_locator():
+    citations = build_citations(
+        evidence_records=[
+            {
+                "evidence_id": "pdf_table_1",
+                "title": "Annual report income statement",
+                "source_url": "https://example.com/annual.pdf",
+                "source_type": "pdf_statement_table",
+                "metadata": {
+                    "page": 42,
+                    "table_id": "income_p42",
+                    "extraction_method": "pdfplumber",
+                },
+            }
+        ],
+        claims=[{"claim_id": "cl_fin", "evidence_ids": ["pdf_table_1"]}],
+        markdown="Revenue was reported. [pdf_table_1]",
+    )
+
+    assert citations[0]["page"] == 42
+    assert citations[0]["source_document_id"] == "income_p42"
+    assert citations[0]["extraction_method"] == "pdfplumber"
+
+
+def test_build_citations_accepts_pdf_page_number_locator():
+    citations = build_citations(
+        evidence_records=[
+            {
+                "evidence_id": "pdf_governance",
+                "source_type": "pdf_section",
+                "metadata": {"page_number": 18},
+            }
+        ],
+        claims=[{"claim_id": "cl_governance", "evidence_ids": ["pdf_governance"]}],
+        markdown="Board disclosure. [pdf_governance]",
+    )
+
+    assert citations[0]["page"] == 18

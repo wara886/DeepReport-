@@ -14,17 +14,10 @@ build/
 artifacts/
 reports/
 
-# Runtime/evaluation outputs are local unless explicitly published evidence.
-eval_outputs/*
-!eval_outputs/benchmark_formal18_fy2024_v1/
-eval_outputs/benchmark_formal18_fy2024_v1/*
-!eval_outputs/benchmark_formal18_fy2024_v1/formal_benchmark_report.md
-!eval_outputs/benchmark_formal18_fy2024_v1/formal_failures.csv
-!eval_outputs/benchmark_formal18_fy2024_v1/formal_results_by_market.csv
-!eval_outputs/benchmark_formal18_fy2024_v1/formal_results_overall.csv
-!eval_outputs/benchmark_formal18_fy2024_v1/formal_runs.jsonl
-!eval_outputs/benchmark_formal18_fy2024_v1/formal_secondary_metrics.csv
-!eval_outputs/benchmark_formal18_fy2024_v1/snapshot_validation.json
+# Runtime evaluation runs stay local; curated benchmark summaries live in bench/.
+eval_outputs/
+bench/**/runs/
+bench/**/formal_runs_checkpoint.jsonl
 
 memory/
 references/*_ref/
@@ -37,6 +30,7 @@ data/evaluation/**/runs/
 data/curated_real/
 data/features_real/
 data/benchmark_sources/
+data/evidence_archive/
 
 *.zip
 *.tgz

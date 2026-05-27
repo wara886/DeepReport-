@@ -74,6 +74,7 @@ class Verifier:
         )
         _check_evidence_support(claims=claims, evidence_records=evidence_records, markdown=markdown, errors=errors, warnings=warnings)
         _check_primary_source_support(claims=claims, evidence_records=evidence_records, errors=errors, warnings=warnings)
+        _check_pdf_page_support(claims=claims, evidence_records=evidence_records, errors=errors)
         _check_chart_support(claims=claims, evidence_records=evidence_records, charts=charts, warnings=warnings)
         multimodal_consistency = audit_multimodal_consistency(
             charts=charts,
@@ -247,6 +248,33 @@ def _check_primary_source_support(
             warnings.append(
                 f"Claim {claim.claim_id} mixes primary evidence with lower-authority sources; keep the primary source as the controlling citation."
             )
+
+
+def _check_pdf_page_support(
+    claims: List[ClaimItem],
+    evidence_records: List[Dict[str, Any]],
+    errors: List[str],
+) -> None:
+    evidence_by_id = {
+        str(item.get("evidence_id") or item.get("sample_id") or ""): item
+        for item in evidence_records
+        if isinstance(item, dict)
+    }
+    for claim in claims:
+        if not _requires_pdf_page_support(claim):
+            continue
+        for evidence_id in claim.evidence_ids:
+            record = evidence_by_id.get(str(evidence_id), {})
+            if str(record.get("source_type") or "").lower() not in {"pdf_section", "pdf_statement_table"}:
+                continue
+            metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+            page = metadata.get("page") or metadata.get("page_number") or record.get("page") or record.get("page_number")
+            if page in (None, ""):
+                errors.append(f"Claim {claim.claim_id} relies on official PDF evidence without a page anchor: {evidence_id}")
+
+
+def _requires_pdf_page_support(claim: ClaimItem) -> bool:
+    return _requires_primary_financial_source(claim) or claim.section_name in {"ownership_governance", "strategy_business"}
 
 
 def _requires_primary_financial_source(claim: ClaimItem) -> bool:

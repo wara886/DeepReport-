@@ -30,8 +30,8 @@ def build_citations(
     citations = []
     for index, evidence_id in enumerate(ordered_ids, start=1):
         item = evidence_by_id.get(evidence_id, {})
-        citations.append(
-            {
+        metadata = item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {}
+        citation = {
                 "citation_id": f"ref_{index:03d}",
                 "evidence_id": evidence_id,
                 "title": str(item.get("title") or evidence_id),
@@ -45,7 +45,16 @@ def build_citations(
                 "used_in_report": f"[{evidence_id}]" in markdown or evidence_id in markdown,
                 "content_preview": str(item.get("content") or item.get("snippet") or "")[:240],
             }
-        )
+        page = metadata.get("page") or metadata.get("page_number") or item.get("page") or item.get("page_number")
+        document_id = metadata.get("source_evidence_id") or metadata.get("section_id") or metadata.get("table_id")
+        extraction_method = metadata.get("extraction_method")
+        if page not in (None, ""):
+            citation["page"] = page
+        if document_id:
+            citation["source_document_id"] = str(document_id)
+        if extraction_method:
+            citation["extraction_method"] = str(extraction_method)
+        citations.append(citation)
     return citations
 
 

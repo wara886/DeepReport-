@@ -37,6 +37,7 @@ from src.agents.research_blackboard import (
 )
 from src.agents.verifier_agent import VerifierAgent
 from src.data.company_universe import resolve_company_identifier, resolve_company_identifier_with_diagnostics
+from src.data.official_evidence_archive import archive_official_evidence_manifest, build_official_evidence_artifacts
 from src.data.pdf_artifacts import build_pdf_artifacts
 from src.evaluation.company_report_scorecard import build_company_report_scorecard
 from src.evaluation.multimodal_consistency import audit_multimodal_consistency
@@ -547,6 +548,20 @@ class MultiAgentOrchestrator:
             analysis_artifacts.get("valuation_sensitivity", {}) if isinstance(analysis_artifacts, dict) else {},
         )
         tables = analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else []
+        official_artifacts = build_official_evidence_artifacts(
+            evidence_records if isinstance(evidence_records, list) else [],
+            symbol=symbol,
+            period=period,
+            tables=tables,
+        )
+        archive_path = ""
+        if enable_remote_data:
+            archive_path = archive_official_evidence_manifest(
+                official_artifacts["official_evidence_manifest"],
+                source_records=evidence_records if isinstance(evidence_records, list) else [],
+            )
+        official_manifest_path = self._write_json("official_evidence_manifest.json", official_artifacts["official_evidence_manifest"])
+        evidence_coverage_path = self._write_json("evidence_coverage.json", official_artifacts["evidence_coverage"])
         critic_result = self._execute(
             "critic",
             AgentTask(
@@ -765,6 +780,8 @@ class MultiAgentOrchestrator:
             "verification_passed": bool(verification_report.get("passed", False)),
             "evidence_gap_count": len(verification_report.get("evidence_gaps", [])) if isinstance(verification_report, dict) else 0,
             "company_report_overall_score": scorecard["overall_score"],
+            "evidence_coverage": official_artifacts["evidence_coverage"],
+            "official_evidence_archive_path": archive_path,
             "entity_resolution": entity_resolution,
             "research_blackboard": {
                 "pre_write_critic_passed": bool(
@@ -812,6 +829,8 @@ class MultiAgentOrchestrator:
             "rejected_metrics": str(rejected_metrics_path),
             "claim_rejection_report": str(claim_rejection_path),
             "tables": str(tables_path),
+            "official_evidence_manifest": str(official_manifest_path),
+            "evidence_coverage": str(evidence_coverage_path),
             "valuation_model": str(valuation_model_path),
             "valuation_assumptions": str(valuation_assumptions_path),
             "valuation_sensitivity": str(valuation_sensitivity_path),
@@ -1047,6 +1066,21 @@ class MultiAgentOrchestrator:
             "valuation_sensitivity.json",
             analysis_artifacts.get("valuation_sensitivity", {}) if isinstance(analysis_artifacts, dict) else {},
         )
+        official_artifacts = build_official_evidence_artifacts(
+            evidence_records if isinstance(evidence_records, list) else [],
+            symbol=symbol,
+            period=period,
+            tables=analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
+            pdf_manifest=pdf_artifacts.get("pdf_manifest", []),
+        )
+        archive_path = ""
+        if enable_remote_data:
+            archive_path = archive_official_evidence_manifest(
+                official_artifacts["official_evidence_manifest"],
+                source_records=evidence_records if isinstance(evidence_records, list) else [],
+            )
+        official_manifest_path = self._write_json("official_evidence_manifest.json", official_artifacts["official_evidence_manifest"])
+        evidence_coverage_path = self._write_json("evidence_coverage.json", official_artifacts["evidence_coverage"])
         self._write_json("citations.json", state.get("citations", []))
         self._write_json("charts.json", state.get("charts", []))
         chart_consistency = audit_chart_consistency(
@@ -1133,6 +1167,8 @@ class MultiAgentOrchestrator:
             "citation_count": len(state.get("citations", [])) if isinstance(state.get("citations"), list) else 0,
             "chart_count": len(state.get("charts", [])) if isinstance(state.get("charts"), list) else 0,
             "pdf_artifact_meta": pdf_artifacts.get("meta", {}),
+            "evidence_coverage": official_artifacts["evidence_coverage"],
+            "official_evidence_archive_path": archive_path,
             "multimodal_consistency_passed": bool(multimodal_consistency.get("passed", False)),
             "mcp_tool_count": len(self.mcp_manager.list_tools()),
             "search_engines": state.get("search_meta", {}).get("engines", []),
@@ -1190,6 +1226,8 @@ class MultiAgentOrchestrator:
             "claim_rejection_report": str(claim_rejection_path),
             "pdf_manifest": str(pdf_manifest_path),
             "pdf_sections": str(pdf_sections_path),
+            "official_evidence_manifest": str(official_manifest_path),
+            "evidence_coverage": str(evidence_coverage_path),
             "company_profile_extracted": str(company_profile_extracted_path),
             "tables": str(tables_path),
             "valuation_model": str(valuation_model_path),

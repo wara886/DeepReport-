@@ -1,0 +1,25 @@
+services:
+  finsight:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/wara886/deepreport-plus:latest
+    container_name: finsight-deepreport
+    env_file:
+      - .env
+    environment:
+      PORT: "7860"
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./data/outputs:/app/data/outputs
+      - ./data/reports:/app/data/reports
+      - ./data/evidence_archive:/app/data/evidence_archive
+      - ./memory:/app/memory
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped

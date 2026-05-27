@@ -2,7 +2,7 @@ import json
 
 from src.data.independent_sources import SourcePayload
 from src.evaluation.formal_evidence_staging import _normalize_publish_time, stage_formal_evidence
-from src.search.search_manager import _announcement_date_range, _filter_period_announcement_hits, _target_report_date
+from src.search.search_manager import _announcement_date_range, _filter_period_announcement_hits, _select_financial_row_for_period, _target_report_date
 
 
 def test_fy2024_period_routes_use_requested_year():
@@ -17,6 +17,11 @@ def test_fy2024_period_routes_use_requested_year():
     )
     assert filtered == [{"title": "贵州茅台2024年年度报告"}]
     assert _normalize_publish_time("1743609600000", timezone_offset_hours=8) == "2025-04-03"
+
+
+def test_annual_evidence_selection_does_not_fallback_to_another_period():
+    assert _filter_period_announcement_hits([{"title": "Company 2023 Annual Report"}], "FY2024") == []
+    assert _select_financial_row_for_period([{"REPORT_DATE": "2025-12-31", "TOTAL_ASSETS": 1}], "FY2024") == {}
 
 
 def test_staging_writes_strict_us_and_cn_evidence_but_blocks_hk(monkeypatch, tmp_path):

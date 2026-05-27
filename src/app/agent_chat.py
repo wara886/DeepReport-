@@ -395,6 +395,8 @@ class AgentChatService:
         quality_report = _read_json(output_dir / "quality_report.json") or {}
         delivery_gate = _read_json(output_dir / "delivery_gate.json") or {}
         verification_report = _read_json(output_dir / "verification_report.json") or {}
+        evidence_coverage = _read_json(output_dir / "evidence_coverage.json") or {}
+        official_manifest = _read_json(output_dir / "official_evidence_manifest.json") or {}
         claims = _read_json(output_dir / "claims.json") or []
         citations = _read_json(output_dir / "citations.json") or []
 
@@ -431,6 +433,13 @@ class AgentChatService:
         if delivery_gate.get("delivery_pass") is not True:
             lines.append("建议：先修复 blocker/fatal，再重跑 delivery gate。")
         lines.append("边界说明：以上判断仅基于最近报告 artifacts，不引入新外部事实。")
+        if evidence_coverage:
+            lines.append(
+                "Official evidence coverage: "
+                f"{evidence_coverage.get('coverage_status', 'unknown')}; "
+                f"three_statements={evidence_coverage.get('has_three_statements', False)}; "
+                f"pdf_page_anchors={evidence_coverage.get('pdf_page_anchor_count', 0)}"
+            )
         answer = "\n".join(lines)
         payload = {
             "status": "ok",
@@ -440,6 +449,8 @@ class AgentChatService:
             "quality_report": quality_report if isinstance(quality_report, dict) else {},
             "delivery_gate": delivery_gate if isinstance(delivery_gate, dict) else {},
             "verification_report": verification_report if isinstance(verification_report, dict) else {},
+            "evidence_coverage": evidence_coverage if isinstance(evidence_coverage, dict) else {},
+            "official_evidence_manifest": official_manifest if isinstance(official_manifest, dict) else {},
             "claim_count": len(claims) if isinstance(claims, list) else 0,
             "citation_count": len(citations) if isinstance(citations, list) else 0,
         }

@@ -138,11 +138,11 @@ python scripts/run_formal_benchmark.py --config configs/benchmark_formal18_fy202
 ## Result Artifacts
 
 - `data/benchmarks/frozen_fy2024_v1/snapshot_manifest.json`: versioned input inventory and hashes.
-- `eval_outputs/benchmark_formal18_fy2024_v1/formal_benchmark_report.md`: readable formal result and failure summary.
-- `eval_outputs/benchmark_formal18_fy2024_v1/formal_results_overall.csv`: primary comparison table.
-- `eval_outputs/benchmark_formal18_fy2024_v1/formal_results_by_market.csv`: market breakdown.
-- `eval_outputs/benchmark_formal18_fy2024_v1/formal_secondary_metrics.csv`: run and claim-level diagnostics.
-- `eval_outputs/benchmark_formal18_fy2024_v1/formal_failures.csv`: failure taxonomy detail.
+- `bench/formal18_fy24/formal_benchmark_report.md`: readable formal result and failure summary.
+- `bench/formal18_fy24/formal_results_overall.csv`: primary comparison table.
+- `bench/formal18_fy24/formal_results_by_market.csv`: market breakdown.
+- `bench/formal18_fy24/formal_secondary_metrics.csv`: run and claim-level diagnostics.
+- `bench/formal18_fy24/formal_failures.csv`: failure taxonomy detail.
 
 ## Reporting Boundary
 

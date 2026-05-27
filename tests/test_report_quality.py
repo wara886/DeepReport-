@@ -1,6 +1,6 @@
 import json
 
-from src.evaluation.report_quality import evaluate_report_quality, write_quality_outputs
+from src.evaluation.report_quality import _check_delivery_policy, evaluate_report_quality, write_quality_outputs
 
 
 def test_quality_evaluator_passes_complete_company_report(tmp_path):
@@ -71,6 +71,25 @@ def test_quality_evaluator_detects_empty_sections_scientific_notation_and_missin
     assert "缺少资产负债表摘要" in messages
     assert "valuation_or_reason" in messages
     assert report["issue_counts"]["fatal"] >= 1
+
+
+def test_quality_policy_blocks_ah_formal_delivery_when_official_evidence_is_incomplete():
+    issues = []
+    _check_delivery_policy(
+        {
+            "summary": {"symbol": "0700.HK", "entity_resolution": {"resolved_symbol": "0700.HK", "confidence": 0.9}},
+            "search_meta": {},
+            "report_md": "risk valuation source gap",
+            "report_html": "",
+            "evidence_coverage": {
+                "degrade_required": True,
+                "missing_requirements": ["period_matched_official_filing", "cash_flow_statement"],
+            },
+        },
+        issues,
+    )
+
+    assert any(issue["category"] == "official_evidence" and issue["severity"] == "blocker" for issue in issues)
 
 
 def test_quality_evaluator_reads_nested_statement_rows_and_cashflow_gap(tmp_path):

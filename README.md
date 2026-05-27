@@ -1,21 +1,103 @@
-# FinSight：多智能体金融研报生成与质量评估系统
+<div align="center">
 
-FinSight 是一个面向公司与个股研报生成的证据驱动 Multi-Agent 系统。系统将资料检索、证据规范化、财务分析、估值建模、报告写作、引用校验和缺口修复拆成可观测阶段，输出 Markdown / HTML / JSON 报告，并保留 evidence、claim、citation、valuation、verification 与 trace 产物。
+# FinSight / DeepReport++
 
-*A reproducible Multi-Agent RAG system for financial research report generation, citation verification, valuation consistency, and benchmark-driven quality gates.*
+**Evidence-driven multi-agent company research reports**
 
-## Highlights
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-service-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 
-- Multi-Agent 研报生成链路：Planner、Retriever、Analyzer、Writer、Verifier 与 Repair 协同工作。
-- Evidence / Claim / Citation 可追溯中间产物，关键数值保留来源与审计路径。
-- Formal-18 冻结评测 Harness，固定输入上比较三种生成方案。
-- 9 个金融工具的 MCP-style tools boundary，支持本地发现与调用。
-- Skill Registry 与 Planner / Router 集成，能力提示和实际工具执行分离。
-- 默认关闭的 Durable Memory，上下文与事实证据严格隔离。
+</div>
 
-## Formal-18 Frozen Benchmark
+FinSight generates auditable company and stock research reports in Markdown, HTML, and JSON. The project adopts the concise deployable layout of [DeepReport](https://github.com/wisdom-pan/DeepReport), while its official-source evidence contracts, financial quality gates, and benchmark workflow are independently implemented.
 
-Formal-18 使用 `formal18_fy2024_v1` 冻结证据快照，覆盖 US、HK、CN-A 各 6 个 FY2024 case。`18/18` case 就绪并通过 SHA-256 校验，三种方案共 `54/54` 个评测单元完成。
+## Features
+
+- Claim-first report generation with traceable `evidence.json`, `claims.json`, and `citations.json`.
+- Market-aware official-source routing for SEC, CNINFO/SSE/SZSE, and HKEX disclosure research.
+- Three-statement normalization and PDF page-anchored citations for document-backed financial claims.
+- Objective quality evaluation, LLM review, delivery gate, and chat-based quality review.
+- Formal-18 frozen benchmark covering US, HK, and CN-A FY2024 cases.
+- FastAPI service and Docker deployment without replacing the existing local workbench logic.
+
+## Quick Start
+
+### Docker
+
+Create `.env` from `.env.example` and configure the model/search credentials required by the report mode you intend to run. Secrets stay local and are not included in images.
+
+```bash
+git clone https://github.com/wara886/DeepReport-.git
+cd DeepReport-
+cp .env.example .env
+./start.sh
+```
+
+Open `http://localhost:7860`. Generated reports and evidence archives are persisted in `data/reports/`, `data/outputs/`, and `data/evidence_archive/`.
+
+To run the published image after the GitHub workflow has produced it:
+
+```bash
+docker run --env-file .env -p 7860:7860 \
+  -v ./data/outputs:/app/data/outputs \
+  -v ./data/reports:/app/data/reports \
+  -v ./data/evidence_archive:/app/data/evidence_archive \
+  ghcr.io/wara886/deepreport-plus:latest
+```
+
+Windows PowerShell can use `.\start.ps1` and `.\stop.ps1`; direct Compose remains available through `docker compose up --build -d`.
+
+### Local
+
+```powershell
+python -m venv .venv
+pip install -e ".[pdf]"
+python main.py
+```
+
+The existing development workbench remains available on its original entrypoint:
+
+```powershell
+python scripts/run_financial_agent_ui.py --host 127.0.0.1 --port 8787
+```
+
+Generate a local report or run tests:
+
+```powershell
+python scripts/run_multi_agent_demo.py --symbol AAPL --period FY2024 --execution-mode dynamic --fast
+python -m pytest -q
+```
+
+## Report Quality Flow
+
+```mermaid
+flowchart LR
+    A[Company / Fiscal Period] --> B[Official Source Routing]
+    B --> C[Evidence Archive + PDF Extraction]
+    C --> D[Three-Statement Metrics + Claim Table]
+    D --> E[Writer + Page Citations + Charts]
+    E --> F[Verifier + Quality Gate]
+    F -->|Pass| G[Markdown / HTML / JSON]
+    F -->|Missing Official Evidence| H[Degraded Report / Repair]
+```
+
+For A-share and Hong Kong reports, formal delivery now records official evidence coverage, statement completeness, and PDF page anchors. If period-matched official evidence is missing, the system marks the report for degradation instead of silently substituting newer data.
+
+## Key Artifacts
+
+| Artifact | Purpose |
+| --- | --- |
+| `evidence.json`, `claims.json`, `citations.json` | Source-to-conclusion audit chain |
+| `official_evidence_manifest.json`, `evidence_coverage.json` | Official-source inventory and sufficiency policy |
+| `financial_metrics.json`, `tables.json` | Three-statement normalization and metric lineage |
+| `pdf_manifest.json`, `pdf_sections.json` | Download/extraction status and page-located PDF evidence |
+| `verification_report.json`, `quality_report.json`, `delivery_gate.json` | Delivery readiness and blockers |
+| `report.md`, `report.html`, `report.json` | Final deliverables |
+
+## Benchmark
+
+Formal-18 uses the frozen `formal18_fy2024_v1` evidence snapshot: 18 FY2024 cases across US, HK, and CN-A markets, with 54 evaluated generation units.
 
 | Variant | Delivery Pass Rate | Objective Quality Score | Traceable Claim Rate v1 |
 | --- | ---: | ---: | ---: |
@@ -23,84 +105,38 @@ Formal-18 使用 `formal18_fy2024_v1` 冻结证据快照，覆盖 US、HK、CN-A
 | Single-Agent RAG | 27.78% | 52.52 | 34.89% |
 | Multi-Agent RAG | 72.22% | 86.27 | 70.01% |
 
-该结果证明 Multi-Agent RAG 在这一离线冻结协议下的报告交付与关键结论可追溯性更好，不代表实时生产稳定性、投资建议准确率或线上数据覆盖能力。正式协议、快照和结果见 [formal_benchmark_protocol.md](docs/formal_benchmark_protocol.md)、[snapshot_manifest.json](data/benchmarks/frozen_fy2024_v1/snapshot_manifest.json) 与 [formal_benchmark_report.md](eval_outputs/benchmark_formal18_fy2024_v1/formal_benchmark_report.md)。
+These are results under an offline frozen-input protocol, not proof of live-source stability, universal company coverage, or investment recommendation accuracy. Published summaries are in [`bench/formal18_fy24`](bench/formal18_fy24), with protocol details in [formal_benchmark_protocol.md](docs/formal_benchmark_protocol.md), [reference mapping](docs/deepreport_skeleton_mapping.md), and [limitations.md](docs/limitations.md).
 
-## Architecture
+## Project Structure
 
-```mermaid
-flowchart LR
-    A[Company / Period] --> B[Planner]
-    B --> C[Retriever + Evidence Normalizer]
-    C --> D[Financial Analysis + Valuation]
-    D --> E[Claim Table]
-    E --> F[Writer + Charts + Citations]
-    F --> G[Verifier + Quality Gate]
-    G -->|Pass| H[Markdown / HTML / JSON]
-    G -->|Gap| I[Repair]
-    I --> C
+```text
+FinSight/
+|-- bench/                   # Published benchmark summaries
+|-- configs/                 # Models, sources, report, and gate policies
+|-- data/                    # Evidence inputs and runtime persistence
+|-- docs/                    # Architecture, audit, and protocol notes
+|-- scripts/                 # Evaluation and maintenance commands
+|-- src/                     # Agents, evidence, reports, and API service
+|-- tests/                   # Regression coverage
+|-- main.py                  # Deployable FastAPI entrypoint
+|-- Dockerfile
+|-- docker-compose.yml
+|-- start.sh / stop.sh
+`-- .github/workflows/      # GHCR image publishing
 ```
 
-系统首先生成结构化 evidence 与 claims，再组装报告并执行数值、引用、图表与交付门禁校验。更多实现说明见 [architecture.md](docs/architecture.md) 与 [evidence_claim_citation_schema.md](docs/evidence_claim_citation_schema.md)。
+## Service Surface
 
-## Quick Start
+- `GET /`: report workbench.
+- `GET /health`: deployment health check.
+- `GET /api/latest`: latest completed report and quality artifacts.
+- `POST /api/chat`: chat, confirmation, report execution, and `quality_review`.
+- `POST /api/run`: direct report execution.
+- `GET /artifacts/*`: generated reports and audit artifacts.
 
-```powershell
-python -m venv .venv
-pip install -e .
-python scripts/run_multi_agent_demo.py --symbol AAPL --period 2025Q4 --execution-mode dynamic --fast
-```
+## Boundaries
 
-启动网页工作台：
-
-```powershell
-python scripts/run_financial_agent_ui.py --host 127.0.0.1 --port 8787
-```
-
-运行核心回归测试：
-
-```powershell
-python -m pytest -q
-```
-
-运行冻结快照上的 Formal-18 协议需要配置可用生成后端；runner 只消费落盘快照，不在评测时联网补证：
-
-```powershell
-python scripts/run_formal_benchmark.py --config configs/benchmark_formal18_fy2024.yaml
-```
-
-## Key Artifacts
-
-| Artifact | Purpose |
-| --- | --- |
-| `evidence.json` | 规范化来源与证据记录 |
-| `claims.json` / `citations.json` | 可验证结论与引用绑定 |
-| `valuation_model.json` / `financial_metrics.json` | 估值和财务数值链路 |
-| `charts.json` / `chart_consistency.json` | 图表生成与一致性核验 |
-| `verification_report.json` / `task_trace.jsonl` | 质量门禁和 Agent 执行轨迹 |
-| `eval_outputs/benchmark_formal18_fy2024_v1/` | 正式冻结评测汇总证据 |
-
-## Limits And Boundaries
-
-- Formal-18 是离线冻结快照评测，不等同于线上数据源稳定性或实时覆盖证明。
-- 港股在当前正式结果中的关键结论可追溯率仍较弱，A 股仍有交付失败案例。
-- Memory 默认关闭；启用时只提供规划上下文，不作为事实来源或引用替代。
-- MCP-style 接口提供工具边界，不声称为完整生产级 MCP 平台。
-- 系统用于可复核研究报告生成与质量评估，不构成投资建议。
-
-历史 Quick-9 与 Phase 2R 诊断结果仅用于内部修复追踪，见 [ablation_and_diagnostics.md](docs/ablation_and_diagnostics.md)。
-
-## Documentation
-
-| Document | Topic |
-| --- | --- |
-| [architecture.md](docs/architecture.md) | 多智能体链路与产物流 |
-| [evidence_claim_citation_schema.md](docs/evidence_claim_citation_schema.md) | Evidence / Claim / Citation 契约 |
-| [formal_benchmark_protocol.md](docs/formal_benchmark_protocol.md) | Formal-18 冻结评测协议 |
-| [mcp_style_tools.md](docs/mcp_style_tools.md) | 工具边界与 HTTP JSON-RPC 表面 |
-| [skill_registry_design.md](docs/skill_registry_design.md) | Skill 提示与编排集成 |
-| [memory_boundary.md](docs/memory_boundary.md) | Durable memory 证据边界 |
-| [limitations.md](docs/limitations.md) | 可声明结果与限制 |
-
-## Acknowledgement
-
-本项目早期工程组织曾参考 `DeepReport` 的模块划分思路，但金融研报任务链路、证据契约、质量门禁、评测协议和 MCP-style 工具边界均围绕本项目重新实现。
+- The current product focuses on company/stock reports; industry and macro strategy reports are not yet equivalent full workflows.
+- A/H report quality depends on availability and parsability of official announcements and PDFs; failures are surfaced as evidence gaps.
+- Durable memory is context only and never replaces cited evidence.
+- The system supports research production and auditability; it does not constitute investment advice.

@@ -6,7 +6,7 @@ benchmark:
   dataset_version: formal18_fy2024_v1
   snapshot_root: data/benchmarks/frozen_fy2024_v1
   snapshot_source_root: data/benchmark_sources/fy2024
-  output_root: eval_outputs/benchmark_formal18_fy2024_v1
+  output_root: bench/formal18_fy24
   metric_scope: traceable_claim_rate_v1
   model_config_path: configs/model_backends.yaml
   required_sections:

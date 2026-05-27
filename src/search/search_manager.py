@@ -334,12 +334,15 @@ def hkex_announcement_search(
             rejected_identity_count += 1
             continue
         hits.append(apply_source_quality(row))
+    hits = _filter_period_announcement_hits(hits, period)
     meta = dict(payload.get("meta", {})) if isinstance(payload, dict) else {}
     original_mode = meta.get("mode", "tavily")
     meta["mode"] = "hkex_announcements"
     meta["via"] = original_mode
     meta["result_count"] = len(hits)
     meta["identity_rejected_count"] = rejected_identity_count
+    if _is_annual_period(period) and not hits:
+        meta["failure_reason"] = "no_period_matched_annual_announcement"
     return {"hits": hits[:topk], "meta": meta}
 
 
@@ -893,7 +896,10 @@ def eastmoney_financials_search(
         metas[table_type] = {"record_count": len(records), "report_name": report_name}
         if not records:
             continue
-        row = _select_financial_row_for_period(records, period) or (records[0] if isinstance(records[0], dict) else {})
+        row = _select_financial_row_for_period(records, period)
+        if not row:
+            metas[table_type]["failure_reason"] = "no_period_matched_row"
+            continue
         title = f"{code} Eastmoney {table_type} financial table"
         summary = _summarize_eastmoney_financial_row(table_type, row)
         digest = hashlib.sha1(f"{code}|{table_type}|{json.dumps(row, ensure_ascii=False, sort_keys=True, default=str)}".encode("utf-8")).hexdigest()[:10]
@@ -1045,7 +1051,7 @@ def _announcement_date_range(period: str | None) -> tuple[str, str]:
 
 def _cninfo_categories_for_period(period: str | None, config: Dict[str, Any]) -> List[str]:
     text = str(period or "").strip().upper()
-    if "Q4" in text or "FY" in text or "ANNUAL" in text:
+    if "FY" in text or "ANNUAL" in text:
         return ["category_ndbg_szsh"]
     configured = [str(item) for item in config.get("categories", []) if str(item).strip()]
     return configured or ["category_ndbg_szsh", "category_bndbg_szsh", "category_yjdbg_szsh", "category_sjdbg_szsh"]
@@ -1053,7 +1059,7 @@ def _cninfo_categories_for_period(period: str | None, config: Dict[str, Any]) ->
 
 def _filter_period_announcement_hits(hits: List[Dict[str, Any]], period: str | None) -> List[Dict[str, Any]]:
     text = str(period or "").strip().upper()
-    if not hits or not ("Q4" in text or "FY" in text or "ANNUAL" in text):
+    if not hits or not _is_annual_period(text):
         return hits
     year = _period_year(text)
     annual_terms = ("年度报告", "年报")
@@ -1065,7 +1071,15 @@ def _filter_period_announcement_hits(hits: List[Dict[str, Any]], period: str | N
         and not any(term in str(hit.get("title") or "") for term in exclude_terms)
         and (not year or year in str(hit.get("title") or ""))
     ]
-    return filtered or hits
+    if filtered:
+        return filtered
+    return [
+        hit
+        for hit in hits
+        if any(term in str(hit.get("title") or "").lower() for term in ("annual report", "annual results"))
+        and not any(term in str(hit.get("title") or "").lower() for term in ("interim", "quarter", "q1", "q2", "q3"))
+        and (not year or year in str(hit.get("title") or ""))
+    ]
 
 
 def _record_matches_requested_company(record: Dict[str, Any], symbol: str | None, raw_data_root: str = "data/raw/real_data") -> bool:
@@ -1145,7 +1159,12 @@ def _select_financial_row_for_period(records: List[Any], period: str | None) -> 
             report_date = str(row.get("REPORT_DATE") or row.get("REPORTDATE") or "")
             if report_date.startswith(f"{year}-12"):
                 return row
-    return candidates[0]
+    return {}
+
+
+def _is_annual_period(period: str | None) -> bool:
+    text = str(period or "").strip().upper()
+    return "FY" in text or "ANNUAL" in text
 
 
 def _cninfo_org_id(code: str, config: Dict[str, Any], timeout: float) -> str:

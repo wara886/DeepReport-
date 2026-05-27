@@ -182,6 +182,8 @@ def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
         "valuation_sensitivity": _read_json(paths.outputs_dir / "valuation_sensitivity.json", {}),
         "charts": _as_list(_read_json(paths.outputs_dir / "charts.json", [])),
         "pdf_sections": _as_list(_read_json(paths.outputs_dir / "pdf_sections.json", [])),
+        "official_evidence_manifest": _read_json(paths.outputs_dir / "official_evidence_manifest.json", {}),
+        "evidence_coverage": _read_json(paths.outputs_dir / "evidence_coverage.json", {}),
         "profile": _read_json(paths.outputs_dir / "company_profile_extracted.json", {}),
         "verification": _read_json(paths.outputs_dir / "verification_report.json", {}),
         "scorecard": _read_json(paths.outputs_dir / "company_report_scorecard.json", {}),
@@ -349,6 +351,17 @@ def _check_delivery_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any
         report_text, ("因为", "理由", "增长驱动", "竞争压力", "估值约束", "risk")
     ):
         _issue(issues, "blocker", "delivery_policy", "投资结论方向存在但缺少理由、增长驱动、竞争压力或估值约束")
+
+
+    evidence_coverage = artifacts.get("evidence_coverage", {}) if isinstance(artifacts.get("evidence_coverage"), dict) else {}
+    if evidence_coverage.get("degrade_required") is True:
+        missing = ", ".join(str(item) for item in evidence_coverage.get("missing_requirements", [])[:6])
+        _issue(
+            issues,
+            "blocker",
+            "official_evidence",
+            f"Official evidence is insufficient for formal A/H delivery; degrade strong conclusions: {missing}",
+        )
 
 
 def _check_generalization_policy(checks: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:

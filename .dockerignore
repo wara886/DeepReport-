@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+.pytest_cache
+__pycache__
+*.pyc
+.env
+build
+data/outputs
+data/reports
+data/evidence_archive
+eval_outputs
+memory
+references
