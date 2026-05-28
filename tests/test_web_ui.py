@@ -570,6 +570,9 @@ def test_render_index_html_contains_chat_first_controls():
     assert "使用公开实时数据源" in html
     assert "PDF章节" in html
     assert "质量" in html
+    assert "async_report_run: true" in html
+    assert "backgroundRunPending" in html
+    assert "if (!keepPolling) stopBusyPolling()" in html
     assert "输出：" not in html
     assert "Markdown 源文" not in html
 

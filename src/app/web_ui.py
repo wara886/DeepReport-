@@ -2387,6 +2387,7 @@ def render_index_html() -> str:
     let latest = {};
     let requestInFlight = false;
     let busyPollTimer = null;
+    let backgroundRunPending = false;
     let activeMainTab = "概览";
     let activeDevTab = "多智能体协作";
     const $ = (id) => document.getElementById(id);
@@ -2459,8 +2460,19 @@ def render_index_html() -> str:
       syncFormFromLatest(latest);
       render();
       const active = currentActiveRun(latest);
-      if (active) setStatus(`后台生成中：${active.symbol || "-"} ${active.period || ""}`);
-      else if (!silent && !requestInFlight) setStatus("就绪");
+      if (active) {
+        setStatus(`后台生成中：${active.symbol || "-"} ${active.period || ""}`);
+        return;
+      }
+      if (backgroundRunPending) {
+        backgroundRunPending = false;
+        stopBusyPolling();
+        setControlsBusy(false);
+        const gate = asObj(latest.delivery_gate);
+        setStatus(gate.delivery_pass === false ? "报告未通过质量门禁" : "完成", gate.delivery_pass === false);
+        return;
+      }
+      if (!silent && !requestInFlight) setStatus("就绪");
     }
     function syncFormFromLatest(data) {
       const active = currentActiveRun(data);
@@ -2499,6 +2511,7 @@ def render_index_html() -> str:
     async function sendChat() {
       const message = $("chatInput").value.trim();
       if (!message) return;
+      let keepPolling = false;
       appendBubble("user", message);
       $("chatInput").value = "";
       const payload = { ...payloadBase(), message, async_report_run: true };
@@ -2518,13 +2531,22 @@ def render_index_html() -> str:
         if (data.latest) { latest = data.latest; syncFormFromLatest(latest); }
         appendBubble("assistant", renderChatAnswer(data));
         render();
-        const gate = asObj(asObj(data.latest).delivery_gate);
-        setStatus(gate.delivery_pass === false ? "报告未通过质量门禁" : "就绪", gate.delivery_pass === false);
+        const result = asObj(data.result);
+        if (data.mode === "report_run" && result.status === "running") {
+          backgroundRunPending = true;
+          keepPolling = true;
+          startBusyPolling();
+          setControlsBusy(false);
+          setStatus(`后台生成中：${result.symbol || parsed.symbol || "-"} ${result.period || parsed.period || ""}`);
+        } else {
+          const gate = asObj(asObj(data.latest).delivery_gate);
+          setStatus(gate.delivery_pass === false ? "报告未通过质量门禁" : "就绪", gate.delivery_pass === false);
+        }
       } catch (err) {
         appendBubble("assistant", `对话失败：${err.message}`);
         setStatus("失败", true);
       } finally {
-        stopBusyPolling();
+        if (!keepPolling) stopBusyPolling();
         setControlsBusy(false);
         loadLatest({ silent: true });
       }
