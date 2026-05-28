@@ -1,6 +1,7 @@
 from datetime import date
 import json
 import os
+from pathlib import Path
 import threading
 from urllib import error, request
 
@@ -665,6 +666,77 @@ def test_default_realtime_engines_switch_by_symbol_market():
     assert "eastmoney_financials" in default_engines_for_symbol("600519", realtime=True)
     assert "sec_edgar" in default_engines_for_symbol("AMD", realtime=True)
     assert default_engines_for_symbol("AMD", realtime=False) == "local_real_data,yahoo_finance,tavily,local_evidence"
+
+
+def test_chat_parsed_a_share_resets_stale_hk_engines(monkeypatch, tmp_path):
+    captured = {}
+
+    class FakeOrchestrator:
+        def __init__(self, output_dir, report_dir, **kwargs):
+            self.output_dir = Path(output_dir)
+            self.report_dir = Path(report_dir)
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            self.report_dir.mkdir(parents=True, exist_ok=True)
+
+        def run(self, **kwargs):
+            captured.update(kwargs)
+            (self.output_dir / "citations.json").write_text("[]", encoding="utf-8")
+            (self.output_dir / "run_summary.json").write_text(
+                json.dumps({"verification_passed": True, "symbol": kwargs["symbol"], "period": kwargs["period"]}),
+                encoding="utf-8",
+            )
+            (self.output_dir / "verification_report.json").write_text('{"passed": true}', encoding="utf-8")
+            (self.output_dir / "task_trace.jsonl").write_text('{"agent":"fake","status":"completed"}\n', encoding="utf-8")
+            (self.report_dir / "report.md").write_text("# Fake report", encoding="utf-8")
+            return {"verification_passed": True}
+
+    def fake_quality(*args, **kwargs):
+        return {
+            "quality_report": {"objective_pass": True},
+            "llm_quality_review": {"llm_review_pass": True},
+            "delivery_gate": {"delivery_pass": True},
+        }
+
+    monkeypatch.setattr("src.app.web_ui.MultiAgentOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr("src.app.web_ui.run_delivery_quality_pipeline", fake_quality)
+    config = _write_model_config(tmp_path)
+    server, url = run_ui_server(
+        port=0,
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        config_path=str(config),
+        memory_root=str(tmp_path / "memory"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps(
+            {
+                "message": "生成贵州茅台 2025Q4 公司研报",
+                "engines": "local_real_data,hkex_announcements,yahoo_finance,tavily,serper,local_evidence",
+                "memory_enabled": False,
+                "allow_report_run": True,
+                "enable_remote_data": True,
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        req = request.Request(
+            f"{url}/api/chat",
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert body["parsed_task"]["symbol"] == "600519.SS"
+    assert "cninfo_announcements" in captured["search_engines"]
+    assert "exchange_announcements" in captured["search_engines"]
+    assert "hkex_announcements" not in captured["search_engines"]
 
 
 def test_run_api_rejects_unfinished_period(tmp_path):

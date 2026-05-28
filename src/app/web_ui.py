@@ -295,7 +295,12 @@ def create_ui_handler(
                 period = parsed_task.period
                 payload["topic"] = parsed_task.research_topic
             raw_engines = payload.get("engines")
-            if _should_reset_engines_for_parsed_task(parsed_task.should_run or parsed_task.needs_confirmation, raw_engines):
+            if _should_reset_engines_for_parsed_task(
+                parsed_task.should_run or parsed_task.needs_confirmation,
+                raw_engines,
+                symbol=symbol,
+                realtime=enable_remote_data,
+            ):
                 raw_engines = default_engines_for_symbol(symbol, enable_remote_data)
             engines = _parse_engines(raw_engines or default_engines_for_symbol(symbol, enable_remote_data))
             report_task_requested = bool(
@@ -2697,10 +2702,26 @@ def default_engines_for_symbol(symbol: str, realtime: bool = False) -> str:
     return ",".join(engines or _parse_engines(DEFAULT_ENGINES))
 
 
-def _should_reset_engines_for_parsed_task(has_parsed_task: bool, raw_engines: Any) -> bool:
+def _should_reset_engines_for_parsed_task(
+    has_parsed_task: bool,
+    raw_engines: Any,
+    *,
+    symbol: str = "",
+    realtime: bool = False,
+) -> bool:
     if not has_parsed_task:
         return False
-    return str(raw_engines or "") in {DEFAULT_ENGINES, A_SHARE_ENGINES, US_ENGINES, HK_ENGINES}
+    raw_text = str(raw_engines or "")
+    if raw_text in {DEFAULT_ENGINES, A_SHARE_ENGINES, US_ENGINES, HK_ENGINES}:
+        return True
+    if not realtime:
+        return False
+    raw_set = set(_parse_engines(raw_engines))
+    if not raw_set:
+        return True
+    identity = resolve_company_identity(symbol, default=symbol)
+    primary_sources = set(str(item) for item in identity.data_source_plan.get("primary_sources", []) if str(item))
+    return bool(primary_sources and raw_set.isdisjoint(primary_sources))
 
 
 def validate_period_for_report(raw_period: str, today: date | None = None) -> Dict[str, Any]:
