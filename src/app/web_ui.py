@@ -12,6 +12,7 @@ import mimetypes
 from pathlib import Path
 import re
 import shutil
+import threading
 from typing import Any, Dict, List
 from urllib.parse import unquote, urlparse
 
@@ -361,6 +362,7 @@ def create_ui_handler(
                 if confirmed_pending or parsed_task.should_run:
                     execution_mode = str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE)
                     execution_tier = str(payload.get("execution_tier") or "delivery")
+                    async_report_run = bool(payload.get("async_report_run", False))
                     run_paths = _create_run_dirs(output_root, report_root, symbol, period, execution_mode)
                     orchestrator = MultiAgentOrchestrator(
                         output_dir=str(run_paths["output_dir"]),
@@ -388,6 +390,66 @@ def create_ui_handler(
                         execution_mode=str(run_kwargs["execution_mode"]),
                         source="chat",
                     )
+                    def _run_report_background() -> None:
+                        try:
+                            result = orchestrator.run(**run_kwargs)
+                            quality_result = run_delivery_quality_pipeline(
+                                run_paths["output_dir"],
+                                run_paths["report_dir"],
+                                config_path,
+                                durable_memory_store=getattr(orchestrator, "durable_memory", None),
+                                memory_enabled=bool(payload.get("memory_enabled", True)),
+                            )
+                            rework_result = run_delivery_rework_loop(
+                                orchestrator=orchestrator,
+                                output_path=run_paths["output_dir"],
+                                report_path=run_paths["report_dir"],
+                                config_path=config_path,
+                                initial_quality_result=quality_result,
+                                run_kwargs=run_kwargs,
+                                durable_memory_store=getattr(orchestrator, "durable_memory", None),
+                                memory_enabled=bool(payload.get("memory_enabled", True)),
+                            )
+                            if rework_result.get("quality_result"):
+                                quality_result = rework_result["quality_result"]
+                            if rework_result.get("rounds") and isinstance(result, dict):
+                                result["delivery_rework"] = rework_result
+                            _finalize_run_dirs(run_paths, output_root, report_root, symbol, period, execution_mode, quality_result)
+                        except Exception as exc:  # pragma: no cover - background safety boundary
+                            (run_paths["output_dir"] / "run_error.json").write_text(
+                                json.dumps({"error": str(exc), "symbol": symbol, "period": period}, ensure_ascii=False, indent=2),
+                                encoding="utf-8",
+                            )
+                        finally:
+                            _clear_active_run(session_id)
+
+                    if async_report_run:
+                        threading.Thread(
+                            target=_run_report_background,
+                            name=f"finsight-chat-run-{symbol}-{period}",
+                            daemon=True,
+                        ).start()
+                        response = {
+                            "answer": "已启动后台研报生成；页面会继续轮询，完成后自动刷新报告、引用和质量结果。",
+                            "mode": "report_run",
+                            "route_reason": "background report task",
+                            "session_id": session_id,
+                            "memory_used": {"enabled": bool(payload.get("memory_enabled", True))},
+                            "tool_trace": [
+                                {"stage": "think", "detail": "route=report_run reason=parsed_or_confirmed_report_task"},
+                                {"stage": "action", "detail": "start_background_multi_agent_report_run"},
+                            ],
+                            "result": {
+                                "status": "running",
+                                "symbol": symbol,
+                                "period": period,
+                                "execution_mode": execution_mode,
+                            },
+                            "parsed_task": parsed_task.to_dict(),
+                            "latest": _latest_payload(),
+                        }
+                        self._send_json(response)
+                        return
                     try:
                         result = orchestrator.run(**run_kwargs)
                         quality_result = run_delivery_quality_pipeline(
@@ -2434,7 +2496,7 @@ def render_index_html() -> str:
       if (!message) return;
       appendBubble("user", message);
       $("chatInput").value = "";
-      const payload = { ...payloadBase(), message };
+      const payload = { ...payloadBase(), message, async_report_run: true };
       showPendingRun(payload, message);
       setControlsBusy(true);
       setStatus("已提交，正在解析/生成；报告生成可能需要数分钟");
