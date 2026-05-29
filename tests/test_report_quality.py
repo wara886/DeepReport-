@@ -248,6 +248,129 @@ Data source: public sources. This is for reference only and is not investment ad
     assert "memory" in messages.lower()
 
 
+def test_quality_evaluator_blocks_peer_compare_without_evidence_ids(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# AMD 2025Q4 公司研报
+
+## 执行摘要
+核心观点完整。
+## 业务概览
+主营业务覆盖 CPU、GPU 和数据中心。
+## 三表摘要
+利润表显示收入，资产负债表显示总资产，现金流量表显示经营现金流。
+## 同行对比
+已识别 5 家可比公司数据，对标 NVIDIA、Intel、Broadcom，AMD 竞争压力中等。
+## 估值观察
+估值不可用原因：缺少市值或股本数据。
+## 估值敏感性
+收入增速和毛利率情景分析。
+## 风险评估
+风险提示充分。
+## 投资结论
+基于估值约束和竞争压力，维持中性评级。
+""",
+        claims=[
+            {"claim_id": "cl_peer", "section_name": "peer_compare", "claim_text": "已识别 5 家可比公司",
+             "evidence_ids": []},
+            {"claim_id": "cl_1", "section_name": "financial_analysis", "claim_text": "收入利润",
+             "evidence_ids": ["ev_1"]},
+        ],
+    )
+
+    report = evaluate_report_quality(run_dir)
+    messages = "\n".join(issue["message"] for issue in report["issues"])
+
+    assert report["objective_pass"] is False
+    assert "同行对比缺少证据支持" in messages
+
+
+def test_quality_evaluator_blocks_large_dcf_to_composite_divergence(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# AMD 2025Q4 公司研报
+
+## 执行摘要
+核心观点完整。
+## 业务概览
+主营业务覆盖 CPU、GPU 和数据中心。
+## 三表摘要
+利润表显示收入，资产负债表显示总资产，现金流量表显示经营现金流。
+## 同行对比
+NVIDIA、Intel、Broadcom peer comparison。
+## 估值观察
+DCF 价值 150B，与 composite 50B 存在较大差异，但报告未解释方法分歧。
+## 估值敏感性
+收入增速和毛利率情景。
+## 风险评估
+风险提示充分。
+## 投资结论
+基于估值约束和竞争压力，维持中性评级。
+## 合规披露
+资料来源：SEC EDGAR。本文仅供参考，不构成投资建议；不存在利益冲突，保持独立性披露。
+""",
+    )
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "valuation_model.json").write_text(
+        json.dumps({
+            "dcf_model": {"value_billion": 150.0, "assumptions": {"base_free_cash_flow_billion": 5.0}},
+            "blended_equity_value_billion": 50.0,
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+    messages = "\n".join(issue["message"] for issue in report["issues"])
+
+    assert any("valuation_consistency" in issue["category"] for issue in report["issues"])
+    assert "DCF" in messages
+    assert "composite" in messages
+
+
+def test_quality_evaluator_passes_when_dcf_divergence_is_explained(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# AMD 2025Q4 公司研报
+
+## 执行摘要
+核心观点完整。
+## 业务概览
+主营业务覆盖 CPU、GPU 和数据中心。
+## 三表摘要
+利润表显示收入，资产负债表显示总资产，现金流量表显示经营现金流。
+## 同行对比
+NVIDIA、Intel、Broadcom peer comparison。
+## 估值观察
+DCF 与 composite 存在估值方法差异，由于 FCF 增长假设不同导致两种估值方法分歧，估值区间 50-150B。
+## 估值敏感性
+收入增速和毛利率情景。
+## 风险评估
+风险提示充分。
+## 投资结论
+基于估值约束和竞争压力，维持中性评级。
+## 合规披露
+资料来源：SEC EDGAR。本文仅供参考，不构成投资建议；不存在利益冲突，保持独立性披露。
+""",
+    )
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "valuation_model.json").write_text(
+        json.dumps({
+            "dcf_model": {"value_billion": 150.0, "assumptions": {"base_free_cash_flow_billion": 5.0}},
+            "blended_equity_value_billion": 50.0,
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+    val_issues = [i for i in report["issues"] if i["category"] == "valuation_consistency"]
+
+    assert val_issues
+    assert val_issues[0]["severity"] == "warning"
+
+
 def test_quality_evaluator_blocks_only_local_sources_without_gap_explanation(tmp_path):
     run_dir = _write_run(
         tmp_path,

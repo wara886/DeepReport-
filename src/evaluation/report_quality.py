@@ -58,6 +58,7 @@ def evaluate_report_quality_from_paths(
         "compliance": _score_compliance(artifacts, issues),
     }
     _check_delivery_policy(artifacts, issues)
+    _valuation_consistency_check(artifacts, issues)
     generalization_checks = quality_generalization_checks(artifacts)
     _check_generalization_policy(generalization_checks, issues)
     total = round(sum(scores[key] * GROUP_WEIGHTS[key] for key in GROUP_WEIGHTS), 4)
@@ -285,6 +286,24 @@ def _score_multimodal(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -
 def _score_professional_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:
     text = _report_text(artifacts)
     profile = artifacts["profile"]
+    claims = artifacts.get("claims", []) if isinstance(artifacts.get("claims"), list) else []
+
+    def _section_has_evidence_ids(section: str) -> bool:
+        """Check if any claim for section has non-empty evidence_ids."""
+        for c in claims:
+            if str(c.get("section_name", "")) == section:
+                eids = c.get("evidence_ids", [])
+                if isinstance(eids, list) and any(str(e).strip() for e in eids):
+                    return True
+        return False
+
+    def _has_claims_for_section(section: str, claims_list: list) -> bool:
+        """Check if any claims exist for a given section."""
+        for c in claims_list:
+            if str(c.get("section_name", "")) == section:
+                return True
+        return False
+
     checks = {
         "business_profile": bool(profile) or _contains_any(text, ("主营业务", "业务画像", "产品", "渠道", "business")),
         "peer_compare": _contains_any(text, ("同行", "可比公司", "竞品", "peer")),
@@ -299,6 +318,8 @@ def _score_professional_depth(artifacts: Dict[str, Any], issues: List[Dict[str, 
             _issue(issues, severity, "professional_depth", f"专业深度不足：缺少 {key}")
     if _section_is_framework_only(text, ("同行对比", "同行比较")):
         _issue(issues, "blocker", "professional_depth", "同行对比只有框架或待补说明，缺少可读结论")
+    if checks.get("peer_compare") and _has_claims_for_section("peer_compare", claims) and not _section_has_evidence_ids("peer_compare"):
+        _issue(issues, "blocker", "professional_depth", "同行对比缺少证据支持: peer_compare claims 的 evidence_ids 为空")
     if _section_is_framework_only(text, ("估值敏感性", "敏感性分析")):
         _issue(issues, "blocker", "professional_depth", "敏感性分析只有框架或待补说明，缺少变量方向和影响")
     if _valuation_is_unusable_without_reason(text) and not _blackboard_valuation_gap_is_explained(artifacts):
@@ -351,6 +372,61 @@ def _check_delivery_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any
         report_text, ("因为", "理由", "增长驱动", "竞争压力", "估值约束", "risk")
     ):
         _issue(issues, "blocker", "delivery_policy", "投资结论方向存在但缺少理由、增长驱动、竞争压力或估值约束")
+
+    evidence_coverage = artifacts.get("evidence_coverage", {}) if isinstance(artifacts.get("evidence_coverage"), dict) else {}
+    if evidence_coverage.get("degrade_required") is True:
+        missing = ", ".join(str(item) for item in evidence_coverage.get("missing_requirements", [])[:6])
+        _issue(
+            issues,
+            "blocker",
+            "official_evidence",
+            f"Official evidence is insufficient for formal A/H delivery; degrade strong conclusions: {missing}",
+        )
+
+
+def _valuation_consistency_check(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    valuation_model = artifacts.get("valuation_model", {})
+    if not isinstance(valuation_model, dict):
+        return
+    model = valuation_model.get("valuation_model", valuation_model)
+    if not isinstance(model, dict):
+        return
+    dcf_part = model.get("dcf_model", {})
+    if not isinstance(dcf_part, dict):
+        return
+    dcf_value = dcf_part.get("equity_value_billion") or dcf_part.get("value_billion") or dcf_part.get("enterprise_value_billion")
+    blended = model.get("blended_equity_value_billion")
+    try:
+        dcf_val = float(dcf_value) if dcf_value is not None else None
+        blended_val = float(blended) if blended is not None else None
+    except (TypeError, ValueError):
+        return
+    if dcf_val is None or blended_val is None or dcf_val <= 0 or blended_val <= 0:
+        return
+    divergence = abs(dcf_val - blended_val) / max(dcf_val, blended_val)
+    if divergence > 0.50:
+        text = _report_text(artifacts)
+        has_explanation = _contains_any(
+            text,
+            (
+                "估值方法分歧",
+                "估值差异",
+                "DCF与",
+                "方法差异",
+                "估值模型差异",
+                "两种估值方法",
+                "估值区间",
+                "估值分歧",
+            ),
+        )
+        severity = "warning" if has_explanation else "blocker"
+        _issue(
+            issues,
+            severity,
+            "valuation_consistency",
+            f"DCF ({dcf_val:.2f}B) 与 composite value ({blended_val:.2f}B) 差异 {divergence*100:.0f}%，"
+            f"{'报告已解释估值方法分歧' if has_explanation else '报告未解释估值方法分歧，需要补充说明'}",
+        )
 
 
     evidence_coverage = artifacts.get("evidence_coverage", {}) if isinstance(artifacts.get("evidence_coverage"), dict) else {}
