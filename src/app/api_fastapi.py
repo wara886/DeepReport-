@@ -19,6 +19,7 @@ def create_fastapi_app(
     report_dir: str = DEFAULT_REPORT_DIR,
     config_path: str = "configs/model_backends.yaml",
     memory_root: str = "memory/chat",
+    mode: str = "user",
 ) -> FastAPI:
     """Expose the legacy-stable UI contract behind a deployable ASGI server."""
 
@@ -27,6 +28,7 @@ def create_fastapi_app(
         server, base_url = run_ui_server(
             host="127.0.0.1",
             port=0,
+            mode=mode,
             output_dir=output_dir,
             report_dir=report_dir,
             config_path=config_path,

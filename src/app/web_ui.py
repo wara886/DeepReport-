@@ -57,12 +57,14 @@ def run_ui_server(
     report_dir: str = DEFAULT_REPORT_DIR,
     config_path: str = "configs/model_backends.yaml",
     memory_root: str = "memory/chat",
+    mode: str = "user",
 ) -> tuple[ThreadingHTTPServer, str]:
     handler = create_ui_handler(
         output_dir=output_dir,
         report_dir=report_dir,
         config_path=config_path,
         memory_root=memory_root,
+        mode=mode,
     )
     server = ThreadingHTTPServer((host, int(port)), handler)
     actual_host, actual_port = server.server_address
@@ -74,6 +76,7 @@ def create_ui_handler(
     report_dir: str = DEFAULT_REPORT_DIR,
     config_path: str = "configs/model_backends.yaml",
     memory_root: str = "memory/chat",
+    mode: str = "user",
 ):
     output_root = Path(output_dir)
     report_root = Path(report_dir)
@@ -169,13 +172,13 @@ def create_ui_handler(
 
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
-            params = _parse_query_params(parsed.query)
-            ui_mode = "developer" if params.get("mode") in ("developer", "dev") else "user"
+            # Server mode overrides URL query param for security
+            effective_mode = mode
             if parsed.path == "/":
-                self._send_html(render_index_html(mode=ui_mode))
+                self._send_html(render_index_html(mode=effective_mode))
                 return
             if parsed.path == "/api/latest":
-                self._send_json(payload_for_mode(_latest_payload(), ui_mode))
+                self._send_json(payload_for_mode(_latest_payload(), effective_mode))
                 return
             if parsed.path.startswith("/artifacts/"):
                 self._send_artifact(parsed.path.removeprefix("/artifacts/"))
@@ -195,7 +198,6 @@ def create_ui_handler(
         def _handle_run(self) -> None:
             payload = self._read_json_body()
             session_id = str(payload.get("session_id") or "local")
-            ui_mode = str(payload.get("ui_mode", "user"))
             symbol = str(payload.get("symbol") or "AAPL").strip().upper()
             period = str(payload.get("period") or latest_completed_period()).strip().upper()
             guard = validate_period_for_report(period)
@@ -263,7 +265,7 @@ def create_ui_handler(
                 self._send_json({
                     "result": {**result, **quality_result},
                     "report_links": report_links,
-                    "latest": payload_for_mode(latest, ui_mode),
+                    "latest": payload_for_mode(latest, mode),
                 })
             except Exception as exc:  # pragma: no cover - defensive UI boundary
                 self._send_json({"error": str(exc), "latest": _latest_payload()}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -275,7 +277,6 @@ def create_ui_handler(
             message = str(payload.get("message") or "").strip()
             session_id = str(payload.get("session_id") or "local")
             user_id = str(payload.get("user_id") or "local_user")
-            ui_mode = str(payload.get("ui_mode", "user"))
             symbol = str(payload.get("symbol") or "AAPL").strip().upper()
             period = str(payload.get("period") or latest_completed_period()).strip().upper()
             allow_report_run = bool(payload.get("allow_report_run", True))
@@ -569,7 +570,7 @@ def create_ui_handler(
                             "citations": _read_json(output_root / "citations.json", default=[]),
                             "result": {**result, **quality_result},
                             "parsed_task": parsed_task.to_dict(),
-                            "latest": payload_for_mode(latest, ui_mode),
+                            "latest": payload_for_mode(latest, mode),
                         }
                         self._send_json(response)
                     except Exception as exc:  # pragma: no cover - defensive UI boundary
