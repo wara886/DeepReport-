@@ -2495,12 +2495,17 @@ def render_index_html(mode: str = "user") -> str:
       cursor: pointer;
       font: inherit;
       font-size: 14px;
+      transition: border-color 0.15s, background 0.15s;
     }
-    .chip:hover, .tab:hover, .secondary:hover { border-color: #555555; }
+    .chip:hover, .tab:hover, .secondary:hover { border-color: #888; background: #1a1a1a; }
+    .chip:active, .tab:active { background: #252525; }
     .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
     .tab.active { background: var(--text); color: #111111; border-color: var(--text); }
-    .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 16px; min-height: 150px; }
-    .empty { min-height: 150px; display: grid; align-content: center; color: var(--muted); line-height: 1.7; }
+    .report-area { display: none; }
+    .report-area.visible { display: block; }
+    .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 16px; }
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); line-height: 1.8; font-size: 15px; }
+    .empty-state .icon { font-size: 40px; margin-bottom: 12px; opacity: 0.5; }
     .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
     .item { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--panel-2); min-width: 0; }
     .item h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 500; }
@@ -2528,6 +2533,21 @@ def render_index_html(mode: str = "user") -> str:
     th, td { border-bottom: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; }
     pre { overflow: auto; white-space: pre-wrap; word-break: break-word; }
     a { color: #ffffff; }
+    /* Report link card in chat */
+    .report-link-card {
+      margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+      background: #1a1a1a; display: inline-block; min-width: 280px;
+    }
+    .report-link-card .title { font-weight: 600; font-size: 15px; margin-bottom: 10px; }
+    .report-link-card .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .report-link-card .btn {
+      border: 1px solid #555; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+      font-size: 13px; background: #252525; color: #eee; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;
+    }
+    .report-link-card .btn:hover { background: #333; border-color: #777; }
+    .report-link-card .btn-primary { background: #f7f7f7; color: #111; border-color: #f7f7f7; }
+    .report-link-card .btn-primary:hover { background: #fff; }
+    .report-link-card .path-hint { font-size: 12px; color: var(--muted); margin-top: 8px; word-break: break-all; }
     @media (max-width: 760px) {
       .wrap { width: min(100% - 20px, 980px); padding-top: 26px; }
       .hero { min-height: 150px; }
@@ -2557,8 +2577,10 @@ def render_index_html(mode: str = "user") -> str:
       <button class="chip" data-prompt="生成贵州茅台最新财报研报">贵州茅台最新财报</button>
       <button class="chip" data-prompt="帮我检查最近一份报告有哪些质量问题">检查报告质量</button>
     </div>
-    <div class="tabs" id="mainTabs"></div>
-    <section id="content" class="panel"></section>
+    <div class="report-area" id="reportArea">
+      <div class="tabs" id="mainTabs"></div>
+      <section id="content" class="panel"></section>
+    </div>
     __DEV_PANEL_HTML__
   </main>
   <script>
@@ -2727,7 +2749,8 @@ def render_index_html(mode: str = "user") -> str:
           syncEnginesFromSwitch();
         }
         if (data.latest && !data._no_latest_until_complete) { latest = data.latest; syncFormFromLatest(latest); }
-        appendBubble("assistant", renderChatAnswer(data));
+        const answer = renderChatAnswer(data);
+        (data.report_links || (data.latest && data.latest.report_links) ? appendBubbleHtml : appendBubble)("assistant", answer);
         render();
         const result = asObj(data.result);
         if (data.mode === "report_run" && (result.status === "running" || data._no_latest_until_complete)) {
@@ -2755,22 +2778,16 @@ def render_index_html(mode: str = "user") -> str:
       const lines = [data.answer || "已完成。"];
       const parsed = asObj(data.parsed_task);
       if ((parsed.should_run || parsed.needs_confirmation) && parsed.symbol && parsed.period && data.mode !== "report_run") lines.push(`我理解为：${parsed.symbol} ${parsed.period}。`);
-      // Show report links in user mode
-      if (data.report_links && data.report_links.html_web_url) {
-        const rl = data.report_links;
-        lines.push("");
-        lines.push("📄 HTML 研报：http://127.0.0.1:" + window.location.port + rl.html_web_url.split("?")[0]);
-        if (rl.html_file_url) lines.push("📁 本地文件：" + rl.html_file_url);
-        if (rl.local_report_dir) lines.push("📂 目录：" + rl.local_report_dir);
+      // If report_links exist, return HTML card
+      const rl = data.report_links || (data.latest && data.latest.report_links);
+      if (rl && rl.html_web_url) {
+        const linkButtons = [`<a href="${esc(rl.html_web_url)}" target="_blank" class="btn btn-primary" style="text-decoration:none">📄 打开 HTML 研报</a>`];
+        if (rl.html_file_url) linkButtons.push(`<button class="btn" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')">📁 复制 file:// 路径</button>`);
+        if (rl.local_report_dir) linkButtons.push(`<span class="path-hint">📂 ${esc(rl.local_report_dir)}</span>`);
+        lines.push(`<div class="report-link-card"><div class="title">研报已生成</div><div class="actions">${linkButtons.join("")}</div></div>`);
       }
-      if (data.latest) {
-        if (UI_MODE === "developer") {
-          lines.push(buildResultText(data.result || {}, data.latest));
-        } else if (data.latest.report_links && data.latest.report_links.html_web_url) {
-          const rl = data.latest.report_links;
-          lines.push("📄 研报已就绪，可点击上方链接打开。");
-          if (rl.html_file_url) lines.push("📁 " + rl.html_file_url);
-        }
+      if (data.latest && UI_MODE === "developer") {
+        lines.push(buildResultText(data.result || {}, data.latest));
       }
       return lines.filter(Boolean).join("\n");
     }
@@ -2798,6 +2815,13 @@ def render_index_html(mode: str = "user") -> str:
       $("chatLog").appendChild(node);
       node.scrollIntoView({ behavior: "smooth", block: "end" });
     }
+    function appendBubbleHtml(role, html) {
+      const node = document.createElement("div");
+      node.className = `bubble ${role}`;
+      node.innerHTML = html;
+      $("chatLog").appendChild(node);
+      node.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
     function renderTabButtons(containerId, tabs, active, onClick) {
       $(containerId).innerHTML = tabs.map((tab) => `<button class="tab ${tab === active ? "active" : ""}" data-tab="${esc(tab)}">${esc(tab)}</button>`).join("");
       document.querySelectorAll(`#${containerId} .tab`).forEach((btn) => btn.addEventListener("click", () => onClick(btn.dataset.tab)));
@@ -2811,6 +2835,13 @@ def render_index_html(mode: str = "user") -> str:
       if (content) content.innerHTML = (mainMap[activeMainTab] || renderOverview)(latest);
       const devContent = $("devContent");
       if (devContent) devContent.innerHTML = (devMap[activeDevTab] || renderCollaboration)(latest);
+      // Toggle report area visibility — only show when there's data
+      const reportArea = $("reportArea");
+      if (reportArea) {
+        const summary = asObj(latest.summary);
+        const hasData = !!summary.symbol || asList(latest.citations).length > 0 || !!latest.report_html_url || !!latest.report_links || !!currentActiveRun(latest);
+        reportArea.classList.toggle("visible", hasData);
+      }
     }
     function renderOverview(data) {
       const active = currentActiveRun(data);
@@ -2818,7 +2849,7 @@ def render_index_html(mode: str = "user") -> str:
       if (active) {
         return `<div class=”grid”>${metric(“当前任务”, `${active.symbol || “-”} ${active.period || “”}`)}${metric(“状态”, “正在生成”)}${metric(“执行模式”, active.execution_mode || “-”)}${metric(“开始时间”, active.started_at || “-”)}</div><p class=”muted”>下方最近报告仍可能是上一轮产物；当前任务完成后会自动刷新。</p>`;
       }
-      if (!summary.symbol && !asList(data.citations).length && !data.report_html_url && !data.report_links) return `<div class=”empty”>可以直接输入”生成某公司最新财报研报”。我会先检查报告期是否有效，再启动多智能体生成。</div>`;
+      if (!summary.symbol && !asList(data.citations).length && !data.report_html_url && !data.report_links) return `<div class=”empty-state”>可以直接输入“生成某公司最新财报研报”。我会先检查报告期是否有效，再启动多智能体生成。</div>`;
       if (UI_MODE === “developer”) {
         const verification = asObj(data.verification_report || {});
         const gate = asObj(data.delivery_gate || {});
@@ -2830,7 +2861,7 @@ def render_index_html(mode: str = "user") -> str:
     function renderReport(data) {
       const active = currentActiveRun(data);
       if (active) {
-        return `<div class="empty">正在生成 ${esc(`${active.symbol || "-"} ${active.period || ""}`.trim())} · ${esc(active.execution_mode || "")}。当前任务完成后会自动加载新报告，不再显示上一轮报告。</div>`;
+        return `<div class="empty-state">正在生成 ${esc(`${active.symbol || "-"} ${active.period || ""}`.trim())} · ${esc(active.execution_mode || "")}。当前任务完成后会自动加载新报告，不再显示上一轮报告。</div>`;
       }
       if (data.report_links && data.report_links.html_web_url) {
         const rl = data.report_links;
@@ -2839,7 +2870,7 @@ def render_index_html(mode: str = "user") -> str:
       }
       if (data.report_html_url) return `<iframe src="${esc(data.report_html_url)}" title="report"></iframe>`;
       if (data.report_markdown) return `<pre>${esc(data.report_markdown)}</pre>`;
-      return `<div class="empty">报告生成后会显示在这里。</div>`;
+      return `<div class="empty-state">报告生成后会显示在这里。</div>`;
     }
     function renderCharts(data) {
       const rows = asList(data.charts);
@@ -2863,7 +2894,7 @@ def render_index_html(mode: str = "user") -> str:
       const quality = asObj(data.quality_report);
       const llm = asObj(data.llm_quality_review);
       const gate = asObj(data.delivery_gate);
-      if (!Object.keys(quality).length && !Object.keys(llm).length && !Object.keys(gate).length) return `<div class="empty">还没有质量评测结果。</div>`;
+      if (!Object.keys(quality).length && !Object.keys(llm).length && !Object.keys(gate).length) return `<div class="empty-state">还没有质量评测结果。</div>`;
       const issues = topIssues(data);
       return `<div class="grid">${metric("客观评分", quality.total_score ?? quality.score ?? "未运行")}${metric("客观门禁", quality.objective_pass ?? "未运行")}${metric("LLM 复核", llm.llm_review_pass ?? llm.passed ?? "未运行")}${metric("交付门禁", gate.delivery_pass ?? "未运行")}</div><h3>主要问题</h3>${issues.length ? `<ul>${issues.slice(0, 8).map((item) => `<li>${esc(issueText(item))}</li>`).join("")}</ul>` : `<p class="ok">暂无问题。</p>`}`;
     }
