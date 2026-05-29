@@ -14,7 +14,7 @@ import re
 import shutil
 import threading
 from typing import Any, Dict, List
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urlparse, parse_qs
 
 from src.agents.base_agent import AgentTask
 from src.agents.multi_agent_orchestrator import (
@@ -26,6 +26,7 @@ from src.agents.multi_agent_orchestrator import (
 from src.agents.research_blackboard import apply_pre_write_critic, update_blackboard_for_task
 from src.app.agent_chat import AgentChatService
 from src.app.chat_task_parser import latest_completed_period, llm_parse_chat_task
+from src.app.query_understanding import QueryUnderstanding
 from src.utils.periods import period_target_date, previous_completed_quarter
 from src.data.company_universe import resolve_company_identity
 from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
@@ -84,6 +85,33 @@ def create_ui_handler(
     )
     pending_report_tasks: Dict[str, Dict[str, Any]] = {}
     active_report_runs: Dict[str, Dict[str, Any]] = {}
+    _report_queue: List[Dict[str, Any]] = []
+    _queue_lock = threading.Lock()
+    _queue_worker_running = False
+
+    def _enqueue_report(run_func) -> None:
+        nonlocal _queue_worker_running
+        with _queue_lock:
+            _report_queue.append({"run": run_func})
+            if not _queue_worker_running:
+                _queue_worker_running = True
+                threading.Thread(target=_process_report_queue, daemon=True, name="finsight-queue-worker").start()
+
+    def _process_report_queue() -> None:
+        nonlocal _queue_worker_running
+        while True:
+            task = None
+            with _queue_lock:
+                if _report_queue:
+                    task = _report_queue.pop(0)
+            if task is None:
+                break
+            try:
+                task["run"]()
+            except Exception:
+                pass
+        with _queue_lock:
+            _queue_worker_running = False
 
     def _active_key(session_id: str) -> str:
         return str(session_id or "local")
@@ -141,11 +169,13 @@ def create_ui_handler(
 
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
+            params = _parse_query_params(parsed.query)
+            ui_mode = "developer" if params.get("mode") in ("developer", "dev") else "user"
             if parsed.path == "/":
-                self._send_html(render_index_html())
+                self._send_html(render_index_html(mode=ui_mode))
                 return
             if parsed.path == "/api/latest":
-                self._send_json(_latest_payload())
+                self._send_json(payload_for_mode(_latest_payload(), ui_mode))
                 return
             if parsed.path.startswith("/artifacts/"):
                 self._send_artifact(parsed.path.removeprefix("/artifacts/"))
@@ -165,6 +195,7 @@ def create_ui_handler(
         def _handle_run(self) -> None:
             payload = self._read_json_body()
             session_id = str(payload.get("session_id") or "local")
+            ui_mode = str(payload.get("ui_mode", "user"))
             symbol = str(payload.get("symbol") or "AAPL").strip().upper()
             period = str(payload.get("period") or latest_completed_period()).strip().upper()
             guard = validate_period_for_report(period)
@@ -227,8 +258,13 @@ def create_ui_handler(
                     result["delivery_rework"] = rework_result
                 _finalize_run_dirs(run_paths, output_root, report_root, symbol, period, execution_mode, quality_result)
                 _clear_active_run(session_id)
+                report_links = build_report_links(run_paths["report_dir"])
                 latest = _latest_payload()
-                self._send_json({"result": {**result, **quality_result}, "latest": latest})
+                self._send_json({
+                    "result": {**result, **quality_result},
+                    "report_links": report_links,
+                    "latest": payload_for_mode(latest, ui_mode),
+                })
             except Exception as exc:  # pragma: no cover - defensive UI boundary
                 self._send_json({"error": str(exc), "latest": _latest_payload()}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
             finally:
@@ -239,10 +275,55 @@ def create_ui_handler(
             message = str(payload.get("message") or "").strip()
             session_id = str(payload.get("session_id") or "local")
             user_id = str(payload.get("user_id") or "local_user")
+            ui_mode = str(payload.get("ui_mode", "user"))
             symbol = str(payload.get("symbol") or "AAPL").strip().upper()
             period = str(payload.get("period") or latest_completed_period()).strip().upper()
             allow_report_run = bool(payload.get("allow_report_run", True))
             enable_remote_data = bool(payload.get("enable_remote_data", True))
+
+            # --- Query Understanding Layer ---
+            qu = QueryUnderstanding(config_path=config_path)
+            intent = qu.intent_classify(message)
+            if intent in ("report_generation", "data_query"):
+                normalized = qu.normalize_query(message)
+                message = normalized if normalized.strip() else message
+            entities = qu.extract_entities(message, current_symbol=symbol, current_period=period, today=date.today())
+            if entities.get("symbol"):
+                payload["symbol"] = entities["symbol"]
+                symbol = entities["symbol"]
+            if entities.get("period"):
+                payload["period"] = entities["period"]
+                period = entities["period"]
+
+            # Early route: data_query bypasses report parsing entirely
+            if allow_report_run and intent == "data_query":
+                engines = _parse_engines(default_engines_for_symbol(symbol, enable_remote_data))
+                metric_hint = entities.get("metric_hint", "")
+                topic_prefix = f"查询 {symbol} {period} {metric_hint}" if metric_hint else f"查询 {symbol} {period} 财务数据"
+                payload["topic"] = topic_prefix
+                chat_response = chat_service.handle_chat(
+                    message=f"{topic_prefix}：{message}",
+                    session_id=session_id,
+                    user_id=user_id,
+                    symbol=symbol,
+                    period=period,
+                    memory_enabled=bool(payload.get("memory_enabled", True)),
+                    allow_report_run=False,
+                    orchestrator=None,
+                    engines=engines,
+                    fast=bool(payload.get("fast", True)),
+                    execution_mode=str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE),
+                    enable_remote_data=enable_remote_data,
+                    data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
+                )
+                chat_response["mode"] = "data_query"
+                chat_response["parsed_task"] = {
+                    "symbol": symbol, "period": period, "intent": intent,
+                    "metric_hint": metric_hint, "query": message,
+                }
+                self._send_json(chat_response)
+                return
+
             if _looks_like_quality_review_request(message):
                 engines = _parse_engines(payload.get("engines") or default_engines_for_symbol(symbol, enable_remote_data))
                 response = chat_service.handle_chat(
@@ -429,11 +510,7 @@ def create_ui_handler(
                             _clear_active_run(session_id)
 
                     if async_report_run:
-                        threading.Thread(
-                            target=_run_report_background,
-                            name=f"finsight-chat-run-{symbol}-{period}",
-                            daemon=True,
-                        ).start()
+                        _enqueue_report(_run_report_background)
                         response = {
                             "answer": "已启动后台研报生成；页面会继续轮询，完成后自动刷新报告、引用和质量结果。",
                             "mode": "report_run",
@@ -451,7 +528,7 @@ def create_ui_handler(
                                 "execution_mode": execution_mode,
                             },
                             "parsed_task": parsed_task.to_dict(),
-                            "latest": _latest_payload(),
+                            "_no_latest_until_complete": True,
                         }
                         self._send_json(response)
                         return
@@ -480,21 +557,19 @@ def create_ui_handler(
                             result["delivery_rework"] = rework_result
                         _finalize_run_dirs(run_paths, output_root, report_root, symbol, period, execution_mode, quality_result)
                         _clear_active_run(session_id)
+                        report_links = build_report_links(run_paths["report_dir"])
+                        latest = _latest_payload()
                         response = {
-                            "answer": "已启动并完成多智能体研报生成。右侧报告、引用、图表和轨迹已刷新。",
+                            "answer": "研报生成完成！可点击下方链接查看完整 HTML 研报。",
                             "mode": "report_run",
                             "route_reason": "confirmed report task" if confirmed_pending else "parsed report generation intent",
                             "session_id": session_id,
                             "memory_used": {"enabled": bool(payload.get("memory_enabled", True))},
-                            "tool_trace": [
-                                {"stage": "think", "detail": "route=report_run reason=parsed_or_confirmed_report_task"},
-                                {"stage": "action", "detail": "start_multi_agent_report_run"},
-                                {"stage": "verify", "detail": f"report_run_complete verification={result.get('verification_passed')}"},
-                            ],
+                            "report_links": report_links,
                             "citations": _read_json(output_root / "citations.json", default=[]),
                             "result": {**result, **quality_result},
                             "parsed_task": parsed_task.to_dict(),
-                            "latest": _latest_payload(),
+                            "latest": payload_for_mode(latest, ui_mode),
                         }
                         self._send_json(response)
                     except Exception as exc:  # pragma: no cover - defensive UI boundary
@@ -583,6 +658,57 @@ def create_ui_handler(
             return
 
     return WebUIHandler
+
+
+# ── Helper functions ─────────────────────────────────────────────────────────
+
+def _parse_query_params(query: str) -> dict:
+    return {k: v[0] if len(v) == 1 else v for k, v in parse_qs(query).items()}
+
+
+def build_report_links(report_dir: Path) -> dict:
+    """Build structured report_links with web URL, file:// URI, and local path."""
+    report_html = report_dir / "report.html"
+    report_md = report_dir / "report.md"
+    report_json = report_dir / "report.json"
+    links: dict = {"local_report_dir": str(report_dir.resolve())}
+    if report_html.exists():
+        links["html_web_url"] = _report_artifact_url(report_dir, "report.html", _file_version(report_html))
+        links["html_file_url"] = report_html.resolve().as_uri()
+    if report_md.exists():
+        links["markdown_web_url"] = _report_artifact_url(report_dir, "report.md", _file_version(report_md))
+    if report_json.exists():
+        links["json_web_url"] = _report_artifact_url(report_dir, "report.json", _file_version(report_json))
+    return links
+
+
+USER_SAFE_KEYS = {
+    "summary", "report_html_url", "report_markdown", "report_artifact_version",
+    "report_links", "run_id", "active_runs", "output_dir", "report_dir", "citations", "charts",
+}
+
+
+def sanitize_payload_for_user(payload: dict) -> dict:
+    """Strip debug/quality data from payload for end users."""
+    allowed: dict = {}
+    for key in USER_SAFE_KEYS:
+        if key in payload:
+            allowed[key] = payload[key]
+    # Strip internal fields from citations
+    if "citations" in allowed and isinstance(allowed["citations"], list):
+        allowed["citations"] = [
+            {"evidence_id": c.get("evidence_id"), "title": c.get("title"), "source_url": c.get("source_url")}
+            for c in allowed["citations"]
+        ]
+    # Attach report_links if not present but report_dir exists
+    if "report_links" not in allowed and payload.get("report_dir"):
+        allowed["report_links"] = build_report_links(Path(payload["report_dir"]))
+    return allowed
+
+
+def payload_for_mode(payload: dict, mode: str = "user") -> dict:
+    """Return full payload for developer mode, sanitized for user mode."""
+    return payload if mode == "developer" else sanitize_payload_for_user(payload)
 
 
 def run_delivery_quality_pipeline(
@@ -680,6 +806,7 @@ def load_run_payload(
         "trace": _read_jsonl(output_path / "task_trace.jsonl"),
         "report_markdown": _read_text(report_path / "report.md"),
         "report_html_url": report_html_url,
+        "report_links": build_report_links(report_path),
         "report_artifact_version": report_version,
         "output_dir": str(output_path),
         "report_dir": str(report_path),
@@ -748,7 +875,7 @@ def run_delivery_rework_loop(
     run_kwargs: Dict[str, Any],
     durable_memory_store: Any = None,
     memory_enabled: bool = False,
-    max_rounds: int = 1,
+    max_rounds: int = 3,
 ) -> Dict[str, Any]:
     """Rerun the report in the same request when delivery gate fails."""
 
@@ -903,6 +1030,67 @@ def _delivery_repair_type(remediation: Dict[str, Any]) -> str:
     return "writing_repair"
 
 
+def _build_rework_queries(remediation: Dict[str, Any], state: Dict[str, Any]) -> List[str]:
+    """Generate targeted search queries based on which sections failed delivery gate."""
+    queries: List[str] = []
+    symbol = str(state.get("symbol", ""))
+    period = str(state.get("period", ""))
+    failed_sections = {
+        str(s).lower().replace(" ", "_").replace("-", "_")
+        for s in remediation.get("failed_sections", [])
+    }
+    if not failed_sections:
+        return queries
+
+    # Map common section names to targeted queries
+    section_queries = {
+        "peer_compare": [
+            f"{symbol} competitors revenue comparison",
+            f"{symbol} industry peers financial data",
+        ],
+        "peer_comparison": [
+            f"{symbol} competitors revenue comparison",
+            f"{symbol} industry peers financial data",
+        ],
+        "valuation": [
+            f"{symbol} P/E P/S market capitalization {period}",
+            f"{symbol} stock price target price",
+        ],
+        "valuation_sensitivity": [
+            f"{symbol} financial forecasts growth estimates",
+            f"{symbol} analyst estimates revenue growth",
+        ],
+        "conclusion": [
+            f"{symbol} investment rating analyst consensus",
+            f"{symbol} stock outlook risk factors",
+        ],
+        "competitor": [
+            f"{symbol} competitors revenue comparison",
+        ],
+        "financial_statements": [
+            f"{symbol} {period} revenue net income cash flow",
+        ],
+        "risks": [
+            f"{symbol} risk factors business challenges",
+        ],
+    }
+
+    for section, section_queries_list in section_queries.items():
+        for fs in failed_sections:
+            if section in fs or fs in section:
+                queries.extend(section_queries_list)
+
+    # Remove duplicates while preserving order, limit to 4 extra queries
+    seen: set = set()
+    deduped: list = []
+    for q in queries:
+        k = q.lower().strip()
+        if k not in seen:
+            seen.add(k)
+            deduped.append(q)
+    return deduped[:4]
+
+
 def _run_owner_routed_delivery_rework(
     orchestrator: MultiAgentOrchestrator,
     output_path: Path,
@@ -928,7 +1116,7 @@ def _run_owner_routed_delivery_rework(
 
     if "DeepResearcherAgent" in target_agents:
         try:
-            query = str(
+            base_query = str(
                 run_kwargs.get("research_topic")
                 or state.get("research_topic")
                 or f"{state.get('symbol', '')} {state.get('period', '')} company financial statements"
@@ -936,36 +1124,55 @@ def _run_owner_routed_delivery_rework(
             engines = run_kwargs.get("search_engines")
             if not isinstance(engines, list) or not engines:
                 engines = _parse_engines(default_engines_for_symbol(str(state.get("symbol", "")), bool(run_kwargs.get("enable_remote_data", True))))
-            research_result = orchestrator._execute(  # type: ignore[attr-defined]
-                "research",
-                AgentTask(
-                    task_id=f"task_delivery_rework_{round_index}_deep_researcher",
-                    task_type="deep_researcher",
-                    description="Backfill missing primary financial statement evidence for delivery gate failures.",
-                    parameters={
-                        "query": query,
-                        "symbol": state.get("symbol", ""),
-                        "period": state.get("period", ""),
-                        "topk": 16,
-                        "engines": engines,
-                        "raw_data_root": str(run_kwargs.get("raw_data_root") or "data/raw/real_data"),
-                        "ranking_mode": str(run_kwargs.get("retrieval_ranking_mode") or "hybrid_rerank"),
-                        "data_source_config_path": str(run_kwargs.get("data_source_config_path") or "configs/data_sources.yaml"),
-                        "enable_remote": bool(run_kwargs.get("enable_remote_data", True)),
-                        "quality_remediation_plan": remediation,
-                    },
-                    dependencies=[],
-                    priority=9,
-                ),
-            )
-            merge_task_result(state=state, task_type="deep_researcher", result=research_result)
+            # Build targeted rework queries from failed sections
+            targeted_queries = _build_rework_queries(remediation, state)
+            all_queries = [base_query] + targeted_queries
+            # Deduplicate while preserving order
+            seen: set = set()
+            deduped: list = []
+            for q in all_queries:
+                key = q.lower().strip()
+                if key not in seen:
+                    seen.add(key)
+                    deduped.append(q)
+            research_results = []
+            for q_idx, query in enumerate(deduped):
+                research_result = orchestrator._execute(  # type: ignore[attr-defined]
+                    "research",
+                    AgentTask(
+                        task_id=f"task_delivery_rework_{round_index}_researcher_{q_idx}",
+                        task_type="deep_researcher",
+                        description="Backfill missing evidence for delivery gate failures.",
+                        parameters={
+                            "query": query,
+                            "symbol": state.get("symbol", ""),
+                            "period": state.get("period", ""),
+                            "topk": 12,
+                            "engines": engines,
+                            "raw_data_root": str(run_kwargs.get("raw_data_root") or "data/raw/real_data"),
+                            "ranking_mode": str(run_kwargs.get("retrieval_ranking_mode") or "hybrid_rerank"),
+                            "data_source_config_path": str(run_kwargs.get("data_source_config_path") or "configs/data_sources.yaml"),
+                            "enable_remote": bool(run_kwargs.get("enable_remote_data", True)),
+                            "quality_remediation_plan": remediation,
+                        },
+                        dependencies=[],
+                        priority=9,
+                    ),
+                )
+                research_results.append(research_result)
+            # Merge all research results into state (last write wins for overlapping keys)
+            merged_output = None
+            for rr in research_results:
+                merge_task_result(state=state, task_type="deep_researcher", result=rr)
+                if rr.output:
+                    merged_output = rr.output
             state["research_blackboard"] = update_blackboard_for_task(
                 state.get("research_blackboard", {}),
                 "deep_researcher",
                 state,
-                research_result.output,
+                merged_output,
             )
-            role_reruns.append({"agent": "DeepResearcherAgent", "task_type": "deep_researcher", "status": research_result.status.value})
+            role_reruns.append({"agent": "DeepResearcherAgent", "task_type": "deep_researcher", "queries": deduped, "status": "completed"})
         except Exception as exc:  # pragma: no cover - defensive UI path
             unfixable.append(f"DeepResearcherAgent data backfill failed: {exc}")
 
@@ -2173,8 +2380,9 @@ def render_index_html() -> str:
     )
 
 
-def render_index_html() -> str:
-    """Render the user-facing chat UI with diagnostics hidden by default."""
+def render_index_html(mode: str = "user") -> str:
+    """Render the chat UI. In user mode, developer diagnostics are hidden."""
+    is_dev = mode == "developer"
 
     default_topic = "生成 AAPL 最新公司财报研报"
     default_period = latest_completed_period()
@@ -2350,39 +2558,15 @@ def render_index_html() -> str:
     </div>
     <div class="tabs" id="mainTabs"></div>
     <section id="content" class="panel"></section>
-    <details class="developer" id="developerPanel">
-      <summary>开发者诊断</summary>
-      <div class="developer-body">
-        <div class="settings">
-          <label>Session ID<input id="sessionId" value="local"></label>
-          <label>股票代码<input id="symbol" value="AAPL"></label>
-          <label>报告期<input id="period" value="__DEFAULT_PERIOD__"></label>
-          <label>执行模式<select id="executionMode"><option value="collaborative">collaborative</option><option value="diagnostic_full">diagnostic_full</option><option value="dynamic">dynamic</option><option value="static">static</option></select></label>
-          <label class="span-3">研究主题<input id="topic" value="__DEFAULT_TOPIC__"></label>
-          <label class="span-3">搜索/数据源<input id="engines" value="__US_ENGINES__"></label>
-          <label class="span-3">数据源配置<input id="dataSourceConfig" value="configs/data_sources.yaml"></label>
-          <div class="checks">
-            <label class="check"><input type="checkbox" id="allowReportRun" checked>允许生成报告</label>
-            <label class="check"><input type="checkbox" id="memoryEnabled" checked>启用记忆</label>
-            <label class="check"><input type="checkbox" id="realtimeData" checked>使用公开实时数据源</label>
-            <label class="check"><input type="checkbox" id="fastMode" checked>快速模式</label>
-          </div>
-          <div class="actions">
-            <button id="runBtn" class="secondary">按表单生成</button>
-            <button id="refreshBtn" class="secondary">刷新最近输出</button>
-          </div>
-        </div>
-        <div class="tabs" id="devTabs"></div>
-        <section id="devContent" class="panel"></section>
-      </div>
-    </details>
+    __DEV_PANEL_HTML__
   </main>
   <script>
+    const UI_MODE = "__UI_MODE__";
     const DEFAULT_ENGINES = "__DEFAULT_ENGINES__";
     const A_SHARE_ENGINES = "__A_SHARE_ENGINES__";
     const US_ENGINES = "__US_ENGINES__";
     const HK_ENGINES = "__HK_ENGINES__";
-    const mainTabs = ["概览", "报告", "引用", "质量"];
+    const mainTabs = UI_MODE === "developer" ? ["概览", "报告", "引用", "质量"] : ["概览", "报告", "引用"];
     const devTabs = ["数据源健康", "协作黑板", "多智能体协作", "工具调用", "图表", "表格", "PDF章节", "公司画像", "Claims", "轨迹", "时间线", "原始数据"];
     let latest = {};
     let requestInFlight = false;
@@ -2455,7 +2639,7 @@ def render_index_html() -> str:
     async function loadLatest(options = {}) {
       const silent = Boolean(options.silent);
       if (!silent && !requestInFlight) setStatus("读取最近报告");
-      const resp = await fetch("/api/latest");
+      const resp = await fetch("/api/latest?mode=" + UI_MODE);
       latest = await resp.json();
       syncFormFromLatest(latest);
       render();
@@ -2528,11 +2712,11 @@ def render_index_html() -> str:
           if (parsed.research_topic) $("topic").value = parsed.research_topic;
           syncEnginesFromSwitch();
         }
-        if (data.latest) { latest = data.latest; syncFormFromLatest(latest); }
+        if (data.latest && !data._no_latest_until_complete) { latest = data.latest; syncFormFromLatest(latest); }
         appendBubble("assistant", renderChatAnswer(data));
         render();
         const result = asObj(data.result);
-        if (data.mode === "report_run" && result.status === "running") {
+        if (data.mode === "report_run" && (result.status === "running" || data._no_latest_until_complete)) {
           backgroundRunPending = true;
           keepPolling = true;
           startBusyPolling();
@@ -2556,7 +2740,23 @@ def render_index_html() -> str:
       const lines = [data.answer || "已完成。"];
       const parsed = asObj(data.parsed_task);
       if ((parsed.should_run || parsed.needs_confirmation) && parsed.symbol && parsed.period && data.mode !== "report_run") lines.push(`我理解为：${parsed.symbol} ${parsed.period}。`);
-      if (data.latest) lines.push(buildResultText(data.result || {}, data.latest));
+      // Show report links in user mode
+      if (data.report_links && data.report_links.html_web_url) {
+        const rl = data.report_links;
+        lines.push("");
+        lines.push("📄 HTML 研报：http://127.0.0.1:" + window.location.port + rl.html_web_url.split("?")[0]);
+        if (rl.html_file_url) lines.push("📁 本地文件：" + rl.html_file_url);
+        if (rl.local_report_dir) lines.push("📂 目录：" + rl.local_report_dir);
+      }
+      if (data.latest) {
+        if (UI_MODE === "developer") {
+          lines.push(buildResultText(data.result || {}, data.latest));
+        } else if (data.latest.report_links && data.latest.report_links.html_web_url) {
+          const rl = data.latest.report_links;
+          lines.push("📄 研报已就绪，可点击上方链接打开。");
+          if (rl.html_file_url) lines.push("📁 " + rl.html_file_url);
+        }
+      }
       return lines.filter(Boolean).join("\n");
     }
     function buildResultText(result, data) {
@@ -2598,19 +2798,27 @@ def render_index_html() -> str:
     function renderOverview(data) {
       const active = currentActiveRun(data);
       const summary = asObj(data.summary);
-      const verification = asObj(data.verification_report);
-      const gate = asObj(data.delivery_gate);
       if (active) {
-        return `<div class="grid">${metric("当前任务", `${active.symbol || "-"} ${active.period || ""}`)}${metric("状态", "正在生成")}${metric("执行模式", active.execution_mode || "-")}${metric("开始时间", active.started_at || "-")}</div><p class="muted">下方最近报告仍可能是上一轮产物；当前任务完成后会自动刷新。</p>`;
+        return `<div class=”grid”>${metric(“当前任务”, `${active.symbol || “-”} ${active.period || “”}`)}${metric(“状态”, “正在生成”)}${metric(“执行模式”, active.execution_mode || “-”)}${metric(“开始时间”, active.started_at || “-”)}</div><p class=”muted”>下方最近报告仍可能是上一轮产物；当前任务完成后会自动刷新。</p>`;
       }
-      if (!summary.symbol && !asList(data.evidence).length && !data.report_html_url) return `<div class="empty">可以直接输入“生成某公司最新财报研报”。我会先检查报告期是否有效，再启动多智能体生成。</div>`;
-      return `<div class="grid">${metric("标的", summary.symbol || "-")}${metric("报告期", summary.period || "-")}${metric("执行模式", summary.execution_mode || "-")}${metric("事实校验", summary.verification_passed ?? verification.passed ?? "未运行")}${metric("交付状态", gate.delivery_pass === true ? "已通过" : gate.delivery_pass === false ? "未通过" : "未运行")}${metric("论点", asList(data.claims).length)}${metric("证据", asList(data.evidence).length)}${metric("图表", asList(data.charts).length)}${metric("引用", asList(data.citations).length)}</div>`;
+      if (!summary.symbol && !asList(data.citations).length && !data.report_html_url && !data.report_links) return `<div class=”empty”>可以直接输入”生成某公司最新财报研报”。我会先检查报告期是否有效，再启动多智能体生成。</div>`;
+      if (UI_MODE === “developer”) {
+        const verification = asObj(data.verification_report || {});
+        const gate = asObj(data.delivery_gate || {});
+        return `<div class=”grid”>${metric(“标的”, summary.symbol || “-”)}${metric(“报告期”, summary.period || “-”)}${metric(“执行模式”, summary.execution_mode || “-”)}${metric(“事实校验”, summary.verification_passed ?? verification.passed ?? “未运行”)}${metric(“交付状态”, gate.delivery_pass === true ? “已通过” : gate.delivery_pass === false ? “未通过” : “未运行”)}${metric(“论点”, asList(data.claims || []).length)}${metric(“证据”, asList(data.evidence || []).length)}${metric(“图表”, asList(data.charts || []).length)}${metric(“引用”, asList(data.citations || []).length)}</div>`;
+      }
+      return `<div class=”grid”>${metric(“标的”, summary.symbol || “-”)}${metric(“报告期”, summary.period || “-”)}${metric(“执行模式”, summary.execution_mode || “-”)}${metric(“图表”, asList(data.charts || []).length)}${metric(“引用”, asList(data.citations || []).length)}</div>`;
     }
     function metric(name, value) { return `<div class="item"><h3>${esc(name)}</h3><div>${esc(value)}</div></div>`; }
     function renderReport(data) {
       const active = currentActiveRun(data);
       if (active) {
         return `<div class="empty">正在生成 ${esc(`${active.symbol || "-"} ${active.period || ""}`.trim())} · ${esc(active.execution_mode || "")}。当前任务完成后会自动加载新报告，不再显示上一轮报告。</div>`;
+      }
+      if (data.report_links && data.report_links.html_web_url) {
+        const rl = data.report_links;
+        const filePath = rl.html_file_url ? `<p style="margin:10px 0;font-size:13px;color:var(--muted);overflow-wrap:break-word">📁 ${esc(rl.html_file_url)}</p>` : "";
+        return `<div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap"><a href="${esc(rl.html_web_url)}" target="_blank" class="tab" style="background:var(--text);color:#111;border-color:var(--text);text-decoration:none">📄 在浏览器中打开研报</a>${rl.html_file_url ? `<button class="tab" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')">复制 file:// 路径</button>` : ""}</div>${filePath}<iframe src="${esc(rl.html_web_url)}" title="report"></iframe>`;
       }
       if (data.report_html_url) return `<iframe src="${esc(data.report_html_url)}" title="report"></iframe>`;
       if (data.report_markdown) return `<pre>${esc(data.report_markdown)}</pre>`;
@@ -2706,6 +2914,33 @@ def render_index_html() -> str:
   </script>
 </body>
 </html>"""
+    dev_panel = r"""<details class="developer" id="developerPanel">
+      <summary>开发者诊断</summary>
+      <div class="developer-body">
+        <div class="settings">
+          <label>Session ID<input id="sessionId" value="local"></label>
+          <label>股票代码<input id="symbol" value="AAPL"></label>
+          <label>报告期<input id="period" value="__DEFAULT_PERIOD__"></label>
+          <label>执行模式<select id="executionMode"><option value="collaborative">collaborative</option><option value="diagnostic_full">diagnostic_full</option><option value="dynamic">dynamic</option><option value="static">static</option></select></label>
+          <label class="span-3">研究主题<input id="topic" value="__DEFAULT_TOPIC__"></label>
+          <label class="span-3">搜索/数据源<input id="engines" value="__US_ENGINES__"></label>
+          <label class="span-3">数据源配置<input id="dataSourceConfig" value="configs/data_sources.yaml"></label>
+          <div class="checks">
+            <label class="check"><input type="checkbox" id="allowReportRun" checked>允许生成报告</label>
+            <label class="check"><input type="checkbox" id="memoryEnabled" checked>启用记忆</label>
+            <label class="check"><input type="checkbox" id="realtimeData" checked>使用公开实时数据源</label>
+            <label class="check"><input type="checkbox" id="fastMode" checked>快速模式</label>
+          </div>
+          <div class="actions">
+            <button id="runBtn" class="secondary">按表单生成</button>
+            <button id="refreshBtn" class="secondary">刷新最近输出</button>
+          </div>
+        </div>
+        <div class="tabs" id="devTabs"></div>
+        <section id="devContent" class="panel"></section>
+      </div>
+    </details>""" if is_dev else ""
+
     return (
         template.replace("__DEFAULT_TOPIC__", escape(default_topic))
         .replace("__DEFAULT_PERIOD__", escape(default_period))
@@ -2713,6 +2948,8 @@ def render_index_html() -> str:
         .replace("__A_SHARE_ENGINES__", escape(A_SHARE_ENGINES))
         .replace("__US_ENGINES__", escape(US_ENGINES))
         .replace("__HK_ENGINES__", escape(HK_ENGINES))
+        .replace("__UI_MODE__", mode)
+        .replace("__DEV_PANEL_HTML__", dev_panel)
     )
 
 
