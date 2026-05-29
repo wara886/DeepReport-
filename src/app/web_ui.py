@@ -2576,6 +2576,8 @@ def render_index_html(mode: str = "user") -> str:
     let activeMainTab = "概览";
     let activeDevTab = "多智能体协作";
     const $ = (id) => document.getElementById(id);
+    const $val = (id, fallback = "") => { const el = $(id); return el ? el.value : fallback; };
+    const $checked = (id, fallback = true) => { const el = $(id); return el ? el.checked : fallback; };
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]));
     const asList = (value) => Array.isArray(value) ? value : [];
     const asObj = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -2585,7 +2587,7 @@ def render_index_html(mode: str = "user") -> str:
     function setControlsBusy(isBusy) {
       requestInFlight = isBusy;
       $("chatBtn").disabled = isBusy;
-      $("runBtn").disabled = isBusy;
+      if ($("runBtn")) $("runBtn").disabled = isBusy;
     }
     function startBusyPolling() {
       stopBusyPolling();
@@ -2611,25 +2613,28 @@ def render_index_html(mode: str = "user") -> str:
     }
     function payloadBase() {
       return {
-        session_id: $("sessionId").value || "local",
-        symbol: $("symbol").value || "AAPL",
-        period: $("period").value || "__DEFAULT_PERIOD__",
-        topic: $("topic").value,
-        engines: $("engines").value,
-        execution_mode: $("executionMode").value,
-        fast: $("fastMode").checked,
-        memory_enabled: $("memoryEnabled").checked,
-        allow_report_run: $("allowReportRun").checked,
-        enable_remote_data: $("realtimeData").checked,
-        data_source_config_path: $("dataSourceConfig").value || "configs/data_sources.yaml"
+        session_id: $val("sessionId", "local"),
+        symbol: $val("symbol", "AAPL"),
+        period: $val("period", "__DEFAULT_PERIOD__"),
+        topic: $val("topic", ""),
+        engines: $val("engines", DEFAULT_ENGINES),
+        execution_mode: $val("executionMode", "collaborative"),
+        fast: $checked("fastMode", true),
+        memory_enabled: $checked("memoryEnabled", true),
+        allow_report_run: $checked("allowReportRun", true),
+        enable_remote_data: $checked("realtimeData", true),
+        data_source_config_path: $val("dataSourceConfig", "configs/data_sources.yaml")
       };
     }
     function syncEnginesFromSwitch() {
-      const symbol = ($("symbol").value || "").toUpperCase();
-      if (!$("realtimeData").checked) $("engines").value = DEFAULT_ENGINES;
-      else if (symbol.endsWith(".SS") || symbol.endsWith(".SZ") || /^[0-9]{6}$/.test(symbol)) $("engines").value = A_SHARE_ENGINES;
-      else if (symbol.endsWith(".HK")) $("engines").value = HK_ENGINES;
-      else $("engines").value = US_ENGINES;
+      const symbol = $val("symbol", "AAPL").toUpperCase();
+      const enginesEl = $("engines");
+      const realtimeEl = $("realtimeData");
+      if (!enginesEl) return;
+      if (!realtimeEl || !realtimeEl.checked) enginesEl.value = DEFAULT_ENGINES;
+      else if (symbol.endsWith(".SS") || symbol.endsWith(".SZ") || /^[0-9]{6}$/.test(symbol)) enginesEl.value = A_SHARE_ENGINES;
+      else if (symbol.endsWith(".HK")) enginesEl.value = HK_ENGINES;
+      else enginesEl.value = US_ENGINES;
     }
     async function postJson(url, payload) {
       const resp = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -2653,7 +2658,8 @@ def render_index_html(mode: str = "user") -> str:
         backgroundRunPending = false;
         stopBusyPolling();
         setControlsBusy(false);
-        const gate = asObj(latest.delivery_gate);
+        // delivery_gate may be filtered out in user mode — safe access
+        const gate = asObj(latest.delivery_gate || {});
         setStatus(gate.delivery_pass === false ? "报告未通过质量门禁" : "完成", gate.delivery_pass === false);
         return;
       }
@@ -2663,13 +2669,16 @@ def render_index_html(mode: str = "user") -> str:
       const active = currentActiveRun(data);
       const summary = asObj(data.summary);
       const display = active || summary;
-      if (display.symbol) $("symbol").value = display.symbol;
-      if (display.period) $("period").value = display.period;
-      if (display.research_topic) $("topic").value = display.research_topic;
-      if (Array.isArray(summary.search_engines) && summary.search_engines.length) $("engines").value = summary.search_engines.join(",");
-      if (active) $("runMeta").innerHTML = `<strong>正在生成</strong> ${esc(`${active.symbol || ""} ${active.period || ""}`.trim())} · ${esc(active.execution_mode || "")}`;
-      else if (summary.symbol || summary.period) $("runMeta").innerHTML = `<strong>最近报告</strong> ${esc(`${summary.symbol || ""} ${summary.period || ""}`.trim())} · ${esc(summary.execution_mode || "")}`;
-      else $("runMeta").textContent = "还没有生成报告";
+      const safeSet = (id, value) => { const el = $(id); if (el) el.value = value; };
+      if (display.symbol) safeSet("symbol", display.symbol);
+      if (display.period) safeSet("period", display.period);
+      if (display.research_topic) safeSet("topic", display.research_topic);
+      if (Array.isArray(summary.search_engines) && summary.search_engines.length) safeSet("engines", summary.search_engines.join(","));
+      const runMeta = $("runMeta");
+      if (!runMeta) return;
+      if (active) runMeta.innerHTML = `<strong>正在生成</strong> ${esc(`${active.symbol || ""} ${active.period || ""}`.trim())} · ${esc(active.execution_mode || "")}`;
+      else if (summary.symbol || summary.period) runMeta.innerHTML = `<strong>最近报告</strong> ${esc(`${summary.symbol || ""} ${summary.period || ""}`.trim())} · ${esc(summary.execution_mode || "")}`;
+      else runMeta.textContent = "还没有生成报告";
     }
     async function runReport() {
       const payload = payloadBase();
@@ -2694,11 +2703,13 @@ def render_index_html(mode: str = "user") -> str:
       }
     }
     async function sendChat() {
-      const message = $("chatInput").value.trim();
+      const chatInput = $("chatInput");
+      if (!chatInput) return;
+      const message = chatInput.value.trim();
       if (!message) return;
       let keepPolling = false;
       appendBubble("user", message);
-      $("chatInput").value = "";
+      chatInput.value = "";
       const payload = { ...payloadBase(), message, async_report_run: true };
       showPendingRun(payload, message);
       setControlsBusy(true);
@@ -2708,9 +2719,11 @@ def render_index_html(mode: str = "user") -> str:
         const data = await postJson("/api/chat", payload);
         const parsed = asObj(data.parsed_task);
         if (parsed.symbol) {
-          $("symbol").value = parsed.symbol;
-          if (parsed.period) $("period").value = parsed.period;
-          if (parsed.research_topic) $("topic").value = parsed.research_topic;
+          // Safe element access — these may not exist in user mode
+          const safeSet = (id, value) => { const el = $(id); if (el) el.value = value; };
+          safeSet("symbol", parsed.symbol);
+          if (parsed.period) safeSet("period", parsed.period);
+          if (parsed.research_topic) safeSet("topic", parsed.research_topic);
           syncEnginesFromSwitch();
         }
         if (data.latest && !data._no_latest_until_complete) { latest = data.latest; syncFormFromLatest(latest); }
@@ -2724,7 +2737,8 @@ def render_index_html(mode: str = "user") -> str:
           setControlsBusy(false);
           setStatus(`后台生成中：${result.symbol || parsed.symbol || "-"} ${result.period || parsed.period || ""}`);
         } else {
-          const gate = asObj(asObj(data.latest).delivery_gate);
+          // delivery_gate may be filtered out in user mode
+          const gate = asObj((data.latest || {}).delivery_gate || {});
           setStatus(gate.delivery_pass === false ? "报告未通过质量门禁" : "就绪", gate.delivery_pass === false);
         }
       } catch (err) {
@@ -2790,11 +2804,13 @@ def render_index_html(mode: str = "user") -> str:
     }
     function render() {
       renderTabButtons("mainTabs", mainTabs, activeMainTab, (tab) => { activeMainTab = tab; render(); });
-      renderTabButtons("devTabs", devTabs, activeDevTab, (tab) => { activeDevTab = tab; render(); });
+      if ($("devTabs")) { renderTabButtons("devTabs", devTabs, activeDevTab, (tab) => { activeDevTab = tab; render(); }); }
       const mainMap = {"概览": renderOverview, "报告": renderReport, "引用": renderCitations, "质量": renderQuality};
       const devMap = {"数据源健康": renderSourceHealth, "协作黑板": renderBlackboard, "多智能体协作": renderCollaboration, "工具调用": renderToolTrace, "图表": renderCharts, "表格": renderTables, "PDF章节": renderPdf, "公司画像": renderProfile, "Claims": renderClaims, "轨迹": renderTrace, "时间线": renderTimeline, "原始数据": renderRaw};
-      $("content").innerHTML = (mainMap[activeMainTab] || renderOverview)(latest);
-      $("devContent").innerHTML = (devMap[activeDevTab] || renderCollaboration)(latest);
+      const content = $("content");
+      if (content) content.innerHTML = (mainMap[activeMainTab] || renderOverview)(latest);
+      const devContent = $("devContent");
+      if (devContent) devContent.innerHTML = (devMap[activeDevTab] || renderCollaboration)(latest);
     }
     function renderOverview(data) {
       const active = currentActiveRun(data);
@@ -2903,12 +2919,13 @@ def render_index_html(mode: str = "user") -> str:
       return `<table><thead><tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${columns.map((c) => `<td>${esc(Array.isArray(row[c]) ? row[c].join(", ") : row[c] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
     }
     $("chatBtn").addEventListener("click", sendChat);
-    $("runBtn").addEventListener("click", runReport);
-    $("refreshBtn").addEventListener("click", loadLatest);
-    $("symbol").addEventListener("change", syncEnginesFromSwitch);
-    $("realtimeData").addEventListener("change", syncEnginesFromSwitch);
-    document.querySelectorAll(".chip").forEach((btn) => btn.addEventListener("click", () => { $("chatInput").value = btn.dataset.prompt || ""; $("chatInput").focus(); }));
-    $("chatInput").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendChat(); } });
+    if ($("runBtn")) $("runBtn").addEventListener("click", runReport);
+    if ($("refreshBtn")) $("refreshBtn").addEventListener("click", loadLatest);
+    if ($("symbol")) $("symbol").addEventListener("change", syncEnginesFromSwitch);
+    if ($("realtimeData")) $("realtimeData").addEventListener("change", syncEnginesFromSwitch);
+    document.querySelectorAll(".chip").forEach((btn) => btn.addEventListener("click", () => { const inp = $("chatInput"); if (inp) { inp.value = btn.dataset.prompt || ""; inp.focus(); } }));
+    const chatInput = $("chatInput");
+    if (chatInput) chatInput.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendChat(); } });
     syncEnginesFromSwitch();
     render();
     loadLatest();
