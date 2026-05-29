@@ -2805,7 +2805,7 @@ def render_index_html(mode: str = "user") -> str:
       lines.push(`交付状态：${gate.delivery_pass === true ? "已通过" : gate.delivery_pass === false ? "未通过" : "未运行"}`);
       const issues = topIssues(data).slice(0, 4);
       if (issues.length) lines.push(`需要关注：\n- ${issues.map((item) => issueText(item)).join("\n- ")}`);
-      if (data.report_html_url) lines.push("报告已在下方“报告”页签中更新。");
+      if (data.report_html_url) lines.push("报告已在下方「报告」页签中更新。");
       return lines.join("\n");
     }
     function appendBubble(role, text) {
@@ -2847,15 +2847,15 @@ def render_index_html(mode: str = "user") -> str:
       const active = currentActiveRun(data);
       const summary = asObj(data.summary);
       if (active) {
-        return `<div class=”grid”>${metric(“当前任务”, `${active.symbol || “-”} ${active.period || “”}`)}${metric(“状态”, “正在生成”)}${metric(“执行模式”, active.execution_mode || “-”)}${metric(“开始时间”, active.started_at || “-”)}</div><p class=”muted”>下方最近报告仍可能是上一轮产物；当前任务完成后会自动刷新。</p>`;
+        return `<div class="grid">${metric("当前任务", `${active.symbol || "-"} ${active.period || ""}`)}${metric("状态", "正在生成")}${metric("执行模式", active.execution_mode || "-")}${metric("开始时间", active.started_at || "-")}</div><p class="muted">下方最近报告仍可能是上一轮产物；当前任务完成后会自动刷新。</p>`;
       }
-      if (!summary.symbol && !asList(data.citations).length && !data.report_html_url && !data.report_links) return `<div class=”empty-state”>可以直接输入“生成某公司最新财报研报”。我会先检查报告期是否有效，再启动多智能体生成。</div>`;
-      if (UI_MODE === “developer”) {
+      if (!summary.symbol && !asList(data.citations).length && !data.report_html_url && !data.report_links) return `<div class="empty-state">可以直接输入「生成某公司最新财报研报」。我会先检查报告期是否有效，再启动多智能体生成。</div>`;
+      if (UI_MODE === "developer") {
         const verification = asObj(data.verification_report || {});
         const gate = asObj(data.delivery_gate || {});
-        return `<div class=”grid”>${metric(“标的”, summary.symbol || “-”)}${metric(“报告期”, summary.period || “-”)}${metric(“执行模式”, summary.execution_mode || “-”)}${metric(“事实校验”, summary.verification_passed ?? verification.passed ?? “未运行”)}${metric(“交付状态”, gate.delivery_pass === true ? “已通过” : gate.delivery_pass === false ? “未通过” : “未运行”)}${metric(“论点”, asList(data.claims || []).length)}${metric(“证据”, asList(data.evidence || []).length)}${metric(“图表”, asList(data.charts || []).length)}${metric(“引用”, asList(data.citations || []).length)}</div>`;
+        return `<div class="grid">${metric("标的", summary.symbol || "-")}${metric("报告期", summary.period || "-")}${metric("执行模式", summary.execution_mode || "-")}${metric("事实校验", summary.verification_passed ?? verification.passed ?? "未运行")}${metric("交付状态", gate.delivery_pass === true ? "已通过" : gate.delivery_pass === false ? "未通过" : "未运行")}${metric("论点", asList(data.claims || []).length)}${metric("证据", asList(data.evidence || []).length)}${metric("图表", asList(data.charts || []).length)}${metric("引用", asList(data.citations || []).length)}</div>`;
       }
-      return `<div class=”grid”>${metric(“标的”, summary.symbol || “-”)}${metric(“报告期”, summary.period || “-”)}${metric(“执行模式”, summary.execution_mode || “-”)}${metric(“图表”, asList(data.charts || []).length)}${metric(“引用”, asList(data.citations || []).length)}</div>`;
+      return `<div class="grid">${metric("标的", summary.symbol || "-")}${metric("报告期", summary.period || "-")}${metric("执行模式", summary.execution_mode || "-")}${metric("图表", asList(data.charts || []).length)}${metric("引用", asList(data.citations || []).length)}</div>`;
     }
     function metric(name, value) { return `<div class="item"><h3>${esc(name)}</h3><div>${esc(value)}</div></div>`; }
     function renderReport(data) {
