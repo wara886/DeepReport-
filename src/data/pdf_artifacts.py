@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 from datetime import datetime, timezone
 import hashlib
+import io
 import re
+import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 from urllib import error, request
@@ -164,6 +167,11 @@ def _cache_pdf(source_url: str, cache_root: Path, timeout: float) -> tuple[Path,
     return cached, digest, len(data)
 
 
+def _suppress_mupdf_stderr():
+    """Temporarily suppress MuPDF C-core stderr noise (e.g. structure tree errors)."""
+    return contextlib.redirect_stderr(io.StringIO())
+
+
 def _extract_sections(path: Path, evidence_id: str, source_url: str, max_pages: int) -> Dict[str, Any]:
     try:
         import fitz
@@ -177,48 +185,49 @@ def _extract_sections(path: Path, evidence_id: str, source_url: str, max_pages: 
         max_pages=max_pages,
     )
     pdfplumber_pages = {int(table.get("page", 0) or 0) for table in pdfplumber_tables}
-    doc = fitz.open(str(path))
-    try:
-        page_count = len(doc)
-        pages_read = min(page_count, max(1, int(max_pages)))
-        sections: List[Dict[str, Any]] = []
-        tables: List[Dict[str, Any]] = list(pdfplumber_tables)
-        for page_index in range(pages_read):
-            page = doc[page_index]
-            text = page.get_text() or ""
-            normalized = " ".join(text.split())
-            lowered = normalized.lower()
-            for section_type, keywords in SECTION_KEYWORDS.items():
-                match = next((keyword for keyword in keywords if keyword.lower() in lowered), "")
-                if not match:
-                    continue
-                snippet = _snippet_around(normalized, match)
-                section_id = hashlib.sha1(f"{evidence_id}|{page_index}|{section_type}|{snippet}".encode("utf-8")).hexdigest()[:12]
-                sections.append(
-                    {
-                        "section_id": section_id,
-                        "evidence_id": evidence_id,
-                        "source_url": source_url,
-                        "page": page_index + 1,
-                        "section_type": section_type,
-                        "matched_keyword": match,
-                        "snippet": snippet,
-                        "extraction_method": "pymupdf_text_keyword_window",
-                    }
-                )
-            if page_index + 1 not in pdfplumber_pages:
-                tables.extend(
-                    _extract_statement_tables(
-                        page=page,
-                        page_number=page_index + 1,
-                        page_text=normalized,
-                        evidence_id=evidence_id,
-                        source_url=source_url,
+    with _suppress_mupdf_stderr():
+        doc = fitz.open(str(path))
+        try:
+            page_count = len(doc)
+            pages_read = min(page_count, max(1, int(max_pages)))
+            sections: List[Dict[str, Any]] = []
+            tables: List[Dict[str, Any]] = list(pdfplumber_tables)
+            for page_index in range(pages_read):
+                page = doc[page_index]
+                text = page.get_text() or ""
+                normalized = " ".join(text.split())
+                lowered = normalized.lower()
+                for section_type, keywords in SECTION_KEYWORDS.items():
+                    match = next((keyword for keyword in keywords if keyword.lower() in lowered), "")
+                    if not match:
+                        continue
+                    snippet = _snippet_around(normalized, match)
+                    section_id = hashlib.sha1(f"{evidence_id}|{page_index}|{section_type}|{snippet}".encode("utf-8")).hexdigest()[:12]
+                    sections.append(
+                        {
+                            "section_id": section_id,
+                            "evidence_id": evidence_id,
+                            "source_url": source_url,
+                            "page": page_index + 1,
+                            "section_type": section_type,
+                            "matched_keyword": match,
+                            "snippet": snippet,
+                            "extraction_method": "pymupdf_text_keyword_window",
+                        }
                     )
-                )
-        return {"page_count": page_count, "pages_read": pages_read, "sections": sections, "tables": tables}
-    finally:
-        doc.close()
+                if page_index + 1 not in pdfplumber_pages:
+                    tables.extend(
+                        _extract_statement_tables(
+                            page=page,
+                            page_number=page_index + 1,
+                            page_text=normalized,
+                            evidence_id=evidence_id,
+                            source_url=source_url,
+                        )
+                    )
+            return {"page_count": page_count, "pages_read": pages_read, "sections": sections, "tables": tables}
+        finally:
+            doc.close()
 
 
 def _extract_pdfplumber_statement_tables(path: Path, evidence_id: str, source_url: str, max_pages: int) -> List[Dict[str, Any]]:

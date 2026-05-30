@@ -908,7 +908,7 @@ def eastmoney_financials_search(
                 "evidence_id": f"{code}_{period or 'latest'}_eastmoney_financials_{table_type}_{digest}",
                 "sample_id": f"{code}_{period or 'latest'}_eastmoney_financials_{table_type}_{digest}",
                 "symbol": resolved_symbol or code,
-                "period": str(period or row.get("REPORT_DATE") or ""),
+                "period": str(period or _report_date_to_period(row.get("REPORT_DATE"))) or "",
                 "source_type": "eastmoney_financials",
                 "title": title,
                 "content": summary,
@@ -1140,6 +1140,24 @@ def _period_year(period: str | None) -> str:
     text = str(period or "").strip().upper()
     match = re.search(r"20\d{2}", text)
     return match.group(0) if match else ""
+
+
+def _report_date_to_period(raw_date: Any) -> str:
+    """Convert a REPORT_DATE like '2024-12-31 00:00:00' to a canonical period label 'FY2024'."""
+    date_str = str(raw_date or "").strip()[:10]
+    match = re.match(r"(\d{4})-(\d{2})-\d{2}", date_str)
+    if not match:
+        return str(raw_date or "")
+    year, month = match.group(1), match.group(2)
+    if month in {"01", "02", "03"}:
+        return f"{year}Q1"
+    if month in {"04", "05", "06"}:
+        return f"{year}Q2"
+    if month in {"07", "08", "09"}:
+        return f"{year}Q3"
+    if month in {"10", "11", "12"}:
+        return f"{year}Q4"
+    return str(raw_date or "")
 
 
 def _select_financial_row_for_period(records: List[Any], period: str | None) -> Dict[str, Any]:

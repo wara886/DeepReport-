@@ -26,6 +26,88 @@ def attach_charts_to_markdown(markdown: str, charts: List[Dict[str, Any]]) -> st
     return base + "\n\n" + "\n".join(lines).rstrip() + "\n"
 
 
+def inject_chart_references(markdown: str, charts: List[Dict[str, Any]], charts_header: str = CHARTS_HEADER) -> str:
+    """Inject ``> 参考图表：[title]`` lines at the end of relevant sections.
+
+    Each chart's ``section_name`` (or ``chart_type``) is matched against markdown
+    section headers.  If a section already contains a chart reference, it is
+    skipped to avoid duplication.
+    """
+    if not charts:
+        return markdown
+
+    _reference_marker = "参考图表"
+
+    # Group charts by their target section
+    section_charts: Dict[str, List[str]] = {}
+    for chart in charts:
+        target = str(chart.get("section_name") or chart.get("chart_type") or "")
+        title = str(chart.get("title") or chart.get("chart_id") or "图表")
+        if not target or not title:
+            continue
+        section_charts.setdefault(target, []).append(title)
+
+    if not section_charts:
+        return markdown
+
+    lines = markdown.split("\n")
+    result: List[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        result.append(line)
+
+        # Detect section headers
+        stripped = line.strip()
+        if not stripped.startswith("## "):
+            i += 1
+            continue
+
+        current_section = stripped[len("## "):].strip().lower().replace(" ", "_")
+
+        # Check if this section has charts
+        matched_titles: List[str] = []
+        for section_key, titles in section_charts.items():
+            sec_lower = section_key.lower().replace(" ", "_")
+            if sec_lower == current_section or sec_lower in current_section or current_section in sec_lower:
+                matched_titles.extend(titles)
+
+        if not matched_titles:
+            i += 1
+            continue
+
+        # Collect all lines of this section
+        j = i + 1
+        section_body: List[str] = []
+        while j < len(lines):
+            if lines[j].strip().startswith("## ") or lines[j].strip().startswith(charts_header):
+                break
+            section_body.append(lines[j])
+            j += 1
+
+        # Check if this section already has a chart reference
+        body_text = "\n".join(section_body)
+        if _reference_marker in body_text:
+            i = j
+            result.extend(section_body)
+            continue
+
+        # Inject chart reference before the last blank line of the section
+        # Find the trailing blank lines
+        ref_line = f"\n> {_reference_marker}：{'、'.join(matched_titles)}"
+        # Insert ref_line before the trailing blank lines at end of section
+        k = len(section_body) - 1
+        while k >= 0 and section_body[k].strip() == "":
+            k -= 1
+        # Insert at k+1 (after last non-blank line)
+        section_body.insert(k + 1, ref_line)
+
+        result.extend(section_body)
+        i = j
+
+    return "\n".join(result)
+
+
 def attach_charts_to_html(html: str, charts: List[Dict[str, Any]]) -> str:
     block = render_chart_html(charts)
     if "</body>" in html:

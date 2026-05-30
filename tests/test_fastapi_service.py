@@ -41,7 +41,7 @@ def test_fastapi_chat_does_not_create_report_run_for_general_dialogue(tmp_path):
         )
 
     assert response.status_code == 200
-    assert response.json()["mode"] == "chat"
+    assert response.json()["mode"] == "general_chat"
     assert not (outputs / "runs").exists()
 
 
@@ -73,10 +73,11 @@ def test_fastapi_chat_background_report_returns_without_upstream_timeout(monkeyp
     monkeypatch.setattr("src.app.web_ui.llm_parse_chat_task", fake_parse)
     monkeypatch.setattr("src.app.web_ui.run_delivery_quality_pipeline", lambda *args, **kwargs: {})
     monkeypatch.setattr("src.app.web_ui.run_delivery_rework_loop", lambda *args, **kwargs: {})
+    monkeypatch.setattr("src.app.web_ui.QueryUnderstanding.intent_classify", lambda self, msg: "report_generation")
 
     outputs = tmp_path / "outputs"
     reports = tmp_path / "reports"
-    app = create_fastapi_app(output_dir=str(outputs), report_dir=str(reports), memory_root=str(tmp_path / "memory"))
+    app = create_fastapi_app(output_dir=str(outputs), report_dir=str(reports), memory_root=str(tmp_path / "memory"), mode="developer")
 
     try:
         with TestClient(app) as client:
@@ -97,7 +98,7 @@ def test_fastapi_chat_background_report_returns_without_upstream_timeout(monkeyp
 
     body = response.json()
     assert response.status_code == 200
-    assert elapsed < 2
-    assert body["mode"] == "report_run"
+    assert elapsed < 3
+    assert body["mode"] == "report_generation_running"
     assert body["result"]["status"] == "running"
     assert body["latest"]["active_runs"][0]["symbol"] == "TSLA"

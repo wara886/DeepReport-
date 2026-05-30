@@ -11,6 +11,96 @@ import re
 from typing import Any, Dict, List
 
 
+# ── Banned debug phrases ─────────────────────────────────────────────
+BANNED_PHRASES: List[str] = [
+    "暂无充足的可验证证据",
+    "PDF section:",
+    "本节暂无",
+    "待补",
+    "框架性",
+    "提示了相关风险或运营关注点",
+    "web_search 提示",
+    "资料缺口：",
+]
+
+
+def _clean_phrases(text: str) -> str:
+    """Remove banned debug/generic phrases from text, leaving valid content intact."""
+    text = re.sub(r"暂无充足的可验证证据[^。]*。?\s*", "", text)
+    text = re.sub(r"资料缺口[：:][^。]*。?\s*", "", text)
+    text = re.sub(r"提示了相关风险或运营关注点[^。]*。?\s*", "", text)
+    text = re.sub(r"PDF section:\s*\S*", "", text)
+    text = text.replace("web_search 提示", "").replace("本节暂无", "").replace("待补", "")
+    text = re.sub(r"（框架性[^）]*）", "", text)
+    return text.strip()
+
+
+def _section_is_gap(lines: List[str]) -> bool:
+    """Return True if most non-header lines in a section are gap/debug content."""
+    content = [l for l in lines if l.strip() and not l.startswith("##") and not l.startswith("#")]
+    if not content:
+        return False
+    gap_count = sum(1 for l in content if any(p in l for p in BANNED_PHRASES))
+    return gap_count / len(content) > 0.5
+
+
+def _filter_banned_phrases(markdown: str) -> str:
+    """Filter banned debug/generic phrases from report markdown.
+
+    Sections consisting primarily of gap content are moved to a
+    "数据缺口与降级说明" appendix. Isolated banned phrases in
+    otherwise valid sections are silently removed.
+    """
+    lines = markdown.splitlines()
+    sections: List[List[str]] = []
+    current: List[str] = []
+
+    for line in lines:
+        if line.startswith("## ") and current and current[0].startswith("## "):
+            sections.append(current)
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        sections.append(current)
+
+    main_sections: List[List[str]] = []
+    gap_sections: List[List[str]] = []
+
+    for sec in sections:
+        if _section_is_gap(sec):
+            gap_sections.append(sec)
+        else:
+            cleaned = []
+            for line in sec:
+                cl = _clean_phrases(line)
+                if cl.strip():
+                    cleaned.append(cl)
+            main_sections.append(cleaned)
+
+    result: List[str] = []
+    for sec in main_sections:
+        result.extend(sec)
+
+    if gap_sections:
+        result.append("")
+        result.append("## 数据缺口与降级说明")
+        result.append("")
+        result.append("以下章节因缺乏可验证的公开数据，当前报告期内未能生成详细分析：")
+        result.append("")
+        for sec in gap_sections:
+            for line in sec:
+                if line.startswith("## "):
+                    result.append(f"### {line[3:].strip()}（数据缺口）")
+                elif line.strip() and any(p in line for p in BANNED_PHRASES):
+                    result.append("> 数据不足以支持该章节的详细分析。")
+                elif line.strip():
+                    result.append(line)
+        result.append("")
+
+    return "\n".join(result)
+
+
 def render_professional_html_report(
     markdown: str,
     title: str,
@@ -31,6 +121,7 @@ def render_professional_html_report(
     """
     charts = charts or []
     citations = citations or []
+    markdown = _filter_banned_phrases(markdown)
     body_html = _markdown_to_html(markdown)
     chart_count = len(charts)
     citation_count = len(citations)

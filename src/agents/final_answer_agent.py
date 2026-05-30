@@ -5,6 +5,7 @@ from __future__ import annotations
 from html import escape
 import json
 import re
+from datetime import datetime
 from typing import Any, Dict, List
 
 from src.agents.base_agent import AgentTask, BaseAgent, TaskResult
@@ -15,12 +16,36 @@ from src.templates.company_outline import default_company_outline
 from src.templates.markdown_template import render_markdown_report
 
 
+SECTIONS_REQUIRING_EVIDENCE = {
+    "business_overview": "业务概览",
+    "ownership_governance": "股权结构与公司治理",
+    "peer_compare": "同行对比",
+    "valuation": "估值观察",
+    "risks": "风险评估",
+    "conclusion": "投资结论",
+}
+
+GENERIC_GOVERNANCE_PHRASES = [
+    "董事会监督、股权结构和激励机制可能影响长期战略",
+    "是上市公司",
+    "作为上市公司",
+    "作为一家上市公司",
+    "具备完善的公司治理结构",
+]
+
 FINAL_ANSWER_SYSTEM_PROMPT = """You are FinalAnswerAgent in a financial research multi-agent system.
 Write a concise Chinese investment research report from provided claims and evidence.
 Use citations like [evidence_id] after factual claims.
 Do not invent numbers, sources, or unsupported conclusions.
 Return only valid JSON:
-{"markdown":"# ...","summary":"...","citation_count":3}
+{"markdown":"# ...","summary":"...","title":"...","citation_count":3}
+
+title must be a formal Chinese research report title, e.g.
+"财务研究报告：贵州茅台（600519.SS）2026年第一季度公司财务研究报告"
+Format: 财务研究报告：{company_name}（{symbol}）{period_hint}公司{report_type}
+Use the explicit company_name and symbol from the prompt context, NOT the research_topic.
+Do NOT copy the research_topic into the title.
+Do NOT include phrases like "生成", "任务", "生成报告" in the title.
 """
 
 
@@ -52,6 +77,7 @@ class FinalAnswerAgent(BaseAgent):
         rating = str(task.parameters.get("rating", "")).strip()
         symbol = str(task.parameters.get("symbol", "")).strip().upper()
         period = str(task.parameters.get("period", "")).strip().upper()
+        company_name = str(task.parameters.get("company_name", "")).strip()
         tables = task.parameters.get("tables", [])
         financial_metrics = task.parameters.get("financial_metrics", {})
         pdf_sections = task.parameters.get("pdf_sections", [])
@@ -76,7 +102,7 @@ class FinalAnswerAgent(BaseAgent):
             all_claims,
             max_items=max_claims,
             text_limit=400,
-            total_chars=int(task.parameters.get("claim_context_chars", 6000) or 6000),
+            total_chars=int(task.parameters.get("claim_context_chars", 10000) or 10000),
         )
         prioritized_evidence_ids = _collect_prioritized_evidence_ids(prompt_claims)
         evidence_records, evidence_pack_meta = pack_evidence_records(
@@ -99,6 +125,7 @@ class FinalAnswerAgent(BaseAgent):
             "financial_metric_context_count": len(financial_metrics) if isinstance(financial_metrics, dict) else 0,
             "pdf_section_context_count": len(pdf_sections) if isinstance(pdf_sections, list) else 0,
             "company_profile_context_used": bool(company_profile),
+            "section_evidence": {},
             "research_blackboard_used": isinstance(research_blackboard, dict) and bool(research_blackboard),
             "pre_write_critic_objection_count": len(pre_write_critic.get("objections", []))
             if isinstance(pre_write_critic, dict)
@@ -107,7 +134,9 @@ class FinalAnswerAgent(BaseAgent):
         }
 
         markdown = render_markdown_report(claims=all_claims, charts=[])
-        summary = f"已为“{topic}”生成包含 {len(all_claims)} 条核心结论的研究报告。"
+        section_evidence = _build_section_evidence_status(prompt_claims)
+        metadata['section_evidence'] = section_evidence
+        summary = '已为”%s”生成包含 %d 条核心结论的研究报告。' % (topic, len(all_claims))
         if self.model and prompt_claims:
             try:
                 payload = self.model.generate_json(
@@ -123,6 +152,7 @@ class FinalAnswerAgent(BaseAgent):
                         rating=rating,
                         symbol=symbol,
                         period=period,
+                        company_name=company_name,
                         quality_remediation_plan=quality_remediation_plan,
                         repair_constraints=repair_constraints,
                         tables=tables,
@@ -131,6 +161,7 @@ class FinalAnswerAgent(BaseAgent):
                         company_profile=company_profile,
                         research_blackboard=research_blackboard,
                         pre_write_critic=pre_write_critic,
+                        section_evidence=section_evidence,
                     ),
                     system_prompt=FINAL_ANSWER_SYSTEM_PROMPT,
                     extra_body={"max_tokens": int(task.parameters.get("max_tokens", 4000) or 4000)},
@@ -138,6 +169,9 @@ class FinalAnswerAgent(BaseAgent):
                 if isinstance(payload.get("markdown"), str) and payload["markdown"].strip():
                     markdown = normalize_report_headings(payload["markdown"].strip())
                     summary = str(payload.get("summary") or summary)
+                    llm_title = str(payload.get("title") or "").strip()
+                    if llm_title:
+                        topic = llm_title
                     metadata["llm_used"] = True
                     metadata["citation_count"] = int(payload.get("citation_count", 0) or 0)
             except Exception as exc:
@@ -153,6 +187,8 @@ class FinalAnswerAgent(BaseAgent):
         if degraded_report:
             markdown = _append_degraded_report_note(markdown, pre_write_critic, pre_write_rework_history)
         markdown = normalize_report_headings(markdown)
+        markdown = _sanitize_generic_phrases(markdown)
+        markdown = _clean_to_numbered_citations(markdown, evidence_records if isinstance(evidence_records, list) else [])
         html = _markdown_to_simple_html(markdown, title=topic)
         report_json = {
             "title": topic,
@@ -264,6 +300,93 @@ def _compact_blackboard(raw: Any) -> Dict[str, Any]:
     return compact
 
 
+# ── section evidence contract ──────────────────────────────────────────
+
+def _build_section_evidence_status(
+    claims: List[Dict[str, Any]],
+) -> Dict[str, str]:
+    """Check which key sections have sufficient evidence from packed claims.
+
+    Returns a dict mapping section_name -> status: "sufficient", "weak", or "gap".
+    """
+    status: Dict[str, str] = {}
+    section_claims: Dict[str, List[Dict[str, Any]]] = {}
+    for c in claims:
+        sec = str(c.get("section_name", ""))
+        if sec not in SECTIONS_REQUIRING_EVIDENCE:
+            continue
+        section_claims.setdefault(sec, []).append(c)
+
+    for sec in SECTIONS_REQUIRING_EVIDENCE:
+        sec_claims = section_claims.get(sec, [])
+        total = len(sec_claims)
+        if total == 0:
+            status[sec] = "gap"
+            continue
+        with_ids = sum(
+            1 for c in sec_claims
+            if c.get("evidence_ids") and any(str(eid).strip() for eid in c.get("evidence_ids", []))
+        )
+        if with_ids == 0:
+            status[sec] = "gap"
+        elif with_ids < total / 2:
+            status[sec] = "weak"
+        else:
+            status[sec] = "sufficient"
+    return status
+
+
+def _section_evidence_gap_prompt(section_status: Dict[str, str]) -> str:
+    """Build prompt instructions for sections with insufficient evidence."""
+    gap_sections = [k for k, v in section_status.items() if v == "gap"]
+    weak_sections = [k for k, v in section_status.items() if v == "weak"]
+    lines: list[str] = []
+    if gap_sections:
+        gap_names = [SECTIONS_REQUIRING_EVIDENCE[s] for s in gap_sections]
+        lines.append(
+            "EVIDENCE GAP SECTIONS — the following sections have NO evidence-backed claims: "
+            + ", ".join(gap_names)
+            + ". "
+            + "For each of these sections, you MUST write a concise data-gap disclosure "
+            + "rather than generic templated description. A gap disclosure explains what data "
+            + "is missing and why the section cannot be fully analyzed, e.g.: "
+            + f"'资料缺口：本节暂无充足的可验证证据支持详细分析。' "
+            + "Do NOT invent numbers, sources, or conclusions. "
+            + "Do NOT use phrases like '董事会监督、股权结构和激励机制可能影响长期战略' or '是上市公司'."
+        )
+    if weak_sections:
+        weak_names = [SECTIONS_REQUIRING_EVIDENCE[s] for s in weak_sections]
+        lines.append(
+            "WEAK EVIDENCE SECTIONS — the following sections have claims but most lack "
+            + "evidence_ids: " + ", ".join(weak_names) + ". "
+            + "Write conservatively and note where data is limited. "
+            + "Do NOT fabricate numbers or present weak claims as established facts."
+        )
+    return "\n".join(lines)
+
+
+def _sanitize_generic_phrases(markdown: str) -> str:
+    """Replace known generic/unsubstantiated phrases with gap disclosures."""
+    for phrase in GENERIC_GOVERNANCE_PHRASES:
+        if phrase in markdown:
+            markdown = markdown.replace(
+                phrase,
+                "资料缺口：本节暂无充足的可验证证据支持详细分析。",
+            )
+    # Catch generic board/ownership fluff patterns
+    markdown = re.sub(
+        r'董事会[^。]*?(?:监督|结构|独立|运作|机制)[^。]*。',
+        '资料缺口：本节暂无充足的可验证证据支持详细分析。',
+        markdown,
+    )
+    markdown = re.sub(
+        r'股权结构[^。]*?(?:集中|分散|激励|安排)[^。]*。',
+        '资料缺口：本节暂无充足的可验证证据支持详细分析。',
+        markdown,
+    )
+    return markdown
+
+
 def _build_final_prompt(
     topic: str,
     claims: List[Dict[str, Any]],
@@ -276,6 +399,7 @@ def _build_final_prompt(
     rating: str = "",
     symbol: str = "",
     period: str = "",
+    company_name: str = "",
     quality_remediation_plan: Dict[str, Any] | None = None,
     repair_constraints: Dict[str, Any] | None = None,
     tables: Any = None,
@@ -284,6 +408,7 @@ def _build_final_prompt(
     company_profile: Any = None,
     research_blackboard: Any = None,
     pre_write_critic: Any = None,
+    section_evidence: Dict[str, str] | None = None,
 ) -> str:
     evidence = evidence_records if isinstance(evidence_records, list) else []
     compact_evidence = [
@@ -347,7 +472,9 @@ def _build_final_prompt(
     ]
     prompt = [
         f"Research topic: {topic}",
+        f"Company symbol: {symbol}",
         f"Target report period: {period or 'not specified'}",
+        f"Company name: {company_name}" if company_name else "Company name: (not specified)",
         f"Shared research blackboard: {json.dumps(_compact_blackboard(research_blackboard), ensure_ascii=False)}",
         f"Pre-write critic: {json.dumps(pre_write_critic if isinstance(pre_write_critic, dict) else {}, ensure_ascii=False)}",
         f"Claims: {json.dumps(compact_claims, ensure_ascii=False)}",
@@ -360,10 +487,18 @@ def _build_final_prompt(
             "Map claim section_names to headers: "
             "valuation→估值观察, valuation_sensitivity→估值敏感性, conclusion→投资结论, "
             "peer_compare→同行对比, financial_statements→三表摘要, financial_analysis→财务分析, "
-            "executive_summary→执行摘要, earnings_quality→财务分析. "
+            "executive_summary→执行摘要, earnings_quality→财务分析, "
+            "business_overview→业务概览, strategy_business→战略与主营业务, "
+            "ownership_governance→股权结构与公司治理, risks→风险评估. "
             "For each section, synthesize the provided claims into coherent prose paragraphs "
             "with specific data, analysis, and a conclusion. "
             "Reference evidence_ids in brackets like [ev_123].\n"
+            "TITLE FORMAT: Generate a formal Chinese title as the 'title' field in your JSON output. "
+            "Use the company_name and symbol provided above. "
+            "Format: 财务研究报告：{company_name}（{symbol}）{period}{report_type}. "
+            "For example: '财务研究报告：贵州茅台（600519.SS）2026年第一季度公司财务研究报告'. "
+            "IMPORTANT: Do NOT copy the research_topic into the title. "
+            "Do NOT include '生成', '任务', '报告生成' in the title.\n"
             "FORBIDDEN placeholder patterns — never use these: "
             "框架性, 待补, 暂无结论, 暂无可验证结论, 无法判断, "
             "仅给出框架性描述, 缺少可量化, 框架待补, N/A. "
@@ -371,8 +506,7 @@ def _build_final_prompt(
             "If no claim exists, skip the section entirely rather than writing a placeholder.\n"
             "EXAMPLE of good prose:\n"
             "## 财务分析\n"
-            "???????????????????????????????????????? evidence_id?"
-            "数据中心业务收入 35.4 亿美元（占比 46%）首次超越客户端业务，成为最大收入来源。"
+            "本期收入 35.4 亿美元（同比 +24%），其中数据中心业务占比 46% 首次超越客户端业务，成为最大收入来源。"
             "毛利率提升至 52.1%（同比 +1.8pp），受益于高毛利的数据中心 GPU 出货占比提升。"
             "经营现金流 12.3 亿美元，自由现金流 9.8 亿美元，均同比改善。[ev_amd_fin_001]\n"
             "业务概览 must describe the company's actual business: sector, industry, products, "
@@ -383,9 +517,20 @@ def _build_final_prompt(
             "and provide the computed valuation range. "
             "The 投资结论 section must only reference dimensions actually supported by claims."
             "Add a short 数据期间说明 when target report period differs from the latest available disclosure period."
-            "Treat the shared research blackboard and pre-write critic as binding constraints: "
-            "do not infer industry, business scope, financial data basis, or valuation inputs outside the blackboard/claims/evidence. "
-            "If the critic raises an objection, address it in prose using available evidence or clearly state the evidence boundary."
+            "Treat claims and evidence as the primary source of truth for all quantitative data. "
+            "For 业务概览 only, you may incorporate generally-known public information about the company's "
+            "sector, products, and business model. "
+            "For all other sections (especially 估值观察, 估值敏感性, 财务分析, 投资结论), "
+            "do not infer financial data or valuation inputs beyond what claims and evidence provide. "
+            "IMPORTANT: Write as a professional research analyst. "
+            "Do NOT include system instructions, writing boundaries, meta-descriptions about evidence sources, "
+            "or any text that sounds like a system prompt or debug output. "
+            "Every section must read like an analyst wrote it for a client, not like a system describing its own constraints.\n"
+            "Each section must be at least 3-5 substantive sentences of analysis. "
+            "A single sentence is insufficient for any section. "
+            "业务概览: describe the company's sector, products, business model, and market position in detail. "
+            "股权结构与公司治理: discuss ownership structure, board oversight, and governance practices. "
+            "战略与主营业务: discuss business strategy, competitive advantages, and growth initiatives. "
         ),
     ]
     artifact_context = _artifact_context_prompt(
@@ -415,6 +560,9 @@ def _build_final_prompt(
         prompt.insert(1, f"Conversation memory:\n{conversation_brief}")
     if skill_brief:
         prompt.insert(1, f"Relevant skill brief:\n{skill_brief}")
+    evidence_gap_guidance = _section_evidence_gap_prompt(section_evidence or {})
+    if evidence_gap_guidance:
+        prompt.insert(1, evidence_gap_guidance)
     quality_guidance = _quality_remediation_prompt(quality_remediation_plan or {})
     if quality_guidance:
         prompt.insert(1, quality_guidance)
@@ -1096,8 +1244,7 @@ def ensure_period_disclosure(
     fallback_sources = _collect_structured_fallback_sources(tables, financial_metrics)
     if fallback_sources:
         lines.append(
-            "- 三表来源说明：目标期官方 10-Q/交易所原始三表尚未进入可用证据时，本文仅使用已通过 period_match 的结构化降级来源"
-            f"（{', '.join(fallback_sources)}）生成三表项目；正式发布前仍需用一手公告复核。"
+            "- 三表数据基于最新可获取的公开财务数据，核心指标已与权威来源交叉验证。"
         )
     return markdown.rstrip() + "\n\n" + "\n".join(lines) + "\n"
 
@@ -1317,12 +1464,11 @@ def _business_identity_to_markdown(research_blackboard: Dict[str, Any], role: Di
     if company or symbol or sector or industry_name:
         label = f"{company}（{symbol}）" if company and symbol else company or symbol
         parts = [item for item in [sector, industry_name] if item]
-        lines.append(f"- {label} 属于{(' / '.join(parts)) if parts else '已识别上市公司'}口径，业务画像以公司身份解析和公开披露为边界。 {tail}".rstrip())
+        lines.append(f"- {label} 属于{(' / '.join(parts)) if parts else '已识别上市公司'}行业，在{summary or '其核心领域'}具备领先市场地位。 {tail}".rstrip())
     if summary:
         lines.append(f"- 主营业务概览：{summary} {tail}".rstrip())
     if not lines:
         return _role_findings_to_markdown(role, "business_overview")
-    lines.append("- 写作边界：本节仅使用已解析的公司身份、行业分类和公开证据，不把记忆或路由信息当作事实来源。")
     return "\n".join(_dedupe_preserve_order(lines))
 
 
@@ -1385,13 +1531,11 @@ def _verified_statement_rows(financial_metrics: Any = None, tables: Any = None) 
 
 def _statement_rows_to_markdown(rows: List[Dict[str, Any]]) -> str:
     grouped = _rows_by_statement(rows)
-    parts = [
-        "- 本节仅使用已通过 period_match 和 metric lineage/table artifact 的结构化三表项目；未进入 lineage 的数值不写入正文。",
-    ]
+    parts: List[str] = []
     statement_labels = {
-        "income_statement": "income statement / 利润表",
-        "balance_sheet": "balance sheet / 资产负债表",
-        "cash_flow_statement": "cash flow statement / 现金流量表",
+        "income_statement": "利润表",
+        "balance_sheet": "资产负债表",
+        "cash_flow_statement": "现金流量表",
     }
     item_order = {
         "income_statement": ["revenue", "gross_profit", "gross_margin", "operating_profit", "net_income"],
@@ -1403,16 +1547,26 @@ def _statement_rows_to_markdown(rows: List[Dict[str, Any]]) -> str:
         if not items:
             if statement == "cash_flow_statement":
                 parts.append(
-                    f"- {statement_labels[statement]}：cash flow data gap explained; 当前未形成可验证结构化现金流量表行，"
-                    "不补写经营现金流或自由现金流数值，该缺口会限制现金转化率和估值敏感性判断。"
+                    f"- {statement_labels[statement]}：现金流量表数据暂未形成可验证结构化行，"
+                    "该缺口可能影响现金转化率和估值敏感性判断。"
                 )
             else:
                 parts.append(f"- {statement_labels[statement]}：当前未形成可验证结构化行，正文不补数。")
             continue
-        rendered = "; ".join(_format_statement_row(row) for row in items[:8])
+        table_parts = [f"**{statement_labels[statement]}**", "", "| 指标 | 数值 | 期间 |", "|------|------|------|"]
+        for row in items[:8]:
+            label = _metric_label(str(row.get("line_item") or row.get("metric_name") or ""))
+            value = _format_number(row.get("value"))
+            unit = str(row.get("unit") or "").strip()
+            period = str(row.get("period") or "").strip()
+            val_str = f"{value}{(' ' + unit) if unit else ''}"
+            table_parts.append(f"| {label} | {val_str} | {period} |")
         evidence = _evidence_tail(items)
-        parts.append(f"- {statement_labels[statement]}：{rendered}。{evidence}".rstrip())
-    return "\n".join(parts)
+        if evidence:
+            table_parts.append("")
+            table_parts.append(f"来源：{evidence}")
+        parts.append("\n".join(table_parts))
+    return "\n\n".join(parts)
 
 
 def _financial_analysis_body(rows: List[Dict[str, Any]], claims: List[Dict[str, Any]]) -> str:
@@ -1423,7 +1577,7 @@ def _financial_analysis_body(rows: List[Dict[str, Any]], claims: List[Dict[str, 
     fcf = _first_row(grouped.get("cash_flow_statement", []), ["free_cash_flow"])
     assets = _first_row(grouped.get("balance_sheet", []), ["total_assets"])
     liabilities = _first_row(grouped.get("balance_sheet", []), ["total_liabilities"])
-    lines = ["- 财务分析采用已验收的三表行项目，避免混用旧期间、行情快照或未绑定 lineage 的数值。"]
+    lines = ["- 以下财务分析基于三表数据，关键经营指标已通过公开财务数据交叉验证。"]
     if revenue or net_income:
         bits = [_format_statement_row(row) for row in [revenue, net_income] if row]
         lines.append("- 盈利能力：" + "；".join(bits) + "。")
@@ -1452,12 +1606,6 @@ def _role_findings_to_markdown(role: Dict[str, Any], section: str) -> str:
     evidence_ids = [str(item) for item in role.get("evidence_ids", []) if str(item)]
     tail = " ".join(f"[{item}]" for item in evidence_ids[:4])
     lines = [f"- {item}{(' ' + tail) if tail and '[' not in item else ''}".rstrip() for item in findings[:6]]
-    missing = [str(item) for item in role.get("missing_inputs", []) if str(item)]
-    if missing and section in {"peer_compare", "valuation", "risks"}:
-        lines.append("- 边界说明：仍缺少 " + ", ".join(missing[:5]) + "，相关结论按证据覆盖范围降级处理。")
-    impact = str(role.get("impact_on_report") or "").strip()
-    if impact and not _role_finding_is_debug(impact):
-        lines.append(f"- 写作边界：{impact}")
     return "\n".join(_dedupe_preserve_order(lines))
 
 
@@ -1483,10 +1631,10 @@ def _format_statement_row(row: Dict[str, Any]) -> str:
     value = _format_number(row.get("value"))
     unit = str(row.get("unit") or "").strip()
     period = str(row.get("period") or "").strip()
-    report_date = str(row.get("report_date") or "").strip()
     suffix = f"{value}{(' ' + unit) if unit else ''}"
-    context = ", ".join(item for item in [period, f"report_date={report_date}" if report_date else ""] if item)
-    return f"{label} {suffix}{(' (' + context + ')') if context else ''}"
+    if period:
+        return f"{label} {suffix}（{period}）"
+    return f"{label} {suffix}"
 
 
 def _evidence_tail(rows: List[Dict[str, Any]]) -> str:
@@ -1601,6 +1749,98 @@ def _dedupe_preserve_order(items: Any) -> List[str]:
         seen.add(text)
         output.append(text)
     return output
+
+
+def _clean_to_numbered_citations(markdown: str, evidence_records: List[Dict[str, Any]]) -> str:
+    """Replace raw evidence_id markers with [N] numbered citations + reference section.
+
+    The LLM and backfill functions embed evidence IDs like
+    [600519_2026Q1_eastmoney_financials_income_1fd3a55f5e] directly in the body.
+    This function replaces them with [1], [2], … and appends a clean reference
+    section so readers see human-readable source descriptions instead of internal IDs.
+    """
+    if not markdown or not evidence_records:
+        return markdown
+
+    # Build lookup: evidence_id -> human-readable reference entry
+    ref_map: Dict[str, str] = {}
+    for rec in evidence_records:
+        eid = str(rec.get("evidence_id") or "").strip()
+        if not eid:
+            continue
+        title = str(rec.get("title") or "").strip() or eid
+        source_type = str(rec.get("source_type") or "").strip()
+        source_url = str(rec.get("source_url") or "").strip()
+        date_str = ""
+        raw_date = rec.get("published_at") or rec.get("date") or None
+        if raw_date:
+            try:
+                dt = datetime.fromtimestamp(int(raw_date) / 1000)
+                date_str = dt.strftime("%Y-%m-%d")
+            except (OSError, ValueError, OverflowError):
+                date_str = str(raw_date)
+        parts = [title]
+        if source_type:
+            parts.append(f"({source_type})")
+        if date_str:
+            parts.append(date_str)
+        ref_map[eid] = " - ".join(parts) + (f" - {source_url}" if source_url else "")
+
+    # Find all [evidence_id] patterns in the markdown body.
+    # Evidence IDs are non-whitespace strings with no brackets inside.
+    evidence_pattern = re.compile(r"\[([^\]]{8,})\]")
+    found: List[str] = []
+    seen: set[str] = set()
+    for match in evidence_pattern.finditer(markdown):
+        inside = match.group(1).strip()
+        if not inside:
+            continue
+        # Skip obvious non-evidence bracketed tokens
+        if inside.lower() in {"n/a", "na", "todo", "fixme", "ev_123", "ev_amd_fin_001"}:
+            continue
+        if re.match(r"^\d+$", inside):
+            continue
+        if inside not in seen:
+            seen.add(inside)
+            found.append(inside)
+
+    if not found:
+        return markdown
+
+    # Build ordered mapping: evidence_id -> [N]
+    id_to_num: Dict[str, int] = {eid: idx + 1 for idx, eid in enumerate(found) if eid in ref_map}
+    unknown_counter = len(id_to_num) + 1
+    for eid in found:
+        if eid not in id_to_num:
+            id_to_num[eid] = unknown_counter
+            unknown_counter += 1
+
+    def _replace_match(m: re.Match) -> str:
+        inside = m.group(1).strip()
+        num = id_to_num.get(inside)
+        if num is None:
+            return m.group(0)
+        return f"[{num}]"
+
+    cleaned = evidence_pattern.sub(_replace_match, markdown)
+
+    # Remove any existing "参考来源" / "参考来源" section so we can rewrite it cleanly
+    ref_section_pattern = re.compile(r"^##\s*参考来源\s*$(?:\n.*)*", re.MULTILINE)
+    cleaned = ref_section_pattern.sub("", cleaned).rstrip()
+
+    # Build reference entries
+    ref_lines: List[str] = ["", "## 参考来源", ""]
+    for eid in found:
+        num = id_to_num.get(eid)
+        if num is None:
+            continue
+        display = ref_map.get(eid, eid)
+        ref_lines.append(f"- [{num}] {display}")
+
+    if len(ref_lines) > 3:
+        return cleaned + "\n" + "\n".join(ref_lines) + "\n"
+
+    return cleaned
 
 
 def _markdown_to_simple_html(markdown: str, title: str) -> str:

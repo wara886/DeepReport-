@@ -62,7 +62,8 @@ def build_standard_statement_rows(records: Iterable[Dict[str, Any]]) -> List[Dic
     for record in [item for item in records if isinstance(item, dict)]:
         source_type = str(record.get("source_type", "")).lower()
         if source_type == "eastmoney_financials":
-            rows.extend(_eastmoney_statement_rows(record))
+            accepted, _rejected = _partition_period_rows(_eastmoney_statement_rows(record), record)
+            rows.extend(accepted)
         elif source_type == "sec_companyfacts":
             accepted, _rejected = _partition_period_rows(_sec_companyfacts_statement_rows(record), record)
             rows.extend(accepted)
@@ -351,6 +352,7 @@ def _eastmoney_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "source_evidence_id": evidence_id,
                 "source_table_id": table_id,
                 "report_date": report_date,
+                "period_match": _period_match(period=period, report_date=report_date, raw={"period": period, "end": report_date}),
                 "source_type": "eastmoney_financials",
                 "provider": "Eastmoney",
             }
@@ -607,7 +609,7 @@ def _pdf_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "report_date": report_date,
                 "notice_date": str(record.get("publish_time") or ""),
                 "source_period": period,
-                "period_match": True,
+                "period_match": _period_match(period=period, report_date=report_date, raw={"period": period, "end": report_date}),
                 "source_type": "pdf_statement_table",
                 "provider": "PDF",
             }
@@ -739,12 +741,11 @@ def _latest_statement_row(financials: Dict[str, Any], statement: str, period: st
         rows = financials.get(key)
         if not (isinstance(rows, list) and rows and isinstance(rows[0], dict)):
             continue
-        if prefer_quarter:
-            target_row = _statement_row_for_period(rows, period)
-            if target_row:
-                return target_row
-            continue
-        return rows[0]
+        target_row = _statement_row_for_period(rows, period)
+        if target_row:
+            return target_row
+        if not prefer_quarter:
+            return rows[0]
     return {}
 
 

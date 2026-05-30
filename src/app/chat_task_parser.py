@@ -283,7 +283,7 @@ def _parse_year_only(text: str) -> str | None:
     annual_terms_en = ("annual report", "full year", "fiscal year")
     if not any(term in text for term in annual_terms_cn) and not any(term in lowered for term in annual_terms_en):
         return None
-    match = re.search(r"(?<!\d)(20\d{2}|\d{2})\s*年?", text)
+    match = re.search(r"(?<!\d)(20\d{2}|\d{2})\s*年?(?!\d)", text)
     if not match:
         return None
     return f"FY{_normalize_year(match.group(1))}"

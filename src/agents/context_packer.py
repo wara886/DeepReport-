@@ -19,18 +19,48 @@ def pack_claims(
     text_limit: int = 280,
     total_chars: int = 2800,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """Trim and rank claims so prompts stay stable and auditable."""
+    """Trim and rank claims so prompts stay stable and auditable.
+
+    Guarantees at least one claim per section (diversity), then fills remaining
+    budget with highest-confidence claims from well-covered sections.
+    """
 
     normalized = [_normalize_claim(item, text_limit=text_limit) for item in claims if isinstance(item, dict)]
-    normalized.sort(
-        key=lambda item: (
-            float(item.get("confidence", 0.0)),
-            len(item.get("evidence_ids", [])),
-            len(item.get("numeric_values", {})),
+
+    # Phase 1: group by section, pick highest-confidence claim from each
+    by_section: Dict[str, List[Dict[str, Any]]] = {}
+    for c in normalized:
+        section = c.get("section_name", "")
+        if section:
+            by_section.setdefault(section, []).append(c)
+
+    guaranteed: List[Dict[str, Any]] = []
+    remaining: List[Dict[str, Any]] = []
+    for section, section_claims in by_section.items():
+        section_claims.sort(
+            key=lambda c: (
+                float(c.get("confidence", 0.0)),
+                len(c.get("evidence_ids", [])),
+                len(c.get("numeric_values", {})),
+            ),
+            reverse=True,
+        )
+        guaranteed.append(section_claims[0])
+        remaining.extend(section_claims[1:])
+
+    # Phase 2: sort remaining by confidence (full sort, not per-section)
+    remaining.sort(
+        key=lambda c: (
+            float(c.get("confidence", 0.0)),
+            len(c.get("evidence_ids", [])),
+            len(c.get("numeric_values", {})),
         ),
         reverse=True,
     )
-    packed, used_chars, dropped = _pack_with_char_budget(normalized, max_items=max_items, total_chars=total_chars)
+
+    # Phase 3: pack guaranteed first (high priority), then fill with remaining
+    ordered = guaranteed + remaining
+    packed, used_chars, dropped = _pack_with_char_budget(ordered, max_items=max_items, total_chars=total_chars)
     packed_ids = [str(item.get("claim_id", "")) for item in packed if str(item.get("claim_id", ""))]
     dropped_ids = [str(item.get("claim_id", "")) for item in dropped if str(item.get("claim_id", ""))]
     return packed, {

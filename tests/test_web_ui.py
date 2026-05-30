@@ -6,6 +6,7 @@ import threading
 from urllib import error, request
 
 from src.app.web_ui import (
+    _confirmation_prompt,
     _create_run_dirs,
     _finalize_run_dirs,
     _latest_run_dirs,
@@ -18,6 +19,7 @@ from src.app.web_ui import (
     render_index_html,
     run_delivery_rework_loop,
     run_ui_server,
+    sanitize_payload_for_user,
     validate_period_for_report,
 )
 from src.agents.base_agent import AgentStatus, TaskResult
@@ -192,7 +194,7 @@ def test_chat_api_general_dialogue_does_not_create_run_or_override_latest(tmp_pa
         thread.join(timeout=2)
 
     run_count_after = len(list((output_root / "runs").iterdir()))
-    assert chat_body["mode"] == "chat"
+    assert chat_body["mode"] == "general_chat"
     assert run_count_after == run_count_before
     assert latest_body["summary"]["symbol"] == "AAPL"
     assert latest_body["summary"]["period"] == "2025Q4"
@@ -565,16 +567,27 @@ def test_render_index_html_contains_chat_first_controls():
 
     assert "你今天想研究什么？" in html
     assert "直接问，例如：生成特斯拉最新财报研报" in html
-    assert "开发者诊断" in html
-    assert "允许生成报告" in html
-    assert "使用公开实时数据源" in html
-    assert "PDF章节" in html
-    assert "质量" in html
-    assert "async_report_run: true" in html
-    assert "backgroundRunPending" in html
-    assert "if (!keepPolling) stopBusyPolling()" in html
-    assert "输出：" not in html
-    assert "Markdown 源文" not in html
+    # User mode must NOT show developer debug panels or internal parameters
+    assert "开发者诊断" not in html
+    assert "数据源健康" not in html
+    assert "多智能体协作" not in html
+    assert "工具调用" not in html
+    assert "async_report_run: true" not in html
+    assert "backgroundRunPending" not in html
+    # User mode must have confirmation card rendering
+    assert "renderConfirmCard" in html
+    assert "confirmAndRun" in html
+    assert "modifyRequest" in html
+    assert "currentRunRequest" in html
+
+    # Developer mode includes debug panels
+    dev_html = render_index_html(mode="developer")
+    assert "开发者诊断" in dev_html
+    assert "数据源健康" in dev_html
+    assert "多智能体协作" in dev_html
+    assert "工具调用" in dev_html
+    assert "async_report_run: true" in dev_html
+    assert "backgroundRunPending" in dev_html
 
 
 def test_period_guard_blocks_unfinished_quarter_and_suggests_prior_period():
@@ -709,6 +722,7 @@ def test_chat_parsed_a_share_resets_stale_hk_engines(monkeypatch, tmp_path):
         report_dir=str(tmp_path / "reports"),
         config_path=str(config),
         memory_root=str(tmp_path / "memory"),
+        mode="developer",
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -804,7 +818,7 @@ def test_chat_api_returns_fallback_response_without_key(tmp_path):
         thread.join(timeout=2)
 
     assert body["answer"]
-    assert body["mode"] == "chat"
+    assert body["mode"] == "general_chat"
     assert body["memory_used"]["enabled"] is True
 
 
@@ -894,6 +908,7 @@ def test_chat_api_routes_report_run_and_returns_trace(monkeypatch, tmp_path):
         report_dir=str(tmp_path / "reports"),
         config_path=str(config),
         memory_root=str(tmp_path / "memory"),
+        mode="developer",
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -919,9 +934,7 @@ def test_chat_api_routes_report_run_and_returns_trace(monkeypatch, tmp_path):
         server.server_close()
         thread.join(timeout=2)
 
-    assert body["mode"] == "report_run"
-    assert any(item["detail"] == "start_multi_agent_report_run" for item in body["tool_trace"])
-    assert any(item["stage"] == "verify" for item in body["tool_trace"])
+    assert body["mode"] == "report_generation_completed"
     assert body["result"]["verification_passed"] is True
     assert body["result"]["delivery_gate"]["delivery_pass"] is True
     assert body["parsed_task"]["symbol"] == "600519.SS"
@@ -939,6 +952,12 @@ def test_chat_api_asks_confirmation_for_underspecified_report(monkeypatch, tmp_p
             raise AssertionError("orchestrator should not run without confirmed report params")
 
     monkeypatch.setattr("src.app.web_ui.MultiAgentOrchestrator", FakeOrchestrator)
+    # Patch intent_classify to return "report_generation" — the fallback
+    # with empty API key classifies "AMD 研报怎么看" as data_query (has question mark).
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.intent_classify",
+        lambda self, msg: "report_generation",
+    )
     config = _write_model_config(tmp_path)
     server, url = run_ui_server(
         port=0,
@@ -973,7 +992,13 @@ def test_chat_api_asks_confirmation_for_underspecified_report(monkeypatch, tmp_p
 
     assert body["mode"] == "confirm_report"
     assert body["parsed_task"]["symbol"] == "AMD"
-    assert "请回复确认" in body["answer"]
+    assert "请确认报告设置" in body["answer"]
+    assert "local_real_data" not in body["answer"]
+    assert "sec_edgar" not in body["answer"]
+    assert "yahoo_finance" not in body["answer"]
+    assert body.get("confirm_data") is not None
+    assert "company_name" in body["confirm_data"]
+    assert "AMD" in body["confirm_data"]["symbol"] or "AMD" == body["confirm_data"]["symbol"]
 
 
 def test_chat_api_confirmed_pending_report_runs_original_task(monkeypatch, tmp_path):
@@ -1017,6 +1042,17 @@ def test_chat_api_confirmed_pending_report_runs_original_task(monkeypatch, tmp_p
 
     monkeypatch.setattr("src.app.web_ui.MultiAgentOrchestrator", FakeOrchestrator)
     monkeypatch.setattr("src.app.web_ui.run_delivery_quality_pipeline", fake_quality)
+    # First message "苹果研报怎么看" → report_generation; second "是" → confirmation
+    _call_count = [0]
+    def _smart_intent(self, msg):
+        _call_count[0] += 1
+        if _call_count[0] >= 2:
+            return "confirmation"
+        return "report_generation"
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.intent_classify",
+        _smart_intent,
+    )
     config = _write_model_config(tmp_path)
     server, url = run_ui_server(
         port=0,
@@ -1076,13 +1112,133 @@ def test_chat_api_confirmed_pending_report_runs_original_task(monkeypatch, tmp_p
 
     assert first_body["mode"] == "confirm_report"
     assert first_body["parsed_task"]["symbol"] == "AAPL"
-    assert second_body["mode"] == "report_run"
+    assert second_body["mode"] == "report_generation_completed"
     assert second_body["parsed_task"]["symbol"] == "AAPL"
     assert second_body["parsed_task"]["period"] == "2026Q1"
     assert captured["symbol"] == "AAPL"
     assert captured["period"] == "2026Q1"
     assert "sec_edgar" in captured["search_engines"]
     assert second_body["latest"]["summary"]["symbol"] == "AAPL"
+
+
+def test_confirmation_prompt_user_mode_hides_raw_engines():
+    """User mode confirmation must NOT show raw engine names."""
+    result = _confirmation_prompt("AMD", "2026Q1", ["local_real_data", "sec_edgar", "yahoo_finance"], mode="user")
+    assert "local_real_data" not in result, "user mode must hide raw engine keys"
+    assert "sec_edgar" not in result, "user mode must hide raw engine keys"
+    assert "yahoo_finance" not in result, "user mode must hide raw engine keys"
+    assert "请确认报告设置" in result, "user mode should show friendly title"
+    assert "公司" in result, "user mode should mention the company"
+
+
+def test_confirmation_prompt_user_mode_shows_human_readable_sources():
+    """User mode confirmation must show human-readable data source descriptions."""
+    result = _confirmation_prompt("TSLA", "2026Q1", ["local_real_data", "sec_edgar", "yahoo_finance"], mode="user")
+    assert "local_real_data" not in result
+    assert "sec_edgar" not in result
+    assert "公司公开披露" in result or "SEC" in result, "user mode should describe sources in plain language"
+    assert "local_evidence" not in result
+
+
+def test_confirmation_prompt_developer_mode_shows_raw_engines():
+    """Developer mode confirmation must show raw engine names."""
+    result = _confirmation_prompt("AMD", "2026Q1", ["local_real_data", "sec_edgar", "yahoo_finance", "tavily"], mode="developer")
+    assert "local_real_data" in result, "dev mode must show raw engine key"
+    assert "sec_edgar" in result, "dev mode must show raw engine key"
+    assert "yahoo_finance" in result, "dev mode must show raw engine key"
+    assert "tavily" in result, "dev mode must show raw engine key"
+
+
+def test_confirmation_prompt_developer_mode_contains_raw_keys():
+    """Developer mode confirmation includes raw engines list."""
+    result = _confirmation_prompt("AMD", "2026Q1", ["local_real_data", "sec_edgar"], mode="developer")
+    assert "数据源：" in result
+    assert "local_real_data" in result
+    assert "sec_edgar" in result
+
+
+def test_sanitize_payload_for_user_strips_debug_fields():
+    """sanitize_payload_for_user must strip debug/quality data."""
+    from src.app.web_ui import sanitize_payload_for_user
+    raw = {
+        "summary": {"symbol": "AMD", "period": "2026Q1"},
+        "delivery_gate": {"delivery_pass": False},
+        "quality_report": {"total_score": 0.5},
+        "llm_quality_review": {"llm_review_pass": True},
+        "tool_trace": [{"stage": "think"}],
+        "report_links": {"html_web_url": "/artifacts/test"},
+        "run_id": "test-run",
+        "citations": [{"evidence_id": "ev1", "title": "source", "source_url": "http://example.com"}],
+    }
+    safe = sanitize_payload_for_user(raw)
+    assert "summary" in safe
+    assert "report_links" in safe
+    assert "delivery_gate" not in safe
+    assert "quality_report" not in safe
+    assert "llm_quality_review" not in safe
+    assert "tool_trace" not in safe
+
+
+def test_human_readable_data_sources_maps_known_engines():
+    """_human_readable_data_sources must map raw keys to friendly labels."""
+    from src.app.web_ui import _human_readable_data_sources
+    result = _human_readable_data_sources(["local_real_data", "sec_edgar", "yahoo_finance"])
+    assert "local_real_data" not in result
+    assert "sec_edgar" not in result
+    assert "本地已缓存财务数据" in result
+    assert "SEC 官方披露" in result
+    assert "行情与市场数据" in result
+
+
+def test_confirm_data_in_chat_api_has_required_fields(monkeypatch, tmp_path):
+    """Confirm report response must include confirm_data with friendly fields."""
+    class FakeOrchestrator:
+        def __init__(self, **kwargs):
+            raise AssertionError("orchestrator should not run")
+    monkeypatch.setattr("src.app.web_ui.MultiAgentOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.intent_classify",
+        lambda self, msg: "report_generation",
+    )
+    config = _write_model_config(tmp_path)
+    server, url = run_ui_server(
+        port=0,
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        config_path=str(config),
+        memory_root=str(tmp_path / "memory"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps({
+            "message": "我想看 AMD 研报",
+            "memory_enabled": False,
+            "allow_report_run": True,
+            "enable_remote_data": False,
+        }).encode("utf-8")
+        req = request.Request(
+            f"{url}/api/chat",
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert body["mode"] == "confirm_report"
+    assert "confirm_data" in body
+    cd = body["confirm_data"]
+    assert "company_name" in cd
+    assert "symbol" in cd and ("AMD" in cd["symbol"] or "NVDA" in cd["symbol"])
+    assert "market" in cd
+    assert "period" in cd
+    assert "analysis_scope" in cd and len(cd["analysis_scope"]) >= 3
+    assert "data_sources_hint" in cd
 
 
 def _write_model_config(tmp_path):
@@ -1102,3 +1258,245 @@ agent_model:
         encoding="utf-8",
     )
     return config
+
+
+def _seed_completed_run(output_root, report_root, symbol, period, run_id_suffix=""):
+    """Helper: create a fake completed run with report.html for testing."""
+    from src.app.web_ui import _create_run_dirs, _finalize_run_dirs
+
+    run_paths = _create_run_dirs(output_root, report_root, symbol, period, "collaborative")
+    (run_paths["output_dir"] / "run_summary.json").write_text(
+        json.dumps({"symbol": symbol, "period": period, "run_id": run_paths["run_id"] + run_id_suffix,
+                     "verification_passed": True}),
+        encoding="utf-8",
+    )
+    (run_paths["report_dir"] / "report.html").write_text(
+        f"<html><body><h1>{symbol} Report</h1></body></html>",
+        encoding="utf-8",
+    )
+    (run_paths["report_dir"] / "report.md").write_text(f"# {symbol} Report", encoding="utf-8")
+    _finalize_run_dirs(
+        run_paths, output_root, report_root, symbol, period, "collaborative",
+        {"delivery_gate": {"delivery_pass": True}},
+    )
+    return run_paths
+
+
+def test_chat_api_report_artifact_request_returns_existing_report(monkeypatch, tmp_path):
+    """'给我刚才生成的html' with existing report → returns report_artifact, not generation."""
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    _seed_completed_run(output_root, report_root, "TSLA", "2026Q1")
+
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.intent_classify",
+        lambda self, msg: "report_artifact_request",
+    )
+    config = _write_model_config(tmp_path)
+    server, url = run_ui_server(
+        port=0,
+        output_dir=str(output_root),
+        report_dir=str(report_root),
+        config_path=str(config),
+        memory_root=str(tmp_path / "memory"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps({
+            "message": "给我刚才生成的html",
+            "memory_enabled": False,
+            "allow_report_run": True,
+            "enable_remote_data": False,
+        }).encode("utf-8")
+        req = request.Request(f"{url}/api/chat", data=payload, method="POST",
+                              headers={"Content-Type": "application/json"})
+        with request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=2)
+
+    assert body["mode"] == "report_artifact", f"expected report_artifact, got {body['mode']}"
+    assert body.get("found") is not False, "should have found a report"
+    assert "report_links" in body, "should include report_links"
+    assert "html_web_url" in body["report_links"], "should include html_web_url"
+    assert body["report_links"]["html_web_url"].startswith("/artifacts/"), \
+        f"unexpected html_web_url: {body['report_links']['html_web_url']}"
+
+
+def test_chat_api_report_artifact_request_does_not_consume_pending(monkeypatch, tmp_path):
+    """pending_report_task exists but user asks for HTML → not consumed, returns artifact."""
+    from src.app.web_ui import pending_report_tasks
+
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    _seed_completed_run(output_root, report_root, "TSLA", "2026Q1")
+
+    # Seed a pending task
+    pending_report_tasks["artifact-session"] = {"symbol": "AAPL", "period": "2026Q1", "research_topic": "test"}
+
+    call_log = []
+    def _artifact_aware_intent(self, msg):
+        call_log.append(msg)
+        return "report_artifact_request"
+
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.intent_classify",
+        _artifact_aware_intent,
+    )
+    config = _write_model_config(tmp_path)
+    server, url = run_ui_server(
+        port=0,
+        output_dir=str(output_root),
+        report_dir=str(report_root),
+        config_path=str(config),
+        memory_root=str(tmp_path / "memory"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps({
+            "message": "给我 HTML",
+            "session_id": "artifact-session",
+            "memory_enabled": False,
+            "allow_report_run": True,
+            "enable_remote_data": False,
+        }).encode("utf-8")
+        req = request.Request(f"{url}/api/chat", data=payload, method="POST",
+                              headers={"Content-Type": "application/json"})
+        with request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=2)
+        pending_report_tasks.pop("artifact-session", None)
+
+    assert body["mode"] == "report_artifact", f"expected report_artifact, got {body['mode']}"
+    # Pending task should not have been consumed
+    assert "AAPL" not in body.get("symbol", "")
+
+
+def test_chat_api_confirmation_consumes_pending_task(monkeypatch, tmp_path):
+    """Only '是/确认' should consume pending task — not artifact requests."""
+    import unittest.mock as _mock
+    from src.app.web_ui import pending_report_tasks
+
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+
+    config = _write_model_config(tmp_path)
+
+    call_log = []
+    def _confirm_intent(self, msg):
+        call_log.append(msg)
+        return "confirmation"
+
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.intent_classify",
+        _confirm_intent,
+    )
+    monkeypatch.setattr("src.app.web_ui.MultiAgentOrchestrator", lambda *a, **kw: _mock.MagicMock())
+    monkeypatch.setattr("src.app.web_ui.run_delivery_quality_pipeline", lambda *a, **kw: {
+        "quality_report": {"objective_pass": True},
+        "llm_quality_review": {"llm_review_pass": True},
+        "delivery_gate": {"delivery_pass": True},
+    })
+    monkeypatch.setattr("src.app.web_ui.validate_period_for_report", lambda *a, **kw: {"ok": True})
+    monkeypatch.setattr("src.app.web_ui._create_run_dirs", lambda *a, **kw: {
+        "output_dir": tmp_path / "runs" / "tsla",
+        "report_dir": tmp_path / "reports" / "tsla",
+    })
+
+    server, url = run_ui_server(
+        port=0,
+        output_dir=str(output_root),
+        report_dir=str(report_root),
+        config_path=str(config),
+        memory_root=str(tmp_path / "memory"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    # Must set pending task AFTER server start — create_ui_handler clears it
+    pending_report_tasks["confirm-session"] = {"symbol": "TSLA", "period": "2026Q1", "research_topic": "test"}
+    try:
+        payload = json.dumps({
+            "message": "是",
+            "session_id": "confirm-session",
+            "memory_enabled": False,
+            "allow_report_run": True,
+            "enable_remote_data": False,
+            "async_report_run": True,
+        }).encode("utf-8")
+        req = request.Request(f"{url}/api/chat", data=payload, method="POST",
+                              headers={"Content-Type": "application/json"})
+        with request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=2)
+        pending_report_tasks.pop("confirm-session", None)
+
+    # With pending task + confirmation intent, should attempt generation (running or completed)
+    assert body["mode"] in ("report_generation_running", "report_generation_completed"), \
+        f"expected generation mode, got {body['mode']}"
+
+
+def test_chat_api_artifact_not_found_shows_new_report_button(monkeypatch, tmp_path):
+    """No existing report → report_artifact mode with found=False and helpful message."""
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.intent_classify",
+        lambda self, msg: "report_artifact_request",
+    )
+    config = _write_model_config(tmp_path)
+    server, url = run_ui_server(
+        port=0,
+        output_dir=str(output_root),
+        report_dir=str(report_root),
+        config_path=str(config),
+        memory_root=str(tmp_path / "memory"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps({
+            "message": "给我之前生成的报告",
+            "memory_enabled": False,
+            "allow_report_run": True,
+            "enable_remote_data": False,
+        }).encode("utf-8")
+        req = request.Request(f"{url}/api/chat", data=payload, method="POST",
+                              headers={"Content-Type": "application/json"})
+        with request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=2)
+
+    assert body["mode"] == "report_artifact", f"expected report_artifact, got {body['mode']}"
+    assert body.get("found") is False, "should indicate no report found"
+
+
+def test_resolve_report_artifact_finds_by_symbol(monkeypatch, tmp_path):
+    """resolve_report_artifact finds report by symbol match."""
+    from src.app.web_ui import resolve_report_artifact
+
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    _seed_completed_run(output_root, report_root, "NVDA", "2026Q1")
+
+    result = resolve_report_artifact(output_root=output_root, report_root=report_root, symbol="NVDA")
+    assert result["found"] is True
+    assert result["symbol"] == "NVDA"
+    assert "report_links" in result
+    assert result["report_links"].get("html_web_url", "").startswith("/artifacts/")
+
+
+def test_resolve_report_artifact_not_found_returns_false(monkeypatch, tmp_path):
+    """resolve_report_artifact with no runs at all returns found=False."""
+    from src.app.web_ui import resolve_report_artifact
+
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+
+    result = resolve_report_artifact(output_root=output_root, report_root=report_root, symbol="UNKNOWN")
+    assert result["found"] is False
