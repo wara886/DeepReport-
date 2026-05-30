@@ -12,7 +12,7 @@ from src.report.chart_consistency import audit_chart_consistency
 from src.report.compliance_disclosure import append_compliance_disclosures, append_compliance_disclosures_to_html
 from src.report.docx_exporter import export_markdown_to_docx
 from src.report.html_report_generator import render_professional_html_report
-from src.report.report_enhancer import attach_charts_to_html, attach_charts_to_markdown, polish_report_html
+from src.report.report_enhancer import attach_charts_to_html, attach_charts_to_markdown, inject_chart_references, polish_report_html
 
 __all__ = [
     "append_references_to_html",
@@ -22,6 +22,7 @@ __all__ = [
     "attach_charts_to_html",
     "attach_charts_to_markdown",
     "audit_chart_consistency",
+    "inject_chart_references",
     "build_citation_artifacts",
     "build_citations",
     "export_markdown_to_docx",

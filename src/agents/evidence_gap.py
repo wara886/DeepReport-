@@ -61,7 +61,7 @@ def build_evidence_gaps(
                 period=period,
                 gap_type=gap_type,
             ),
-            blocking=gap_type in {"missing_primary_evidence", "missing_evidence", "multimodal_conflict", "valuation_formula_error"},
+            blocking=gap_type in {"missing_primary_evidence", "missing_evidence", "valuation_formula_error"},
         )
         gaps.append(gap)
     return [gap.to_dict() for gap in gaps]

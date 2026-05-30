@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import socket
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List
@@ -254,6 +257,11 @@ def read_url_with_jina(url: str, max_chars: int = 4000, config_path: str = "conf
     return {"reader_url": reader_url, "content": raw[:max_chars], "engine": "jina_reader"}
 
 
+def _suppress_mupdf_stderr():
+    """Temporarily suppress MuPDF C-core stderr noise (e.g. structure tree errors)."""
+    return contextlib.redirect_stderr(io.StringIO())
+
+
 def read_pdf_content(
     pdf_path_or_url: str,
     max_chars: int = 4000,
@@ -299,40 +307,41 @@ def read_pdf_content(
 
     doc = None
     try:
-        doc = fitz.open(local_path)
-        text_blocks: List[str] = []
-        tables: List[Dict[str, Any]] = []
-        financial_hits: List[Dict[str, Any]] = []
-        page_total = len(doc)
-        pages_to_read = min(page_total, max_pages)
-        indicators = [
-            "revenue",
-            "profit",
-            "cash flow",
-            "assets",
-            "liabilities",
-            "equity",
-            "gross margin",
-            "net income",
-            "营业收入",
-            "净利润",
-            "现金流",
-            "资产",
-            "负债",
-            "股东权益",
-            "毛利率",
-        ]
+        with _suppress_mupdf_stderr():
+            doc = fitz.open(local_path)
+            text_blocks: List[str] = []
+            tables: List[Dict[str, Any]] = []
+            financial_hits: List[Dict[str, Any]] = []
+            page_total = len(doc)
+            pages_to_read = min(page_total, max_pages)
+            indicators = [
+                "revenue",
+                "profit",
+                "cash flow",
+                "assets",
+                "liabilities",
+                "equity",
+                "gross margin",
+                "net income",
+                "营业收入",
+                "净利润",
+                "现金流",
+                "资产",
+                "负债",
+                "股东权益",
+                "毛利率",
+            ]
 
-        for page_index in range(pages_to_read):
-            page = doc[page_index]
-            page_text = page.get_text() or ""
-            if page_text.strip():
-                text_blocks.append(f"[PDF page {page_index + 1}]\n{page_text.strip()}")
-            lowered = page_text.lower()
-            found = [item for item in indicators if item.lower() in lowered]
-            if found:
-                financial_hits.append({"page": page_index + 1, "indicators": found})
-            tables.extend(_extract_pdf_tables(page=page, page_number=page_index + 1))
+            for page_index in range(pages_to_read):
+                page = doc[page_index]
+                page_text = page.get_text() or ""
+                if page_text.strip():
+                    text_blocks.append(f"[PDF page {page_index + 1}]\n{page_text.strip()}")
+                lowered = page_text.lower()
+                found = [item for item in indicators if item.lower() in lowered]
+                if found:
+                    financial_hits.append({"page": page_index + 1, "indicators": found})
+                tables.extend(_extract_pdf_tables(page=page, page_number=page_index + 1))
 
         table_preview = _format_pdf_table_preview(tables)
         content = "\n\n".join([part for part in ["\n\n".join(text_blocks), table_preview] if part]).strip()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import threading
-from typing import Any
+from typing import Any, Optional
 from urllib import error, request as urlrequest
 
 from fastapi import FastAPI, Request
@@ -12,25 +12,41 @@ from fastapi.responses import JSONResponse, Response
 
 from src.app.web_ui import DEFAULT_OUTPUT_DIR, DEFAULT_REPORT_DIR, run_ui_server
 
+# Mode-aware default roots
+USER_OUTPUT_DIR = "data/outputs_user"
+USER_REPORT_DIR = "data/reports_user"
+DEV_OUTPUT_DIR = "data/outputs_dev"
+DEV_REPORT_DIR = "data/reports_dev"
+
 
 def create_fastapi_app(
     *,
-    output_dir: str = DEFAULT_OUTPUT_DIR,
-    report_dir: str = DEFAULT_REPORT_DIR,
+    output_dir: Optional[str] = None,
+    report_dir: Optional[str] = None,
     config_path: str = "configs/model_backends.yaml",
     memory_root: str = "memory/chat",
+    mode: str = "user",
+    frontend_port: Optional[int] = None,
 ) -> FastAPI:
     """Expose the legacy-stable UI contract behind a deployable ASGI server."""
+
+    # Apply mode-aware defaults
+    if output_dir is None:
+        output_dir = USER_OUTPUT_DIR if mode == "user" else DEV_OUTPUT_DIR
+    if report_dir is None:
+        report_dir = USER_REPORT_DIR if mode == "user" else DEV_REPORT_DIR
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         server, base_url = run_ui_server(
             host="127.0.0.1",
             port=0,
+            mode=mode,
             output_dir=output_dir,
             report_dir=report_dir,
             config_path=config_path,
             memory_root=memory_root,
+            frontend_port=frontend_port,
         )
         thread = threading.Thread(target=server.serve_forever, name="finsight-legacy-http", daemon=True)
         thread.start()
@@ -73,6 +89,11 @@ def create_fastapi_app(
     def artifacts(artifact_path: str, incoming: Request) -> Response:
         suffix = f"?{incoming.url.query}" if incoming.url.query else ""
         return _forward(app, f"/artifacts/{artifact_path}{suffix}", method="GET")
+
+    @app.get("/api/job_status")
+    def job_status(incoming: Request) -> Response:
+        suffix = f"?{incoming.url.query}" if incoming.url.query else ""
+        return _forward(app, f"/api/job_status{suffix}", method="GET")
 
     return app
 

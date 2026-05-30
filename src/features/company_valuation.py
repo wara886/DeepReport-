@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from pathlib import Path
 from statistics import median
 from typing import Any, Dict, List
 
 import pandas as pd
+import yfinance as yf
 
 from src.data.financial_quality import build_net_income_quality_fields
+
+logger = logging.getLogger(__name__)
 
 
 def build_peer_comparison(
@@ -23,6 +28,13 @@ def build_peer_comparison(
     rows = _load_company_financial_rows(raw_data_root=raw_data_root, period=period)
     target = next((row for row in rows if row.get("symbol") == symbol), None)
     if not target:
+        # No local data — try Yahoo/web discovery before giving up
+        try:
+            discovered = _discover_peers_via_search(symbol=symbol, period=period)
+            if discovered.get("peer_count", 0) > 0:
+                return discovered
+        except Exception as exc:
+            logger.warning("Peer discovery via search failed for %s: %s", symbol, exc)
         return {"target_symbol": symbol, "peer_rows": [], "peer_count": 0, "ranking": {}}
 
     target_sector = str(target.get("sector") or "")
@@ -38,13 +50,237 @@ def build_peer_comparison(
 
     peer_rows = [_peer_row(row, target_symbol=symbol) for row in [target] + peers]
     ranking = _rank_target(peer_rows, symbol=symbol)
+    peer_count = max(len(peer_rows) - 1, 0)
+
+    # If local data has no real peers, fall back to Yahoo+web discovery
+    if peer_count == 0:
+        try:
+            discovered = _discover_peers_via_search(symbol=symbol, period=period)
+            if discovered.get("peer_count", 0) > 0:
+                for row in discovered.get("peer_rows", []):
+                    if row.get("is_target"):
+                        # update target with Yahoo data if local had nothing
+                        if not target.get("revenue_billion"):
+                            target_row = _peer_row(row, target_symbol=symbol)
+                            peer_rows[0] = target_row
+                    else:
+                        peer_rows.append(row)
+                peer_count = max(len(peer_rows) - 1, 0)
+                ranking = _rank_target(peer_rows, symbol=symbol)
+                logger.info("Discovered %d peers via Yahoo/web for %s", peer_count, symbol)
+        except Exception as exc:
+            logger.warning("Peer discovery via search failed for %s: %s", symbol, exc)
+
     return {
         "target_symbol": symbol,
         "target_sector": target_sector,
         "target_industry": target_industry,
         "peer_rows": peer_rows,
-        "peer_count": max(len(peer_rows) - 1, 0),
+        "peer_count": peer_count,
         "ranking": ranking,
+    }
+
+
+def _discover_peers_via_search(
+    symbol: str,
+    period: str,
+) -> Dict[str, Any]:
+    """Fall back to Yahoo Finance + web search when local peer data is missing."""
+
+    peer_rows: List[Dict[str, Any]] = []
+    peer_symbols: List[str] = []
+    target_company = ""
+    sector = ""
+    industry = ""
+
+    # --- Phase 1: get sector/industry from Yahoo Finance ---
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info or {}
+        target_company = str(info.get("longName") or info.get("shortName") or symbol)
+        sector = str(info.get("sector") or "")
+        industry = str(info.get("industry") or "")
+    except Exception:
+        logger.warning("Yahoo Finance info unavailable for %s, falling back to symbol name", symbol)
+        target_company = symbol
+
+    # --- Phase 2: discover peer symbols via Serper web search ---
+    try:
+        from src.search.search_manager import serper_search
+
+        search_query = f"{target_company} competitors list revenue market cap {period}"
+        search_results = serper_search(search_query, topk=5)
+        if isinstance(search_results, list):
+            combined_text = " ".join(
+                str(r.get("title", "") or "") + " " + str(r.get("snippet", "") or "")
+                for r in search_results if isinstance(r, dict)
+            )
+        elif isinstance(search_results, dict):
+            combined_text = json.dumps(search_results, ensure_ascii=False)
+        else:
+            combined_text = str(search_results)
+
+        # Try a second search with simpler phrasing
+        search_query2 = f"top {target_company} competitors financial data"
+        search_results2 = serper_search(search_query2, topk=5)
+        if isinstance(search_results2, list):
+            combined_text2 = " ".join(
+                str(r.get("title", "") or "") + " " + str(r.get("snippet", "") or "")
+                for r in search_results2 if isinstance(r, dict)
+            )
+        elif isinstance(search_results2, dict):
+            combined_text2 = json.dumps(search_results2, ensure_ascii=False)
+        else:
+            combined_text2 = str(search_results2)
+        combined_text = combined_text + " " + combined_text2
+
+        # Extract known ticker symbols from search text using common patterns
+        # Match uppercase 1-4 letter words that are likely stock symbols
+        import re
+        known_symbols = {"AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "NVDA", "TSLA",
+                         "AMD", "INTC", "IBM", "ORCL", "CRM", "ADBE", "NFLX", "DIS",
+                         "V", "MA", "JPM", "BAC", "WMT", "PG", "KO", "PEP", "JNJ",
+                         "UNH", "HD", "BA", "CAT", "GE", "F", "GM", "XOM", "CVX",
+                         "CSCO", "QCOM", "TXN", "AVGO", "MRK", "ABBV", "LLY", "NKE",
+                         "MCD", "SBUX", "UPS", "FDX", "LMT", "NOC", "RTX", "DUK",
+                         "NEE", "SO", "T", "VZ", "CMCSA", "CHTR", "PYPL", "SQ",
+                         "SNAP", "UBER", "LYFT", "DASH", "SPOT", "RIVN", "LCID",
+                         "PLTR", "SNOW", "DDOG", "NET", "CRWD", "ZS", "PANW",
+                         "BABA", "JD", "BIDU", "TCEHY", "NIO", "XPEV", "LI",
+                         "TSM", "ASML", "SAP", "SIE", "NSRGY",
+                         "HDB", "IBN", "INFY", "WIT", "RELIANCE"}
+        found = set()
+        for word in re.findall(r'\b[A-Z]{2,4}\b', combined_text):
+            if word in known_symbols and word != symbol:
+                found.add(word)
+        peer_symbols = sorted(found)[:6]
+    except Exception as exc:
+        logger.warning("Serper peer search failed for %s: %s", symbol, exc)
+        peer_symbols = []
+
+    # --- Phase 3: if web search found no peers, try Yahoo Finance sector peers ---
+    if not peer_symbols and sector:
+        try:
+            # Use yfinance to discover similar companies
+            # Yahoo Finance doesn't directly expose peers, so we try known sector mappings
+            sector_peer_map = {
+                "Technology": ["AAPL", "MSFT", "GOOGL", "META", "NVDA", "AMD", "INTC", "CRM", "ADBE", "ORCL"],
+                "Healthcare": ["JNJ", "UNH", "PFE", "MRK", "ABBV", "LLY", "TMO", "ABT"],
+                "Financial Services": ["JPM", "BAC", "V", "MA", "GS", "MS", "C", "WFC"],
+                "Consumer Cyclical": ["AMZN", "TSLA", "HD", "NKE", "MCD", "SBUX", "NFLX", "DIS"],
+                "Communication Services": ["GOOGL", "META", "NFLX", "DIS", "CMCSA", "T"],
+                "Energy": ["XOM", "CVX", "COP", "SLB", "EOG"],
+                "Industrials": ["BA", "CAT", "GE", "RTX", "UPS", "FDX", "HON", "MMM"],
+                "Consumer Defensive": ["PG", "KO", "PEP", "WMT", "COST"],
+                "Basic Materials": ["BHP", "RIO", "LIN", "SHW", "APD"],
+            }
+            for sec_name, candidates in sector_peer_map.items():
+                if sec_name.lower() in sector.lower() or sector.lower() in sec_name.lower():
+                    peer_symbols = [s for s in candidates if s != symbol][:6]
+                    break
+        except Exception as exc:
+            logger.warning("Yahoo sector peer lookup failed for %s: %s", symbol, exc)
+
+    # --- Phase 4: fetch actual financial data for each peer ---
+    for ps in peer_symbols[:5]:
+        try:
+            time.sleep(0.3)  # rate-limit between Yahoo calls
+            pt = yf.Ticker(ps)
+            pi = pt.info or {}
+            annual_fin = pt.financials
+            bs = pt.balance_sheet
+
+            rev = None
+            ni = None
+            fcf_val = None
+            try:
+                if annual_fin is not None and not annual_fin.empty:
+                    rev = _to_billion(float(annual_fin.loc["Total Revenue"].iloc[0])) if "Total Revenue" in annual_fin.index else None
+                    ni_val = annual_fin.loc["Net Income"].iloc[0] if "Net Income" in annual_fin.index else None
+                    ni_val = ni_val or (annual_fin.loc["Net Income Common Stockholders"].iloc[0] if "Net Income Common Stockholders" in annual_fin.index else None)
+                    ni = _to_billion(float(ni_val)) if ni_val is not None else None
+            except Exception:
+                pass
+            try:
+                if pt.cashflow is not None and not pt.cashflow.empty:
+                    fcf_val_raw = pt.cashflow.loc["Free Cash Flow"].iloc[0] if "Free Cash Flow" in pt.cashflow.index else None
+                    fcf_val = _to_billion(float(fcf_val_raw)) if fcf_val_raw is not None else None
+            except Exception:
+                pass
+
+            rev_growth = pi.get("revenueGrowth")
+            gross_margin = pi.get("grossMargins")
+            net_margin = pi.get("profitMargins")
+            roe_val = pi.get("returnOnEquity")
+
+            peer_rows.append({
+                "symbol": ps,
+                "company_name": str(pi.get("longName") or pi.get("shortName") or ps),
+                "sector": sector,
+                "industry": industry,
+                "is_target": False,
+                "revenue_billion": rev,
+                "revenue_growth_pct": _ratio_to_pct(rev_growth) if rev_growth is not None else None,
+                "gross_margin_pct": _ratio_to_pct(gross_margin) if gross_margin is not None else None,
+                "net_margin_pct": _ratio_to_pct(net_margin) if net_margin is not None else None,
+                "roe_pct": _ratio_to_pct(roe_val) if roe_val is not None else None,
+                "free_cash_flow_billion": fcf_val,
+                "net_income_billion": ni,
+                "adjusted_net_income_billion": ni,
+                "non_recurring_gain_billion": None,
+                "non_recurring_gain_ratio": None,
+                "net_income_quality_flag": "yahoo_estimated",
+                "valuation_input_usable": True,
+                "valuation_input_rejection_reason": "",
+                "free_cash_flow_period_basis": "annual",
+            })
+        except Exception as exc:
+            logger.warning("Failed to fetch Yahoo data for peer %s: %s", ps, exc)
+            continue
+
+    # --- Phase 5: build target row from Yahoo ---
+    try:
+        tt = yf.Ticker(symbol)
+        ti = tt.info or {}
+        t_rev = _safe_float(ti.get("totalRevenue"))
+        t_ni = _safe_float(ti.get("netIncomeToCommon"))
+        t_fcf = _safe_float(ti.get("freeCashflow"))
+        target_row = {
+            "symbol": symbol,
+            "company_name": str(ti.get("longName") or ti.get("shortName") or symbol),
+            "sector": sector,
+            "industry": industry,
+            "is_target": True,
+            "revenue_billion": _to_billion(t_rev) if t_rev is not None else None,
+            "revenue_growth_pct": _ratio_to_pct(_safe_float(ti.get("revenueGrowth")) or 0.0),
+            "gross_margin_pct": _ratio_to_pct(_safe_float(ti.get("grossMargins")) or 0.0),
+            "net_margin_pct": _ratio_to_pct(_safe_float(ti.get("profitMargins")) or 0.0),
+            "roe_pct": _ratio_to_pct(_safe_float(ti.get("returnOnEquity")) or 0.0),
+            "free_cash_flow_billion": _to_billion(t_fcf) if t_fcf is not None else None,
+            "net_income_billion": _to_billion(t_ni) if t_ni is not None else None,
+            "adjusted_net_income_billion": _to_billion(t_ni) if t_ni is not None else None,
+            "non_recurring_gain_billion": None,
+            "non_recurring_gain_ratio": None,
+            "net_income_quality_flag": "yahoo_estimated",
+            "valuation_input_usable": True,
+            "valuation_input_rejection_reason": "",
+            "free_cash_flow_period_basis": "annual",
+        }
+    except Exception as exc:
+        logger.warning("Failed to fetch Yahoo target data for %s: %s", symbol, exc)
+        target_row = {"symbol": symbol, "is_target": True}
+
+    all_rows = [target_row] + peer_rows if target_row else peer_rows
+    ranking = _rank_target(all_rows, symbol=symbol)
+
+    return {
+        "target_symbol": symbol,
+        "target_sector": sector,
+        "target_industry": industry,
+        "peer_rows": all_rows,
+        "peer_count": max(len(peer_rows), 0),
+        "ranking": ranking,
+        "source": "yahoo_search",
     }
 
 
@@ -125,6 +361,17 @@ def perform_company_valuation(
     discount_rate = 0.10
     terminal_growth = 0.025
     fcf_growth = _bounded(revenue_growth / 100, 0.02, 0.20)
+
+    # ---- override with real market data when available ----
+    _risk_free = _get_fred_risk_free_rate()
+    _market_multiples = _get_yahoo_market_multiples(symbol)
+    _pe_base = _market_multiples.get("pe") or 18
+    _ps_base = _market_multiples.get("ps") or 4
+    pe_multiple = round(_bounded(_pe_base * growth_premium * margin_premium, 8, 50), 2)
+    ps_multiple = round(_bounded(_ps_base * growth_premium * (1 + net_margin / 100), 1.0, 20), 2)
+    if _risk_free is not None:
+        discount_rate = _risk_free + 0.035  # risk-free rate + equity risk premium
+        terminal_growth = min(max(_risk_free * 0.5, 0.020), 0.035)
 
     pe_value = net_income * pe_multiple
     ps_value = revenue * ps_multiple
@@ -382,10 +629,16 @@ def _normalize_record_financials(record: Dict[str, Any]) -> Dict[str, Any]:
         net_income = _first_fact_value(metrics, ["NetIncomeLoss"])
         assets = _first_fact_value(metrics, ["Assets"])
         equity = _first_fact_value(metrics, ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"])
+        # Calculate free cash flow from operating cash flow - capex
+        operating_cf = _first_fact_value(metrics, ["NetCashProvidedByUsedInOperatingActivities"])
+        capex = _first_fact_value(metrics, ["PaymentsToAcquirePropertyPlantAndEquipment"])
+        free_cash_flow = (operating_cf - capex) if (operating_cf is not None and capex is not None) else None
         return {
             "revenue_billion": _to_billion(revenue) if revenue is not None else None,
             "net_income_billion": _to_billion(net_income) if net_income is not None else None,
             "adjusted_net_income_billion": _to_billion(net_income) if net_income is not None else None,
+            "free_cash_flow_billion": _to_billion(free_cash_flow) if free_cash_flow is not None else None,
+            "free_cash_flow_period_basis": "annual",
             "net_income_quality_flag": "sec_reported",
             "valuation_input_usable": True,
             "net_margin_pct": (float(net_income) / float(revenue) * 100.0) if revenue not in (None, 0) and net_income is not None else None,
@@ -773,3 +1026,50 @@ def _read_json(path: Path) -> Dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+# ---------------------------------------------------------------------------
+# Market-data helpers for FRED risk-free rate and Yahoo Finance multiples
+# ---------------------------------------------------------------------------
+
+def _get_fred_risk_free_rate() -> float | None:
+    """Fetch the 10Y Treasury yield from FRED (DGS10) and return as decimal.
+
+    Returns e.g. 0.043 for 4.3%, or None on any failure.
+    """
+    try:
+        from src.data.independent_sources import fetch_fred_series_evidence
+
+        result = fetch_fred_series_evidence({"DGS10": "10-Year Treasury"})
+        if not result or not hasattr(result, "hits"):
+            return None
+        for hit in result.hits:
+            meta = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
+            raw_value = meta.get("value")
+            if raw_value is not None and str(raw_value).strip() not in ("", "."):
+                val = float(str(raw_value).strip())
+                if val > 1:
+                    return val / 100.0
+                return val
+        return None
+    except Exception as exc:
+        logger.debug("FRED risk-free rate fetch failed: %s", exc)
+        return None
+
+
+def _get_yahoo_market_multiples(symbol: str) -> Dict[str, float | None]:
+    """Get trailing market multiples for *symbol* via Yahoo Finance.
+
+    Returns dict with keys ``pe``, ``ps``, ``pb`` — each may be None.
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info or {}
+        return {
+            "pe": _safe_float(info.get("trailingPE")),
+            "ps": _safe_float(info.get("priceToSalesTrailing12Months")),
+            "pb": _safe_float(info.get("priceToBook")),
+        }
+    except Exception as exc:
+        logger.debug("Yahoo multiples fetch failed for %s: %s", symbol, exc)
+        return {"pe": None, "ps": None, "pb": None}

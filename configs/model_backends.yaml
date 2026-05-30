@@ -11,8 +11,8 @@ agent_model:
   max_tokens_env: DEEPSEEK_MAX_TOKENS
   temperature: 0.2
   temperature_env: DEEPSEEK_TEMPERATURE
-  timeout: 30
-  retry: 1
+  timeout: 120
+  retry: 2
 
 model_profiles:
   flash:
@@ -28,8 +28,8 @@ model_profiles:
     max_tokens_env: DEEPSEEK_MAX_TOKENS
     temperature: 0.2
     temperature_env: DEEPSEEK_TEMPERATURE
-    timeout: 30
-    retry: 1
+    timeout: 60
+    retry: 2
   pro:
     provider: deepseek
     mode: openai_compatible_chat
@@ -43,8 +43,8 @@ model_profiles:
     max_tokens_env: DEEPSEEK_MAX_TOKENS
     temperature: 0.2
     temperature_env: DEEPSEEK_TEMPERATURE
-    timeout: 30
-    retry: 1
+    timeout: 180
+    retry: 2
 
 agent_model_routes:
   defaults:

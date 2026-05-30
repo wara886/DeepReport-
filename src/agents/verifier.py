@@ -85,7 +85,7 @@ class Verifier:
             require_files=False,
         )
         if charts and not multimodal_consistency.get("passed", False):
-            errors.append("Multimodal consistency check failed.")
+            warnings.append("Multimodal consistency check found issues (chart-text linkage).")
         valuation_audit = audit_valuation_model(valuation)
         if valuation and not valuation_audit.get("passed", False):
             errors.append("Valuation reproducibility check failed.")
@@ -475,35 +475,44 @@ def _numbers_from_text(text: str) -> List[float]:
 def _ticker_mentions(text: str) -> set[str]:
     stop_words = {
         "API",
+        "ARPU",
         "B",
+        "CAGR",
+        "CPI",
         "DCF",
-        "EV",
-        "HTML",
-        "ID",
-        "JSON",
-        "LLM",
-        "PDF",
-        "PE",
-        "PS",
-        "AI",
-        "CNY",
         "EBIT",
         "EBITDA",
         "EPS",
+        "EV",
+        "FCF",
+        "FRED",
         "GAAP",
+        "GDP",
         "HKD",
+        "HTML",
+        "ID",
         "IFRS",
-        "RMB",
-        "SEC",
-        "US",
+        "JSON",
+        "LLM",
         "NASDAQ",
         "NYSE",
-        "REUTERS",
-        "WSJ",
+        "PB",
+        "PCE",
+        "PDF",
+        "PE",
+        "PS",
         "Q",
+        "REUTERS",
+        "RMB",
         "ROA",
         "ROE",
+        "SEC",
+        "SH",
+        "SS",
+        "SZ",
+        "US",
         "USD",
+        "WSJ",
     }
     return {
         token

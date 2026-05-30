@@ -7,11 +7,14 @@ execution path consumes only the files subsequently frozen into a snapshot.
 
 from __future__ import annotations
 
+import contextlib
 from datetime import datetime, timedelta, timezone
 import hashlib
+import io
 import json
 from pathlib import Path
 import re
+import sys
 from typing import Any, Dict, Iterable, List
 from urllib import parse, request
 
@@ -310,6 +313,11 @@ def _is_hkex_annual_report(record: Dict[str, Any], code: str, period: str) -> bo
     return stock_code.startswith(code) and "ANNUAL REPORT" in title and year in title and str(record.get("FILE_TYPE") or "").upper() == "PDF"
 
 
+def _suppress_mupdf_stderr():
+    """Temporarily suppress MuPDF C-core stderr noise (e.g. structure tree errors)."""
+    return contextlib.redirect_stderr(io.StringIO())
+
+
 def _download_and_extract_hkex_pdf(source_url: str, period: str, max_passages: int = 8, max_chars: int = 26000) -> Dict[str, Any]:
     req = request.Request(source_url, headers={"User-Agent": "Mozilla/5.0 FinSight/0.1"}, method="GET")
     with request.urlopen(req, timeout=90) as response:
@@ -320,54 +328,55 @@ def _download_and_extract_hkex_pdf(source_url: str, period: str, max_passages: i
         raise RuntimeError("pymupdf is required to stage HKEX annual-report evidence") from exc
 
     year = _period_year(period)
-    doc = fitz.open(stream=data, filetype="pdf")
-    candidates: List[tuple[int, int, str]] = []
-    try:
-        for page_index, page in enumerate(doc, start=1):
-            text = " ".join(str(page.get_text() or "").split())
-            lowered = text.lower()
-            if year not in text or len(text) < 80:
-                continue
-            score = 0
-            for keyword, weight in [
-                ("revenue", 4),
-                ("profit", 2),
-                ("cash flow", 4),
-                ("financial position", 3),
-                ("income statement", 3),
-                ("management discussion", 1),
-            ]:
-                if keyword in lowered:
-                    score += weight
-            if "contents" in lowered[:80]:
-                score -= 5
-            if score >= 4:
-                candidates.append((score, page_index, text))
-        candidates.sort(key=lambda item: (-item[0], item[1]))
-        passages: List[str] = []
-        selected_pages: List[int] = []
-        used_chars = 0
-        for _, page_number, text in candidates:
-            if page_number in selected_pages:
-                continue
-            passage = f"[PDF page {page_number}] {text[:5000]}"
-            if used_chars + len(passage) > max_chars:
-                passage = passage[: max_chars - used_chars]
-            if not passage:
-                break
-            passages.append(passage)
-            selected_pages.append(page_number)
-            used_chars += len(passage)
-            if len(passages) >= max_passages or used_chars >= max_chars:
-                break
-        return {
-            "content": " ".join(passages),
-            "pages": selected_pages,
-            "page_count": len(doc),
-            "pdf_sha256": hashlib.sha256(data).hexdigest(),
-        }
-    finally:
-        doc.close()
+    with _suppress_mupdf_stderr():
+        doc = fitz.open(stream=data, filetype="pdf")
+        candidates: List[tuple[int, int, str]] = []
+        try:
+            for page_index, page in enumerate(doc, start=1):
+                text = " ".join(str(page.get_text() or "").split())
+                lowered = text.lower()
+                if year not in text or len(text) < 80:
+                    continue
+                score = 0
+                for keyword, weight in [
+                    ("revenue", 4),
+                    ("profit", 2),
+                    ("cash flow", 4),
+                    ("financial position", 3),
+                    ("income statement", 3),
+                    ("management discussion", 1),
+                ]:
+                    if keyword in lowered:
+                        score += weight
+                if "contents" in lowered[:80]:
+                    score -= 5
+                if score >= 4:
+                    candidates.append((score, page_index, text))
+            candidates.sort(key=lambda item: (-item[0], item[1]))
+            passages: List[str] = []
+            selected_pages: List[int] = []
+            used_chars = 0
+            for _, page_number, text in candidates:
+                if page_number in selected_pages:
+                    continue
+                passage = f"[PDF page {page_number}] {text[:5000]}"
+                if used_chars + len(passage) > max_chars:
+                    passage = passage[: max_chars - used_chars]
+                if not passage:
+                    break
+                passages.append(passage)
+                selected_pages.append(page_number)
+                used_chars += len(passage)
+                if len(passages) >= max_passages or used_chars >= max_chars:
+                    break
+            return {
+                "content": " ".join(passages),
+                "pages": selected_pages,
+                "page_count": len(doc),
+                "pdf_sha256": hashlib.sha256(data).hexdigest(),
+            }
+        finally:
+            doc.close()
 
 
 def _normalize_record(record: Dict[str, Any], symbol: str, period: str) -> Dict[str, Any]:
