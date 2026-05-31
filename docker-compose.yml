@@ -1,19 +1,20 @@
 services:
-  finsight:
+  open-deepreport:
     build:
       context: .
       dockerfile: Dockerfile
     image: ghcr.io/wara886/deepreport-plus:latest
-    container_name: finsight-deepreport
+    container_name: open-deepreport
     env_file:
       - .env
     environment:
+      APP_MODE: user
       PORT: "7860"
     ports:
       - "7860:7860"
     volumes:
-      - ./data/outputs:/app/data/outputs
-      - ./data/reports:/app/data/reports
+      - ./data/outputs_user:/app/data/outputs_user
+      - ./data/reports_user:/app/data/reports_user
       - ./data/evidence_archive:/app/data/evidence_archive
       - ./memory:/app/memory
     healthcheck:

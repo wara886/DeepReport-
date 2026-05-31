@@ -12,6 +12,7 @@ import mimetypes
 from pathlib import Path
 import re
 import shutil
+import sys
 import threading
 import time as _time
 from typing import Any, Dict, List
@@ -38,6 +39,61 @@ from src.evaluation.quality_remediation import (
     write_quality_remediation_plan_for_outputs,
 )
 from src.evaluation.report_quality import evaluate_report_quality_from_paths, write_quality_outputs_for_paths
+from dataclasses import dataclass, field
+import concurrent.futures
+
+
+# ── Report Request State ──────────────────────────────────────────────
+
+@dataclass
+class ReportRequestState:
+    """Per-request state machine for report generation requests.
+
+    Every user report request gets one of these stored in pending_report_tasks
+    keyed by session_id. It survives the confirmation round-trip and is consumed
+    when the job is actually created.
+    """
+    request_id: str
+    session_id: str
+    symbol: str
+    company_name: str = ""
+    market: str = ""
+    period: str = ""
+    period_kind: str = "unknown"  # quarter | fiscal_year | latest | unknown
+    research_topic: str = ""
+    created_at: str = ""
+    status: str = "pending_confirmation"  # pending_confirmation | confirmed | running | completed | failed | timeout | cancelled
+    job_id: str = ""
+    source: str = "chat"  # chat | form
+    needs_confirmation: bool = False
+    missing_fields: list = field(default_factory=list)
+    report_mode_hint: str = ""  # quick | standard | full
+
+    def to_dict(self) -> dict:
+        return {
+            "request_id": self.request_id,
+            "session_id": self.session_id,
+            "symbol": self.symbol,
+            "company_name": self.company_name,
+            "market": self.market,
+            "period": self.period,
+            "period_kind": self.period_kind,
+            "research_topic": self.research_topic,
+            "created_at": self.created_at,
+            "status": self.status,
+            "job_id": self.job_id,
+            "source": self.source,
+            "needs_confirmation": self.needs_confirmation,
+            "missing_fields": self.missing_fields,
+            "report_mode_hint": self.report_mode_hint,
+        }
+
+    def is_same_request(self, symbol: str, period: str) -> bool:
+        """Check if this request matches the given symbol/period."""
+        return (
+            self.symbol.strip().upper() == symbol.strip().upper()
+            and self.period.strip().upper() == period.strip().upper()
+        )
 
 
 DEFAULT_OUTPUT_DIR = "data/outputs/multi_agent"
@@ -94,6 +150,147 @@ def _market_label(symbol: str) -> str:
 # Module-level state containers for test access
 pending_report_tasks: Dict[str, Dict[str, Any]] = {}
 active_report_runs: Dict[str, Dict[str, Any]] = {}
+
+
+# ── Deadline utilities ────────────────────────────────────────────
+import time as _deadline_time
+
+def _deadline_from_now(seconds: float) -> float:
+    """Return a monotonic deadline `seconds` from now."""
+    return _deadline_time.monotonic() + seconds
+
+def _deadline_expired(deadline: float | None) -> bool:
+    """Return True if *deadline* (monotonic) is None or in the past."""
+    if deadline is None:
+        return False
+    return _deadline_time.monotonic() >= deadline
+
+def _remaining_seconds(deadline: float | None) -> float:
+    """Return remaining wall seconds, or infinity if deadline is None."""
+    if deadline is None:
+        return float("inf")
+    return max(0.0, deadline - _deadline_time.monotonic())
+
+
+def _write_timeout_artifacts(
+    output_dir: Path, job_id: str, symbol: str, period: str, mode: str, reason: str,
+) -> None:
+    """Write timeout artifacts when a job exceeds its budget."""
+    error_path = output_dir / "run_error.json"
+    try:
+        error_path.write_text(
+            json.dumps({
+                "error": "timeout",
+                "symbol": symbol,
+                "period": period,
+                "reason": reason,
+                "job_id": job_id,
+                "delivery_status": "timeout_degraded" if mode == "user" else "timeout_failed",
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+    summary_path = output_dir / "run_summary.json"
+    try:
+        if summary_path.exists():
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            if isinstance(summary, dict):
+                summary["delivery_status"] = "timeout_degraded" if mode == "user" else "timeout_failed"
+                summary["timeout_reason"] = reason
+                summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+class ReportJobTimeout(Exception):
+    """Raised when a report job exceeds its wall-clock budget in a specific phase."""
+    def __init__(self, phase: str, elapsed_sec: float, budget_sec: float):
+        self.phase = phase
+        self.elapsed_sec = elapsed_sec
+        self.budget_sec = budget_sec
+        super().__init__(f"report job timed out in phase '{phase}' after {elapsed_sec:.0f}s (budget {budget_sec:.0f}s)")
+
+
+def _check_deadline(deadline: float | None, phase_name: str, budget_sec: float = 9999.0) -> None:
+    """Raise ReportJobTimeout if *deadline* is expired."""
+    if deadline is not None and _deadline_expired(deadline):
+        elapsed = _remaining_seconds(deadline)  # will be 0
+        raise ReportJobTimeout(phase_name, _deadline_time.monotonic() - (deadline - budget_sec) if deadline else 0, budget_sec)
+
+
+def _write_phase(output_dir: Path, perf_trace: dict, phase: str) -> None:
+    """Update phase in perf_trace and write to disk."""
+    perf_trace["current_phase"] = phase
+    perf_trace["updated_at"] = datetime.now().isoformat()
+    _write_performance_trace(output_dir, perf_trace)
+
+
+def _write_run_error(output_dir: Path, exc: Exception, symbol: str, period: str) -> None:
+    """Write run_error.json from an exception."""
+    error_path = Path(output_dir) / "run_error.json"
+    try:
+        error_path.write_text(
+            json.dumps({
+                "error": str(exc),
+                "symbol": symbol,
+                "period": period,
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _write_performance_trace(output_dir: Path, trace: dict) -> None:
+    """Write performance_trace.json and update run_summary.json with computed fields."""
+    trace_path = Path(output_dir) / "performance_trace.json"
+    try:
+        trace_path.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+    summary_path = Path(output_dir) / "run_summary.json"
+    try:
+        if summary_path.exists():
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            if isinstance(summary, dict) and "computed" in trace:
+                summary["performance_trace"] = trace["computed"]
+                summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def run_phase_with_timeout(
+    phase_name: str,
+    phase_budget_sec: float,
+    overall_deadline: float,
+    output_dir: Path,
+    perf_trace: dict,
+    func,
+    *args,
+    **kwargs,
+) -> Any:
+    """Run *func(*args, **kwargs)* with per-phase timeout via ThreadPoolExecutor.
+
+    If *phase_budget_sec* exceeds remaining time before *overall_deadline*,
+    the phase deadline is clamped to the overall deadline. Raises
+    ReportJobTimeout on expiry / timeout.
+    """
+    remaining = min(phase_budget_sec, _remaining_seconds(overall_deadline))
+    if remaining <= 2.0:
+        raise ReportJobTimeout(phase_name, 0.0, phase_budget_sec)
+
+    _write_phase(output_dir, perf_trace, phase_name)
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(func, *args, **kwargs)
+    try:
+        result = future.result(timeout=remaining)
+        return result
+    except concurrent.futures.TimeoutError:
+        future.cancel()
+        raise ReportJobTimeout(phase_name, phase_budget_sec - remaining, phase_budget_sec)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
 
 def run_ui_server(
@@ -202,6 +399,11 @@ def create_ui_handler(
         topic: str,
         execution_mode: str,
         source: str,
+        time_budget_sec: float | None = None,
+        deadline: float | None = None,
+        output_dir: str | None = None,
+        report_dir: str | None = None,
+        request_id: str = "",
     ) -> None:
         active_report_runs[job_id] = {
             "job_id": job_id,
@@ -213,22 +415,158 @@ def create_ui_handler(
             "source": source,
             "status": "running",
             "started_at": datetime.now().isoformat(timespec="seconds"),
+            "time_budget_sec": time_budget_sec,
+            "deadline": deadline,
+            "output_dir": output_dir,
+            "report_dir": report_dir,
+            "request_id": request_id,
         }
 
     def _clear_active_run(job_id: str) -> None:
         active_report_runs.pop(job_id, None)
 
-    def _latest_payload() -> Dict[str, Any]:
+    def _latest_payload(job_id: str = "", request_id: str = "", session_id: str = "") -> Dict[str, Any]:
+        # If caller asked for a specific job, try to return that job's report
+        target_job_id = job_id or request_id or ""
+        if target_job_id:
+            # Try active run first
+            entry = active_report_runs.get(target_job_id)
+            if not entry:
+                # Try by request_id in active runs
+                for rid, rentry in active_report_runs.items():
+                    if rentry.get("request_id") == target_job_id:
+                        entry = rentry
+                        break
+            if entry and entry.get("report_dir"):
+                rdir = Path(entry["report_dir"])
+                odir = Path(entry["output_dir"]) if entry.get("output_dir") else None
+                if (rdir / "report.html").exists():
+                    payload = load_run_payload(odir or output_root, rdir)
+                    payload["active_runs"] = _visible_active_runs(payload)
+                    payload["queue_length"] = len(_report_queue)
+                    payload["is_global_latest"] = False
+                    payload["is_current_request"] = True
+                    payload["found"] = True
+                    payload["job_id"] = target_job_id
+                    payload["status"] = "completed_with_warnings" if odir is not None and (odir / "run_error.json").exists() else "completed"
+                    return payload
+                # Active run exists but no report.html — return running status
+                payload = load_run_payload(odir or output_root, rdir)
+                payload["active_runs"] = _visible_active_runs(payload)
+                payload["queue_length"] = len(_report_queue)
+                payload["is_global_latest"] = False
+                payload["is_current_request"] = True
+                payload["status"] = entry.get("status", "running")
+                return payload
+            # Try filesystem: find run_dir by job_id.txt or request_state.json
+            for run_dir in (output_root / "runs").iterdir() if (output_root / "runs").exists() else []:
+                od = run_dir / "outputs"
+                marker = od / "job_id.txt"
+                req_state_path = od / "request_state.json"
+                found_fs = False
+                if marker.exists() and marker.read_text(encoding="utf-8").strip() == target_job_id:
+                    found_fs = True
+                elif req_state_path.exists():
+                    try:
+                        rs = json.loads(req_state_path.read_text(encoding="utf-8"))
+                        if rs.get("job_id") == target_job_id or rs.get("run_id") == target_job_id:
+                            found_fs = True
+                    except Exception:
+                        pass
+                if found_fs:
+                    rd = report_root / "runs" / run_dir.name / "reports"
+                    if rd.exists() and (rd / "report.html").exists():
+                        payload = load_run_payload(od, rd)
+                        payload["active_runs"] = _visible_active_runs(payload)
+                        payload["queue_length"] = len(_report_queue)
+                        payload["is_global_latest"] = False
+                        payload["is_current_request"] = True
+                        payload["found"] = True
+                        payload["job_id"] = target_job_id
+                        payload["status"] = "completed_with_warnings" if (od / "run_error.json").exists() else "completed"
+                        return payload
+                    # Found the run dir but no report.html — return terminal/running status
+                    err_path = od / "run_error.json"
+                    if err_path.exists():
+                        payload = load_run_payload(od, rd if rd.exists() else report_root)
+                        payload["active_runs"] = _visible_active_runs(payload)
+                        payload["queue_length"] = len(_report_queue)
+                        payload["is_global_latest"] = False
+                        payload["is_current_request"] = True
+                        payload["found"] = True
+                        payload["job_id"] = target_job_id
+                        payload["status"] = "failed"
+                        try:
+                            err_data = json.loads(err_path.read_text(encoding="utf-8"))
+                            err_text = str(err_data.get("error") or err_data.get("reason") or err_data)
+                            payload["error"] = err_text
+                            if err_text.lower() == "timeout" or str(err_data.get("delivery_status") or "").startswith("timeout"):
+                                payload["status"] = "timeout"
+                        except Exception:
+                            payload["error"] = err_path.read_text(encoding="utf-8")
+                        return payload
+                    perf_path = od / "performance_trace.json"
+                    if perf_path.exists():
+                        try:
+                            perf = json.loads(perf_path.read_text(encoding="utf-8"))
+                            if perf.get("status") in ("failed", "timeout"):
+                                payload = load_run_payload(od, rd if rd.exists() else report_root)
+                                payload["active_runs"] = _visible_active_runs(payload)
+                                payload["queue_length"] = len(_report_queue)
+                                payload["is_global_latest"] = False
+                                payload["is_current_request"] = True
+                                payload["found"] = True
+                                payload["job_id"] = target_job_id
+                                payload["status"] = perf["status"]
+                                payload["error"] = perf.get("last_error", "")
+                                return payload
+                        except Exception:
+                            pass
+            # Strict mode: job_id specified but not found → return unknown_job
+            # NEVER fall back to global latest when caller asked for a specific job
+            return {
+                "found": False,
+                "status": "unknown_job",
+                "is_global_latest": False,
+                "is_current_request": True,
+                "job_id": target_job_id,
+                "active_runs": _visible_active_runs({}),
+                "queue_length": len(_report_queue),
+            }
+
+        # Fallback to global latest
         latest_dirs = _latest_run_dirs(output_root, report_root)
         payload = load_run_payload(latest_dirs["output_dir"], latest_dirs["report_dir"])
         payload["active_runs"] = _visible_active_runs(payload)
         payload["queue_length"] = len(_report_queue)
+        payload["is_global_latest"] = True
+        payload["is_current_request"] = False
         active_running = None
         for item in _report_queue:
             if item["status"] == "running":
                 active_running = item
                 break
         payload["active_job_id"] = active_running["job_id"] if active_running else None
+        # Check for expired deadlines in active runs — clean up stale entries
+        stale_ids: List[str] = []
+        for run in active_report_runs.values():
+            if run.get("status") == "running":
+                run_id = run.get("job_id", "")
+                rdir = Path(run["report_dir"]) if run.get("report_dir") else None
+                odir = Path(run["output_dir"]) if run.get("output_dir") else None
+                # Check filesystem first: report.html exists → completed silently
+                if rdir is not None and (rdir / "report.html").exists():
+                    stale_ids.append(run_id)
+                elif run.get("deadline") is not None and _deadline_expired(run["deadline"]):
+                    if odir:
+                        _write_timeout_artifacts(
+                            odir, run_id,
+                            run.get("symbol", "?"), run.get("period", "?"),
+                            mode, "deadline exceeded",
+                        )
+                    stale_ids.append(run_id)
+        for sid in stale_ids:
+            _clear_active_run(sid)
         return payload
 
     def _visible_active_runs(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -258,7 +596,9 @@ def create_ui_handler(
             if parsed.path == "/api/latest":
                 qs = parse_qs(urlparse(self.path).query)
                 sess = str(qs.get("session_id", ["local"])[0]) if isinstance(qs.get("session_id"), list) else "local"
-                payload = _latest_payload()
+                jid = str(qs.get("job_id", [""])[0]) if isinstance(qs.get("job_id"), list) else ""
+                rid = str(qs.get("request_id", [""])[0]) if isinstance(qs.get("request_id"), list) else ""
+                payload = _latest_payload(job_id=jid, request_id=rid, session_id=sess)
                 payload["queue_position"] = _compute_queue_position(sess)
                 self._send_json(payload_for_mode(payload, effective_mode))
                 return
@@ -296,8 +636,17 @@ def create_ui_handler(
             enable_remote_data = bool(payload.get("enable_remote_data", False))
             engines = _parse_engines(payload.get("engines") or default_engines_for_symbol(symbol, enable_remote_data))
             execution_mode = str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE)
-            execution_tier = "user_fast" if mode == "user" else str(payload.get("execution_tier") or "delivery")
+            if mode == "user":
+                execution_tier = "user_fast"  # 用户模式固定，忽略 payload
+            else:
+                execution_tier = str(payload.get("execution_tier") or "developer_fast").lower()
+                if execution_tier not in ("developer_fast", "preview", "delivery"):
+                    execution_tier = "developer_fast"
             job_id = _generate_job_id()
+            time_budget = 180.0 if mode == "user" else (420.0 if execution_tier == "developer_fast" else 600.0)
+            execution_deadline = _deadline_from_now(time_budget)
+            req_id = str(payload.get("request_id") or f"req_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}")
+            run_paths = _create_run_dirs(output_root, report_root, symbol, period, execution_mode, request_id=req_id, session_id=session_id, job_id=job_id)
             _mark_active_run(
                 session_id,
                 job_id=job_id,
@@ -306,8 +655,12 @@ def create_ui_handler(
                 topic=topic,
                 execution_mode=execution_mode,
                 source="form",
+                time_budget_sec=time_budget,
+                deadline=execution_deadline,
+                output_dir=str(run_paths["output_dir"]),
+                report_dir=str(run_paths["report_dir"]),
+                request_id=req_id,
             )
-            run_paths = _create_run_dirs(output_root, report_root, symbol, period, execution_mode)
             orchestrator = MultiAgentOrchestrator(
                 output_dir=str(run_paths["output_dir"]),
                 report_dir=str(run_paths["report_dir"]),
@@ -327,28 +680,64 @@ def create_ui_handler(
                     "data_source_config_path": str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
             }
             try:
-                result = orchestrator.run(**run_kwargs)
-                quality_result = run_delivery_quality_pipeline(
-                    run_paths["output_dir"],
-                    run_paths["report_dir"],
-                    config_path,
-                    durable_memory_store=getattr(orchestrator, "durable_memory", None),
-                    memory_enabled=bool(payload.get("memory_enabled", False)),
-                )
-                rework_result = run_delivery_rework_loop(
-                    orchestrator=orchestrator,
-                    output_path=run_paths["output_dir"],
-                    report_path=run_paths["report_dir"],
-                    config_path=config_path,
-                    initial_quality_result=quality_result,
-                    run_kwargs=run_kwargs,
-                    durable_memory_store=getattr(orchestrator, "durable_memory", None),
-                    memory_enabled=bool(payload.get("memory_enabled", False)),
-                )
+                # ── 1. Orchestrator ──────────────────────────────────
+                if _deadline_expired(execution_deadline):
+                    raise TimeoutError("deadline expired before orchestrator.run")
+                result = orchestrator.run(**run_kwargs, execution_deadline=execution_deadline)
+
+                # ── 2. Quality pipeline ──────────────────────────────
+                deadline_exceeded = _deadline_expired(execution_deadline)
+                if not deadline_exceeded:
+                    quality_result = run_delivery_quality_pipeline(
+                        run_paths["output_dir"],
+                        run_paths["report_dir"],
+                        config_path,
+                        durable_memory_store=getattr(orchestrator, "durable_memory", None),
+                        memory_enabled=bool(payload.get("memory_enabled", False)),
+                        deadline=execution_deadline,
+                        review_mode="heuristic" if mode == "user" else "full",
+                    )
+                else:
+                    quality_result = {"delivery_gate": {"delivery_pass": False}, "top_quality_issues": []}
+
+                # ── 3. Delivery rework ───────────────────────────────
+                rework_max_rounds = 0 if mode == "user" else 1
+                deadline_exceeded = deadline_exceeded or _deadline_expired(execution_deadline)
+                if rework_max_rounds > 0 and not deadline_exceeded:
+                    rework_result = run_delivery_rework_loop(
+                        orchestrator=orchestrator,
+                        output_path=run_paths["output_dir"],
+                        report_path=run_paths["report_dir"],
+                        config_path=config_path,
+                        initial_quality_result=quality_result,
+                        run_kwargs=run_kwargs,
+                        durable_memory_store=getattr(orchestrator, "durable_memory", None),
+                        memory_enabled=bool(payload.get("memory_enabled", False)),
+                        deadline=execution_deadline,
+                        max_rounds=rework_max_rounds,
+                    )
+                else:
+                    rework_result = {"rounds": [], "quality_result": quality_result, "reworked": False}
+                    if rework_max_rounds <= 0:
+                        _write_delivery_rework_history(
+                            Path(run_paths["output_dir"]),
+                            [{
+                                "round": 0,
+                                "trigger": "delivery_gate_failed",
+                                "status": "skipped",
+                                "handled": False,
+                                "unfixable_reasons": [f"user_fast_mode_skips_delivery_rework" if mode == "user" else "deadline_exceeded"],
+                                "delivery_pass_after_round": quality_result.get("delivery_gate", {}).get("delivery_pass", False) if isinstance(quality_result.get("delivery_gate"), dict) else False,
+                            }],
+                        )
+
                 if rework_result.get("quality_result"):
                     quality_result = rework_result["quality_result"]
+                if rework_result.get("rounds") and isinstance(result, dict):
                     result["delivery_rework"] = rework_result
-                _finalize_run_dirs(run_paths, output_root, report_root, symbol, period, execution_mode, quality_result)
+
+                # ── 4. Finalize ──────────────────────────────────────
+                _finalize_run_dirs(run_paths, output_root, report_root, symbol, period, execution_mode, quality_result, execution_tier=execution_tier)
                 _clear_active_run(job_id)
                 report_links = build_report_links(run_paths["report_dir"])
                 latest = _latest_payload()
@@ -357,6 +746,13 @@ def create_ui_handler(
                     "report_links": report_links,
                     "latest": payload_for_mode(latest, mode),
                 })
+            except TimeoutError:
+                _write_timeout_artifacts(run_paths["output_dir"], job_id, symbol, period, mode, "deadline exceeded")
+                self._send_json({
+                    "error": "报告生成超时",
+                    "mode": "timeout_suspected",
+                    "latest": _latest_payload(),
+                }, status=HTTPStatus.REQUEST_TIMEOUT)
             except Exception as exc:  # pragma: no cover - defensive UI boundary
                 self._send_json({"error": str(exc), "latest": _latest_payload()}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
             finally:
@@ -369,32 +765,185 @@ def create_ui_handler(
                 self._send_json({"error": "job_id required"}, status=HTTPStatus.BAD_REQUEST)
                 return
             result: Dict[str, Any] = {"job_id": job_id, "found": False}
-            # Check active_report_runs
-            if job_id in active_report_runs:
-                entry = dict(active_report_runs[job_id])
+
+            # Resolve output_dir / report_dir from active_run or filesystem scan
+            output_dir: Path | None = None
+            report_dir: Path | None = None
+            entry = active_report_runs.get(job_id)
+            if entry is not None:
+                if entry.get("output_dir"):
+                    output_dir = Path(entry["output_dir"])
+                if entry.get("report_dir"):
+                    report_dir = Path(entry["report_dir"])
+            else:
+                # Filesystem lookup to resolve paths for unknown job
+                # Matches on: job_id.txt content == job_id, OR request_state.json job_id/run_id match
+                for run_dir in (output_root / "runs").iterdir() if (output_root / "runs").exists() else []:
+                    od = run_dir / "outputs"
+                    marker = od / "job_id.txt"
+                    req_state_path = od / "request_state.json"
+                    found = False
+                    if marker.exists() and marker.read_text(encoding="utf-8").strip() == job_id:
+                        found = True
+                    elif req_state_path.exists():
+                        try:
+                            rs = json.loads(req_state_path.read_text(encoding="utf-8"))
+                            if rs.get("job_id") == job_id or rs.get("run_id") == job_id:
+                                found = True
+                        except Exception:
+                            pass
+                    if found:
+                        output_dir = od
+                        rd = report_root / "runs" / run_dir.name / "reports"
+                        if rd.exists():
+                            report_dir = rd
+                        break
+
+            # Diagnostic: log resolution state for this call
+            has_active = entry is not None
+            has_report_html = report_dir is not None and (report_dir / "report.html").exists() if report_dir else False
+            has_run_error = output_dir is not None and (output_dir / "run_error.json").exists() if output_dir else False
+            sys.stderr.write(
+                f"[job_status] job_id={job_id} active={has_active} "
+                f"report_html={has_report_html} run_error={has_run_error}\n"
+            )
+
+            # 1. report.html on disk → terminal completed / completed_with_warnings
+            if report_dir is not None and (report_dir / "report.html").exists():
+                result.update({
+                    "found": True,
+                    "status": "completed",
+                    "source": "report_html_on_disk",
+                    "report_links": build_report_links(report_dir),
+                })
+                if output_dir is not None and (output_dir / "run_error.json").exists():
+                    result["status"] = "completed_with_warnings"
+                    try:
+                        err_data = json.loads((output_dir / "run_error.json").read_text(encoding="utf-8"))
+                        result["error"] = err_data.get("error", str(err_data))
+                    except Exception:
+                        pass
+                _clear_active_run(job_id)
+                self._send_json(result)
+                return
+
+            # 2. run_error.json on disk → failed
+            if output_dir is not None and (output_dir / "run_error.json").exists():
+                result.update({"found": True, "status": "failed", "source": "run_error_on_disk"})
+                try:
+                    err_data = json.loads((output_dir / "run_error.json").read_text(encoding="utf-8"))
+                    if isinstance(err_data, dict):
+                        err_text = str(err_data.get("error") or err_data.get("reason") or err_data)
+                        result["error"] = err_text
+                        if err_text.lower() == "timeout" or str(err_data.get("delivery_status") or "").startswith("timeout"):
+                            result["status"] = "timeout"
+                    else:
+                        result["error"] = str(err_data)
+                except Exception:
+                    try:
+                        result["error"] = (output_dir / "run_error.json").read_text(encoding="utf-8")
+                    except Exception:
+                        pass
+                _clear_active_run(job_id)
+                self._send_json(result)
+                return
+
+            # 3. performance_trace.json on disk → terminal state (completed/timeout/failed)
+            if output_dir is not None and (output_dir / "performance_trace.json").exists():
+                try:
+                    perf = json.loads((output_dir / "performance_trace.json").read_text(encoding="utf-8"))
+                    if perf.get("status") in ("completed", "timeout", "failed"):
+                        result.update({"found": True, "status": perf["status"], "source": "performance_trace"})
+                        if perf.get("report_links"):
+                            result["report_links"] = perf["report_links"]
+                        if perf["status"] == "completed" and report_dir is not None:
+                            rlinks = build_report_links(report_dir)
+                            if rlinks.get("html_web_url"):
+                                result["report_links"] = rlinks
+                        _clear_active_run(job_id)
+                        self._send_json(result)
+                        return
+                except Exception:
+                    pass
+
+            # 4. Active run (running within deadline, or timeout if deadline expired)
+            if entry is not None:
                 result["found"] = True
-                result["status"] = entry.get("status", "unknown")
                 result["source"] = "active_run"
-                result["entry"] = entry
-            # Check queue for more detail
-            with _queue_lock:
-                for item in _report_queue:
-                    if item["job_id"] == job_id:
-                        result["found"] = True
-                        result["status"] = item.get("status", "unknown")
-                        result["source"] = "queue"
-                        safe_item = {k: v for k, v in item.items() if k != "run"}
-                        result["entry"] = safe_item
-                        break
-            # Check for completed trace
-            if not result["found"]:
-                for run_key, run_val in list(active_report_runs.items()):
-                    if run_key == job_id:
-                        result["entry"] = dict(run_val)
-                        result["found"] = True
-                        result["status"] = run_val.get("status", "unknown")
-                        break
+                result["entry"] = dict(entry)
+                if entry.get("status") == "running" and entry.get("deadline") is not None:
+                    if _deadline_expired(entry["deadline"]):
+                        if output_dir is not None:
+                            _write_timeout_artifacts(
+                                output_dir, job_id,
+                                entry.get("symbol", "?"), entry.get("period", "?"),
+                                mode, "deadline exceeded",
+                            )
+                        _clear_active_run(job_id)
+                        result["status"] = "timeout"
+                        result["entry"]["status"] = "timeout"
+                        if report_dir is not None:
+                            rlinks = build_report_links(report_dir)
+                            if rlinks:
+                                result["report_links"] = rlinks
+                    else:
+                        result["status"] = "running"
+                else:
+                    result["status"] = entry.get("status", "unknown")
+                self._send_json(result)
+                return
+
+            # 5. Filesystem fallback (scan all run dirs for job_id.txt)
+            self._filesystem_job_status_fallback(result, job_id)
             self._send_json(result)
+
+        def _filesystem_job_status_fallback(self, result: Dict[str, Any], job_id: str) -> None:
+            """Try to find job status from filesystem artifacts."""
+            output_runs = output_root / "runs"
+            report_runs = report_root / "runs"
+            if not output_runs.exists():
+                return
+            for run_dir in output_runs.iterdir():
+                od = run_dir / "outputs"
+                if not od.exists():
+                    continue
+                marker = od / "job_id.txt"
+                req_state_path = od / "request_state.json"
+                found_fs = False
+                if marker.exists() and marker.read_text(encoding="utf-8").strip() == job_id:
+                    found_fs = True
+                elif req_state_path.exists():
+                    try:
+                        rs = json.loads(req_state_path.read_text(encoding="utf-8"))
+                        if rs.get("job_id") == job_id or rs.get("run_id") == job_id:
+                            found_fs = True
+                    except Exception:
+                        pass
+                if found_fs:
+                    result["found"] = True
+                    result["source"] = "filesystem"
+                    rd = (report_runs / run_dir.name / "reports") if report_runs.exists() else None
+                    if rd is not None and (rd / "report.html").exists():
+                        result["status"] = "completed"
+                        result["report_links"] = build_report_links(rd)
+                    elif (od / "run_error.json").exists():
+                        result["status"] = "failed"
+                        try:
+                            err_data = json.loads((od / "run_error.json").read_text(encoding="utf-8"))
+                            result["error"] = err_data.get("error", str(err_data))
+                        except Exception:
+                            result["error"] = (od / "run_error.json").read_text(encoding="utf-8")
+                    elif (od / "performance_trace.json").exists():
+                        try:
+                            perf = json.loads((od / "performance_trace.json").read_text(encoding="utf-8"))
+                            result["status"] = perf.get("status", "unknown")
+                            if perf.get("report_links"):
+                                result["report_links"] = perf["report_links"]
+                        except Exception:
+                            result["status"] = "unknown"
+                    else:
+                        result["status"] = "unknown"
+                    break
 
         def _handle_cancel_job(self) -> None:
             payload = self._read_json_body()
@@ -420,6 +969,7 @@ def create_ui_handler(
         def _handle_chat(self) -> None:
             payload = self._read_json_body()
             message = str(payload.get("message") or "").strip()
+            original_message = message
             session_id = str(payload.get("session_id") or "local")
             user_id = str(payload.get("user_id") or "local_user")
             symbol = str(payload.get("symbol") or "AAPL").strip().upper()
@@ -428,33 +978,86 @@ def create_ui_handler(
             enable_remote_data = bool(payload.get("enable_remote_data", True))
             request_id = str(payload.get("request_id") or f"req_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}")
 
+            # --- P0.6 Deterministic Pre-Parse (before LLM) ---
+            from src.app.company_aliases import parse_report_request as det_parse
+
+            det_result = det_parse(message)
+            _det_has_symbol = bool(det_result.get("symbol"))
+            _det_has_period = bool(det_result.get("period"))
+            if det_result.get("intent") == "generate_report" and _det_has_symbol and _det_has_period:
+                # Deterministic parse succeeded — override symbol/period before LLM
+                symbol = det_result["symbol"]
+                period = det_result["period"]
+                payload["symbol"] = symbol
+                payload["period"] = period
+                payload["_det_company_name"] = det_result.get("company_name", "")
+                payload["_det_market"] = det_result.get("market", "")
+                payload["_det_period_kind"] = det_result.get("period_kind", "")
+
             # --- Query Understanding Layer ---
             qu = QueryUnderstanding(config_path=config_path)
             intent = qu.intent_classify(message)
+            if det_result.get("intent") == "generate_report" and intent not in (
+                "report_artifact_request", "confirmation", "cancel_or_modify", "quality_review", "report_revision_request",
+            ):
+                intent = "report_generation"
+            target_resolution: Dict[str, Any] = {}
+            if intent == "report_generation":
+                target_resolution = qu.resolve_report_target(
+                    original_message,
+                    current_symbol=symbol,
+                    current_period=period,
+                    today=date.today(),
+                )
+                if target_resolution.get("symbol"):
+                    symbol = str(target_resolution["symbol"]).strip().upper()
+                    period = str(target_resolution.get("period") or target_resolution.get("resolved_period") or period).strip().upper()
+                    payload["symbol"] = symbol
+                    payload["period"] = period
+                    payload["_target_resolution"] = target_resolution
             if intent in ("report_generation", "data_query", "report_revision_request"):
                 normalized = qu.normalize_query(message)
                 message = normalized if normalized.strip() else message
             entities = qu.extract_entities(message, current_symbol=symbol, current_period=period, today=date.today())
+            _original_payload_symbol = payload.get("symbol")  # save before entities override
             if entities.get("symbol"):
                 payload["symbol"] = entities["symbol"]
                 symbol = entities["symbol"]
             if entities.get("period"):
                 payload["period"] = entities["period"]
                 period = entities["period"]
+            if target_resolution.get("symbol"):
+                symbol = str(target_resolution["symbol"]).strip().upper()
+                period = str(target_resolution.get("period") or target_resolution.get("resolved_period") or period).strip().upper()
+                payload["symbol"] = symbol
+                payload["period"] = period
             engines = _parse_engines(payload.get("engines") or default_engines_for_symbol(symbol, enable_remote_data))
 
             # --- Intent routing by priority ---
 
             # [1] report_artifact_request — highest priority, before pending_task
             if intent == "report_artifact_request":
+                # Only filter by symbol if user explicitly specified one
+                # Guard against entity extraction noise (e.g. "html" → "HTML")
+                ent_symbol = str(entities.get("symbol") or "").strip().upper()
+                ent_conf = float(entities.get("confidence") or 0)
+                noise_symbols = {"HTML", "PDF", "CSV", "JSON", "TXT", "XML", "API", "URL", "FILE"}
+                symbol_from_user = bool(_original_payload_symbol)  # saved before entities override
+                user_has_valid_symbol = symbol_from_user or (ent_symbol and ent_conf >= 0.5 and ent_symbol not in noise_symbols)
+                lookup_symbol = symbol if user_has_valid_symbol else None
+                lookup_period = period if (payload.get("period") or entities.get("period")) else None
                 artifact = resolve_report_artifact(
                     output_root=output_root,
                     report_root=report_root,
-                    symbol=symbol,
-                    period=period,
+                    symbol=lookup_symbol,
+                    period=lookup_period,
                 )
                 if artifact["found"]:
-                    answer = f"我找到了之前生成的 {artifact['symbol']} 财报，可以直接打开："
+                    is_hist = artifact.get("is_historical", True)
+                    if is_hist:
+                        answer = f"我找到了之前生成的 {artifact['symbol']} {artifact['period']} 历史报告，可直接查看（非当前请求）。"
+                    else:
+                        answer = f"我找到了 {artifact['symbol']} {artifact['period']} 财报，可以直接打开："
                     self._send_json({
                         "mode": "report_artifact",
                         "answer": answer,
@@ -464,6 +1067,7 @@ def create_ui_handler(
                         "run_id": artifact["run_id"],
                         "request_id": request_id,
                         "session_id": session_id,
+                        "is_historical": is_hist,
                     })
                 else:
                     answer = (
@@ -523,6 +1127,35 @@ def create_ui_handler(
                 parsed_task = llm_parse_chat_task(
                     message, current_symbol=symbol, current_period=period, config_path=config_path
                 )
+                if intent == "report_generation" and target_resolution:
+                    target_symbol = str(target_resolution.get("symbol") or "").strip().upper()
+                    target_period = str(target_resolution.get("period") or target_resolution.get("resolved_period") or parsed_task.period).strip().upper()
+                    target_kind = str(target_resolution.get("period_intent") or parsed_task.period_kind or "unknown")
+                    if target_symbol:
+                        parsed_task = replace(
+                            parsed_task,
+                            symbol=target_symbol,
+                            period=target_period,
+                            period_kind=target_kind,
+                            research_topic=f"生成 {target_symbol} {target_period} 公司财报研报",
+                            confidence=max(parsed_task.confidence, float(target_resolution.get("confidence") or 0.0)),
+                            should_run=bool(target_resolution.get("verified")) and not bool(target_resolution.get("needs_confirmation")),
+                            needs_confirmation=bool(target_resolution.get("needs_confirmation", True)),
+                            reason=f"{parsed_task.reason}; target resolver: {target_resolution.get('reason', '')}",
+                            source=str(target_resolution.get("source") or parsed_task.source),
+                        )
+                    else:
+                        parsed_task = replace(
+                            parsed_task,
+                            symbol="",
+                            period=target_period,
+                            period_kind=target_kind,
+                            research_topic=f"生成 UNKNOWN {target_period} 公司财报研报",
+                            should_run=False,
+                            needs_confirmation=True,
+                            reason=f"target resolver blocked unresolved company: {target_resolution.get('reason', '')}",
+                            source=str(target_resolution.get("source") or parsed_task.source),
+                        )
                 _proceed_to_generation = False
 
             # [3] quality_review — no generation progress
@@ -610,6 +1243,28 @@ def create_ui_handler(
                     symbol = parsed_task.symbol
                     period = parsed_task.period
                     payload["topic"] = parsed_task.research_topic
+                if not confirmed_pending and target_resolution and not str(target_resolution.get("symbol") or "").strip():
+                    answer = (
+                        "我还不能可靠确认你要分析的上市公司。请补充公司全称、股票代码或交易市场；"
+                        "在确认前我不会用当前上下文公司代替生成。"
+                    )
+                    if target_resolution.get("ambiguous"):
+                        alts = target_resolution.get("alternatives") or []
+                        alt_text = "、".join(
+                            f"{item.get('company_name') or item.get('symbol')}({item.get('symbol')})"
+                            for item in alts[:5] if isinstance(item, dict)
+                        )
+                        if alt_text:
+                            answer = f"我识别到多个公司候选：{alt_text}。请指定其中一个公司或 ticker。"
+                    self._send_json({
+                        "mode": "general_chat",
+                        "answer": answer,
+                        "request_id": request_id,
+                        "session_id": session_id,
+                        "parsed_task": parsed_task.to_dict(),
+                        "target_resolution": target_resolution,
+                    })
+                    return
                 raw_engines = payload.get("engines")
                 if _should_reset_engines_for_parsed_task(
                     parsed_task.should_run or parsed_task.needs_confirmation,
@@ -648,16 +1303,27 @@ def create_ui_handler(
 
                     needs_confirm = not confirmed_pending and (mode == "user" or parsed_task.needs_confirmation)
                     if needs_confirm:
-                        pending_report_tasks[session_id] = {
-                            "request_id": request_id,
-                            "symbol": parsed_task.symbol,
-                            "period": parsed_task.period,
-                            "research_topic": parsed_task.research_topic,
-                            "created_at": datetime.now().isoformat(timespec="seconds"),
-                        }
                         _c_identity = resolve_company_identity(
                             parsed_task.symbol or "", default=parsed_task.symbol or ""
                         )
+                        target_company_name = str(target_resolution.get("company_name") or "") if target_resolution else ""
+                        target_market = str(target_resolution.get("market") or "") if target_resolution else ""
+                        req_state = ReportRequestState(
+                            request_id=request_id,
+                            session_id=str(session_id),
+                            symbol=str(parsed_task.symbol or "").strip().upper(),
+                            company_name=str(target_company_name or _c_identity.company_name or parsed_task.symbol or ""),
+                            market=str(target_market or _market_label(parsed_task.symbol or "")),
+                            period=str(parsed_task.period or "").strip().upper(),
+                            period_kind=getattr(parsed_task, "period_kind", "unknown") or "unknown",
+                            research_topic=str(parsed_task.research_topic or ""),
+                            created_at=datetime.now().isoformat(timespec="seconds"),
+                            status="pending_confirmation",
+                            source="chat",
+                            needs_confirmation=True,
+                            report_mode_hint="standard",
+                        )
+                        pending_report_tasks[session_id] = req_state.to_dict()
                         response = chat_service.handle_chat(
                             message=message,
                             session_id=session_id,
@@ -679,10 +1345,11 @@ def create_ui_handler(
                             parsed_task.symbol, parsed_task.period, engines, mode
                         )
                         response["confirm_data"] = {
-                            "company_name": str(_c_identity.company_name or parsed_task.symbol or ""),
-                            "symbol": str(_c_identity.canonical_symbol or parsed_task.symbol or ""),
-                            "market": _market_label(parsed_task.symbol or ""),
-                            "period": str(parsed_task.period or ""),
+                            "company_name": req_state.company_name,
+                            "symbol": req_state.symbol,
+                            "market": req_state.market,
+                            "period": req_state.period,
+                            "target_resolution": target_resolution,
                             "analysis_scope": ["三表摘要", "财务分析", "估值观察", "风险提示", "投资结论"],
                             "data_sources_hint": "公司公开披露、SEC 文件、行情数据和公开资料",
                         }
@@ -692,10 +1359,16 @@ def create_ui_handler(
 
                     # confirmed_pending or parsed_task.should_run — execute generation
                     execution_mode = str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE)
-                    execution_tier = "user_fast" if mode == "user" else str(payload.get("execution_tier") or "delivery")
+                    if mode == "user":
+                        execution_tier = "user_fast"
+                    else:
+                        execution_tier = str(payload.get("execution_tier") or "developer_fast").lower()
+                        if execution_tier not in ("developer_fast", "preview", "delivery"):
+                            execution_tier = "developer_fast"
                     async_report_run = bool(payload.get("async_report_run", False))
                     job_id = _generate_job_id()
-                    run_paths = _create_run_dirs(output_root, report_root, symbol, period, execution_mode)
+                    req_id = request_id  # from _handle_chat scope
+                    run_paths = _create_run_dirs(output_root, report_root, symbol, period, execution_mode, request_id=req_id, session_id=session_id, job_id=job_id)
                     orchestrator = MultiAgentOrchestrator(
                         output_dir=str(run_paths["output_dir"]),
                         report_dir=str(run_paths["report_dir"]),
@@ -715,6 +1388,8 @@ def create_ui_handler(
                         "enable_remote_data": enable_remote_data,
                         "data_source_config_path": str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
                     }
+                    time_budget = 180.0 if mode == "user" else (420.0 if execution_tier == "developer_fast" else 600.0)
+                    execution_deadline = _deadline_from_now(time_budget)
                     _mark_active_run(
                         session_id,
                         job_id=job_id,
@@ -723,71 +1398,129 @@ def create_ui_handler(
                         topic=str(run_kwargs["research_topic"]),
                         execution_mode=str(run_kwargs["execution_mode"]),
                         source="chat",
+                        time_budget_sec=time_budget,
+                        deadline=execution_deadline,
+                        output_dir=str(run_paths["output_dir"]),
+                        report_dir=str(run_paths["report_dir"]),
+                        request_id=req_id,
                     )
 
-                    def _write_performance_trace(output_dir: Path, trace: Dict[str, Any]) -> None:
-                        """Write performance_trace.json and update run_summary.json."""
-                        trace_path = output_dir / "performance_trace.json"
-                        try:
-                            trace_path.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
-                        except Exception:
-                            pass
-                        # Update run_summary.json with computed fields
-                        summary_path = output_dir / "run_summary.json"
-                        try:
-                            if summary_path.exists():
-                                summary = json.loads(summary_path.read_text(encoding="utf-8"))
-                                if isinstance(summary, dict) and "computed" in trace:
-                                    summary["performance_trace"] = trace["computed"]
-                                    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-                        except Exception:
-                            pass
-
                     def _run_report_background() -> None:
+                        budget_sec = float(time_budget or 300.0)
+                        # P0.7: Recalibrate deadline at execution time.
+                        # The original execution_deadline was set at request time;
+                        # queue delay could consume the entire budget before we start.
+                        deadline = _deadline_from_now(budget_sec)
+                        # Update active_run entry so job_status sees the real deadline
+                        entry = active_report_runs.get(job_id)
+                        if entry:
+                            entry["deadline"] = deadline
+                        odir = Path(run_paths["output_dir"])
+                        rdir = Path(run_paths["report_dir"])
+
+                        # Per-phase budgets — orchestrator gets nearly all time.
+                        # Quality + finalize need only a small reserve.
+                        _orch_budget = budget_sec - 15.0  # reserve 15s for finalize
+                        phase_budgets = {
+                            "orchestrator": _orch_budget,
+                            "quality_pipeline": 0.0 if mode == "user" else 50.0,
+                            "delivery_rework": 0.0,
+                            "finalize": 10.0,
+                        }
+
+                        # Initialize performance_trace.json on disk
                         perf_trace: Dict[str, Any] = {
                             "job_id": job_id,
-                            "request_created_at": _request_created_at,
+                            "status": "running",
+                            "current_phase": "initialized",
+                            "started_at": datetime.now().isoformat(),
+                            "updated_at": datetime.now().isoformat(),
+                            "elapsed_sec": 0.0,
+                            "timeout_budget_sec": budget_sec,
+                            "last_error": None,
                         }
+                        _write_performance_trace(odir, perf_trace)
+
+                        t_start = _time.perf_counter()
+
                         try:
+                            # ── Phase 1: Orchestrator ──────────────────────────
                             t0 = _time.perf_counter()
-                            perf_trace["orchestrator_start_time"] = t0
-                            result = orchestrator.run(**run_kwargs)
+                            result = run_phase_with_timeout(
+                                "orchestrator", phase_budgets["orchestrator"],
+                                deadline, odir, perf_trace,
+                                orchestrator.run, **run_kwargs, execution_deadline=deadline,
+                            )
                             t1 = _time.perf_counter()
-                            perf_trace["orchestrator_end_time"] = t1
-                            perf_trace["quality_pipeline_start_time"] = t1
-                            quality_result = run_delivery_quality_pipeline(
-                                run_paths["output_dir"],
-                                run_paths["report_dir"],
-                                config_path,
-                                durable_memory_store=getattr(orchestrator, "durable_memory", None),
-                                memory_enabled=bool(payload.get("memory_enabled", True)),
-                            )
-                            t2 = _time.perf_counter()
-                            perf_trace["quality_pipeline_end_time"] = t2
-                            perf_trace["delivery_rework_start_time"] = t2
-                            rework_result = run_delivery_rework_loop(
-                                orchestrator=orchestrator,
-                                output_path=run_paths["output_dir"],
-                                report_path=run_paths["report_dir"],
-                                config_path=config_path,
-                                initial_quality_result=quality_result,
-                                run_kwargs=run_kwargs,
-                                durable_memory_store=getattr(orchestrator, "durable_memory", None),
-                                memory_enabled=bool(payload.get("memory_enabled", True)),
-                            )
+
+                            # ── Phase 2: Quality pipeline (user mode: skip) ──────
+                            quality_result: Dict[str, Any] = {"delivery_gate": {"delivery_pass": False}}
+                            if phase_budgets["quality_pipeline"] > 0:
+                                try:
+                                    quality_result = run_phase_with_timeout(
+                                        "quality_pipeline", phase_budgets["quality_pipeline"],
+                                        deadline, odir, perf_trace,
+                                        run_delivery_quality_pipeline,
+                                        run_paths["output_dir"], run_paths["report_dir"],
+                                        config_path,
+                                        durable_memory_store=getattr(orchestrator, "durable_memory", None),
+                                        memory_enabled=bool(payload.get("memory_enabled", True)),
+                                        deadline=deadline,
+                                        review_mode="heuristic" if mode == "user" else "full",
+                                    )
+                                except Exception as qe:
+                                    _write_run_error(odir, qe, symbol, period)
+                                    quality_result = {"delivery_gate": {"delivery_pass": False}}
+                                    perf_trace["last_error"] = f"quality_pipeline: {qe}"
+
+                            # ── Phase 3: Delivery rework (user mode: skip) ────
+                            rework_result: Dict[str, Any] = {"rounds": [], "reworked": False}
+                            if mode != "user":
+                                try:
+                                    rework_result = run_phase_with_timeout(
+                                        "delivery_rework", phase_budgets["delivery_rework"],
+                                        deadline, odir, perf_trace,
+                                        run_delivery_rework_loop,
+                                        orchestrator=orchestrator,
+                                        output_path=run_paths["output_dir"],
+                                        report_path=run_paths["report_dir"],
+                                        config_path=config_path,
+                                        initial_quality_result=quality_result,
+                                        run_kwargs=run_kwargs,
+                                        durable_memory_store=getattr(orchestrator, "durable_memory", None),
+                                        memory_enabled=bool(payload.get("memory_enabled", True)),
+                                        deadline=deadline,
+                                        max_rounds=1,
+                                    )
+                                except Exception as re:
+                                    perf_trace["last_error"] = f"delivery_rework: {re}"
+                                    rework_result = {"rounds": [], "reworked": False}
                             t3 = _time.perf_counter()
-                            perf_trace["delivery_rework_end_time"] = t3
                             if rework_result.get("quality_result"):
                                 quality_result = rework_result["quality_result"]
                             if rework_result.get("rounds") and isinstance(result, dict):
                                 result["delivery_rework"] = rework_result
-                            perf_trace["finalize_start_time"] = t3
-                            _finalize_run_dirs(run_paths, output_root, report_root, symbol, period, execution_mode, quality_result)
-                            t4 = _time.perf_counter()
+
+                            # ── Phase 4: HTML generation / Finalize ────────────
+                            def _finalize_step() -> dict:
+                                _finalize_run_dirs(
+                                    run_paths, output_root, report_root,
+                                    symbol, period, execution_mode, quality_result,
+                                    execution_tier=execution_tier,
+                                )
+                                return build_report_links(rdir)
+
+                            report_links = run_phase_with_timeout(
+                                "finalize", phase_budgets["finalize"],
+                                deadline, odir, perf_trace,
+                                _finalize_step,
+                            )
+
                             # Compute performance breakdown
+                            t4 = _time.perf_counter()
                             agent_total_sec = 0.0
                             agent_trace_list: List[Dict[str, Any]] = []
-                            task_trace_path = Path(run_paths["output_dir"]) / "task_trace.jsonl"
+                            task_trace_path = odir / "task_trace.jsonl"
                             if task_trace_path.exists():
                                 try:
                                     for line in task_trace_path.read_text(encoding="utf-8").strip().split("\n"):
@@ -803,26 +1536,39 @@ def create_ui_handler(
                                                 })
                                 except Exception:
                                     pass
-                            computed = {
+                            perf_trace["computed"] = {
                                 "orchestrator_run_sec": round(t1 - t0, 2),
-                                "quality_pipeline_sec": round(t2 - t1, 2),
-                                "delivery_rework_sec": round(t3 - t2, 2),
-                                "finalize_sec": round(t4 - t3, 2),
                                 "agent_total_sec": round(agent_total_sec, 2),
-                                "overhead_sec": round((t4 - t0) - agent_total_sec, 2),
                                 "total_wall_sec": round(t4 - t0, 2),
                             }
-                            perf_trace["computed"] = computed
                             perf_trace["agent_trace"] = agent_trace_list
-                            perf_trace["completed_at"] = datetime.now().isoformat(timespec="seconds")
-                            _write_performance_trace(run_paths["output_dir"], perf_trace)
+                            perf_trace["status"] = "completed"
+                            perf_trace["report_links"] = report_links
+
+                        except ReportJobTimeout as tje:
+                            perf_trace["status"] = "timeout"
+                            perf_trace["last_error"] = str(tje)
+                            perf_trace["current_phase"] = tje.phase
+                            _write_timeout_artifacts(odir, job_id, symbol, period, mode, str(tje))
+                            # If report.html already exists, still try to build links
+                            report_html = rdir / "report.html"
+                            if report_html.exists():
+                                perf_trace["report_links"] = build_report_links(rdir)
+
                         except Exception as exc:  # pragma: no cover - background safety boundary
-                            (run_paths["output_dir"] / "run_error.json").write_text(
-                                json.dumps({"error": str(exc), "symbol": symbol, "period": period}, ensure_ascii=False, indent=2),
-                                encoding="utf-8",
-                            )
+                            perf_trace["status"] = "failed"
+                            perf_trace["last_error"] = str(exc)
+                            _write_run_error(odir, exc, symbol, period)
+                            # If report.html already exists, still report links
+                            report_html = rdir / "report.html"
+                            if report_html.exists():
+                                perf_trace["report_links"] = build_report_links(rdir)
+
                         finally:
                             _clear_active_run(job_id)
+                            perf_trace["updated_at"] = datetime.now().isoformat()
+                            perf_trace["elapsed_sec"] = round(_deadline_time.monotonic() - (deadline - budget_sec), 1)
+                            _write_performance_trace(odir, perf_trace)
 
                     if async_report_run:
                         session_queue_pos = _compute_queue_position(session_id)
@@ -849,29 +1595,60 @@ def create_ui_handler(
                         return
 
                     try:
-                        result = orchestrator.run(**run_kwargs)
-                        quality_result = run_delivery_quality_pipeline(
-                            run_paths["output_dir"],
-                            run_paths["report_dir"],
-                            config_path,
-                            durable_memory_store=getattr(orchestrator, "durable_memory", None),
-                            memory_enabled=bool(payload.get("memory_enabled", True)),
-                        )
-                        rework_result = run_delivery_rework_loop(
-                            orchestrator=orchestrator,
-                            output_path=run_paths["output_dir"],
-                            report_path=run_paths["report_dir"],
-                            config_path=config_path,
-                            initial_quality_result=quality_result,
-                            run_kwargs=run_kwargs,
-                            durable_memory_store=getattr(orchestrator, "durable_memory", None),
-                            memory_enabled=bool(payload.get("memory_enabled", True)),
-                        )
+                        if _deadline_expired(execution_deadline):
+                            raise TimeoutError("deadline expired before orchestrator.run")
+                        result = orchestrator.run(**run_kwargs, execution_deadline=execution_deadline)
+
+                        # ── 2. Quality pipeline ──────────────────────────────
+                        _chat_deadline_exceeded = _deadline_expired(execution_deadline)
+                        if not _chat_deadline_exceeded:
+                            quality_result = run_delivery_quality_pipeline(
+                                run_paths["output_dir"],
+                                run_paths["report_dir"],
+                                config_path,
+                                durable_memory_store=getattr(orchestrator, "durable_memory", None),
+                                memory_enabled=bool(payload.get("memory_enabled", True)),
+                                deadline=execution_deadline,
+                                review_mode="heuristic" if mode == "user" else "full",
+                            )
+                        else:
+                            quality_result = {"delivery_gate": {"delivery_pass": False}, "top_quality_issues": []}
+
+                        # ── 3. Delivery rework ───────────────────────────────
+                        _chat_rework_max_rounds = 0 if mode == "user" else 1
+                        _chat_deadline_exceeded = _chat_deadline_exceeded or _deadline_expired(execution_deadline)
+                        if _chat_rework_max_rounds > 0 and not _chat_deadline_exceeded:
+                            rework_result = run_delivery_rework_loop(
+                                orchestrator=orchestrator,
+                                output_path=run_paths["output_dir"],
+                                report_path=run_paths["report_dir"],
+                                config_path=config_path,
+                                initial_quality_result=quality_result,
+                                run_kwargs=run_kwargs,
+                                durable_memory_store=getattr(orchestrator, "durable_memory", None),
+                                memory_enabled=bool(payload.get("memory_enabled", True)),
+                                deadline=execution_deadline,
+                                max_rounds=_chat_rework_max_rounds,
+                            )
+                        else:
+                            rework_result = {"rounds": [], "quality_result": quality_result, "reworked": False}
+                            if _chat_rework_max_rounds <= 0:
+                                _write_delivery_rework_history(
+                                    Path(run_paths["output_dir"]),
+                                    [{
+                                        "round": 0,
+                                        "trigger": "delivery_gate_failed",
+                                        "status": "skipped",
+                                        "handled": False,
+                                        "unfixable_reasons": [f"user_fast_mode_skips_delivery_rework" if mode == "user" else "deadline_exceeded"],
+                                        "delivery_pass_after_round": quality_result.get("delivery_gate", {}).get("delivery_pass", False) if isinstance(quality_result.get("delivery_gate"), dict) else False,
+                                    }],
+                                )
                         if rework_result.get("quality_result"):
                             quality_result = rework_result["quality_result"]
                         if rework_result.get("rounds"):
                             result["delivery_rework"] = rework_result
-                        _finalize_run_dirs(run_paths, output_root, report_root, symbol, period, execution_mode, quality_result)
+                        _finalize_run_dirs(run_paths, output_root, report_root, symbol, period, execution_mode, quality_result, execution_tier=execution_tier)
                         _clear_active_run(job_id)
                         report_links = build_report_links(run_paths["report_dir"])
                         latest = _latest_payload()
@@ -888,6 +1665,14 @@ def create_ui_handler(
                             "parsed_task": parsed_task.to_dict(),
                             "latest": payload_for_mode(latest, mode),
                         })
+                    except TimeoutError:
+                        _write_timeout_artifacts(run_paths["output_dir"], job_id, symbol, period, mode, "deadline exceeded")
+                        self._send_json({
+                            "error": "报告生成超时",
+                            "mode": "timeout_suspected",
+                            "latest": _latest_payload(),
+                            "request_id": request_id,
+                        }, status=HTTPStatus.REQUEST_TIMEOUT)
                     except Exception as exc:  # pragma: no cover - defensive UI boundary
                         self._send_json({
                             "error": str(exc), "latest": _latest_payload(),
@@ -1063,6 +1848,7 @@ def resolve_report_artifact(
                         "period": c["period"],
                         "title": c["summary"].get("report_title") or c["summary"].get("title") or "",
                         "report_links": links,
+                        "is_historical": False,
                     }
 
     # Priority 2: symbol + period match
@@ -1080,6 +1866,7 @@ def resolve_report_artifact(
                         "period": c["period"],
                         "title": c["summary"].get("report_title") or c["summary"].get("title") or "",
                         "report_links": links,
+                        "is_historical": False,
                     }
 
     # Priority 3: symbol-only match (most recent)
@@ -1095,20 +1882,24 @@ def resolve_report_artifact(
                         "period": c["period"],
                         "title": c["summary"].get("report_title") or c["summary"].get("title") or "",
                         "report_links": links,
+                        "is_historical": False,
                     }
 
-    # Priority 4: global latest completed run
-    for c in candidates:
-        links = build_report_links(c["report_dir"])
-        if links.get("html_web_url"):
-            return {
-                "found": True,
-                "run_id": c["run_id"],
-                "symbol": c["symbol"],
-                "period": c["period"],
-                "title": c["summary"].get("report_title") or c["summary"].get("title") or "",
-                "report_links": links,
-            }
+    # Priority 4: global latest — only when caller did not specify a symbol
+    # (don't return Tencent when the user asked about AMD)
+    if not sym_upper:
+        for c in candidates:
+            links = build_report_links(c["report_dir"])
+            if links.get("html_web_url"):
+                return {
+                    "found": True,
+                    "run_id": c["run_id"],
+                    "symbol": c["symbol"],
+                    "period": c["period"],
+                    "title": c["summary"].get("report_title") or c["summary"].get("title") or "",
+                    "report_links": links,
+                    "is_historical": True,
+                }
 
     return {"found": False, "report_links": {}}
 
@@ -1117,6 +1908,8 @@ USER_SAFE_KEYS = {
     "summary", "report_html_url", "report_markdown", "report_artifact_version",
     "report_links", "run_id", "active_runs", "output_dir", "report_dir", "citations", "charts",
     "queue_position", "queue_length", "active_job_id",
+    "is_global_latest", "is_current_request",
+    "found", "status", "error", "job_id",
 }
 
 
@@ -1149,45 +1942,79 @@ def run_delivery_quality_pipeline(
     config_path: str = "configs/model_backends.yaml",
     durable_memory_store: Any | None = None,
     memory_enabled: bool = False,
+    deadline: float | None = None,
+    review_mode: str = "full",
 ) -> Dict[str, Any]:
-    output_path = Path(output_root)
-    report_path = Path(report_root)
-    quality_report = evaluate_report_quality_from_paths(output_path, report_path, run_dir=output_path)
-    write_quality_outputs_for_paths(output_path, report_path, quality_report)
-    llm_review = review_report_with_llm_from_paths(output_path, report_path, run_dir=output_path, config_path=config_path)
-    write_llm_review_outputs_for_paths(output_path, report_path, llm_review)
-    delivery_gate = build_delivery_gate_from_outputs(output_path, run_dir=output_path)
-    write_delivery_gate_for_outputs(output_path, delivery_gate)
-    remediation_plan = build_quality_remediation_plan_from_outputs(output_path, run_dir=output_path)
-    write_quality_remediation_plan_for_outputs(output_path, remediation_plan)
-    memory_quality_feedback = {}
-    if memory_enabled and durable_memory_store is not None and remediation_plan.get("quality_feedback_used"):
-        memory_quality_feedback = durable_memory_store.persist_quality_feedback(remediation_plan)
-        _update_summary_quality_feedback(output_path / "run_summary.json", memory_quality_feedback)
+    try:
+        output_path = Path(output_root)
+        report_path = Path(report_root)
+        quality_report = evaluate_report_quality_from_paths(output_path, report_path, run_dir=output_path)
+        write_quality_outputs_for_paths(output_path, report_path, quality_report)
+        if _deadline_expired(deadline):
+            return _empty_quality_pipeline_result(output_root, report_root, "deadline exceeded after objective quality")
+        if review_mode == "heuristic":
+            llm_review = {"llm_review_pass": None, "total_score": None, "model_status": "skipped_heuristic"}
+        else:
+            llm_review = review_report_with_llm_from_paths(output_path, report_path, run_dir=output_path, config_path=config_path)
+        write_llm_review_outputs_for_paths(output_path, report_path, llm_review)
+        if _deadline_expired(deadline):
+            return _empty_quality_pipeline_result(output_root, report_root, "deadline exceeded after llm review")
+        delivery_gate = build_delivery_gate_from_outputs(output_path, run_dir=output_path)
+        write_delivery_gate_for_outputs(output_path, delivery_gate)
+        if _deadline_expired(deadline):
+            return _empty_quality_pipeline_result(output_root, report_root, "deadline exceeded after delivery gate")
+        remediation_plan = build_quality_remediation_plan_from_outputs(output_path, run_dir=output_path)
+        write_quality_remediation_plan_for_outputs(output_path, remediation_plan)
+        memory_quality_feedback = {}
+        if memory_enabled and durable_memory_store is not None and remediation_plan.get("quality_feedback_used"):
+            memory_quality_feedback = durable_memory_store.persist_quality_feedback(remediation_plan)
+            _update_summary_quality_feedback(output_path / "run_summary.json", memory_quality_feedback)
+        return {
+            "quality_report": {
+                "objective_pass": quality_report.get("objective_pass"),
+                "total_score": quality_report.get("total_score"),
+            },
+            "llm_quality_review": {
+                "llm_review_pass": llm_review.get("llm_review_pass"),
+                "total_score": llm_review.get("total_score"),
+                "model_status": llm_review.get("model_status"),
+            },
+            "delivery_gate": {
+                "delivery_pass": delivery_gate.get("delivery_pass"),
+                "verifier_passed": delivery_gate.get("verifier_passed"),
+                "objective_pass": delivery_gate.get("objective_pass"),
+                "llm_review_pass": delivery_gate.get("llm_review_pass"),
+            },
+            "remediation_plan": {
+                "quality_feedback_used": remediation_plan.get("quality_feedback_used"),
+                "required_fixes": remediation_plan.get("required_fixes", [])[:5],
+                "failed_sections": remediation_plan.get("failed_sections", []),
+                "memory_quality_feedback_used": bool(memory_quality_feedback),
+            },
+            "top_quality_issues": delivery_gate.get("top_issues", []),
+        }
+    except Exception as exc:
+        _write_run_error(output_path, exc, str(output_path.parent.name), "")
+        return {
+            "quality_report": None,
+            "llm_quality_review": None,
+            "delivery_gate": {"delivery_pass": False, "error": str(exc)},
+            "remediation_plan": None,
+            "top_quality_issues": [{"category": "quality_pipeline_error", "message": str(exc)}],
+            "_quality_pipeline_exception": str(exc),
+        }
+
+
+def _empty_quality_pipeline_result(output_root: str | Path, report_root: str | Path, reason: str) -> Dict[str, Any]:
+    """Return a minimal quality result when deadline expires mid-pipeline."""
     return {
-        "quality_report": {
-            "objective_pass": quality_report.get("objective_pass"),
-            "total_score": quality_report.get("total_score"),
-        },
-        "llm_quality_review": {
-            "llm_review_pass": llm_review.get("llm_review_pass"),
-            "total_score": llm_review.get("total_score"),
-            "model_status": llm_review.get("model_status"),
-        },
-        "delivery_gate": {
-            "delivery_pass": delivery_gate.get("delivery_pass"),
-            "verifier_passed": delivery_gate.get("verifier_passed"),
-            "objective_pass": delivery_gate.get("objective_pass"),
-            "llm_review_pass": delivery_gate.get("llm_review_pass"),
-        },
-        "remediation_plan": {
-            "quality_feedback_used": remediation_plan.get("quality_feedback_used"),
-            "required_fixes": remediation_plan.get("required_fixes", [])[:5],
-            "failed_sections": remediation_plan.get("failed_sections", []),
-            "memory_quality_feedback_used": bool(memory_quality_feedback),
-        },
-        "top_quality_issues": delivery_gate.get("top_issues", []),
-}
+        "quality_report": {"objective_pass": False, "total_score": 0.0},
+        "llm_quality_review": {"llm_review_pass": None, "total_score": None, "model_status": "skipped_deadline"},
+        "delivery_gate": {"delivery_pass": False, "verifier_passed": False, "objective_pass": False, "llm_review_pass": None},
+        "remediation_plan": {"quality_feedback_used": False, "required_fixes": [], "failed_sections": []},
+        "top_quality_issues": [],
+        "_deadline_reason": reason,
+    }
 
 
 def _update_summary_quality_feedback(summary_path: Path, memory_quality_feedback: Dict[str, Any]) -> None:
@@ -1308,6 +2135,7 @@ def run_delivery_rework_loop(
     durable_memory_store: Any = None,
     memory_enabled: bool = False,
     max_rounds: int = 3,
+    deadline: float | None = None,
 ) -> Dict[str, Any]:
     """Rerun the report in the same request when delivery gate fails."""
 
@@ -1328,7 +2156,36 @@ def run_delivery_rework_loop(
             )
             _write_delivery_rework_history(Path(output_path), history)
         return {"rounds": history, "quality_result": current_quality, "reworked": False}
+
+    # If max_rounds <= 0, write single skipped record and return
+    if max_rounds <= 0:
+        gate = current_quality.get("delivery_gate", {}) if isinstance(current_quality.get("delivery_gate"), dict) else {}
+        skip_reason = "user_fast_mode_skips_delivery_rework"
+        history.append({
+            "round": 0,
+            "trigger": "delivery_gate_failed",
+            "status": "skipped",
+            "handled": False,
+            "unfixable_reasons": [skip_reason],
+            "delivery_pass_after_round": gate.get("delivery_pass", False),
+        })
+        _write_delivery_rework_history(Path(output_path), history)
+        return {"rounds": history, "quality_result": current_quality, "reworked": False}
+
     for round_index in range(1, max_rounds + 1):
+        # Deadline check before each round
+        if _deadline_expired(deadline):
+            history.append({
+                "round": round_index,
+                "trigger": "delivery_gate_failed",
+                "status": "timeout",
+                "handled": False,
+                "unfixable_reasons": ["delivery rework deadline exceeded"],
+                "delivery_pass_after_round": False,
+            })
+            _write_delivery_rework_history(Path(output_path), history)
+            break
+
         gate = current_quality.get("delivery_gate", {}) if isinstance(current_quality.get("delivery_gate"), dict) else {}
         if gate.get("delivery_pass") is True:
             break
@@ -1358,24 +2215,33 @@ def run_delivery_rework_loop(
                 remediation=remediation,
                 run_kwargs=run_kwargs,
                 round_index=round_index,
+                deadline=deadline,
             )
             round_record.update(owner_rework)
             if not owner_rework.get("handled"):
                 round_record["rework_mode"] = "full_pipeline_rerun"
-                rerun_kwargs = dict(run_kwargs)
-                rerun_kwargs["quality_remediation_plan"] = remediation
-                orchestrator.run(**rerun_kwargs)
+                # Only allow full pipeline rerun if enough time remains
+                if _remaining_seconds(deadline) > 60:
+                    rerun_kwargs = dict(run_kwargs)
+                    rerun_kwargs["quality_remediation_plan"] = remediation
+                    orchestrator.run(**rerun_kwargs)
+                else:
+                    round_record["escalation_skipped"] = True
+                    round_record["unfixable_reasons"] = round_record.get("unfixable_reasons", []) + ["insufficient time for full pipeline rerun"]
             current_quality = run_delivery_quality_pipeline(
                 output_path,
                 report_path,
                 config_path,
                 durable_memory_store=durable_memory_store,
                 memory_enabled=memory_enabled,
+                deadline=deadline,
+                review_mode="full",
             )
             if (
                 owner_rework.get("handled")
                 and current_quality.get("delivery_gate", {}).get("delivery_pass") is False
                 and _needs_full_pipeline_rework(remediation, current_quality)
+                and _remaining_seconds(deadline) > 60
             ):
                 round_record["rework_mode"] = "owner_routed_plus_full_pipeline_rerun"
                 round_record["escalated_full_pipeline_rerun"] = True
@@ -1388,6 +2254,8 @@ def run_delivery_rework_loop(
                     config_path,
                     durable_memory_store=durable_memory_store,
                     memory_enabled=memory_enabled,
+                    deadline=deadline,
+                    review_mode="full",
                 )
             round_record["status"] = "completed"
             round_record["delivery_pass_after_round"] = current_quality.get("delivery_gate", {}).get("delivery_pass")
@@ -1530,8 +2398,11 @@ def _run_owner_routed_delivery_rework(
     remediation: Dict[str, Any],
     run_kwargs: Dict[str, Any],
     round_index: int,
+    deadline: float | None = None,
 ) -> Dict[str, Any]:
     """Repair a failed delivery gate by routing issues to owner agents first."""
+    if _deadline_expired(deadline):
+        return {"handled": False, "status": "timeout", "unfixable_reasons": ["delivery rework deadline exceeded"], "final_editor_rerun": False}
 
     if not hasattr(orchestrator, "_execute"):
         return {"handled": False, "unfixable_reasons": ["orchestrator does not expose agent execution"]}
@@ -1706,93 +2577,99 @@ def _run_owner_routed_delivery_rework(
         role_reruns.append({"agent": agent_name, "task_type": task_type, "status": result.status.value})
 
     critic_result = None
-    try:
-        critic_result = orchestrator._execute(  # type: ignore[attr-defined]
-            "critic",
-            AgentTask(
-                task_id=f"task_delivery_rework_{round_index}_critic",
-                task_type="pre_write_critic",
-                description="Re-check blackboard after delivery owner repairs.",
-                parameters={
-                    "research_blackboard": dict(state.get("research_blackboard", {}))
-                    if isinstance(state.get("research_blackboard"), dict)
-                    else {},
-                    "state_snapshot": {
-                        "symbol": state.get("symbol", ""),
-                        "period": state.get("period", ""),
-                        "evidence_count": len(state.get("evidence_records", []))
-                        if isinstance(state.get("evidence_records"), list)
-                        else 0,
-                        "claim_count": len(state.get("claims", [])) if isinstance(state.get("claims"), list) else 0,
+    if not _deadline_expired(deadline):
+        try:
+            critic_result = orchestrator._execute(  # type: ignore[attr-defined]
+                "critic",
+                AgentTask(
+                    task_id=f"task_delivery_rework_{round_index}_critic",
+                    task_type="pre_write_critic",
+                    description="Re-check blackboard after delivery owner repairs.",
+                    parameters={
+                        "research_blackboard": dict(state.get("research_blackboard", {}))
+                        if isinstance(state.get("research_blackboard"), dict)
+                        else {},
+                        "state_snapshot": {
+                            "symbol": state.get("symbol", ""),
+                            "period": state.get("period", ""),
+                            "evidence_count": len(state.get("evidence_records", []))
+                            if isinstance(state.get("evidence_records"), list)
+                            else 0,
+                            "claim_count": len(state.get("claims", [])) if isinstance(state.get("claims"), list) else 0,
+                        },
                     },
-                },
-                dependencies=[],
-                priority=6,
-            ),
-        )
-        state["pre_write_critic"] = critic_result.output.get("pre_write_critic", {})
-        state["research_blackboard"] = apply_pre_write_critic(
-            state.get("research_blackboard", {}),
-            state.get("pre_write_critic", {}),
-        )
-    except Exception as exc:  # pragma: no cover - defensive UI path
-        unfixable.append(f"CriticAgent recheck failed: {exc}")
+                    dependencies=[],
+                    priority=6,
+                ),
+            )
+            state["pre_write_critic"] = critic_result.output.get("pre_write_critic", {})
+            state["research_blackboard"] = apply_pre_write_critic(
+                state.get("research_blackboard", {}),
+                state.get("pre_write_critic", {}),
+            )
+        except Exception as exc:  # pragma: no cover - defensive UI path
+            unfixable.append(f"CriticAgent recheck failed: {exc}")
+    else:
+        unfixable.append("deadline exceeded before CriticAgent")
 
     final_editor_rerun = False
-    try:
-        final_result = orchestrator._execute(  # type: ignore[attr-defined]
-            "final_answer",
-            AgentTask(
-                task_id=f"task_delivery_rework_{round_index}_final_answer",
-                task_type="final_answer",
-                description="Rewrite report after delivery gate owner-routed repairs.",
-                parameters={
-                    "research_topic": state.get("research_topic", ""),
-                    "symbol": state.get("symbol", ""),
-                    "period": state.get("period", ""),
-                    "claims": list(state.get("claims", [])),
-                    "evidence_records": list(state.get("evidence_records", [])),
-                    "revision_request": _delivery_revision_request(remediation, objections),
-                    "verification_report": dict(state.get("verification_report", {}))
-                    if isinstance(state.get("verification_report"), dict)
-                    else {},
-                    "prior_markdown": str(state.get("markdown", "")),
-                    "conversation_brief": str(state.get("conversation_brief", "")),
-                    "tables": dict(state.get("analysis_artifacts", {})).get("tables", [])
-                    if isinstance(state.get("analysis_artifacts"), dict)
-                    else [],
-                    "financial_metrics": dict(state.get("analysis_artifacts", {})).get("financial_metrics", {})
-                    if isinstance(state.get("analysis_artifacts"), dict)
-                    else {},
-                    "pdf_sections": _read_json(output_path / "pdf_sections.json", default=[]),
-                    "company_profile": _read_json(output_path / "company_profile_extracted.json", default={}),
-                    "research_blackboard": dict(state.get("research_blackboard", {}))
-                    if isinstance(state.get("research_blackboard"), dict)
-                    else {},
-                    "pre_write_critic": dict(state.get("pre_write_critic", {}))
-                    if isinstance(state.get("pre_write_critic"), dict)
-                    else {},
-                    "quality_remediation_plan": remediation,
-                    "repair_constraints": dict(state.get("repair_constraints", {}))
-                    if isinstance(state.get("repair_constraints"), dict)
-                    else {},
-                    "degraded_report": True,
-                    "pre_write_rework_history": list(state.get("pre_write_rework_history", []))
-                    if isinstance(state.get("pre_write_rework_history"), list)
-                    else [],
-                    "max_claims": 24,
-                    "max_evidence": 14,
-                    "evidence_content_limit": 700,
-                    "max_tokens": 2600,
-                },
-                dependencies=[],
-                priority=7,
-            ),
-        )
-        merge_task_result(state=state, task_type="final_answer", result=final_result)
-        final_editor_rerun = True
-    except Exception as exc:  # pragma: no cover - defensive UI path
-        unfixable.append(f"FinalAnswerAgent delivery repair failed: {exc}")
+    if not _deadline_expired(deadline):
+        try:
+            final_result = orchestrator._execute(  # type: ignore[attr-defined]
+                "final_answer",
+                AgentTask(
+                    task_id=f"task_delivery_rework_{round_index}_final_answer",
+                    task_type="final_answer",
+                    description="Rewrite report after delivery gate owner-routed repairs.",
+                    parameters={
+                        "research_topic": state.get("research_topic", ""),
+                        "symbol": state.get("symbol", ""),
+                        "period": state.get("period", ""),
+                        "claims": list(state.get("claims", [])),
+                        "evidence_records": list(state.get("evidence_records", [])),
+                        "revision_request": _delivery_revision_request(remediation, objections),
+                        "verification_report": dict(state.get("verification_report", {}))
+                        if isinstance(state.get("verification_report"), dict)
+                        else {},
+                        "prior_markdown": str(state.get("markdown", "")),
+                        "conversation_brief": str(state.get("conversation_brief", "")),
+                        "tables": dict(state.get("analysis_artifacts", {})).get("tables", [])
+                        if isinstance(state.get("analysis_artifacts"), dict)
+                        else [],
+                        "financial_metrics": dict(state.get("analysis_artifacts", {})).get("financial_metrics", {})
+                        if isinstance(state.get("analysis_artifacts"), dict)
+                        else {},
+                        "pdf_sections": _read_json(output_path / "pdf_sections.json", default=[]),
+                        "company_profile": _read_json(output_path / "company_profile_extracted.json", default={}),
+                        "research_blackboard": dict(state.get("research_blackboard", {}))
+                        if isinstance(state.get("research_blackboard"), dict)
+                        else {},
+                        "pre_write_critic": dict(state.get("pre_write_critic", {}))
+                        if isinstance(state.get("pre_write_critic"), dict)
+                        else {},
+                        "quality_remediation_plan": remediation,
+                        "repair_constraints": dict(state.get("repair_constraints", {}))
+                        if isinstance(state.get("repair_constraints"), dict)
+                        else {},
+                        "degraded_report": True,
+                        "pre_write_rework_history": list(state.get("pre_write_rework_history", []))
+                        if isinstance(state.get("pre_write_rework_history"), list)
+                        else [],
+                        "max_claims": 24,
+                        "max_evidence": 14,
+                        "evidence_content_limit": 700,
+                        "max_tokens": 2600,
+                    },
+                    dependencies=[],
+                    priority=7,
+                ),
+            )
+            merge_task_result(state=state, task_type="final_answer", result=final_result)
+            final_editor_rerun = True
+        except Exception as exc:  # pragma: no cover - defensive UI path
+            unfixable.append(f"FinalAnswerAgent delivery repair failed: {exc}")
+    else:
+        unfixable.append("deadline exceeded before FinalAnswerAgent")
 
     new_trace = list(getattr(orchestrator, "trace", []) or [])[trace_start:]
     if final_editor_rerun or role_reruns:
@@ -1811,17 +2688,36 @@ def _run_owner_routed_delivery_rework(
     }
 
 
-def _create_run_dirs(output_root: Path, report_root: Path, symbol: str, period: str, execution_mode: str) -> Dict[str, Any]:
+def _create_run_dirs(output_root: Path, report_root: Path, symbol: str, period: str, execution_mode: str, request_id: str = "", session_id: str = "", job_id: str = "") -> Dict[str, Any]:
     run_id = _make_run_id(symbol, period, execution_mode)
     output_dir = output_root / "runs" / run_id / "outputs"
     report_dir = report_root / "runs" / run_id / "reports"
     output_dir.mkdir(parents=True, exist_ok=True)
     report_dir.mkdir(parents=True, exist_ok=True)
+    # Write job_id.txt (JOB ID, not run_id) for API filesystem discovery
+    (output_dir / "job_id.txt").write_text(job_id or run_id, encoding="utf-8")
+    # Write run_id.txt for directory correlation
+    (output_dir / "run_id.txt").write_text(run_id, encoding="utf-8")
+    # Write request_state.json for job binding
+    request_state = {
+        "run_id": run_id,
+        "job_id": job_id,
+        "symbol": symbol,
+        "period": period,
+        "request_id": request_id,
+        "session_id": session_id,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    (output_dir / "request_state.json").write_text(
+        json.dumps(request_state, ensure_ascii=False, indent=2), encoding="utf-8",
+    )
     return {
         "run_id": run_id,
         "output_dir": output_dir,
         "report_dir": report_dir,
         "started_at": datetime.now().isoformat(timespec="seconds"),
+        "request_id": request_id,
+        "session_id": session_id,
     }
 
 
@@ -1833,6 +2729,7 @@ def _finalize_run_dirs(
     period: str,
     execution_mode: str,
     quality_result: Dict[str, Any],
+    execution_tier: str | None = None,
 ) -> None:
     output_dir = Path(run_paths["output_dir"])
     report_dir = Path(run_paths["report_dir"])
@@ -1846,10 +2743,13 @@ def _finalize_run_dirs(
             "symbol": symbol,
             "period": period,
             "execution_mode": execution_mode,
+            "execution_tier": execution_tier or execution_mode,
             "start_time": run_paths.get("started_at", ""),
             "delivery_pass": (quality_result.get("delivery_gate", {}) if isinstance(quality_result.get("delivery_gate"), dict) else {}).get("delivery_pass"),
             "output_dir": str(output_dir),
             "report_dir": str(report_dir),
+            "request_id": run_paths.get("request_id", ""),
+            "session_id": run_paths.get("session_id", ""),
         }
     )
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -2383,11 +3283,10 @@ def _render_user_html(frontend_port: int | None = None) -> str:
   <script>
     "use strict";
     const UI_MODE = "__UI_MODE__";
-    let latest = {};
     let requestInFlight = false;
-    let pollTimer = null;
-    let reportData = null;
     let currentRunRequest = null;
+    let pendingConfirmCard = null;
+    window.finSightJobs = window.finSightJobs || {};
     let activeTab = "概览";
     let queueStatusEl = null;
     let wasQueued = false;
@@ -2481,52 +3380,114 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       }
     }
 
-    async function pollLatest() {
-      try {
-        const resp = await fetch("/api/latest?mode=" + UI_MODE + "&session_id=local");
-        latest = await resp.json();
-        updateBanner(latest);
-        const qpos = latest.queue_position;
-        const active = asList(latest.active_runs)[0];
+    /* P0.7: legacy pollLatest removed — all polling is per-job via pollJob() */
 
-        /* Queue state: show queue position */
-        if (qpos > 0) {
-          updateQueuePosition(qpos);
+      /* P0.7: Kill legacy global polling — per-job pollJob() is the only path now. */
+      /* _notFoundCount, _pollSafety, global pollTimer, startPolling/stopPolling removed. */
+
+    function setConfirmCardStatus(card, status, message, errorText) {
+      if (!card) return;
+      card.dataset.status = status;
+      const primaryBtn = card.querySelector(".btn-primary");
+      if (primaryBtn) {
+        primaryBtn.disabled = status === "submitting" || status === "running" || status === "completed";
+        primaryBtn.textContent = message || primaryBtn.textContent;
+      }
+      let statusEl = card.querySelector(".job-status");
+      if (!statusEl) {
+        statusEl = document.createElement("div");
+        statusEl.className = "job-status";
+        statusEl.style.cssText = "margin-top:12px;font-size:13px;color:var(--muted)";
+        card.appendChild(statusEl);
+      }
+      const pulse = status === "running" || status === "submitting" ? '<span class="pulse"></span>' : "";
+      statusEl.innerHTML = pulse + esc(message || status);
+      if (errorText) {
+        statusEl.innerHTML += '<div style="margin-top:6px;color:#ff8a8a">' + esc(errorText) + '</div>';
+      }
+    }
+
+    function stopJobPolling(jobId) {
+      const job = window.finSightJobs && window.finSightJobs[jobId];
+      if (job && job.pollTimer) clearInterval(job.pollTimer);
+      if (job) job.pollTimer = null;
+    }
+
+    async function pollJob(jobId) {
+      const job = window.finSightJobs && window.finSightJobs[jobId];
+      if (!job) return;
+      const card = job.cardEl || null;
+      try {
+        const resp = await fetch("/api/latest?mode=" + UI_MODE + "&session_id=local&job_id=" + encodeURIComponent(jobId));
+        const data = await resp.json();
+        const rl = asObj(data.report_links);
+        const status = data.status || "";
+        const isGlobal = data.is_global_latest === true;
+        const isCurrent = data.is_current_request !== false;
+
+        if (!isGlobal && isCurrent && rl.html_web_url && ["", "completed", "completed_with_warnings", "degraded", "quality_check_failed_degraded"].includes(status)) {
+          stopJobPolling(jobId);
+          job.status = "completed";
+          setConfirmCardStatus(card, "completed", "报告已生成");
+          renderReportCard({ ...data, job_id: jobId });
           return;
         }
 
-        /* Transition from queued → running: remove queue msg, show progress */
-        if (wasQueued && active && !progressTimer) {
-          wasQueued = false;
-          appendBubbleHtml("assistant", `<div class="progress-card" id="progressCard"></div>`);
-          startProgress();
+        if (status === "failed" || status === "timeout") {
+          stopJobPolling(jobId);
+          job.status = status;
+          setConfirmCardStatus(card, status, status === "timeout" ? "报告生成超时" : "报告生成失败", data.error || "");
+          return;
         }
 
-        /* Only show report card when current background run actually completed */
-        if (!active && currentRunRequest) {
-          const summary = asObj(latest.summary);
-          if (summary.symbol === currentRunRequest.symbol) {
-            completeProgress();
-            renderReportCard(latest);
-            stopPolling();
-            currentRunRequest = null;
-          } else {
-            /* Latest doesn't match current run — safety timeout after 5 min */
-            if (!window._pollSafety) window._pollSafety = setTimeout(() => { stopPolling(); currentRunRequest = null; }, 300000);
+        if (isGlobal || data.found === false || status === "unknown_job") {
+          job.notFoundCount = (job.notFoundCount || 0) + 1;
+          if (job.notFoundCount <= 3) {
+            setConfirmCardStatus(card, "running", "任务初始化中...");
+            return;
           }
-        } else if (active && window._pollSafety) {
-          clearTimeout(window._pollSafety); window._pollSafety = null;
+          // P0.7: safety timeout: always pre-check /api/job_status before declaring terminal
+          const jsResp = await fetch("/api/job_status?job_id=" + encodeURIComponent(jobId));
+          const js = await jsResp.json();
+          const jsLinks = asObj(js.report_links);
+          if ((js.status === "completed" || js.status === "completed_with_warnings") && jsLinks.html_web_url) {
+            stopJobPolling(jobId);
+            job.status = "completed";
+            setConfirmCardStatus(card, "completed", "报告已生成");
+            renderReportCard({ ...data, report_links: jsLinks, status: js.status, job_id: jobId });
+            return;
+          }
+          if (js.status === "running" || js.status === "queued") {
+            // Still legitimately running — keep polling, don't show timeout
+            job.notFoundCount = 0;
+            setConfirmCardStatus(card, "running", "仍在生成中...");
+            return;
+          }
+          if (js.status === "failed" || js.status === "timeout" || js.status === "unknown_job" || js.found === false) {
+            stopJobPolling(jobId);
+            job.status = js.status || "unknown_job";
+            setConfirmCardStatus(card, job.status, js.status === "timeout" ? "报告生成超时" : "任务状态丢失，请重试", js.error || "");
+            return;
+          }
         }
-      } catch(e) { /* silent */ }
+
+        setConfirmCardStatus(card, "running", "报告生成中...");
+      } catch (e) {
+        job.errorCount = (job.errorCount || 0) + 1;
+        if (job.errorCount > 5) {
+          stopJobPolling(jobId);
+          setConfirmCardStatus(card, "failed", "任务状态查询失败", e.message || "");
+        }
+      }
     }
 
-    function startPolling() {
-      stopPolling();
-      pollTimer = window.setInterval(pollLatest, 4000);
-    }
-
-    function stopPolling() {
-      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    function startJobPolling(jobId, cardEl) {
+      if (!jobId) return;
+      const existing = window.finSightJobs[jobId] || {};
+      window.finSightJobs[jobId] = { ...existing, job_id: jobId, cardEl: cardEl || existing.cardEl || null, status: "running", notFoundCount: 0 };
+      stopJobPolling(jobId);
+      window.finSightJobs[jobId].pollTimer = window.setInterval(() => pollJob(jobId), 4000);
+      setTimeout(() => pollJob(jobId), 600);
     }
 
     /* Chat */
@@ -2545,30 +3506,36 @@ def _render_user_html(frontend_port: int | None = None) -> str:
 
       try {
         const data = await postJson("/api/chat", { session_id:"local", message, async_report_run:true, memory_enabled:true, fast:true, allow_report_run:true });
-        reportData = data;
-        if (data.latest) latest = data.latest;
 
         if (data.mode === "confirm_report") {
           /* Confirmation card — no progress */
           renderConfirmCard(data);
         } else if (data.mode === "report_generation_running") {
           const qpos = data.queue_position;
+          const runJobId = data.job_id || "";
           if (qpos > 0) {
-            /* Queued — show queue status instead of progress */
             wasQueued = true;
-            appendBubbleHtml("assistant", `<div class="queue-card" id="queueCard"><span class="pulse"></span>排队中，前面还有 ${qpos} 个任务…</div>`);
+            appendBubbleHtml("assistant", `<div class="queue-card" id="queueCard" data-job-id="${esc(runJobId)}"><span class="pulse"></span>排队中，前面还有 ${qpos} 个任务…</div>`);
             queueStatusEl = $("queueCard");
-            startPolling();
+            if (runJobId) startJobPolling(runJobId, null);
           } else {
-            /* Running now — show progress card */
-            appendBubbleHtml("assistant", `<div class="progress-card" id="progressCard"></div>`);
+            appendBubbleHtml("assistant", `<div class="progress-card" id="progressCard" data-job-id="${esc(runJobId)}"></div>`);
             startProgress();
-            startPolling();
+            if (runJobId) startJobPolling(runJobId, null);
           }
           const parsed = asObj(data.parsed_task);
-          if (parsed.symbol) currentRunRequest = { symbol: parsed.symbol, period: parsed.period || "", request_id: data.request_id };
+          const result = asObj(data.result);
+          const runSymbol = parsed.symbol || result.symbol || "";
+          const runPeriod = parsed.period || result.period || "";
+          if (runJobId || runSymbol) currentRunRequest = { symbol: runSymbol, period: runPeriod, request_id: data.request_id, job_id: runJobId };
+          if (runJobId && pendingConfirmCard) {
+            pendingConfirmCard.dataset.jobId = runJobId;
+            setConfirmCardStatus(pendingConfirmCard, "running", "报告生成中...");
+            startJobPolling(runJobId, pendingConfirmCard);
+            pendingConfirmCard = null;
+          }
         } else if (data.mode === "report_artifact") {
-          /* Show artifact link card — no progress */
+          /* Show artifact link card — no progress, mark as historical if not current */
           if (data.found === false) {
             const noReportHtml = '<div class="r-card"><p style="margin:0">我没有找到已生成的报告。</p>' +
               '<div class="actions" style="margin-top:14px">' +
@@ -2581,6 +3548,16 @@ def _render_user_html(frontend_port: int | None = None) -> str:
         } else if (data.mode === "report_generation_completed") {
           /* Report generation completed — show report card, no progress */
           renderReportCard(data);
+        } else if (data.mode === "timeout_suspected") {
+          const runJobId = data.job_id || "";
+          if (runJobId) stopJobPolling(runJobId);
+          const timeoutHtml = '<div class="r-card" style="border-left:4px solid #e67e22"' +
+            (runJobId ? ' data-job-id="' + esc(runJobId) + '"' : '') + '>' +
+            '<p style="margin:0"><strong>⚠ 报告生成超时</strong></p>' +
+            '<p style="margin:8px 0 0;font-size:13px;color:#888">' +
+            '预算时间已用完，部分内容可能不完整。</p>' +
+            '</div>';
+          appendBubbleHtml("assistant", timeoutHtml);
         } else if (data.mode === "period_guard") {
           /* Period guard message */
           appendBubble("assistant", data.answer || "报告期无效，请重新选择。");
@@ -2590,11 +3567,16 @@ def _render_user_html(frontend_port: int | None = None) -> str:
         }
       } catch (err) {
         appendBubble("assistant", `对话失败：${err.message}`);
-        stopPolling();
+        if (pendingConfirmCard) {
+          pendingConfirmCard.dataset.submitted = "false";
+          setConfirmCardStatus(pendingConfirmCard, "failed", "提交失败，可重试", err.message || "");
+          pendingConfirmCard = null;
+        }
+        /* P0.7: no global stopPolling */
       } finally {
         requestInFlight = false;
         $("chatBtn").disabled = false;
-        setTimeout(() => pollLatest(), 500);
+        /* P0.7: no global pollLatest() — per-job pollJob handles everything */
       }
     }
 
@@ -2626,8 +3608,15 @@ def _render_user_html(frontend_port: int | None = None) -> str:
 
     /* Report card */
     function renderReportCard(data) {
-      const summary = asObj(data.summary || (data.latest && data.latest.summary));
       const rl = data.report_links || (data.latest && data.latest.report_links);
+      const summary = asObj(data.summary || (data.latest && data.latest.summary));
+
+      /* P0.7: dedup by job_id or report html_url to avoid rendering same report twice */
+      const cardJobId = data.job_id || (data.latest && data.latest.job_id) || summary.run_id || "";
+      if (cardJobId && window.finSightJobs[cardJobId] && window.finSightJobs[cardJobId].rendered) return;
+      if (rl.html_web_url && document.querySelector('.r-card[data-report-url="' + esc(rl.html_web_url) + '"]')) return;
+      if (cardJobId && window.finSightJobs[cardJobId]) window.finSightJobs[cardJobId].rendered = true;
+
       const coverage = summary.data_quality_score || {};
       const reviewHints = asList(summary.review_hints || []);
       const isDegraded = summary.degraded || !!asObj(data.latest && data.latest.delivery_gate).delivery_pass === false;
@@ -2639,7 +3628,7 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       const title = summary.report_title || summary.title || data.answer || "财务研究报告";
       const genTime = summary.generated_at || summary.generation_time || new Date().toLocaleString();
 
-      let html = `<div class="r-card"><h3>${esc(title)}</h3><div class="time">${esc(genTime)}</div>`;
+      let html = `<div class="r-card" data-job-id="${esc(cardJobId)}"${rl.html_web_url ? ' data-report-url="' + esc(rl.html_web_url) + '"' : ''}><h3>${esc(title)}</h3><div class="time">${esc(genTime)}</div>`;
       html += `<div class="badges">`;
       if (coverage.data_coverage != null) html += `<span class="badge ${coverageClass(coverage.data_coverage)}">数据覆盖：${coverageLevel(coverage.data_coverage)}</span>`;
       if (citeScore != null) html += `<span class="badge ${coverageClass(citeScore)}">引用完整性：${coverageLevel(citeScore)}</span>`;
@@ -2654,7 +3643,10 @@ def _render_user_html(frontend_port: int | None = None) -> str:
         html += `<div class="actions">`;
         html += `<a href="${esc(rl.html_web_url)}" target="_blank" class="btn btn-primary">打开 HTML 研报</a>`;
         if (rl.html_file_url) html += `<a href="${esc(rl.html_web_url)}" download class="btn">下载 HTML</a>`;
-        if (rl.html_file_url) html += `<button class="btn" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')">复制 file:// 路径</button>`;
+        /* Developer-only: copy file:// path */
+        if (UI_MODE === "developer" && rl.html_file_url) {
+          html += `<button class="btn" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')">复制 file:// 路径</button>`;
+        }
         html += `</div>`;
       }
       html += `</div>`;
@@ -2683,8 +3675,9 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       const period = confirm.period || cd.period || "";
       const scope = asList(confirm.analysis_scope || ["三表摘要", "财务分析", "估值观察", "风险提示", "投资结论"]);
       const ds = confirm.data_sources_hint || "公司公开披露、SEC 文件、行情数据和公开资料";
+      const reqId = data.request_id || "";
 
-      let html = `<div class="r-card confirm-card">`;
+      let html = `<div class="r-card confirm-card" data-request-id="${esc(reqId)}">`;
       html += `<h3 style="margin-bottom:12px">请确认报告设置</h3>`;
       html += `<div class="info-row" style="display:grid;gap:8px;font-size:14px">`;
       html += `<div><span style="color:var(--muted)">公司：</span><span>${esc(company)}${symbol ? "（" + esc(symbol) + "）" : ""}</span></div>`;
@@ -2694,7 +3687,7 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       html += `<div><span style="color:var(--muted)">数据来源：</span><span>${esc(ds)}</span></div>`;
       html += `</div>`;
       html += `<div class="actions" style="margin-top:16px">`;
-      html += `<button class="btn btn-primary" onclick="confirmAndRun()" style="padding:8px 20px">开始生成报告</button>`;
+      html += `<button class="btn btn-primary" onclick="confirmAndRun(this)" style="padding:8px 20px">开始生成报告</button>`;
       html += `<button class="btn" onclick="modifyRequest()" style="padding:8px 20px">修改报告期</button>`;
       html += `</div></div>`;
 
@@ -2704,9 +3697,20 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       appendBubbleHtml("assistant", html);
     }
 
-    function confirmAndRun() {
+    function confirmAndRun(button) {
       if (requestInFlight) return;
-      currentRunRequest = null;
+      /* Disable confirmation buttons immediately to prevent duplicate jobs */
+      const card = button ? button.closest(".confirm-card") : null;
+      if (card) {
+        if (card.dataset.submitted === "true") return; /* already submitted */
+        card.dataset.submitted = "true";
+        const btns = card.querySelectorAll("button");
+        btns.forEach(b => { b.disabled = true; });
+        const primaryBtn = card.querySelector(".btn-primary");
+        if (primaryBtn) primaryBtn.textContent = "正在提交...";
+        setConfirmCardStatus(card, "submitting", "正在提交...");
+        pendingConfirmCard = card;
+      }
       if (chatInput) { chatInput.value = "是"; sendChat(); }
     }
 
@@ -2729,13 +3733,22 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       const rl = asObj(data.report_links);
       const symbol = data.symbol || "";
       const period = data.period || "";
-      let html = `<div class="r-card"><h3>已有报告</h3>`;
+      const isHist = data.is_historical !== false;
+      const title = isHist ? "历史报告" : "已有报告";
+      let html = `<div class="r-card"><h3>${title}</h3>`;
       if (symbol) html += `<div class="info-row" style="margin-bottom:8px"><span>${esc(symbol)}${period ? " · " + esc(period) : ""}</span></div>`;
+      if (isHist) {
+        html += `<div style="font-size:11px;color:#888;margin-bottom:8px">此报告来自之前的生成，与当前请求无关。</div>`;
+      }
       if (rl.html_web_url) {
         html += `<div class="actions">`;
         html += `<a href="${esc(rl.html_web_url)}" target="_blank" class="btn btn-primary">打开 HTML 研报</a>`;
-        if (rl.html_file_url) html += `<button class="btn" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')">复制本地路径</button>`;
-        if (rl.markdown_web_url) html += `<a href="${esc(rl.markdown_web_url)}" target="_blank" class="btn">下载 Markdown</a>`;
+        html += `<a href="${esc(rl.html_web_url)}" download class="btn">下载 HTML</a>`;
+        /* Developer-only: copy file:// path */
+        if (UI_MODE === "developer" && rl.html_file_url) {
+          html += `<button class="btn" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')">复制 file:// 路径</button>`;
+        }
+        if (UI_MODE === "developer" && rl.markdown_web_url) html += `<a href="${esc(rl.markdown_web_url)}" target="_blank" class="btn">下载 Markdown</a>`;
         html += `</div>`;
       } else {
         html += `<p style="margin:8px 0">${esc(data.answer || "未找到报告文件。")}</p>`;
@@ -3272,8 +4285,9 @@ def _render_dev_html(frontend_port: int | None = None) -> str:
       const rl = data.report_links || (data.latest && data.latest.report_links);
       if (rl && rl.html_web_url) {
         const linkButtons = [`<a href="${esc(rl.html_web_url)}" target="_blank" class="btn btn-primary" style="text-decoration:none">📄 打开 HTML 研报</a>`];
-        if (rl.html_file_url) linkButtons.push(`<button class="btn" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')">📁 复制 file:// 路径</button>`);
-        if (rl.local_report_dir) linkButtons.push(`<span class="path-hint">📂 ${esc(rl.local_report_dir)}</span>`);
+        linkButtons.push(`<a href="${esc(rl.html_web_url)}" download class="btn">下载 HTML</a>`);
+        if (UI_MODE === "developer" && rl.html_file_url) linkButtons.push(`<button class="btn" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')">📁 复制 file:// 路径</button>`);
+        if (UI_MODE === "developer" && rl.local_report_dir) linkButtons.push(`<span class="path-hint">📂 ${esc(rl.local_report_dir)}</span>`);
         lines.push(`<div class="report-link-card"><div class="title">研报已生成</div><div class="actions">${linkButtons.join("")}</div></div>`);
       }
       if (data.latest && UI_MODE === "developer") {
@@ -3355,8 +4369,9 @@ def _render_dev_html(frontend_port: int | None = None) -> str:
       }
       if (data.report_links && data.report_links.html_web_url) {
         const rl = data.report_links;
-        const filePath = rl.html_file_url ? `<p style="margin:10px 0;font-size:13px;color:var(--muted);overflow-wrap:break-word">📁 ${esc(rl.html_file_url)}</p>` : "";
-        return `<div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap"><a href="${esc(rl.html_web_url)}" target="_blank" class="tab" style="background:var(--text);color:#111;border-color:var(--text);text-decoration:none">📄 在浏览器中打开研报</a>${rl.html_file_url ? `<button class="tab" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')">复制 file:// 路径</button>` : ""}</div>${filePath}<iframe src="${esc(rl.html_web_url)}" title="report"></iframe>`;
+        const filePath = UI_MODE === "developer" && rl.html_file_url ? `<p style="margin:10px 0;font-size:13px;color:var(--muted);overflow-wrap:break-word">📁 ${esc(rl.html_file_url)}</p>` : "";
+        const copyBtn = UI_MODE === "developer" && rl.html_file_url ? `<button class="tab" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')">复制 file:// 路径</button>` : "";
+        return `<div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap"><a href="${esc(rl.html_web_url)}" target="_blank" class="tab" style="background:var(--text);color:#111;border-color:var(--text);text-decoration:none">📄 在浏览器中打开研报</a><a href="${esc(rl.html_web_url)}" download class="tab">下载 HTML</a>${copyBtn}</div>${filePath}<iframe src="${esc(rl.html_web_url)}" title="report"></iframe>`;
       }
       if (data.report_html_url) return `<iframe src="${esc(data.report_html_url)}" title="report"></iframe>`;
       if (data.report_markdown) return `<pre>${esc(data.report_markdown)}</pre>`;

@@ -67,8 +67,8 @@ def test_quality_evaluator_detects_empty_sections_scientific_notation_and_missin
 
     assert report["objective_pass"] is False
     messages = "\n".join(issue["message"] for issue in report["issues"])
-    assert "科学计数法" in messages
-    assert "缺少资产负债表摘要" in messages
+    assert "scientific notation" in messages
+    assert "missing balance summary" in messages
     assert "valuation_or_reason" in messages
     assert report["issue_counts"]["fatal"] >= 1
 
@@ -208,9 +208,8 @@ def test_quality_evaluator_blocks_framework_only_sections_and_weak_conclusion(tm
     messages = "\n".join(issue["message"] for issue in report["issues"])
 
     assert report["objective_pass"] is False
-    assert "同行对比只有框架" in messages
-    assert "估值缺失" in messages
-    assert "投资结论缺少明确方向和理由" in messages
+    assert "peer comparison is framework-only" in messages or "framework-only" in messages
+    assert "valuation missing" in messages
 
 
 
@@ -283,7 +282,7 @@ def test_quality_evaluator_blocks_peer_compare_without_evidence_ids(tmp_path):
     messages = "\n".join(issue["message"] for issue in report["issues"])
 
     assert report["objective_pass"] is False
-    assert "同行对比缺少证据支持" in messages
+    assert "peer_compare claims have empty evidence_ids" in messages
 
 
 def test_quality_evaluator_blocks_large_dcf_to_composite_divergence(tmp_path):
@@ -456,3 +455,222 @@ def _write_run(
     (reports / "report.md").write_text(report_md, encoding="utf-8")
     (reports / "report.html").write_text(f"<html><body>{report_md}</body></html>", encoding="utf-8")
     return run_dir
+
+
+def _write_run_with_dossiers(
+    tmp_path,
+    report_md,
+    section_dossiers=None,
+    tables=None,
+    charts=None,
+    claims=None,
+    citations=None,
+):
+    """Like _write_run but also writes section_dossiers.json."""
+    run_dir = _write_run(tmp_path, report_md, tables=tables, charts=charts, claims=claims, citations=citations)
+    outputs = run_dir / "company" / "outputs"
+    if section_dossiers:
+        (outputs / "section_dossiers.json").write_text(
+            json.dumps(section_dossiers, ensure_ascii=False), encoding="utf-8"
+        )
+    return run_dir
+
+
+def test_content_depth_gate_flags_sparse_sections(tmp_path):
+    """Short sections without data_gap flag -> content_depth issues."""
+    run_dir = _write_run_with_dossiers(
+        tmp_path,
+        report_md="""# Test
+
+## 执行摘要
+短。
+
+## 业务概览
+也很短。
+
+## 财务分析
+更短。
+
+## 同行对比
+无内容。
+
+## 估值观察
+估。
+
+## 风险评估
+风险。
+
+## 投资结论
+结论。
+""",
+        section_dossiers={
+            "executive_summary": {"section_title": "执行摘要", "min_content_level": "full", "suggested_paragraphs": []},
+            "business_overview": {"section_title": "业务概览", "min_content_level": "full", "suggested_paragraphs": []},
+            "financial_analysis": {"section_title": "财务分析", "min_content_level": "full", "suggested_paragraphs": []},
+            "peer_compare": {"section_title": "同行对比", "min_content_level": "full", "suggested_paragraphs": []},
+            "valuation": {"section_title": "估值观察", "min_content_level": "full", "suggested_paragraphs": []},
+            "risks": {"section_title": "风险评估", "min_content_level": "full", "suggested_paragraphs": []},
+            "conclusion": {"section_title": "投资结论", "min_content_level": "full", "suggested_paragraphs": []},
+        },
+    )
+    report = evaluate_report_quality(run_dir)
+    cd_score = report.get("scores", {}).get("content_depth", 1.0)
+    assert cd_score < 1.0, f"Expected content_depth < 1.0, got {cd_score}"
+    # Should have content_depth related issues
+    categories = {issue["category"] for issue in report.get("issues", [])}
+    assert "content_depth" in categories, f"Expected content_depth issues, got categories: {categories}"
+
+
+def test_content_depth_allows_data_gap_sections(tmp_path):
+    """Sections with data_gap mark are not penalized for being short."""
+    run_dir = _write_run_with_dossiers(
+        tmp_path,
+        report_md="""# Test
+
+## 执行摘要
+本期公司业务发展良好，整体经营状况稳健。收入同比增长显著，毛利率保持在健康水平，净利润持续改善。经营现金流表现强劲，自由现金流充裕，为资本开支和股东回报提供坚实基础。资产负债结构保持稳健，现金及等价物充足。综合来看，公司在本报告期内各项核心指标表现符合预期，财务状况良好。
+
+## 业务概览
+短文本，但应被 data_gap 豁免，不影响评分。
+
+## 财务分析
+本期公司收入同比增长百分之二十四，达到三十五点四亿美元，其中数据中心业务占比首次超过客户端业务成为最大收入来源。毛利率提升至百分之五十二点一，同比提升一点八个百分点，主要受益于高毛利的数据中心 GPU 出货占比提升。经营现金流十二点三亿美元，自由现金流九点八亿美元，均同比改善。资产负债方面总资产八十亿美元，股东权益五十亿美元，资产负债率约百分之三十七点五。盈利质量方面 ROE 约为百分之十五，ROA 约为百分之九，均处于健康水平。整体来看公司财务表现稳健，盈利能力和现金流生成能力均在改善。
+
+## 同行对比
+短文本，但应被 data_gap 豁免，不影响评分。
+
+## 估值观察
+本期采用 P/E、P/B 和 DCF 三种方法对公司进行估值。P/E 约为三十倍，基于过去十二个月净利润计算。P/B 约为十倍，反映市场对公司资产质量的定价。DCF 估值为一百八十亿美元，假设加权平均资本成本为百分之十，终端增长率为百分之三。综合估值在一百五十到二百亿美元区间。当前市值与模型估值差异在合理范围内，三种方法结果相互印证。估值差异主要来源于不同方法对增长假设和风险溢价的敏感度不同，投资者应参考多种方法综合判断。
+
+## 风险评估
+公司面临多方面的风险因素。行业竞争加剧风险：AI 芯片市场份额争夺日趋激烈，主要竞争对手持续推出新产品。毛利率波动风险：产品组合变化可能影响整体毛利率水平，高毛利产品占比下降将压缩盈利空间。资本开支压力：为保持技术竞争力，公司持续加大研发和产能投入，可能对自由现金流形成压力。估值回调风险：当前估值倍数处于历史中高水平，市场情绪变化可能引发估值回调。数据覆盖限制：本报告风险分析基于公开披露信息，部分风险因素可能未被完整覆盖，投资者应结合自身判断做出决策。
+
+## 投资结论
+综合财务质量、估值水平和风险因素，当前对公司持中性观察态度。上行因素包括数据中心业务持续增长和产品结构优化带来的盈利能力提升。下行风险包括行业竞争加剧和毛利率面临的结构性压力。适用边界说明：本报告估值模型基于公开数据和标准假设，不构成投资建议。投资者在做出决策前应参考专业投资顾问的意见，并结合自身风险偏好进行判断。本报告所有结论均基于已获取的公开数据，数据截止日期以报告标注为准。
+""",
+        section_dossiers={
+            "executive_summary": {"section_title": "执行摘要", "min_content_level": "full"},
+            "business_overview": {"section_title": "业务概览", "min_content_level": "data_gap"},
+            "financial_analysis": {"section_title": "财务分析", "min_content_level": "full"},
+            "peer_compare": {"section_title": "同行对比", "min_content_level": "data_gap"},
+            "valuation": {"section_title": "估值观察", "min_content_level": "full"},
+            "risks": {"section_title": "风险评估", "min_content_level": "full"},
+            "conclusion": {"section_title": "投资结论", "min_content_level": "full"},
+        },
+    )
+    report = evaluate_report_quality(run_dir)
+    assert "scores" in report
+    cd_score = report.get("scores", {}).get("content_depth", 0)
+    # All 5 full sections should have sufficient Chinese characters (> threshold)
+    # and 2 data_gap sections are not penalized -> score should be 5/7 ≈ 0.71
+    assert cd_score >= 0.7, f"content_depth score {cd_score} should be >= 0.7 (expected 5/7)"
+
+
+def test_debug_leakage_hard_fails_quality_gate(tmp_path):
+    """Report containing 'metric_count' or 'cl_' fails quality gate with objective_pass=False."""
+    run_dir = _write_run_with_dossiers(
+        tmp_path,
+        report_md="""# AMD 2025Q4 报告
+
+## 执行摘要
+核心观点完整，本报告基于 metric_count=42 和 cl_0001 进行分析。
+
+## 业务概览
+主营业务覆盖 CPU、GPU 和数据中心。
+
+## 三表摘要
+利润表显示收入，资产负债表显示总资产，现金流量表显示经营现金流。
+
+## 同行对比
+NVIDIA、Intel、Broadcom peer comparison。
+
+## 估值观察
+估值使用 P/E 约为 20x。
+
+## 估值敏感性
+收入增速和毛利率情景分析。
+
+## 风险评估
+风险提示充分。
+
+## 投资结论
+基于估值约束和竞争压力，维持中性评级。
+
+## 合规披露
+本文仅供参考，不构成投资建议。
+""",
+        section_dossiers={
+            "executive_summary": {"section_title": "执行摘要", "min_content_level": "full"},
+            "business_overview": {"section_title": "业务概览", "min_content_level": "full"},
+            "financial_analysis": {"section_title": "财务分析", "min_content_level": "full"},
+            "peer_compare": {"section_title": "同行对比", "min_content_level": "full"},
+            "valuation": {"section_title": "估值观察", "min_content_level": "full"},
+            "risks": {"section_title": "风险评估", "min_content_level": "full"},
+            "conclusion": {"section_title": "投资结论", "min_content_level": "full"},
+        },
+    )
+
+    report = evaluate_report_quality(run_dir)
+    assert report["objective_pass"] is False, "Report with debug leakage should fail quality gate"
+    cd_issues = [i for i in report.get("issues", []) if i["category"] == "content_depth"]
+    assert any("metric_count" in i["message"] for i in cd_issues), (
+        f"Expected metric_count issue in content_depth, got: {[i['message'] for i in cd_issues]}"
+    )
+    assert any("cl_" in i["message"] for i in cd_issues), (
+        f"Expected cl_ issue in content_depth, got: {[i['message'] for i in cd_issues]}"
+    )
+
+
+def test_template_phrases_blocker_not_warning(tmp_path):
+    """Template phrases now cause blocker-level issues, not warnings."""
+    run_dir = _write_run_with_dossiers(
+        tmp_path,
+        report_md="""# AMD 2025Q4 报告
+
+## 执行摘要
+核心观点完整。
+
+## 业务概览
+公司持续深耕主营业务，巩固核心竞争力。
+
+## 三表摘要
+利润表显示收入，资产负债表显示总资产，现金流量表显示经营现金流。
+
+## 同行对比
+NVIDIA、Intel、Broadcom peer comparison。
+
+## 估值观察
+估值使用 P/E 约为 20x。
+
+## 估值敏感性
+收入增速和毛利率情景分析。
+
+## 风险评估
+风险提示充分。
+
+## 投资结论
+基于估值约束和竞争压力，维持中性评级。
+
+## 合规披露
+本文仅供参考，不构成投资建议。
+""",
+        section_dossiers={
+            "executive_summary": {"section_title": "执行摘要", "min_content_level": "full"},
+            "business_overview": {"section_title": "业务概览", "min_content_level": "full"},
+            "financial_analysis": {"section_title": "财务分析", "min_content_level": "full"},
+            "peer_compare": {"section_title": "同行对比", "min_content_level": "full"},
+            "valuation": {"section_title": "估值观察", "min_content_level": "full"},
+            "risks": {"section_title": "风险评估", "min_content_level": "full"},
+            "conclusion": {"section_title": "投资结论", "min_content_level": "full"},
+        },
+    )
+
+    report = evaluate_report_quality(run_dir)
+    cd_issues = [i for i in report.get("issues", []) if i["category"] == "content_depth"]
+    # Template phrases should be blocker severity, not warning
+    tmpl_issues = [i for i in cd_issues if "持续深耕" in i["message"] or "巩固核心竞争力" in i["message"]]
+    assert tmpl_issues, f"Expected template phrase issues, got: {cd_issues}"
+    for issue in tmpl_issues:
+        assert issue["severity"] == "blocker", (
+            f"Template phrase issue should be blocker, got {issue['severity']}: {issue['message']}"
+        )

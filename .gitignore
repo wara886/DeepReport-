@@ -1,7 +1,9 @@
+# Secrets
 .env
 .env.*
 !.env.example
 
+# Local Python/dev state
 .venv/
 .models/
 .pytest_cache/
@@ -11,27 +13,46 @@ __pycache__/
 build/
 .DS_Store
 
+# Local-only developer entrypoints and scratch files
+main_dev.py
+PROJECT_STATUS_P0.md
+_check_*.py
+_fix*.py
+tools/
+docs/FinSight_*.md
+docs/deepreport_ui_quality_rag_fix_plan.md
+
+# Runtime outputs
 artifacts/
 reports/
-
-# Runtime evaluation runs stay local; curated benchmark summaries live in bench/.
 eval_outputs/
+memory/
+data/outputs/
+data/outputs_*/
+data/outputs_dev/
+data/reports/
+data/reports_*/
+data/reports_dev/
+data/tmp_*/
+data/evaluation/
+data/evaluation/**/runs/
+data/evidence_archive/
+data/benchmark_sources/
+data/curated_real/
+data/features_real/
+data/outputs_real/
+data/reports_real/
+__pycache__/
+scripts/__pycache__/
+
+# Keep curated fixtures and benchmark snapshots tracked, but not generated run logs.
 bench/**/runs/
 bench/**/formal_runs_checkpoint.jsonl
 
-memory/
+# Local reference clones
 references/*_ref/
-data/outputs/
-data/outputs_real/
-data/reports/
-data/reports_real/
-data/evaluation/
-data/evaluation/**/runs/
-data/curated_real/
-data/features_real/
-data/benchmark_sources/
-data/evidence_archive/
 
+# Archives
 *.zip
 *.tgz
 *.tar.gz

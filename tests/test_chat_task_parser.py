@@ -8,6 +8,7 @@ from src.app.chat_task_parser import (
     llm_parse_chat_task,
     parse_chat_task,
 )
+from src.app.query_understanding import QueryUnderstanding
 
 
 def test_parse_guizhou_maotai_latest_report_request():
@@ -195,3 +196,71 @@ def test_parse_unknown_company_does_not_silently_fallback_to_default_symbol():
     assert parsed.needs_confirmation is True
     assert parsed.symbol == ""
     assert parsed.period == "FY2024"
+
+
+def test_latest_with_year_prefers_latest_completed_quarter_for_micron():
+    text = "生成\u9541\u514926年最新财报"
+
+    parsed = parse_chat_task(text, current_symbol="AAPL", current_period="2025Q4", today=date(2026, 5, 31))
+    target = QueryUnderstanding("configs/model_backends.yaml").resolve_report_target(
+        text, current_symbol="AAPL", current_period="2025Q4", today=date(2026, 5, 31)
+    )
+
+    assert parsed.symbol == "MU"
+    assert parsed.period == "2026Q1"
+    assert parsed.period_kind == "latest"
+    assert target["symbol"] == "MU"
+    assert target["period"] == "2026Q1"
+    assert target["period_intent"] == "latest"
+
+
+def test_common_company_aliases_resolve_without_context_fallback():
+    cases = [
+        ("生成\u53f0\u79ef\u7535最新财报", "TSM"),
+        ("生成\u793c\u676526年最新财报", "LLY"),
+        ("生成拼多多最新财报", "PDD"),
+    ]
+    resolver = QueryUnderstanding("configs/model_backends.yaml")
+    for text, symbol in cases:
+        target = resolver.resolve_report_target(text, current_symbol="GOOGL", current_period="2025Q4", today=date(2026, 5, 31))
+        assert target["symbol"] == symbol
+        assert target["period"] == "2026Q1"
+        assert target["symbol"] != "GOOGL"
+
+
+def test_llm_target_resolution_requires_confirmation_for_routeable_but_unverified_symbol(monkeypatch):
+    def fake_llm_json(prompt, system_prompt, config_path):
+        return {
+            "company_name": "ASML Holding N.V.",
+            "symbol": "ASML",
+            "market": "US",
+            "period_intent": "latest",
+            "confidence": 0.88,
+            "needs_confirmation": True,
+            "reason": "recognized company from natural language",
+        }
+
+    monkeypatch.setattr("src.app.query_understanding._call_llm_json", fake_llm_json)
+
+    target = QueryUnderstanding("configs/model_backends.yaml").resolve_report_target(
+        "生成阿斯麦最新财报", current_symbol="AAPL", current_period="2025Q4", today=date(2026, 5, 31)
+    )
+
+    assert target["symbol"] == "ASML"
+    assert target["period"] == "2026Q1"
+    assert target["verified"] is True
+    assert target["needs_confirmation"] is True
+    assert target["symbol"] != "AAPL"
+
+
+def test_unresolved_company_does_not_fallback_to_context_even_when_report_requested(monkeypatch):
+    monkeypatch.setattr("src.app.query_understanding._call_llm_json", lambda *a, **kw: None)
+
+    target = QueryUnderstanding("configs/model_backends.yaml").resolve_report_target(
+        "生成一个不存在公司的最新财报", current_symbol="GOOGL", current_period="2025Q4", today=date(2026, 5, 31)
+    )
+
+    assert target["symbol"] == ""
+    assert target["needs_confirmation"] is True
+    assert target["period"] == "2026Q1"
+    assert "GOOGL" not in target["reason"]

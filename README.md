@@ -1,142 +1,245 @@
 <div align="center">
 
-# FinSight / DeepReport++
+# Open DeepReport++
 
-**Evidence-driven multi-agent company research reports**
+**Evidence-first multi-agent research reports for public companies**
 
-[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-service-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Web%20Service-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/Use-Research%20Only-111827)](#boundaries)
+
+Generate Markdown / HTML / JSON company research reports with traceable claims,
+official-source evidence, charts, and quality gates.
 
 </div>
 
-FinSight generates auditable company and stock research reports in Markdown, HTML, and JSON. The project adopts the concise deployable layout of [DeepReport](https://github.com/wisdom-pan/DeepReport), while its official-source evidence contracts, financial quality gates, and benchmark workflow are independently implemented.
+![FinSight overview](docs/assets/finsight-overview.svg)
 
-## Features
+> Open DeepReport++ is inspired by the engineering skeleton of
+> [DeepReport](https://github.com/wisdom-pan/DeepReport), but does not copy its
+> business logic. This repository focuses on company and stock research reports,
+> evidence contracts, and reproducible report artifacts.
 
-- Claim-first report generation with traceable `evidence.json`, `claims.json`, and `citations.json`.
-- Market-aware official-source routing for SEC, CNINFO/SSE/SZSE, and HKEX disclosure research.
-- Three-statement normalization and PDF page-anchored citations for document-backed financial claims.
-- Objective quality evaluation, LLM review, delivery gate, and chat-based quality review.
-- Formal-18 frozen benchmark covering US, HK, and CN-A FY2024 cases.
-- FastAPI service and Docker deployment without replacing the existing local workbench logic.
+## Highlights
+
+- **Claim-first writing**: every important statement is tied to `evidence_id`.
+- **Official-source routing**: SEC filings/companyfacts for US, CNINFO/SSE/SZSE
+  for A-share, and HKEX-oriented disclosure paths for HK coverage.
+- **10-K annual report parsing**: US FY reports resolve SEC 10-K filings and
+  extract Item 1, Item 1A, Item 7, and related sections before writing.
+- **Quality gates**: delivery checks flag missing evidence, raw companyfacts
+  dumps, weak sections, broken citations, and chart/report mismatch.
+- **User web app**: FastAPI + lightweight chat UI on port `7860`.
+- **Docker-first deployment**: one command starts the user-facing service.
+
+## Public Repo Scope
+
+- **Published entrypoint**: `main.py` starts the user-facing service on `7860`.
+- **Local-only developer entrypoint**: `main_dev.py` stays ignored and is not part
+  of the public branch.
+- **Tracked fixtures**: frozen benchmark snapshots and curated samples remain for
+  reproducibility and tests.
+- **Ignored runtime state**: generated reports, memory, evidence archives, and
+  temporary runs stay local.
+
+## Visual Overview
+
+![Artifact flow](docs/assets/report-artifacts.svg)
+
+## Product Flow
+
+```mermaid
+flowchart LR
+    U[User request] --> P[Intent and company planning]
+    P --> E[Official evidence routing]
+    E --> K[SEC 10-K / filings / market data]
+    K --> C[Claim and metric extraction]
+    C --> D[Section dossiers]
+    D --> W[Report writer]
+    W --> Q[Verifier and quality gate]
+    Q --> R[HTML / Markdown / JSON]
+```
+
+```mermaid
+flowchart TB
+    subgraph Evidence
+        A[evidence.json]
+        B[sec_filing_resolver.json]
+        C[annual_report_sections.json]
+        D[official_evidence_manifest.json]
+    end
+    subgraph Analysis
+        E[claims.json]
+        F[financial_metrics.json]
+        G[section_dossiers.json]
+        H[charts.json]
+    end
+    subgraph Delivery
+        I[report.md]
+        J[report.html]
+        K[report.json]
+        L[verification_report.json]
+    end
+    Evidence --> Analysis --> Delivery
+```
 
 ## Quick Start
 
 ### Docker
 
-Create `.env` from `.env.example` and configure the model/search credentials required by the report mode you intend to run. Secrets stay local and are not included in images.
-
 ```bash
 git clone https://github.com/wara886/DeepReport-.git
 cd DeepReport-
 cp .env.example .env
-./start.sh
+docker compose up --build -d
 ```
 
-Open `http://localhost:7860`. Generated reports and evidence archives are persisted in `data/reports/`, `data/outputs/`, and `data/evidence_archive/`.
+Open:
 
-To run the published image after the GitHub workflow has produced it:
+```text
+http://localhost:7860
+```
+
+Generated user reports are persisted under:
+
+```text
+data/outputs_user/
+data/reports_user/
+data/evidence_archive/
+memory/
+```
+
+Run the published image:
 
 ```bash
 docker run --env-file .env -p 7860:7860 \
-  -v ./data/outputs:/app/data/outputs \
-  -v ./data/reports:/app/data/reports \
+  -v ./data/outputs_user:/app/data/outputs_user \
+  -v ./data/reports_user:/app/data/reports_user \
   -v ./data/evidence_archive:/app/data/evidence_archive \
+  -v ./memory:/app/memory \
   ghcr.io/wara886/deepreport-plus:latest
 ```
 
-Windows PowerShell can use `.\start.ps1` and `.\stop.ps1`; direct Compose remains available through `docker compose up --build -d`.
+### Local Python
 
-### Local
-
-```powershell
+```bash
 python -m venv .venv
-pip install -e ".[pdf]"
+python -m pip install -e ".[pdf]"
 python main.py
 ```
 
-The existing development workbench remains available on its original entrypoint:
+Then open `http://localhost:7860`.
 
-```powershell
-python scripts/run_financial_agent_ui.py --host 127.0.0.1 --port 8787
-```
+### What Ships in Docker
 
-Generate a local report or run tests:
+- `main.py`
+- `src/`
+- `configs/`
+- `scripts/`
+- `.env.example`
 
-```powershell
+The image intentionally excludes local reports, benchmark outputs, developer
+notes, and private scratch entrypoints.
+
+### Smoke Test
+
+```bash
 python scripts/run_multi_agent_demo.py --symbol AAPL --period FY2024 --execution-mode dynamic --fast
-python -m pytest -q
+python -m pytest -q tests/test_sec_annual_report_flow.py
 ```
 
-## Report Quality Flow
+## Repository Layout
 
-```mermaid
-flowchart LR
-    A[Company / Fiscal Period] --> B[Official Source Routing]
-    B --> C[Evidence Archive + PDF Extraction]
-    C --> D[Three-Statement Metrics + Claim Table]
-    D --> E[Writer + Page Citations + Charts]
-    E --> F[Verifier + Quality Gate]
-    F -->|Pass| G[Markdown / HTML / JSON]
-    F -->|Missing Official Evidence| H[Degraded Report / Repair]
+```text
+.
+├── configs/                  # model, source, report, and gate policies
+├── docs/                     # architecture and benchmark documentation
+├── scripts/                  # reproducible smoke/evaluation commands
+├── src/
+│   ├── agents/               # planning, research, analysis, writing, verifier
+│   ├── app/                  # FastAPI service and web UI
+│   ├── data/                 # source adapters and SEC filing resolver
+│   ├── evaluation/           # quality gates and benchmark scoring
+│   ├── report/               # charts, citations, HTML rendering
+│   └── schemas/              # report/evidence/claim data contracts
+├── tests/                    # regression tests
+├── main.py                   # user-facing service entrypoint
+├── Dockerfile
+└── docker-compose.yml
 ```
 
-For A-share and Hong Kong reports, formal delivery now records official evidence coverage, statement completeness, and PDF page anchors. If period-matched official evidence is missing, the system marks the report for degradation instead of silently substituting newer data.
+`main_dev.py` is intentionally local-only and ignored by Git. Public runs should
+use `main.py` or Docker Compose.
 
-## Key Artifacts
+## Core Artifacts
 
-| Artifact | Purpose |
+| Artifact | Why it exists |
 | --- | --- |
-| `evidence.json`, `claims.json`, `citations.json` | Source-to-conclusion audit chain |
-| `official_evidence_manifest.json`, `evidence_coverage.json` | Official-source inventory and sufficiency policy |
-| `financial_metrics.json`, `tables.json` | Three-statement normalization and metric lineage |
-| `pdf_manifest.json`, `pdf_sections.json` | Download/extraction status and page-located PDF evidence |
-| `verification_report.json`, `quality_report.json`, `delivery_gate.json` | Delivery readiness and blockers |
-| `report.md`, `report.html`, `report.json` | Final deliverables |
+| `evidence.json` | normalized source records |
+| `claims.json` | claim-first intermediate report facts |
+| `sec_filing_resolver.json` | SEC 10-K target filing resolution |
+| `annual_report_sections.json` | parsed Item 1 / Item 1A / Item 7 evidence |
+| `section_dossiers.json` | per-section writing brief and deterministic tables |
+| `citations.json` | citation map used by final report |
+| `verification_report.json` | delivery gate and evidence-gap diagnostics |
+| `report.md`, `report.html`, `report.json` | final user deliverables |
 
-## Benchmark
+## API Surface
 
-Formal-18 uses the frozen `formal18_fy2024_v1` evidence snapshot: 18 FY2024 cases across US, HK, and CN-A markets, with 54 evaluated generation units.
+| Route | Purpose |
+| --- | --- |
+| `GET /` | user report workbench |
+| `GET /health` | container health check |
+| `POST /api/chat` | chat, confirmation, and report execution |
+| `POST /api/run` | direct report execution |
+| `GET /api/latest` | latest job/report status |
+| `GET /artifacts/*` | generated report artifacts |
 
-| Variant | Delivery Pass Rate | Objective Quality Score | Traceable Claim Rate v1 |
+## Release Hygiene
+
+- `main_dev.py`, status notes, scratch scripts, and local planning documents are
+  kept out of Git.
+- GitHub Linguist is configured to treat benchmark/data snapshots as generated so
+  the repo surface stays focused on product code.
+- Docker build context excludes runtime artifacts and internal notes to keep the
+  image smaller and safer to publish.
+
+## Benchmarks
+
+The repository includes frozen benchmark summaries for reproducibility. They are
+not a promise of live-source availability or investment performance.
+
+| Variant | Delivery Pass Rate | Objective Quality Score | Traceable Claim Rate |
 | --- | ---: | ---: | ---: |
 | Direct LLM | 16.67% | 51.21 | 29.66% |
 | Single-Agent RAG | 27.78% | 52.52 | 34.89% |
 | Multi-Agent RAG | 72.22% | 86.27 | 70.01% |
 
-These are results under an offline frozen-input protocol, not proof of live-source stability, universal company coverage, or investment recommendation accuracy. Published summaries are in [`bench/formal18_fy24`](bench/formal18_fy24), with protocol details in [formal_benchmark_protocol.md](docs/formal_benchmark_protocol.md), [reference mapping](docs/deepreport_skeleton_mapping.md), and [limitations.md](docs/limitations.md).
+See [formal benchmark protocol](docs/formal_benchmark_protocol.md),
+[architecture](docs/architecture.md), and [limitations](docs/limitations.md).
 
-## Project Structure
+## Configuration
+
+Secrets live in `.env`; non-secret runtime settings live in `configs/*.yaml`.
+
+Common environment variables:
 
 ```text
-FinSight/
-|-- bench/                   # Published benchmark summaries
-|-- configs/                 # Models, sources, report, and gate policies
-|-- data/                    # Evidence inputs and runtime persistence
-|-- docs/                    # Architecture, audit, and protocol notes
-|-- scripts/                 # Evaluation and maintenance commands
-|-- src/                     # Agents, evidence, reports, and API service
-|-- tests/                   # Regression coverage
-|-- main.py                  # Deployable FastAPI entrypoint
-|-- Dockerfile
-|-- docker-compose.yml
-|-- start.sh / stop.sh
-`-- .github/workflows/      # GHCR image publishing
+DEEPSEEK_API_KEY=
+TAVILY_API_KEY=
+SEC_USER_AGENT=Your Name contact@example.com
+HOST=0.0.0.0
+PORT=7860
 ```
 
-## Service Surface
-
-- `GET /`: report workbench.
-- `GET /health`: deployment health check.
-- `GET /api/latest`: latest completed report and quality artifacts.
-- `POST /api/chat`: chat, confirmation, report execution, and `quality_review`.
-- `POST /api/run`: direct report execution.
-- `GET /artifacts/*`: generated reports and audit artifacts.
+For SEC access, set a descriptive `SEC_USER_AGENT` before running live annual
+report workflows.
 
 ## Boundaries
 
-- The current product focuses on company/stock reports; industry and macro strategy reports are not yet equivalent full workflows.
-- A/H report quality depends on availability and parsability of official announcements and PDFs; failures are surfaced as evidence gaps.
+- This is a research and auditability tool, not investment advice.
+- Reports are only as strong as the available public evidence.
+- Missing official evidence should produce a degraded report or explicit data
+  gap, not invented analysis.
 - Durable memory is context only and never replaces cited evidence.
-- The system supports research production and auditability; it does not constitute investment advice.

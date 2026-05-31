@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import re
 from pathlib import Path
@@ -32,6 +33,7 @@ from src.agents.durable_memory import DurableMemoryConfig, DurableMemoryStore
 from src.agents.final_answer_agent import FinalAnswerAgent
 from src.agents.gap_resolver_agent import GapResolverAgent
 from src.agents.gap_router import build_gap_resolution_trace
+from src.agents.annual_report_section_extractor import AnnualReportSectionExtractor, annual_sections_to_evidence_records
 from src.agents.planning_agent import PlanningAgent
 from src.agents.research_blackboard import (
     apply_pre_write_critic,
@@ -42,6 +44,7 @@ from src.agents.verifier_agent import VerifierAgent
 from src.data.company_universe import resolve_company_identifier, resolve_company_identifier_with_diagnostics
 from src.data.official_evidence_archive import archive_official_evidence_manifest, build_official_evidence_artifacts
 from src.data.pdf_artifacts import build_pdf_artifacts
+from src.data.sec_filing_resolver import resolve_sec_annual_filing
 from src.evaluation.company_report_scorecard import build_company_report_scorecard
 from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
 from src.evaluation.multimodal_consistency import audit_multimodal_consistency
@@ -64,6 +67,9 @@ from src.search import SearchManager
 from src.tools import SkillRegistry, build_core_tool_registry, build_financial_skill_registry
 from src.utils.config import load_config
 from src.utils import MCPManager
+from src.agents.derived_evidence_builder import build_derived_evidence
+from src.agents.claim_evidence_bundle import build_claim_evidence_bundles
+from src.agents.section_dossier_builder import SectionDossierBuilder
 
 
 FAST_PROFILE = {
@@ -92,11 +98,30 @@ FAST_PROFILE = {
 
 USER_FAST_DELIVERY_PROFILE = {
     **FAST_PROFILE,
+    "research_topk": 4,
+    "analyze_max_records": 6,
+    "final_max_claims": 14,
+    "final_max_evidence": 10,
+    "final_max_tokens": 2000,
     "review_mode": "heuristic",
-    "delivery_rework_rounds": 1,
+    "delivery_rework_rounds": 0,
     "verifier_max_rework_rounds": 0,
     "allow_full_pipeline_rework": False,
     "timeout_budget_sec": 180,
+}
+
+DEVELOPER_FAST_PROFILE = {
+    **FAST_PROFILE,
+    "research_topk": 6,
+    "analyze_max_records": 8,
+    "final_max_claims": 10,
+    "final_max_evidence": 8,
+    "final_max_tokens": 1600,
+    "review_mode": "full",
+    "delivery_rework_rounds": 1,
+    "verifier_max_rework_rounds": 0,
+    "allow_full_pipeline_rework": False,
+    "timeout_budget_sec": 420,
 }
 
 DEFAULT_PROFILE = {
@@ -121,6 +146,7 @@ DEFAULT_PROFILE = {
     "final_max_tokens": 2200,
     "verifier_max_rework_rounds": 1,
     "delivery_rework_rounds": 1,
+    "timeout_budget_sec": 420,
 }
 
 
@@ -149,8 +175,9 @@ class MultiAgentOrchestrator:
         self.raw_data_root = raw_data_root
         self.app_config_path = app_config_path
         _tier = str(execution_tier or "delivery").lower()
-        if _tier == "user_fast":
-            self.execution_tier = "user_fast"
+        FAST_TIERS = {"user_fast", "developer_fast"}
+        if _tier in FAST_TIERS:
+            self.execution_tier = _tier
         else:
             self.execution_tier = "preview" if _tier == "preview" else "delivery"
         self.model_route_config = load_config(config_path).get("agent_model_routes", {})
@@ -219,6 +246,7 @@ class MultiAgentOrchestrator:
         quality_remediation_plan: Dict[str, Any] | None = None,
         claim_contract: str = "",
         allow_document_enrichment: bool = True,
+        execution_deadline: float | None = None,
     ) -> Dict[str, str]:
         quality_remediation_plan = quality_remediation_plan or _read_existing_quality_remediation_plan(self.output_dir)
         entity_resolution = _resolve_run_identity(research_topic=research_topic, symbol=symbol, raw_data_root=self.raw_data_root)
@@ -238,6 +266,7 @@ class MultiAgentOrchestrator:
                 quality_remediation_plan=quality_remediation_plan,
                 claim_contract=claim_contract,
                 allow_document_enrichment=allow_document_enrichment,
+                execution_deadline=execution_deadline,
             )
         if execution_mode == "collaborative":
             return self._run_dynamic(
@@ -255,6 +284,7 @@ class MultiAgentOrchestrator:
                 claim_contract=claim_contract,
                 allow_document_enrichment=allow_document_enrichment,
                 collaborative=True,
+                execution_deadline=execution_deadline,
             )
         if execution_mode == "diagnostic_full":
             return self._run_dynamic(
@@ -273,6 +303,7 @@ class MultiAgentOrchestrator:
                 allow_document_enrichment=allow_document_enrichment,
                 collaborative=True,
                 diagnostic_full=True,
+                execution_deadline=execution_deadline,
             )
         if execution_mode == "static":
             return self._run_static(
@@ -303,7 +334,12 @@ class MultiAgentOrchestrator:
         if isinstance(role_route, str):
             return role_route
         if isinstance(role_route, dict):
-            return str(role_route.get(self.execution_tier) or role_route.get("delivery") or default_profile)
+            profile = role_route.get(self.execution_tier)
+            if profile is None and self.execution_tier in ("user_fast", "developer_fast"):
+                profile = default_profile  # fast tiers: 不 fallback 到 delivery/pro
+            elif profile is None:
+                profile = role_route.get("delivery") or default_profile
+            return str(profile)
         return default_profile
 
     def _build_model_usage_by_agent(self, injected_model: bool) -> Dict[str, Dict[str, Any]]:
@@ -360,7 +396,45 @@ class MultiAgentOrchestrator:
         """Select execution profile based on tier and fast flag."""
         if self.execution_tier == "user_fast":
             return USER_FAST_DELIVERY_PROFILE
+        if self.execution_tier == "developer_fast":
+            return DEVELOPER_FAST_PROFILE
         return FAST_PROFILE if fast else DEFAULT_PROFILE
+
+    def _ensure_claim_evidence_bundles(self, state: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Build and inject claim_evidence_bundles into state if not already present.
+
+        Returns the list of bundles (possibly empty) for passing to FinalAnswer.
+        """
+        if state.get("claim_evidence_bundles") is not None:
+            bundles = state["claim_evidence_bundles"]
+            return bundles if isinstance(bundles, list) else []
+
+        derived = build_derived_evidence(state)
+        state["derived_evidence"] = derived
+
+        claims = list(state.get("claims", [])) if isinstance(state.get("claims"), list) else []
+        evidence = list(state.get("evidence_records", [])) if isinstance(state.get("evidence_records"), list) else []
+
+        bundles = build_claim_evidence_bundles(claims, evidence, derived)
+        state["claim_evidence_bundles"] = bundles
+        return bundles
+
+    def _build_section_dossiers(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Build section dossiers from state and inject into state."""
+        if state.get("section_dossiers") is not None:
+            dossiers = state["section_dossiers"]
+            return dossiers if isinstance(dossiers, dict) else {}
+        builder = SectionDossierBuilder()
+        dossiers = builder.build(
+            state=state,
+            claims=list(state.get("claims", [])) if isinstance(state.get("claims"), list) else [],
+            evidence_records=list(state.get("evidence_records", [])) if isinstance(state.get("evidence_records"), list) else [],
+            analysis_artifacts=dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {},
+            derived_evidence=list(state.get("derived_evidence", [])) if isinstance(state.get("derived_evidence"), list) else [],
+            bundles=list(state.get("claim_evidence_bundles", [])) if isinstance(state.get("claim_evidence_bundles"), list) else [],
+        )
+        state["section_dossiers"] = dossiers
+        return dossiers
 
     def _run_static(
         self,
@@ -488,6 +562,7 @@ class MultiAgentOrchestrator:
             "claims": [],
             "analysis_artifacts": {},
         }
+        self.state = static_state  # P0.5: expose for _execute deadline enforcement
         research_blackboard = update_blackboard_for_task(
             research_blackboard,
             "deep_researcher",
@@ -509,6 +584,8 @@ class MultiAgentOrchestrator:
         evidence_records = browser_result.output.get("evidence_records", [])
         self._write_json("evidence.json", evidence_records)
         static_state["evidence_records"] = evidence_records
+        attach_annual_report_sections_to_state(static_state, raw_data_root=self.raw_data_root)
+        evidence_records = static_state.get("evidence_records", [])
         research_blackboard = update_blackboard_for_task(
             research_blackboard,
             "browser",
@@ -590,6 +667,8 @@ class MultiAgentOrchestrator:
             )
         official_manifest_path = self._write_json("official_evidence_manifest.json", official_artifacts["official_evidence_manifest"])
         evidence_coverage_path = self._write_json("evidence_coverage.json", official_artifacts["evidence_coverage"])
+        sec_filing_resolver_path = self._write_json("sec_filing_resolver.json", static_state.get("sec_filing_resolver", {}))
+        annual_report_sections_path = self._write_json("annual_report_sections.json", static_state.get("annual_report_sections", {}))
         critic_result = self._execute(
             "critic",
             AgentTask(
@@ -612,6 +691,31 @@ class MultiAgentOrchestrator:
         pre_write_critic = critic_result.output.get("pre_write_critic", {})
         research_blackboard = apply_pre_write_critic(research_blackboard, pre_write_critic)
 
+        # Build claim-evidence bundles for grounded writing
+        static_bundles = build_claim_evidence_bundles(
+            claims=claims if isinstance(claims, list) else [],
+            evidence_records=evidence_records if isinstance(evidence_records, list) else [],
+            derived_evidence=build_derived_evidence({
+                "symbol": symbol,
+                "period": period,
+                "claims": claims if isinstance(claims, list) else [],
+                "evidence_records": evidence_records if isinstance(evidence_records, list) else [],
+                "analysis_artifacts": analysis_artifacts if isinstance(analysis_artifacts, dict) else {},
+                "research_blackboard": research_blackboard if isinstance(research_blackboard, dict) else {},
+            }),
+        )
+
+        # Build section dossiers for depth enforcement
+        static_dossiers = SectionDossierBuilder().build(
+            state=static_state,
+            claims=claims if isinstance(claims, list) else [],
+            evidence_records=evidence_records if isinstance(evidence_records, list) else [],
+            analysis_artifacts=analysis_artifacts if isinstance(analysis_artifacts, dict) else {},
+            derived_evidence=build_derived_evidence(static_state),
+            bundles=static_bundles,
+        )
+        static_state["section_dossiers"] = static_dossiers
+
         final_result = self._execute(
             "final_answer",
             AgentTask(
@@ -624,6 +728,8 @@ class MultiAgentOrchestrator:
                     "period": period,
                     "claims": claims,
                     "evidence_records": evidence_records,
+                    "claim_evidence_bundles": static_bundles,
+                    "section_dossiers": static_dossiers,
                     "conversation_brief": conversation_brief,
                     "skill_brief": self._skill_brief("report markdown citations charts", "final_answer", max_items=2),
                     "tables": tables,
@@ -646,6 +752,7 @@ class MultiAgentOrchestrator:
         static_state["report_json"] = report_json
         static_state["research_blackboard"] = research_blackboard
         static_state["pre_write_critic"] = pre_write_critic
+        static_state["section_dossiers"] = static_dossiers
         research_blackboard = update_blackboard_for_task(
             research_blackboard,
             "final_answer",
@@ -690,6 +797,7 @@ class MultiAgentOrchestrator:
             report_json["research_blackboard"] = research_blackboard
         self._write_json("citations.json", citations)
         self._write_json("charts.json", charts)
+        self._write_json("section_dossiers.json", static_dossiers)
         chart_consistency = audit_chart_consistency(
             charts=charts,
             claims=claims,
@@ -903,6 +1011,7 @@ class MultiAgentOrchestrator:
         diagnostic_full: bool = False,
         claim_contract: str = "",
         allow_document_enrichment: bool = True,
+        execution_deadline: float | None = None,
     ) -> Dict[str, str]:
         self.trace = []
         run_started_at = time.perf_counter()
@@ -999,6 +1108,7 @@ class MultiAgentOrchestrator:
             "planner_skill_brief": planning_skill_brief,
             "performance_profile": "fast" if fast else "default",
             "user_fast_mode": self.execution_tier == "user_fast",
+            "developer_fast_mode": self.execution_tier == "developer_fast",
             "search_engines": search_engines or [],
             "retrieval_ranking_mode": retrieval_ranking_mode,
             "enable_remote_data": bool(enable_remote_data),
@@ -1017,7 +1127,9 @@ class MultiAgentOrchestrator:
                 raw_data_root=self.raw_data_root,
             ),
             "pre_write_critic": {},
+            "execution_deadline": execution_deadline,
         }
+        self.state = state  # P0.5: expose for _execute deadline enforcement
         tasks = prepare_dynamic_tasks(
             plan=plan,
             research_topic=research_topic,
@@ -1120,8 +1232,11 @@ class MultiAgentOrchestrator:
             )
         official_manifest_path = self._write_json("official_evidence_manifest.json", official_artifacts["official_evidence_manifest"])
         evidence_coverage_path = self._write_json("evidence_coverage.json", official_artifacts["evidence_coverage"])
+        sec_filing_resolver_path = self._write_json("sec_filing_resolver.json", state.get("sec_filing_resolver", {}))
+        annual_report_sections_path = self._write_json("annual_report_sections.json", state.get("annual_report_sections", {}))
         self._write_json("citations.json", state.get("citations", []))
         self._write_json("charts.json", state.get("charts", []))
+        self._write_json("section_dossiers.json", state.get("section_dossiers", {}))
         chart_consistency = audit_chart_consistency(
             charts=list(state.get("charts", [])),
             claims=list(claims),
@@ -1268,6 +1383,8 @@ class MultiAgentOrchestrator:
             "pdf_sections": str(pdf_sections_path),
             "official_evidence_manifest": str(official_manifest_path),
             "evidence_coverage": str(evidence_coverage_path),
+            "sec_filing_resolver": str(sec_filing_resolver_path),
+            "annual_report_sections": str(annual_report_sections_path),
             "company_profile_extracted": str(company_profile_extracted_path),
             "tables": str(tables_path),
             "valuation_model": str(valuation_model_path),
@@ -1299,6 +1416,13 @@ class MultiAgentOrchestrator:
         pending = {task.task_id: task for task in tasks}
         results: Dict[str, TaskResult] = {}
         while pending:
+            # Deadline check before each task dispatch
+            deadline = state.get("execution_deadline")
+            if deadline is not None:
+                import time as _time_mod
+                if _time_mod.monotonic() >= deadline:
+                    state["_deadline_exceeded"] = True
+                    break
             ready = [
                 task
                 for task in pending.values()
@@ -1347,7 +1471,7 @@ class MultiAgentOrchestrator:
                 task=task,
                 state=state,
                 raw_data_root=self.raw_data_root,
-                profile=USER_FAST_DELIVERY_PROFILE if state.get("user_fast_mode") else (FAST_PROFILE if state.get("performance_profile") == "fast" else DEFAULT_PROFILE),
+                profile=DEVELOPER_FAST_PROFILE if state.get("developer_fast_mode") else (USER_FAST_DELIVERY_PROFILE if state.get("user_fast_mode") else (FAST_PROFILE if state.get("performance_profile") == "fast" else DEFAULT_PROFILE)),
             )
             result = self._execute(agent_key_for_task(enriched.task_type), enriched)
             results[enriched.task_id] = result
@@ -1359,6 +1483,7 @@ class MultiAgentOrchestrator:
                 result.output,
             )
             if enriched.task_type == "browser" and bool(state.get("allow_document_enrichment", True)):
+                attach_annual_report_sections_to_state(state=state, raw_data_root=self.raw_data_root)
                 attach_pdf_artifacts_to_state(state=state)
                 state["research_blackboard"] = update_blackboard_for_task(
                     state.get("research_blackboard", {}),
@@ -1467,8 +1592,36 @@ class MultiAgentOrchestrator:
 
     def _execute(self, agent_key: str, task: AgentTask) -> TaskResult:
         agent = self.agents[agent_key]
+        # Enforce remaining deadline per task: if a deadline is set, each task
+        # gets at most the remaining time.  A 30s floor prevents killing tasks
+        # that could succeed within a single LLM call + retry window.
+        state = getattr(self, "state", None) or {}
+        deadline = state.get("execution_deadline")
+        task_timeout = None
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            task_timeout = max(30.0, remaining)
         started_at = time.perf_counter()
-        result = agent.execute_task(task)
+        timeout_fired = False
+        if task_timeout is not None:
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = pool.submit(agent.execute_task, task)
+            try:
+                result = future.result(timeout=task_timeout)
+            except concurrent.futures.TimeoutError:
+                future.cancel()
+                result = TaskResult(
+                    task_id=task.task_id,
+                    agent_name=agent.name,
+                    status=AgentStatus.FAILED,
+                    output={},
+                    error=f"task exceeded {task_timeout:.0f}s deadline",
+                )
+                timeout_fired = True
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
+        else:
+            result = agent.execute_task(task)
         duration_sec = round(time.perf_counter() - started_at, 3)
         self.trace.append(
             {
@@ -1482,6 +1635,9 @@ class MultiAgentOrchestrator:
                 "duration_sec": duration_sec,
             }
         )
+        if timeout_fired:
+            self.state["_timeout_count"] = self.state.get("_timeout_count", 0) + 1
+            return result
         if result.status != AgentStatus.COMPLETED:
             raise RuntimeError(f"{agent.name} failed: {result.error}")
         return result
@@ -1507,7 +1663,7 @@ class MultiAgentOrchestrator:
         )
 
     def _run_verifier_rework_loop(self, state: Dict[str, Any]) -> None:
-        profile = USER_FAST_DELIVERY_PROFILE if state.get("user_fast_mode") else (FAST_PROFILE if state.get("performance_profile") == "fast" else DEFAULT_PROFILE)
+        profile = DEVELOPER_FAST_PROFILE if state.get("developer_fast_mode") else (USER_FAST_DELIVERY_PROFILE if state.get("user_fast_mode") else (FAST_PROFILE if state.get("performance_profile") == "fast" else DEFAULT_PROFILE))
         max_rounds = int(profile.get("verifier_max_rework_rounds", 1) or 0)
         verification_report = state.get("verification_report", {})
         if max_rounds <= 0 or not isinstance(verification_report, dict):
@@ -1528,6 +1684,9 @@ class MultiAgentOrchestrator:
                 state["gap_resolution_trace"] = seed_trace
             conversation_brief = refresh_conversation_brief(state)
 
+            bundles = self._ensure_claim_evidence_bundles(state)
+            dossiers = self._build_section_dossiers(state)
+
             final_result = self._execute(
                 "final_answer",
                 AgentTask(
@@ -1540,6 +1699,8 @@ class MultiAgentOrchestrator:
                         "period": str(state.get("period", "")),
                         "claims": list(state.get("claims", [])),
                         "evidence_records": list(state.get("evidence_records", [])),
+                        "claim_evidence_bundles": bundles,
+                        "section_dossiers": dossiers,
                         "revision_request": revision_request,
                         "verification_report": verification_report,
                         "prior_markdown": str(state.get("markdown", "")),
@@ -1671,6 +1832,7 @@ class MultiAgentOrchestrator:
         self._write_json("valuation_model.json", analysis.get("valuation_model", {}))
         self._write_json("valuation_sensitivity.json", analysis.get("valuation_sensitivity", {}))
         self._write_json("research_blackboard.json", state.get("research_blackboard", {}))
+        self._write_json("section_dossiers.json", state.get("section_dossiers", {}))
         pdf = dict(state.get("pdf_artifacts", {})) if isinstance(state.get("pdf_artifacts"), dict) else {}
         self._write_json("company_profile_extracted.json", pdf.get("company_profile_extracted", {}))
         self._write_json("charts.json", list(state.get("charts", [])))
@@ -1752,7 +1914,7 @@ class MultiAgentOrchestrator:
                 continue
             executed_keys.add(agent_key)
             merge_type = self._AGENT_KEY_TO_MERGE_TYPE.get(agent_key, agent_key)
-            profile = USER_FAST_DELIVERY_PROFILE if state.get("user_fast_mode") else (FAST_PROFILE if state.get("performance_profile") == "fast" else DEFAULT_PROFILE)
+            profile = DEVELOPER_FAST_PROFILE if state.get("developer_fast_mode") else (USER_FAST_DELIVERY_PROFILE if state.get("user_fast_mode") else (FAST_PROFILE if state.get("performance_profile") == "fast" else DEFAULT_PROFILE))
             conversation_brief = refresh_conversation_brief(state)
             repair_params: Dict[str, Any] = {
                 "research_topic": state.get("research_topic", ""),
@@ -1832,7 +1994,7 @@ class MultiAgentOrchestrator:
         round_idx: int,
     ) -> None:
         """Re-run FinalAnswerAgent with delivery quality remediation constraints."""
-        profile = USER_FAST_DELIVERY_PROFILE if state.get("user_fast_mode") else (FAST_PROFILE if state.get("performance_profile") == "fast" else DEFAULT_PROFILE)
+        profile = DEVELOPER_FAST_PROFILE if state.get("developer_fast_mode") else (USER_FAST_DELIVERY_PROFILE if state.get("user_fast_mode") else (FAST_PROFILE if state.get("performance_profile") == "fast" else DEFAULT_PROFILE))
         constraints = remediation.get("planner_constraints", [])
         constraints_text = "\n".join(f"- {c}" for c in constraints) if isinstance(constraints, list) else ""
         revision_request = (
@@ -1844,6 +2006,8 @@ class MultiAgentOrchestrator:
         )
         conversation_brief = refresh_conversation_brief(state)
         analysis = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
+        bundles = self._ensure_claim_evidence_bundles(state)
+        dossiers = self._build_section_dossiers(state)
         result = self._execute(
             "final_answer",
             AgentTask(
@@ -1856,6 +2020,8 @@ class MultiAgentOrchestrator:
                     "period": str(state.get("period", "")),
                     "claims": list(state.get("claims", [])),
                     "evidence_records": list(state.get("evidence_records", [])),
+                    "claim_evidence_bundles": bundles,
+                    "section_dossiers": dossiers,
                     "revision_request": revision_request,
                     "prior_markdown": str(state.get("markdown", "")),
                     "conversation_brief": conversation_brief,
@@ -1914,7 +2080,7 @@ class MultiAgentOrchestrator:
 
     def _run_delivery_rework_loop(self, state: Dict[str, Any]) -> None:
         """Delivery-gate rework loop: evaluate, dispatch repair agents, rewrite, re-verify."""
-        profile = USER_FAST_DELIVERY_PROFILE if state.get("user_fast_mode") else (FAST_PROFILE if state.get("performance_profile") == "fast" else DEFAULT_PROFILE)
+        profile = DEVELOPER_FAST_PROFILE if state.get("developer_fast_mode") else (USER_FAST_DELIVERY_PROFILE if state.get("user_fast_mode") else (FAST_PROFILE if state.get("performance_profile") == "fast" else DEFAULT_PROFILE))
         max_rounds = int(profile.get("delivery_rework_rounds", 2) or 0)
         if max_rounds <= 0:
             return
@@ -2590,11 +2756,31 @@ def enrich_task_parameters(
             params["claims"] = list(state.get("claims", []))
         if not isinstance(params.get("evidence_records"), list) or not params.get("evidence_records"):
             params["evidence_records"] = list(state.get("evidence_records", []))
+        # enrich_task_parameters is standalone, call builders directly
+        _derived = build_derived_evidence(state)
+        state.setdefault("derived_evidence", _derived)
+        _state_evidence = list(state.get("evidence_records", [])) if isinstance(state.get("evidence_records"), list) else []
+        _state_claims = list(state.get("claims", [])) if isinstance(state.get("claims"), list) else []
+        bundles = build_claim_evidence_bundles(_state_claims, _state_evidence, _derived)
+        state.setdefault("claim_evidence_bundles", bundles)
+        params.setdefault("claim_evidence_bundles", bundles)
+
+        _dossiers = SectionDossierBuilder().build(
+            state=state,
+            claims=list(state.get("claims", [])) if isinstance(state.get("claims"), list) else [],
+            evidence_records=list(state.get("evidence_records", [])) if isinstance(state.get("evidence_records"), list) else [],
+            analysis_artifacts=dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {},
+            derived_evidence=_derived,
+            bundles=bundles,
+        )
+        state.setdefault("section_dossiers", _dossiers)
+        params.setdefault("section_dossiers", _dossiers)
         analysis_artifacts = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
         params.setdefault("tables", analysis_artifacts.get("tables", []))
         params.setdefault("financial_metrics", analysis_artifacts.get("financial_metrics", {}))
         params.setdefault("pdf_sections", analysis_artifacts.get("pdf_sections", []))
         params.setdefault("company_profile", analysis_artifacts.get("company_profile", {}))
+        params.setdefault("annual_report_sections", state.get("annual_report_sections", {}))
         params.setdefault("quality_remediation_plan", dict(state.get("quality_remediation_plan", {})) if isinstance(state.get("quality_remediation_plan"), dict) else {})
         params.setdefault("repair_constraints", dict(state.get("repair_constraints", {})) if isinstance(state.get("repair_constraints"), dict) else {})
         params.setdefault("research_blackboard", dict(state.get("research_blackboard", {})) if isinstance(state.get("research_blackboard"), dict) else {})
@@ -2655,7 +2841,19 @@ def merge_task_result(state: Dict[str, Any], task_type: str, result: TaskResult)
             result.output.get("claims", []),
             key_names=["claim_id", "claim_text"],
         )
-        state["analysis_artifacts"] = result.output.get("analysis_artifacts", {})
+        previous_artifacts = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
+        incoming_artifacts = result.output.get("analysis_artifacts", {})
+        artifacts = dict(incoming_artifacts) if isinstance(incoming_artifacts, dict) else {}
+        for key in [
+            "annual_report_required",
+            "annual_report_sections",
+            "annual_report_section_count",
+            "annual_report_degraded_reason",
+            "sec_filing_resolver",
+        ]:
+            if key in previous_artifacts and key not in artifacts:
+                artifacts[key] = previous_artifacts[key]
+        state["analysis_artifacts"] = artifacts
     elif task_type in {
         "identity_profile",
         "three_statement_analysis",
@@ -2717,6 +2915,7 @@ def merge_task_result(state: Dict[str, Any], task_type: str, result: TaskResult)
             report_json["charts"] = charts
             report_json["compliance_disclosure"] = {"included": True, "rating_definition": "未评级"}
             report_json["analysis_artifacts"] = state.get("analysis_artifacts", {})
+            report_json["section_dossiers"] = state.get("section_dossiers", {})
         state["report_json"] = report_json
     elif task_type == "verifier":
         state["verification_report"] = result.output.get("verification_report", {})
@@ -2759,6 +2958,97 @@ def attach_pdf_artifacts_to_state(state: Dict[str, Any]) -> None:
             section_records + table_records,
             key_names=["evidence_id", "sample_id", "source_url"],
         )
+
+
+def attach_annual_report_sections_to_state(state: Dict[str, Any], raw_data_root: str = "data/raw/real_data") -> None:
+    """Resolve, fetch, parse, and merge SEC 10-K sections for US FY reports."""
+
+    if isinstance(state.get("annual_report_sections"), dict):
+        return
+    symbol = str(state.get("symbol") or "").strip().upper()
+    period = str(state.get("period") or "").strip().upper()
+    if not _requires_sec_annual_report(symbol=symbol, period=period):
+        return
+
+    analysis = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
+    if not bool(state.get("enable_remote_data", False)):
+        meta = {
+            "status": "skipped",
+            "symbol": symbol,
+            "period": period,
+            "failure_reason": "remote_sources_disabled",
+        }
+        state["sec_filing_resolver"] = meta
+        state["annual_report_sections"] = {"sections": {}, "coverage": {}, "section_count": 0, "meta": meta}
+        state["annual_report_required"] = True
+        state["collaborative_degraded_report"] = True
+        analysis["annual_report_required"] = True
+        analysis["annual_report_degraded_reason"] = "remote_sources_disabled"
+        state["analysis_artifacts"] = analysis
+        return
+
+    chart_dir = Path(str(state.get("chart_output_dir") or "data/outputs/multi_agent/charts"))
+    output_dir = chart_dir.parent
+    payload = resolve_sec_annual_filing(
+        symbol=symbol,
+        period=period,
+        config_path=str(state.get("data_source_config_path") or "configs/data_sources.yaml"),
+        raw_data_root=raw_data_root,
+        cache_dir=output_dir / "sec_filings",
+        fetch_document=True,
+    )
+    data = payload.to_dict()
+    resolver_meta = dict(data.get("meta", {}))
+    state["sec_filing_resolver"] = resolver_meta
+
+    records = list(state.get("evidence_records", [])) if isinstance(state.get("evidence_records"), list) else []
+    filing_records = data.get("evidence_records", []) if isinstance(data.get("evidence_records"), list) else []
+    if filing_records:
+        records = _merge_records(records, filing_records, key_names=["evidence_id", "sample_id", "source_url"])
+
+    sections_input = data.get("sections_input", {}) if isinstance(data.get("sections_input"), dict) else {}
+    extractor = AnnualReportSectionExtractor(
+        html_text=str(sections_input.get("html_text") or ""),
+        html_path=str(sections_input.get("html_path") or ""),
+    )
+    annual_sections = extractor.extract(
+        symbol=symbol,
+        period=period,
+        filing_url=str(sections_input.get("filing_url") or resolver_meta.get("filing_url") or ""),
+        filing_title=str(sections_input.get("filing_title") or ""),
+        filing_evidence_id=str(sections_input.get("filing_evidence_id") or ""),
+    )
+    section_records = annual_sections_to_evidence_records(annual_sections)
+    if section_records:
+        records = _merge_records(records, section_records, key_names=["evidence_id", "sample_id", "source_url"])
+
+    annual_sections["resolver_meta"] = resolver_meta
+    state["annual_report_sections"] = annual_sections
+    state["evidence_records"] = records
+    state["annual_report_required"] = True
+
+    analysis["annual_report_required"] = True
+    analysis["annual_report_sections"] = annual_sections
+    analysis["annual_report_section_count"] = int(annual_sections.get("section_count") or 0)
+    analysis["sec_filing_resolver"] = resolver_meta
+    if not section_records:
+        state["collaborative_degraded_report"] = True
+        reason = str(resolver_meta.get("failure_reason") or resolver_meta.get("status") or "annual_report_sections_missing")
+        analysis["annual_report_degraded_reason"] = reason
+        repair = dict(state.get("repair_constraints", {})) if isinstance(state.get("repair_constraints"), dict) else {}
+        repair["annual_report_required_but_missing"] = True
+        repair["annual_report_failure_reason"] = reason
+        state["repair_constraints"] = repair
+    else:
+        analysis["annual_report_degraded_reason"] = ""
+    state["analysis_artifacts"] = analysis
+
+
+def _requires_sec_annual_report(symbol: str, period: str) -> bool:
+    if not symbol or not period.startswith("FY"):
+        return False
+    # For now, only US tickers without exchange suffix use SEC 10-K routing.
+    return "." not in symbol
 
 
 def _pdf_sections_as_evidence_records(sections: Any, symbol: str, period: str) -> List[Dict[str, Any]]:

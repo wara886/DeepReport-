@@ -34,9 +34,20 @@ GENERIC_GOVERNANCE_PHRASES = [
 ]
 
 FINAL_ANSWER_SYSTEM_PROMPT = """You are FinalAnswerAgent in a financial research multi-agent system.
-Write a concise Chinese investment research report from provided claims and evidence.
-Use citations like [evidence_id] after factual claims.
-Do not invent numbers, sources, or unsupported conclusions.
+Write a concise Chinese investment research report from provided claim_evidence_bundles.
+
+Each bundle contains:
+- claim_text: the claim to write about
+- supporting_evidence: evidence content that grounds this claim
+- grounding_status: "grounded" (well-supported, at least one high-quality evidence),
+  "partial" (limited evidence), or "unverified" (unsupported)
+
+Rules:
+- Only write claims where grounding_status is "grounded" or "partial"
+- Never write claims with grounding_status "unverified" in the main report body
+- Use citations like [evidence_id] after factual claims
+- Move unsupported content to a data-gap appendix
+- Do not invent numbers, sources, or unsupported conclusions
 Return only valid JSON:
 {"markdown":"# ...","summary":"...","title":"...","citation_count":3}
 
@@ -98,6 +109,16 @@ class FinalAnswerAgent(BaseAgent):
         )
         all_claims = _filter_reportable_claims(all_claims, financial_metrics)
 
+        # Parse claim_evidence_bundles for grounded writing
+        claim_evidence_bundles = task.parameters.get("claim_evidence_bundles", [])
+        if not isinstance(claim_evidence_bundles, list):
+            claim_evidence_bundles = []
+
+        # Parse section_dossiers for depth enforcement
+        section_dossiers = task.parameters.get("section_dossiers", {})
+        if not isinstance(section_dossiers, dict):
+            section_dossiers = {}
+
         prompt_claims, claim_pack_meta = pack_claims(
             all_claims,
             max_items=max_claims,
@@ -115,6 +136,7 @@ class FinalAnswerAgent(BaseAgent):
         metadata: Dict[str, Any] = {
             "llm_used": False,
             "claim_pack_meta": claim_pack_meta,
+            "claim_evidence_bundles_count": len(claim_evidence_bundles),
             "evidence_pack_meta": evidence_pack_meta,
             "revision_requested": bool(revision_request),
             "conversation_brief_chars": len(conversation_brief),
@@ -144,6 +166,7 @@ class FinalAnswerAgent(BaseAgent):
                         topic=topic,
                         claims=prompt_claims,
                         evidence_records=evidence_records,
+                        claim_evidence_bundles=claim_evidence_bundles,
                         revision_request=revision_request,
                         verification_report=verification_report if isinstance(verification_report, dict) else {},
                         prior_markdown=prior_markdown,
@@ -162,6 +185,7 @@ class FinalAnswerAgent(BaseAgent):
                         research_blackboard=research_blackboard,
                         pre_write_critic=pre_write_critic,
                         section_evidence=section_evidence,
+                        section_dossiers=section_dossiers,
                     ),
                     system_prompt=FINAL_ANSWER_SYSTEM_PROMPT,
                     extra_body={"max_tokens": int(task.parameters.get("max_tokens", 4000) or 4000)},
@@ -178,6 +202,7 @@ class FinalAnswerAgent(BaseAgent):
                 metadata["llm_error"] = str(exc)
 
         markdown = normalize_report_headings(markdown)
+        markdown = remove_broken_or_half_sentences(markdown)
         markdown = backfill_empty_sections_from_claims(markdown, all_claims)
         markdown = insert_missing_sections_from_claims(markdown, all_claims)
         markdown = hard_backfill_quality_sections(markdown, all_claims, quality_remediation_plan, repair_constraints)
@@ -187,7 +212,16 @@ class FinalAnswerAgent(BaseAgent):
         if degraded_report:
             markdown = _append_degraded_report_note(markdown, pre_write_critic, pre_write_rework_history)
         markdown = normalize_report_headings(markdown)
+        markdown = insert_deterministic_blocks_from_dossiers(markdown, section_dossiers)
+        markdown = enforce_section_depth(markdown, section_dossiers)
         markdown = _sanitize_generic_phrases(markdown)
+        # Final cleanup pass — after all deterministic overrides that may re-insert bad content
+        markdown = remove_debug_leakage(markdown)
+        markdown = remove_internal_ids(markdown)
+        markdown = remove_template_phrases(markdown)
+        markdown = replace_invalid_sections_with_gap(markdown)
+        markdown = remove_broken_or_half_sentences(markdown)
+        markdown, blocker_meta = final_blocker_scan(markdown)
         markdown = _clean_to_numbered_citations(markdown, evidence_records if isinstance(evidence_records, list) else [])
         html = _markdown_to_simple_html(markdown, title=topic)
         report_json = {
@@ -197,11 +231,17 @@ class FinalAnswerAgent(BaseAgent):
             "evidence_count": len(evidence_records) if isinstance(evidence_records, list) else 0,
             "claims": all_claims,
             "evidence_records": evidence_records if isinstance(evidence_records, list) else [],
+            "claim_evidence_bundles": claim_evidence_bundles,
             "research_blackboard": research_blackboard if isinstance(research_blackboard, dict) else {},
             "pre_write_critic": pre_write_critic if isinstance(pre_write_critic, dict) else {},
             "degraded_report": degraded_report,
             "pre_write_rework_history": pre_write_rework_history if isinstance(pre_write_rework_history, list) else [],
+            "section_dossiers": section_dossiers,
+            "delivery_status": blocker_meta.get("delivery_status", "normal"),
+            "sparse_or_invalid_sections": blocker_meta.get("sparse_or_invalid_sections", []),
+            "user_warning": blocker_meta.get("user_warning", ""),
         }
+        metadata["delivery_status"] = blocker_meta.get("delivery_status", "normal")
 
         return self.success(
             task,
@@ -300,6 +340,32 @@ def _compact_blackboard(raw: Any) -> Dict[str, Any]:
     return compact
 
 
+def _compact_bundles(bundles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Compact claim-evidence bundles for prompt injection, avoiding text bloat."""
+    if not bundles:
+        return []
+    compact: List[Dict[str, Any]] = []
+    for b in bundles:
+        if not isinstance(b, dict):
+            continue
+        supporting = b.get("supporting_evidence", [])
+        if isinstance(supporting, list):
+            supporting = [
+                {"evidence_id": e.get("evidence_id"), "trust_level": e.get("trust_level"), "source_type": e.get("source_type")}
+                for e in supporting
+                if isinstance(e, dict)
+            ]
+        compact.append({
+            "claim_id": b.get("claim_id"),
+            "section_name": b.get("section_name"),
+            "claim_text": str(b.get("claim_text", ""))[:300],
+            "grounding_status": b.get("grounding_status", "unverified"),
+            "allowed_in_report": bool(b.get("allowed_in_report", False)),
+            "supporting_evidence_count": len(supporting),
+        })
+    return compact
+
+
 # ── section evidence contract ──────────────────────────────────────────
 
 def _build_section_evidence_status(
@@ -391,6 +457,7 @@ def _build_final_prompt(
     topic: str,
     claims: List[Dict[str, Any]],
     evidence_records: Any,
+    claim_evidence_bundles: List[Dict[str, Any]] | None = None,
     revision_request: str = "",
     verification_report: Dict[str, Any] | None = None,
     prior_markdown: str = "",
@@ -409,6 +476,7 @@ def _build_final_prompt(
     research_blackboard: Any = None,
     pre_write_critic: Any = None,
     section_evidence: Dict[str, str] | None = None,
+    section_dossiers: Dict[str, Any] | None = None,
 ) -> str:
     evidence = evidence_records if isinstance(evidence_records, list) else []
     compact_evidence = [
@@ -480,6 +548,14 @@ def _build_final_prompt(
         f"Claims: {json.dumps(compact_claims, ensure_ascii=False)}",
         f"Evidence: {json.dumps(compact_evidence, ensure_ascii=False)}",
         (
+            "Claim-Evidence Bundles (each claim pre-bound to supporting evidence "
+            "with grounding_status: grounded/partial/unverified):\n"
+            + json.dumps(_compact_bundles(claim_evidence_bundles), ensure_ascii=False)
+            + "\n"
+            if claim_evidence_bundles
+            else ""
+        ),
+        (
             "Write the report in Chinese financial research prose. "
             "Use exactly these Markdown section headers: "
             "执行摘要, 业务概览, 股权结构与公司治理, 战略与主营业务, 三表摘要, 财务分析, "
@@ -541,6 +617,34 @@ def _build_final_prompt(
     )
     if artifact_context:
         prompt.append(artifact_context)
+
+    if section_dossiers:
+        compact_dossiers = {}
+        for sk, sd in section_dossiers.items():
+            if isinstance(sd, dict):
+                compact_dossiers[sk] = {
+                    "section_title": sd.get("section_title", ""),
+                    "key_facts": sd.get("key_facts", [])[:6],
+                    "key_metrics": sd.get("key_metrics", [])[:6],
+                    "tables": sd.get("tables", [])[:3],
+                    "caveats": sd.get("caveats", [])[:3],
+                    "suggested_paragraphs": sd.get("suggested_paragraphs", [])[:2],
+                    "min_content_level": sd.get("min_content_level", "full"),
+                    "evidence_strength": sd.get("evidence_strength", "medium"),
+                    "supported_claim_count": len(sd.get("supported_claims", [])),
+                    "supporting_evidence_count": len(sd.get("supporting_evidence_ids", [])),
+                }
+        prompt.append(
+            "Section Dossiers (per-section writing briefs with key facts, metrics, "
+            "evidence strength, and suggested fallback paragraphs):\n"
+            + json.dumps(compact_dossiers, ensure_ascii=False)
+            + "\n\nWrite the report organized by section. For each section:\n"
+            + "1. Use the dossier's key_facts, key_metrics, and tables as source material\n"
+            + "2. Write substantive prose (3-5+ sentences per section)\n"
+            + "3. If evidence_strength is 'weak' or min_content_level is 'data_gap', write a brief\n"
+            + "   data-gap note instead of filling with generic content\n"
+            + "4. Use citation IDs like [evidence_id] after factual statements\n"
+        )
     section_claim_map = {
         "投资结论": conclusion_texts,
         "估值观察": valuation_texts,
@@ -721,7 +825,397 @@ def _collect_prioritized_evidence_ids(claims: List[Dict[str, Any]]) -> List[str]
     return ordered
 
 
+SECTION_DEPTH_THRESHOLDS = {
+    "executive_summary": 120,
+    "business_overview": 160,
+    "financial_analysis": 220,
+    "peer_compare": 120,
+    "valuation": 180,
+    "risks": 160,
+    "conclusion": 160,
+}
+
+SECTION_HEADING_MAP = {
+    "executive_summary": "执行摘要",
+    "business_overview": "业务概览",
+    "ownership_governance": "股权结构与公司治理",
+    "strategy_business": "战略与主营业务",
+    "three_statement_summary": "三表摘要",
+    "financial_analysis": "财务分析",
+    "peer_compare": "同行对比",
+    "valuation": "估值观察",
+    "valuation_sensitivity": "估值敏感性",
+    "risks": "风险评估",
+    "conclusion": "投资结论",
+}
+
 def normalize_report_headings(markdown: str) -> str:
+    """Normalize common report section headings to the configured outline."""
+    text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return text
+
+    alias_to_section = {
+        "摘要": "executive_summary",
+        "执行摘要": "executive_summary",
+        "核心摘要": "executive_summary",
+        "公司概览": "business_overview",
+        "业务概览": "business_overview",
+        "业务分析": "business_overview",
+        "三表摘要": "three_statement_summary",
+        "财务报表": "three_statement_summary",
+        "财务摘要": "three_statement_summary",
+        "财务分析": "financial_analysis",
+        "同业对比": "peer_compare",
+        "同行对比": "peer_compare",
+        "可比公司": "peer_compare",
+        "估值": "valuation",
+        "估值观察": "valuation",
+        "估值分析": "valuation",
+        "风险": "risks",
+        "风险提示": "risks",
+        "风险评估": "risks",
+        "投资结论": "conclusion",
+        "结论": "conclusion",
+        "executive summary": "executive_summary",
+        "business overview": "business_overview",
+        "financial statements": "three_statement_summary",
+        "financial analysis": "financial_analysis",
+        "peer comparison": "peer_compare",
+        "valuation": "valuation",
+        "risks": "risks",
+        "risk factors": "risks",
+        "investment conclusion": "conclusion",
+    }
+    canonical_titles = {
+        item["section_name"]: str(item["section_title"])
+        for item in default_company_outline()
+        if isinstance(item, dict) and item.get("section_name") and item.get("section_title")
+    }
+    canonical_titles.update({k: v for k, v in SECTION_HEADING_MAP.items() if v})
+
+    lines: List[str] = []
+    seen_sections = set()
+    for raw_line in text.split("\n"):
+        line = raw_line.rstrip()
+        match = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
+        if not match:
+            lines.append(line)
+            continue
+
+        level, heading = match.groups()
+        clean_heading = re.sub(r"^[\d一二三四五六七八九十]+[\.、\)]\s*", "", heading.strip())
+        normalized_key = re.sub(r"\s+", " ", clean_heading).strip().lower()
+        section_key = alias_to_section.get(clean_heading) or alias_to_section.get(normalized_key)
+        if not section_key:
+            lines.append(line)
+            continue
+
+        title = canonical_titles.get(section_key, clean_heading)
+        heading_level = "#" if len(level) == 1 else "##"
+        if section_key in seen_sections:
+            heading_level = "###"
+        else:
+            seen_sections.add(section_key)
+        lines.append(f"{heading_level} {title}")
+
+    output = "\n".join(lines)
+    output = re.sub(r"\n{3,}", "\n\n", output)
+    return output.strip()
+
+
+HALF_SENTENCE_PATTERNS = [
+    (r'相关的[。，,．]', ''),
+    (r'(?:需要|需)关注[。，,．]', ''),
+    (r'(?:需关注|需注意)[^。\n]{0,30}相关的[。，,．]', ''),
+    (r'主要体现为[。，,．]', ''),
+    (r'包括：[^。\n]*。', ''),
+    (r'作为上市公司[。，,．]', ''),
+    (r'具备完善的公司治理结构[。，,．]', '资料缺口：本节暂无充足的可验证证据支持详细分析。'),
+    (r'未分类领域[。，,．]', ''),
+    (r'持续深耕[^。\n]{0,20}[。，,．]', ''),
+    (r'(?:巩固|提升)核心竞争力[^。\n]{0,20}[。，,．]', ''),
+    (r'长期发展空间[^。\n]{0,10}[。，,．]', ''),
+]
+
+# Debug/internal field names that must never appear in the final report body
+DEBUG_LEAK_PATTERNS = [
+    "metric_count",
+    "rejected_metric_count",
+    "statement_line_item_count",
+    "Risk-related claim evidence count",
+    "supported metrics",
+]
+
+# Template/buzzword phrases that indicate hollow content
+TEMPLATE_PHRASES = [
+    "持续深耕",
+    "巩固核心竞争力",
+    "长期发展空间",
+]
+
+
+def enforce_section_depth(markdown: str, section_dossiers: dict) -> str:
+    """Check each core section for minimum content depth; use suggested_paragraphs as fallback."""
+    if not section_dossiers:
+        return markdown
+    output = markdown
+    for section_key, threshold in SECTION_DEPTH_THRESHOLDS.items():
+        heading = SECTION_HEADING_MAP.get(section_key, "")
+        if not heading:
+            continue
+        header_pattern = re.compile(rf"(?m)^##\s*{re.escape(heading)}\s*$")
+        match = header_pattern.search(output)
+        if not match:
+            continue
+        next_header = re.search(r"(?m)^##\s+", output[match.end():])
+        start = match.end()
+        end = start + next_header.start() if next_header else len(output)
+        body = output[start:end].strip()
+        chinese_chars = len(re.sub(r"[\s\n\r#\-*:：;；,，.。()\[\]【】""''a-zA-Z0-9]", "", body))
+        if chinese_chars >= threshold:
+            continue
+        dossier = section_dossiers.get(section_key, {})
+        if not isinstance(dossier, dict):
+            continue
+        if dossier.get("min_content_level") == "data_gap":
+            continue
+        suggestions = dossier.get("suggested_paragraphs", [])
+        if suggestions:
+            replacement = "\n\n".join(suggestions[:2])
+            output = output[:start] + "\n\n" + replacement + "\n\n" + output[end:]
+        elif dossier.get("key_facts"):
+            facts = dossier["key_facts"]
+            # P1.3: Filter out orphan numeric facts that are just counts or bare numbers
+            meaningful = [f for f in facts if not re.match(r'^\d+$', str(f).strip()) and len(str(f).strip()) > 3]
+            if meaningful:
+                replacement = "本节基于已有数据概述：\n" + "\n".join(f"- {f}" for f in meaningful[:5])
+            else:
+                replacement = (
+                    "本报告已获取部分财务、估值与市场数据，但当前摘要证据不足以形成完整年度结论。"
+                    "以下分析以已验证三表、估值和来源信息为准，并在相关章节标注数据缺口。"
+                )
+            output = output[:start] + "\n\n" + replacement + "\n\n" + output[end:]
+    return output
+
+
+def insert_deterministic_blocks_from_dossiers(markdown: str, section_dossiers: dict) -> str:
+    """Ensure deterministic table blocks survive the LLM draft."""
+    if not isinstance(section_dossiers, dict) or not section_dossiers:
+        return markdown
+    output = markdown
+    for section_key, dossier in section_dossiers.items():
+        if not isinstance(dossier, dict):
+            continue
+        blocks = [str(item).strip() for item in dossier.get("deterministic_blocks", []) if str(item).strip()]
+        if not blocks:
+            continue
+        heading = SECTION_HEADING_MAP.get(str(section_key), "")
+        if not heading:
+            continue
+        for block in blocks:
+            if block in output:
+                continue
+            output = _append_to_section(output, heading, block)
+    return output
+
+
+def _append_to_section(markdown: str, heading: str, block: str) -> str:
+    header_pattern = re.compile(rf"(?m)^##\s*{re.escape(heading)}\s*$")
+    match = header_pattern.search(markdown)
+    if not match:
+        return markdown.rstrip() + f"\n\n## {heading}\n\n{block}\n"
+    next_header = re.search(r"(?m)^##\s+", markdown[match.end():])
+    end = match.end() + next_header.start() if next_header else len(markdown)
+    return markdown[:end].rstrip() + "\n\n" + block.strip() + "\n\n" + markdown[end:].lstrip()
+
+
+def remove_broken_or_half_sentences(markdown: str) -> str:
+    """Detect and remove/replace half-sentences and empty template phrases."""
+    output = markdown
+    for pattern, replacement in HALF_SENTENCE_PATTERNS:
+        output = re.sub(pattern, replacement, output)
+    # Clean up double spaces/blank lines left after removal
+    output = re.sub(r" +", " ", output)
+    output = re.sub(r"\n{3,}", "\n\n", output)
+    return output.strip()
+
+
+def remove_debug_leakage(markdown: str) -> str:
+    """Strip internal debug/tracking field names from the report body."""
+    output = markdown
+    for pattern in DEBUG_LEAK_PATTERNS:
+        output = re.sub(rf'\b{re.escape(pattern)}\b', '', output)
+    # Also strip standalone "cl_" prefix with digits (e.g. "cl_0001")
+    output = re.sub(r'\bcl_\d{4}\b', '', output)
+    # Strip "未分类领域" as standalone text
+    output = re.sub(r'未分类领域', '', output)
+    # Clean up artifacts left after removal
+    output = re.sub(r'[=:]\s*[,，]?\s*', '', output)
+    output = re.sub(r' +', ' ', output)
+    output = re.sub(r'\n{3,}', '\n\n', output)
+    return output.strip()
+
+
+def remove_internal_ids(markdown: str) -> str:
+    """Strip internal entity IDs (claim_id:key, ev_000, etc.) from body text."""
+    # Remove "cl_XXXX:metric_key" or "cl_XXXX: readable label" patterns
+    output = re.sub(r'\bcl_\d{4}:[\w_]+', '', markdown)
+    # Remove standalone "cl_XXXX" not already caught
+    output = re.sub(r'\bcl_\d{4}\b', '', output)
+    # Remove evidence ID prefixes in running text (not citation brackets like [ev_001])
+    output = re.sub(r'(?<!\[)\bev_\d+\b(?!\])', '', output)
+    # Clean up double spaces and blank lines
+    output = re.sub(r' +', ' ', output)
+    output = re.sub(r'\n{3,}', '\n\n', output)
+    return output.strip()
+
+
+def remove_template_phrases(markdown: str) -> str:
+    """Remove hollow template/buzzword phrases from the report body."""
+    output = markdown
+    for phrase in TEMPLATE_PHRASES:
+        output = re.sub(re.escape(phrase), '', output)
+    # Clean up artifacts
+    output = re.sub(r' +', ' ', output)
+    output = re.sub(r'\n{3,}', '\n\n', output)
+    return output.strip()
+
+
+# Patterns that indicate raw SEC companyfacts dump in report body
+COMPANYFACTS_DUMP_PATTERNS = [
+    r'Revenues\d{6,}',
+    r'NetIncomeLoss\d{6,}',
+    r'CashAndCashEquivalentsAtCarryingValue',
+    r'NetCashProvidedByUsedInOperatingActivities',
+    r'Assets\d{6,}',
+    r'Liabilities\d{6,}',
+    r'companyfacts?\d{6,}',
+]
+
+# Template residue / half-sentence patterns for section-level detection
+INVALID_SECTION_PATTERNS = [
+    r'\b需关注.*?相关的',
+    r'的关键在于',
+    r'将共同决定其',
+    r'在上市公司领域',
+    r'所在领域的业务布局',
+    r'下文章节展开分析',
+]
+
+GAP_REPLACEMENTS = {
+    "执行摘要": "本报告已获取部分财务与市场数据，但当前摘要材料不足以形成完整结论。以下分析以已验证的三表、估值与来源信息为准，并在相关章节标注数据缺口。",
+    "业务概览": "当前未获取到足够的公司画像信息，包括行业分类、主营业务描述和业务分部信息。本节不直接使用 SEC companyfacts 原始指标拼接公司介绍，相关财务数据将在三表摘要和财务分析中展开。",
+    "股权结构与公司治理": "本次自动检索未获得足够的官方治理结构证据，包括年报治理章节、董事会构成、主要股东或 proxy 文件。因此本节不对股权结构和治理质量作展开判断。",
+    "战略与主营业务": "本次自动检索未获得足够的战略与主营业务文本证据，因此不对公司战略执行作定性判断。当前仅基于收入、盈利能力、现金流和资产负债结构进行经营表现观察。",
+}
+
+DEFAULT_GAP_NOTE = "本节数据缺口：当前自动检索未获得足够的可验证信息展开分析。"
+
+
+def _extract_section_body(markdown: str, heading: str) -> tuple[str | None, int, int]:
+    """Extract a section body from markdown given its ## heading. Returns (body, start, end)."""
+    pattern = re.compile(rf"(?m)^##\s*{re.escape(heading)}\s*$")
+    match = pattern.search(markdown)
+    if not match:
+        return None, -1, -1
+    next_header = re.search(r"(?m)^##\s+", markdown[match.end():])
+    start = match.end()
+    end = start + next_header.start() if next_header else len(markdown)
+    body = markdown[start:end].strip()
+    return body, start, end
+
+
+def _body_is_orphan_numeric(body: str) -> bool:
+    """Detect if body contains only isolated number bullets (e.g. '- 10\\n- 9')."""
+    lines = [l.strip() for l in body.split("\n") if l.strip()]
+    if not lines:
+        return False
+    # Check if all non-empty lines are just "- <number>"
+    numeric_bullets = sum(1 for l in lines if re.match(r'^-\s*\d+(?:\.\d+)?\s*$', l))
+    # If most lines are numeric bullets and there's no Chinese prose with >2 chars
+    has_chinese = bool(re.search(r'[一-鿿]{3,}', body))
+    return numeric_bullets >= 2 and not has_chinese
+
+
+def _body_has_companyfacts_dump(body: str) -> bool:
+    """Detect raw SEC companyfacts tag dumps in body."""
+    for pat in COMPANYFACTS_DUMP_PATTERNS:
+        if re.search(pat, body):
+            return True
+    return False
+
+
+def _body_has_invalid_patterns(body: str) -> bool:
+    """Detect half-sentence/template residue patterns."""
+    for pat in INVALID_SECTION_PATTERNS:
+        if re.search(pat, body):
+            return True
+    # Trailing comma/colon/顿号 on a short final line (under 30 chars after trim)
+    # catches orphaned punctuation after word-level template removal
+    last_line = body.strip().split("\n")[-1].strip()
+    if len(last_line) < 30 and re.search(r'[，、：,;:]$', last_line):
+        return True
+    return False
+
+
+def detect_invalid_section_content(section_key: str, heading: str, body: str) -> str | None:
+    """Check section body for contamination patterns. Returns gap replacement or None."""
+    if not body:
+        return GAP_REPLACEMENTS.get(heading, DEFAULT_GAP_NOTE) if heading else DEFAULT_GAP_NOTE
+
+    if _body_is_orphan_numeric(body):
+        return GAP_REPLACEMENTS.get(heading, DEFAULT_GAP_NOTE)
+
+    if _body_has_companyfacts_dump(body):
+        return GAP_REPLACEMENTS.get(heading, DEFAULT_GAP_NOTE)
+
+    if _body_has_invalid_patterns(body):
+        return GAP_REPLACEMENTS.get(heading, DEFAULT_GAP_NOTE)
+
+    return None
+
+
+def replace_invalid_sections_with_gap(markdown: str) -> str:
+    """Replace sections whose body matches contamination patterns with gap notes."""
+    output = markdown
+    for section_key, heading in SECTION_HEADING_MAP.items():
+        body, start, end = _extract_section_body(output, heading)
+        if body is None:
+            continue
+        replacement = detect_invalid_section_content(section_key, heading, body)
+        if replacement is not None:
+            output = output[:start] + "\n\n" + replacement + "\n\n" + output[end:]
+    return output
+
+
+def final_blocker_scan(markdown: str) -> tuple[str, dict]:
+    """Final scan: detect remaining blockers after all cleaning.
+
+    Returns (markdown, meta_dict) where meta_dict contains delivery_status.
+    """
+    meta: dict = {
+        "delivery_status": "normal",
+        "sparse_or_invalid_sections": [],
+        "user_warning": "",
+    }
+
+    # Check each section for remaining issues
+    for section_key, heading in SECTION_HEADING_MAP.items():
+        body, start, end = _extract_section_body(markdown, heading)
+        if body is None:
+            meta["sparse_or_invalid_sections"].append(heading)
+            continue
+        replacement = detect_invalid_section_content(section_key, heading, body)
+        if replacement is not None:
+            meta["sparse_or_invalid_sections"].append(heading)
+
+    # If any section still invalid, degrade report status
+    if meta["sparse_or_invalid_sections"]:
+        meta["delivery_status"] = "degraded_due_to_content_quality"
+        meta["user_warning"] = "部分章节因证据不足已降级为数据缺口说明。"
+
+    return markdown, meta
     heading_map = {
         "executive summary": "执行摘要",
         "business overview": "业务概览",

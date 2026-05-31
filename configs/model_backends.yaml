@@ -45,38 +45,88 @@ model_profiles:
     temperature_env: DEEPSEEK_TEMPERATURE
     timeout: 180
     retry: 2
+  user_fast:
+    provider: deepseek
+    mode: openai_compatible_chat
+    model_name: deepseek-v4-flash
+    model_name_env: DEEPSEEK_MODEL
+    base_url: https://api.deepseek.com
+    base_url_env: DEEPSEEK_BASE_URL
+    api_key: ""
+    api_key_env: DEEPSEEK_API_KEY
+    max_tokens: 4096
+    max_tokens_env: DEEPSEEK_MAX_TOKENS
+    temperature: 0.2
+    temperature_env: DEEPSEEK_TEMPERATURE
+    timeout: 30
+    retry: 1
+  developer_fast:
+    provider: deepseek
+    mode: openai_compatible_chat
+    model_name: deepseek-v4-flash
+    model_name_env: DEEPSEEK_MODEL
+    base_url: https://api.deepseek.com
+    base_url_env: DEEPSEEK_BASE_URL
+    api_key: ""
+    api_key_env: DEEPSEEK_API_KEY
+    max_tokens: 4096
+    max_tokens_env: DEEPSEEK_MAX_TOKENS
+    temperature: 0.2
+    temperature_env: DEEPSEEK_TEMPERATURE
+    timeout: 30
+    retry: 1
 
 agent_model_routes:
   defaults:
     preview: flash
     delivery: flash
+    user_fast: user_fast
+    developer_fast: developer_fast
   chat:
     preview: flash
     delivery: flash
+    user_fast: user_fast
+    developer_fast: developer_fast
   task_parser:
     preview: flash
     delivery: flash
+    user_fast: user_fast
+    developer_fast: developer_fast
   planning:
     preview: flash
     delivery: flash
+    user_fast: user_fast
+    developer_fast: developer_fast
   research:
     preview: flash
     delivery: flash
+    user_fast: user_fast
+    developer_fast: developer_fast
   browser:
     preview: flash
     delivery: flash
+    user_fast: user_fast
+    developer_fast: developer_fast
   deep_analyze:
     preview: flash
     delivery: pro
+    user_fast: user_fast
+    developer_fast: developer_fast
   final_answer:
     preview: flash
     delivery: pro
+    user_fast: user_fast
+    developer_fast: developer_fast
   verifier:
     preview: flash
     delivery: pro
+    user_fast: user_fast
+    developer_fast: developer_fast
   llm_report_review:
     preview: flash
     delivery: pro
+    user_fast: user_fast
+    developer_fast: developer_fast
 
 writer_backend:
   mode: template_only  # template_only | mock | remote | local_small

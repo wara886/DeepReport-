@@ -1,0 +1,40 @@
+<svg width="1280" height="420" viewBox="0 0 1280 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1280" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FBFF"/>
+      <stop offset="1" stop-color="#FFF7EE"/>
+    </linearGradient>
+    <filter id="shadow2" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#334155" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="420" rx="32" fill="url(#bg2)"/>
+  <rect x="52" y="58" width="280" height="304" rx="24" fill="#FFFFFF" stroke="#D7E0EA" filter="url(#shadow2)"/>
+  <rect x="366" y="58" width="280" height="304" rx="24" fill="#FFFFFF" stroke="#D7E0EA" filter="url(#shadow2)"/>
+  <rect x="680" y="58" width="280" height="304" rx="24" fill="#FFFFFF" stroke="#D7E0EA" filter="url(#shadow2)"/>
+  <rect x="994" y="58" width="234" height="304" rx="24" fill="#17212B" filter="url(#shadow2)"/>
+  <text x="84" y="110" fill="#1F2937" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700">Report</text>
+  <text x="84" y="146" fill="#64748B" font-family="Segoe UI, Arial, sans-serif" font-size="18">report.html / report.md / report.json</text>
+  <rect x="84" y="178" width="216" height="126" rx="16" fill="#F8FAFC"/>
+  <text x="104" y="214" fill="#334155" font-family="Segoe UI, Arial, sans-serif" font-size="18">Executive summary</text>
+  <text x="104" y="244" fill="#334155" font-family="Segoe UI, Arial, sans-serif" font-size="18">Financial tables</text>
+  <text x="104" y="274" fill="#334155" font-family="Segoe UI, Arial, sans-serif" font-size="18">Charts and references</text>
+  <text x="398" y="110" fill="#1F2937" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700">Evidence</text>
+  <text x="398" y="146" fill="#64748B" font-family="Segoe UI, Arial, sans-serif" font-size="18">Source manifests and filing sections</text>
+  <rect x="398" y="178" width="216" height="126" rx="16" fill="#F8FAFC"/>
+  <text x="418" y="214" fill="#334155" font-family="Consolas, monospace" font-size="17">evidence.json</text>
+  <text x="418" y="244" fill="#334155" font-family="Consolas, monospace" font-size="17">sec_filing_resolver.json</text>
+  <text x="418" y="274" fill="#334155" font-family="Consolas, monospace" font-size="17">annual_report_sections.json</text>
+  <text x="712" y="110" fill="#1F2937" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700">Analysis</text>
+  <text x="712" y="146" fill="#64748B" font-family="Segoe UI, Arial, sans-serif" font-size="18">Claim bundles, dossiers, deterministic blocks</text>
+  <rect x="712" y="178" width="216" height="126" rx="16" fill="#F8FAFC"/>
+  <text x="732" y="214" fill="#334155" font-family="Consolas, monospace" font-size="17">claims.json</text>
+  <text x="732" y="244" fill="#334155" font-family="Consolas, monospace" font-size="17">section_dossiers.json</text>
+  <text x="732" y="274" fill="#334155" font-family="Consolas, monospace" font-size="17">citations.json</text>
+  <text x="1026" y="110" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700">Quality Gate</text>
+  <text x="1026" y="146" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="18">Refuse weak evidence and stale runs</text>
+  <rect x="1026" y="182" width="170" height="112" rx="18" fill="#253341"/>
+  <text x="1048" y="220" fill="#E2E8F0" font-family="Segoe UI, Arial, sans-serif" font-size="18">delivery gate</text>
+  <text x="1048" y="252" fill="#E2E8F0" font-family="Segoe UI, Arial, sans-serif" font-size="18">timeout stop</text>
+  <text x="1048" y="284" fill="#E2E8F0" font-family="Segoe UI, Arial, sans-serif" font-size="18">explicit downgrade</text>
+</svg>

@@ -11,7 +11,11 @@ from datetime import date
 import re
 from typing import Any, Dict
 
-from src.app.chat_task_parser import _parse_period, _parse_symbol
+from src.app.chat_task_parser import (
+    _parse_period,
+    _parse_symbol,
+    latest_available_report_period,
+)
 from src.models.model_adapter import ModelAdapter
 from src.utils.config import load_config
 
@@ -55,6 +59,27 @@ _NORMALIZE_SYSTEM_PROMPT = (
     "- Output ONLY the rewritten query text, no explanation"
 )
 
+_TARGET_RESOLUTION_SYSTEM_PROMPT = (
+    "You are the planning-stage company and filing-period resolver for a stock research report system. "
+    "Understand the user's natural-language request and identify the intended listed company. "
+    "You may use your market knowledge, but you must be conservative.\n\n"
+    "Return JSON only with these keys:\n"
+    '- "company_name": official or commonly used company name, empty if unknown.\n'
+    '- "symbol": primary listed ticker, e.g. "MU", "TSM", "LLY", "PDD", "0700.HK", "600519.SS". Empty if unknown.\n'
+    '- "market": one of "US", "HK", "CN", "OTHER", or "UNKNOWN".\n'
+    '- "period_intent": one of "latest", "quarter", "fiscal_year", or "unknown".\n'
+    '- "confidence": number from 0.0 to 1.0.\n'
+    '- "needs_confirmation": boolean.\n'
+    '- "reason": short explanation.\n\n'
+    "Rules:\n"
+    "- Never use the current context company as a fallback for an unresolved company.\n"
+    "- If the user asks for 最新/latest/most recent, set period_intent to latest even if a year is also mentioned.\n"
+    "- If more than one company is requested, leave symbol empty and set needs_confirmation true.\n"
+    "- If you are not sure the company is publicly listed or the ticker is correct, set needs_confirmation true.\n"
+)
+
+_NOISE_SYMBOLS = {"HTML", "PDF", "CSV", "JSON", "TXT", "XML", "API", "URL", "FILE", "Q", "AI", "FY"}
+
 
 def _resolve_profile(config_path: str) -> str:
     config = load_config(config_path)
@@ -97,6 +122,73 @@ def _call_llm_text(prompt: str, system_prompt: str, config_path: str) -> str | N
         return None
     except Exception:
         return None
+
+
+def _normalize_report_symbol(symbol: str) -> str:
+    text = str(symbol or "").strip().upper()
+    if not text:
+        return ""
+    hk = re.fullmatch(r"(\d{1,5})\.HK", text)
+    if hk:
+        return f"{hk.group(1).zfill(4)}.HK"
+    cn = re.fullmatch(r"([036]\d{5})(?:\.(SS|SH|SZ))?", text)
+    if cn:
+        code = cn.group(1)
+        suffix = ".SS" if code.startswith("6") else ".SZ"
+        return f"{code}{suffix}"
+    return text
+
+
+def _normalize_market(market: str) -> str:
+    raw = str(market or "").strip().upper()
+    if raw in {"US", "NYSE", "NASDAQ", "AMEX"}:
+        return "US"
+    if raw in {"HK", "HKG", "HKEX"}:
+        return "HK"
+    if raw in {"CN", "CHINA", "A", "ASHARE", "A_SHARE", "SSE", "SZSE"}:
+        return "CN"
+    if raw:
+        return raw
+    return "UNKNOWN"
+
+
+def _validate_report_symbol(symbol: str, market: str = "", company_name: str = "") -> Dict[str, Any]:
+    symbol = _normalize_report_symbol(symbol)
+    if not symbol or symbol in _NOISE_SYMBOLS:
+        return {"routeable": False, "identity_verified": False, "market": "UNKNOWN", "reason": "missing or noisy ticker"}
+    routeable = bool(
+        re.fullmatch(r"[A-Z]{1,6}", symbol)
+        or re.fullmatch(r"\d{4,5}\.HK", symbol)
+        or re.fullmatch(r"[036]\d{5}\.(SS|SH|SZ)", symbol)
+    )
+    if not routeable:
+        return {"routeable": False, "identity_verified": False, "market": "UNKNOWN", "reason": f"ticker {symbol} is not routeable"}
+
+    try:
+        from src.data.company_universe import resolve_company_identity
+
+        identity = resolve_company_identity(symbol or company_name, default=symbol)
+        identity_verified = bool(identity.is_listed and not identity.needs_confirmation)
+        resolved_market = {
+            "us": "US",
+            "hk": "HK",
+            "cn_a": "CN",
+        }.get(str(identity.market or "").lower(), _normalize_market(market))
+        return {
+            "routeable": True,
+            "identity_verified": identity_verified,
+            "company_name": str(identity.company_name or company_name or ""),
+            "market": resolved_market,
+            "reason": f"symbol {symbol} routeable; identity_confidence={identity.resolution_confidence}",
+        }
+    except Exception as exc:
+        return {
+            "routeable": True,
+            "identity_verified": False,
+            "company_name": company_name,
+            "market": _normalize_market(market),
+            "reason": f"symbol {symbol} routeable; identity lookup failed: {exc}",
+        }
 
 
 class QueryUnderstanding:
@@ -206,6 +298,217 @@ class QueryUnderstanding:
             if normalized:
                 return normalized
         return text
+
+    def resolve_report_target(
+        self,
+        message: str,
+        current_symbol: str = "",
+        current_period: str = "",
+        today: date | None = None,
+    ) -> Dict[str, Any]:
+        """Resolve company + period for report planning with validation gates.
+
+        The resolver deliberately does not fall back to ``current_symbol`` when
+        the user names an unknown company.  Current context is informational for
+        the LLM prompt only.
+        """
+
+        today = today or date.today()
+        text = str(message or "").strip()
+        base = self._empty_target_result(text, today=today, current_period=current_period)
+        if not text:
+            return base
+
+        local = self._resolve_target_local(text, current_period=current_period, today=today)
+        llm = self._resolve_target_llm(text, current_symbol=current_symbol, current_period=current_period, today=today)
+
+        if local.get("ambiguous"):
+            return local
+
+        if local.get("symbol"):
+            if llm.get("symbol") and llm["symbol"] != local["symbol"] and float(llm.get("confidence") or 0) >= 0.65:
+                local["needs_confirmation"] = True
+                local["conflict"] = True
+                local["reason"] = f"local symbol {local['symbol']} conflicts with LLM symbol {llm['symbol']}"
+                local["alternatives"] = [local, llm]
+            return local
+
+        if llm.get("symbol"):
+            return llm
+
+        if llm.get("company_name"):
+            llm["needs_confirmation"] = True
+            llm["reason"] = llm.get("reason") or "LLM found a company name but no verified ticker"
+            return llm
+
+        return base
+
+    def _empty_target_result(self, text: str, today: date, current_period: str = "") -> Dict[str, Any]:
+        period, period_kind, _, period_note = _parse_period(
+            text,
+            current_period or latest_available_report_period(today=today),
+            today=today,
+            symbol="",
+        )
+        return {
+            "company_name": "",
+            "symbol": "",
+            "market": "UNKNOWN",
+            "period_intent": period_kind,
+            "resolved_period": period,
+            "period": period,
+            "confidence": 0.0,
+            "needs_confirmation": True,
+            "verified": False,
+            "source": "unresolved",
+            "reason": f"company unresolved; {period_note}",
+        }
+
+    def _resolve_target_local(self, text: str, current_period: str, today: date) -> Dict[str, Any]:
+        try:
+            from src.app.company_aliases import resolve_company_alias_all
+        except Exception:
+            resolve_company_alias_all = None
+
+        matches = resolve_company_alias_all(text) if resolve_company_alias_all else []
+        if len(matches) > 1:
+            period, period_kind, _, period_note = _parse_period(text, current_period, today=today, symbol="")
+            return {
+                "company_name": "",
+                "symbol": "",
+                "market": "UNKNOWN",
+                "period_intent": period_kind,
+                "resolved_period": period,
+                "period": period,
+                "confidence": 0.0,
+                "needs_confirmation": True,
+                "verified": False,
+                "ambiguous": True,
+                "source": "local_alias",
+                "alternatives": matches,
+                "reason": f"multiple company aliases matched; {period_note}",
+            }
+        if matches:
+            match = matches[0]
+            return self._build_validated_target(
+                text=text,
+                symbol=str(match.get("symbol") or ""),
+                company_name=str(match.get("company_name") or ""),
+                market=str(match.get("market") or ""),
+                confidence=float(match.get("confidence") or 0.0),
+                source="local_alias",
+                reason=f"recognized alias {match.get('matched_alias')}",
+                current_period=current_period,
+                today=today,
+            )
+
+        symbol, symbol_conf, symbol_reason, symbol_needs_confirmation = _parse_symbol(text, "")
+        if symbol and symbol_conf >= 0.18:
+            result = self._build_validated_target(
+                text=text,
+                symbol=symbol,
+                company_name="",
+                market="",
+                confidence=symbol_conf,
+                source="local_symbol",
+                reason=symbol_reason,
+                current_period=current_period,
+                today=today,
+            )
+            result["needs_confirmation"] = True if symbol_needs_confirmation else result["needs_confirmation"]
+            return result
+
+        return {}
+
+    def _resolve_target_llm(
+        self,
+        text: str,
+        current_symbol: str,
+        current_period: str,
+        today: date,
+    ) -> Dict[str, Any]:
+        prompt = (
+            f"Today: {today.isoformat()}\n"
+            f"Current context symbol, for reference only: {current_symbol or '(none)'}\n"
+            f"Current context period, for reference only: {current_period or '(none)'}\n"
+            f"User message: {text}\n\n"
+            "Resolve the report target. Remember: do not copy the current context company when unresolved."
+        )
+        payload = _call_llm_json(prompt, _TARGET_RESOLUTION_SYSTEM_PROMPT, self.config_path)
+        if not isinstance(payload, dict):
+            return {}
+        symbol = str(payload.get("symbol") or "").strip().upper()
+        confidence = float(payload.get("confidence") or 0.0)
+        if not symbol and confidence < 0.5:
+            return {
+                **self._empty_target_result(text, today=today, current_period=current_period),
+                "company_name": str(payload.get("company_name") or ""),
+                "source": "llm",
+                "reason": str(payload.get("reason") or "LLM could not resolve a ticker"),
+            }
+        result = self._build_validated_target(
+            text=text,
+            symbol=symbol,
+            company_name=str(payload.get("company_name") or ""),
+            market=str(payload.get("market") or ""),
+            confidence=confidence,
+            source="llm",
+            reason=str(payload.get("reason") or "LLM resolved report target"),
+            current_period=current_period,
+            today=today,
+            llm_period_intent=str(payload.get("period_intent") or ""),
+        )
+        if bool(payload.get("needs_confirmation", False)):
+            result["needs_confirmation"] = True
+        if confidence < 0.65:
+            result["needs_confirmation"] = True
+            result["verified"] = False
+        return result
+
+    def _build_validated_target(
+        self,
+        text: str,
+        symbol: str,
+        company_name: str,
+        market: str,
+        confidence: float,
+        source: str,
+        reason: str,
+        current_period: str,
+        today: date,
+        llm_period_intent: str = "",
+    ) -> Dict[str, Any]:
+        normalized_symbol = _normalize_report_symbol(symbol)
+        period, period_kind, _, period_note = _parse_period(
+            text,
+            current_period or latest_available_report_period(symbol=normalized_symbol, today=today),
+            today=today,
+            symbol=normalized_symbol,
+        )
+        if llm_period_intent.lower() == "latest" and period_kind != "latest":
+            period = latest_available_report_period(symbol=normalized_symbol, today=today)
+            period_kind = "latest"
+            period_note = f"LLM latest period {period}"
+
+        validation = _validate_report_symbol(normalized_symbol, market=market, company_name=company_name)
+        resolved_company = company_name or validation.get("company_name", "")
+        resolved_market = validation.get("market") or _normalize_market(market)
+        verified = bool(validation.get("routeable")) and confidence >= 0.55
+        needs_confirmation = bool(not verified or confidence < 0.78 or not validation.get("identity_verified"))
+        return {
+            "company_name": resolved_company,
+            "symbol": normalized_symbol if validation.get("routeable") else "",
+            "market": resolved_market or "UNKNOWN",
+            "period_intent": period_kind,
+            "resolved_period": period,
+            "period": period,
+            "confidence": round(float(confidence), 4),
+            "needs_confirmation": needs_confirmation,
+            "verified": verified,
+            "identity_verified": bool(validation.get("identity_verified")),
+            "source": source,
+            "reason": "; ".join(part for part in [reason, validation.get("reason", ""), period_note] if part),
+        }
 
     def extract_entities(self, message: str, current_symbol: str = "AAPL", current_period: str = "2025Q4", today: date | None = None) -> Dict[str, Any]:
         """Extract symbol, period, and metric hints from the message.

@@ -90,12 +90,10 @@ def render_citations_markdown(citations: List[Dict[str, Any]]) -> str:
         source_type = str(item.get("source_type") or "unknown")
         source_authority = str(item.get("source_authority") or "unknown")
         publish_time = str(item.get("publish_time") or "")
-        claim_ids = ", ".join(str(value) for value in item.get("claim_ids", [])) or "未关联"
         if source_url:
             lines.append(f"- [{evidence_id}] {title} ({source_type}/{source_authority}, {publish_time}) - {source_url}")
         else:
             lines.append(f"- [{evidence_id}] {title} ({source_type}/{source_authority}, {publish_time})")
-        lines.append(f"  - 支持结论: {claim_ids}")
     lines.append("")
     return "\n".join(lines)
 

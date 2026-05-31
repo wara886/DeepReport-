@@ -44,6 +44,19 @@ KNOWN_COMPANY_ALIASES = {
     "alphabet": "GOOGL",
     "英伟达公司": "NVDA",
     "英伟达": "NVDA",
+    "镁光": "MU",
+    "美光": "MU",
+    "micron": "MU",
+    "micron technology": "MU",
+    "台积电": "TSM",
+    "台灣積體電路": "TSM",
+    "台湾积体电路": "TSM",
+    "tsmc": "TSM",
+    "礼来": "LLY",
+    "礼来公司": "LLY",
+    "eli lilly": "LLY",
+    "拼多多": "PDD",
+    "pinduoduo": "PDD",
     "超微半导体": "AMD",
     "特斯拉": "TSLA",
     "商汤科技": "0020.HK",
@@ -209,12 +222,12 @@ def _parse_symbol(text: str, fallback: str) -> tuple[str, float, str, bool]:
 
 
 def _parse_period(text: str, fallback: str, today: date, symbol: str = "") -> tuple[str, str, float, str]:
+    if any(term.lower() in text.lower() for term in LATEST_TERMS):
+        period = latest_available_report_period(symbol=symbol, today=today)
+        return period, "latest", 0.26, f"resolved latest period {period}"
     explicit_period = _parse_explicit_period(text)
     if explicit_period:
         return explicit_period
-    if any(term.lower() in text.lower() for term in LATEST_TERMS):
-        period = latest_available_report_period(symbol=symbol, today=today)
-        return period, "latest", 0.24, f"resolved latest period {period}"
     lowered = text.lower()
     if any(term.lower() in lowered for term in REPORT_TERMS) and any(term.lower() in lowered for term in GENERATION_TERMS):
         period = latest_available_report_period(symbol=symbol, today=today)
@@ -279,10 +292,14 @@ def _parse_chinese_quarter(text: str) -> str | None:
 
 def _parse_year_only(text: str) -> str | None:
     lowered = str(text or "").lower()
-    annual_terms_cn = ("财报", "年报", "年度", "全年")
+    annual_terms_cn = ("财报", "年报", "年度", "全年", "财年")
     annual_terms_en = ("annual report", "full year", "fiscal year")
-    if not any(term in text for term in annual_terms_cn) and not any(term in lowered for term in annual_terms_en):
-        return None
+    # Also match standalone 20XX / XX + 年 (e.g. "25年 AMD", "2025年") as probable annual intent
+    has_annual_term = any(term in text for term in annual_terms_cn) or any(term in lowered for term in annual_terms_en)
+    if not has_annual_term:
+        # Check for "XX年" or "XXXX年" pattern which implies annual period intent in Chinese
+        if not re.search(r"(?<!\d)(20\d{2}|\d{2})\s*年", text) and not re.search(r"\b(20\d{2})(?:'s| fiscal)", lowered):
+            return None
     match = re.search(r"(?<!\d)(20\d{2}|\d{2})\s*年?(?!\d)", text)
     if not match:
         return None
@@ -424,7 +441,8 @@ def llm_parse_chat_task(
         raw_period = str(result.get("period") or "").strip().upper()
         raw_period_kind = str(result.get("period_kind") or "").strip().lower()
         wants_latest = bool(result.get("wants_latest", False))
-        explicit_period = _parse_explicit_period(text)
+        has_latest_text = any(term.lower() in text.lower() for term in LATEST_TERMS)
+        explicit_period = None if has_latest_text else _parse_explicit_period(text)
         if explicit_period:
             period, period_kind, _, period_note = explicit_period
         elif re.match(r"^FY20\d{2}$", raw_period):

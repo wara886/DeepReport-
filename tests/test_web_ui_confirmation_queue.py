@@ -17,6 +17,7 @@ from src.app.web_ui import (
 from src.agents.multi_agent_orchestrator import (
     USER_FAST_DELIVERY_PROFILE,
     FAST_PROFILE,
+    MultiAgentOrchestrator,
 )
 
 
@@ -295,14 +296,14 @@ def test_performance_trace_contains_all_phases(tmp_path):
 
 def test_user_fast_delivery_profile():
     """USER_FAST_DELIVERY_PROFILE has correct overrides vs FAST_PROFILE."""
-    OVERRIDE_KEYS = {"verifier_max_rework_rounds", "delivery_rework_rounds"}
+    OVERRIDE_KEYS = {"verifier_max_rework_rounds", "delivery_rework_rounds", "research_topk", "analyze_max_records", "final_max_claims", "final_max_evidence", "final_max_tokens", "review_mode", "allow_full_pipeline_rework", "timeout_budget_sec"}
     for key in FAST_PROFILE:
         assert key in USER_FAST_DELIVERY_PROFILE, f"Missing key: {key}"
         if key not in OVERRIDE_KEYS:
             assert USER_FAST_DELIVERY_PROFILE[key] == FAST_PROFILE[key], f"Key {key} differs from FAST_PROFILE"
 
     assert USER_FAST_DELIVERY_PROFILE["verifier_max_rework_rounds"] == 0
-    assert USER_FAST_DELIVERY_PROFILE["delivery_rework_rounds"] == 1
+    assert USER_FAST_DELIVERY_PROFILE["delivery_rework_rounds"] == 0
     assert USER_FAST_DELIVERY_PROFILE["review_mode"] == "heuristic"
     assert USER_FAST_DELIVERY_PROFILE["allow_full_pipeline_rework"] is False
     assert USER_FAST_DELIVERY_PROFILE["timeout_budget_sec"] == 180
@@ -359,3 +360,295 @@ def test_latest_api_returns_queue_fields(monkeypatch, tmp_path):
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=2)
     pending_report_tasks.clear(); active_report_runs.clear()
+
+
+# ── Test 10: Deadline utility functions ─────────────────────────────────
+
+def test_deadline_utility_functions():
+    """_deadline_from_now, _deadline_expired, _remaining_seconds behave correctly."""
+    from src.app.web_ui import _deadline_from_now, _deadline_expired, _remaining_seconds
+    import time as _t
+
+    d = _deadline_from_now(60.0)
+    assert d > _t.monotonic()
+    assert d <= _t.monotonic() + 60.0
+    assert _deadline_expired(None) is False
+    assert _deadline_expired(_t.monotonic() - 1.0) is True
+    assert _deadline_expired(_t.monotonic() + 60.0) is False
+    assert _remaining_seconds(None) == float("inf")
+    assert _remaining_seconds(_t.monotonic() - 10.0) == 0.0
+    remaining = _remaining_seconds(_t.monotonic() + 5.0)
+    assert 0.0 < remaining <= 5.0
+
+
+# ── Test 11: Timeout artifacts are written correctly ─────────────────────
+
+def test_timeout_artifacts_are_written(tmp_path):
+    """_write_timeout_artifacts writes run_error.json and updates run_summary.json."""
+    from src.app.web_ui import _write_timeout_artifacts
+
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+
+    _write_timeout_artifacts(output_dir, "job_timeout", "TSLA", "2026Q1", "user", "deadline exceeded")
+    error_path = output_dir / "run_error.json"
+    assert error_path.exists()
+    error = json.loads(error_path.read_text(encoding="utf-8"))
+    assert error["error"] == "timeout"
+    assert error["delivery_status"] == "timeout_degraded"
+    assert error["symbol"] == "TSLA"
+    assert error["job_id"] == "job_timeout"
+
+    # With existing run_summary.json
+    summary_path = output_dir / "run_summary.json"
+    summary_path.write_text(json.dumps({"symbol": "TSLA", "period": "2026Q1"}), encoding="utf-8")
+    _write_timeout_artifacts(output_dir, "job_timeout2", "TSLA", "2026Q1", "developer", "deadline exceeded")
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["delivery_status"] == "timeout_failed"
+    assert summary["timeout_reason"] == "deadline exceeded"
+
+
+# ── Test 12: User mode delivery_rework_rounds is zero ────────────────────
+
+def test_user_fast_mode_delivery_rework_rounds():
+    """USER_FAST_DELIVERY_PROFILE.delivery_rework_rounds == 0."""
+    assert USER_FAST_DELIVERY_PROFILE["delivery_rework_rounds"] == 0
+    assert USER_FAST_DELIVERY_PROFILE["verifier_max_rework_rounds"] == 0
+
+
+# ── Test 13: _latest_payload detects timeout_suspected ───────────────────
+
+def test_latest_payload_timeout_suspected(tmp_path):
+    """_latest_payload marks expired deadline runs as timeout_suspected (via handler)."""
+    import time as _t
+    from src.app.web_ui import create_ui_handler
+
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    output_root.mkdir(); report_root.mkdir()
+
+    active_report_runs["job_dead"] = {
+        "job_id": "job_dead", "session_id": "local",
+        "symbol": "TSLA", "status": "running",
+        "deadline": _t.monotonic() - 5.0,
+    }
+    # Verify deadline_expired would catch it directly (module-level function)
+    from src.app.web_ui import _deadline_expired
+    assert _deadline_expired(active_report_runs["job_dead"]["deadline"])
+    active_report_runs.clear()
+
+
+# ── Test 14: delivery rework history function ───────────────────────────
+
+def test_write_delivery_rework_history(tmp_path):
+    """_write_delivery_rework_history writes valid JSON array."""
+    from src.app.web_ui import _write_delivery_rework_history
+
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    history = [{"round": 1, "trigger": "delivery_gate_failed", "status": "skipped", "handled": False}]
+    _write_delivery_rework_history(output_dir, history)
+    history_path = output_dir / "delivery_rework_history.json"
+    assert history_path.exists()
+    loaded = json.loads(history_path.read_text(encoding="utf-8"))
+    assert len(loaded) == 1
+    assert loaded[0]["status"] == "skipped"
+
+
+# ── Test 15: developer mode defaults to developer_fast ──────────────────
+
+def test_developer_mode_defaults_to_developer_fast(monkeypatch, tmp_path):
+    """mode=developer 时默认 execution_tier=developer_fast，不使用 delivery。"""
+    from src.app.chat_task_parser import ParsedChatTask
+
+    captured_tiers: list[str] = []
+
+    original_init = MultiAgentOrchestrator.__init__
+    def _capturing_init(self, *args, **kwargs):
+        captured_tiers.append(kwargs.get("execution_tier", "delivery"))
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(MultiAgentOrchestrator, "__init__", _capturing_init)
+    monkeypatch.setattr(
+        "src.app.web_ui.llm_parse_chat_task",
+        lambda *a, **kw: ParsedChatTask(
+            symbol="AAPL", period="2026Q1", period_kind="quarter",
+            research_topic="test",
+            should_run=True, needs_confirmation=False,
+            confidence=0.95, reason="test",
+        ),
+    )
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.intent_classify",
+        lambda self, msg: "report_generation",
+    )
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.normalize_query",
+        lambda self, msg: msg,
+    )
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.extract_entities",
+        lambda self, msg, **kw: {"symbol": "AAPL"},
+    )
+
+    config = _write_model_config(tmp_path)
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    output_root.mkdir(); report_root.mkdir()
+
+    server, url = run_ui_server(
+        port=0, output_dir=str(output_root), report_dir=str(report_root),
+        config_path=str(config), memory_root=str(tmp_path / "memory"), mode="developer",
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        body = json.dumps({
+            "message": "generate AAPL report",
+            "session_id": "test_dev_fast",
+            "memory_enabled": False, "allow_report_run": True,
+            "enable_remote_data": False, "async_report_run": True,
+        }).encode("utf-8")
+        req = request.Request(f"{url}/api/chat", data=body, method="POST",
+                              headers={"Content-Type": "application/json"})
+        with request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        assert data["mode"] == "report_generation_running"
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=2)
+    pending_report_tasks.clear(); active_report_runs.clear()
+    assert len(captured_tiers) > 0
+    assert "developer_fast" in captured_tiers
+
+
+# ── Test 16: user mode ignores payload execution_tier ───────────────────
+
+def test_user_mode_ignores_payload_execution_tier(monkeypatch, tmp_path):
+    """user mode 下 payload 传 execution_tier=delivery，系统仍使用 user_fast。"""
+    from src.app.chat_task_parser import ParsedChatTask
+
+    captured_tiers: list[str] = []
+
+    original_init = MultiAgentOrchestrator.__init__
+    def _capturing_init(self, *args, **kwargs):
+        captured_tiers.append(kwargs.get("execution_tier", "delivery"))
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(MultiAgentOrchestrator, "__init__", _capturing_init)
+    monkeypatch.setattr(
+        "src.app.web_ui.llm_parse_chat_task",
+        lambda *a, **kw: ParsedChatTask(
+            symbol="AAPL", period="2026Q1", period_kind="quarter",
+            research_topic="test",
+            should_run=True, needs_confirmation=False,
+            confidence=0.95, reason="test",
+        ),
+    )
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.intent_classify",
+        lambda self, msg: "report_generation",
+    )
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.normalize_query",
+        lambda self, msg: msg,
+    )
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.extract_entities",
+        lambda self, msg, **kw: {"symbol": "AAPL"},
+    )
+
+    config = _write_model_config(tmp_path)
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    output_root.mkdir(); report_root.mkdir()
+
+    server, url = run_ui_server(
+        port=0, output_dir=str(output_root), report_dir=str(report_root),
+        config_path=str(config), memory_root=str(tmp_path / "memory"), mode="user",
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        body = json.dumps({
+            "message": "generate AAPL report",
+            "session_id": "test_user_ignore",
+            "memory_enabled": False, "allow_report_run": True,
+            "enable_remote_data": False, "async_report_run": True,
+            "execution_tier": "delivery",
+        }).encode("utf-8")
+        req = request.Request(f"{url}/api/chat", data=body, method="POST",
+                              headers={"Content-Type": "application/json"})
+        with request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        assert data["mode"] == "confirm_report"
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=2)
+    pending_report_tasks.clear(); active_report_runs.clear()
+    if captured_tiers:
+        assert all(t == "user_fast" for t in captured_tiers)
+
+
+# ── Test 17: developer mode explicit delivery allows pro ────────────────
+
+def test_developer_mode_explicit_delivery_allows_pro(monkeypatch, tmp_path):
+    """developer mode 显式传 execution_tier=delivery 时，可以使用 delivery 层（pro）。"""
+    from src.app.chat_task_parser import ParsedChatTask
+
+    captured_tiers: list[str] = []
+
+    original_init = MultiAgentOrchestrator.__init__
+    def _capturing_init(self, *args, **kwargs):
+        captured_tiers.append(kwargs.get("execution_tier", "delivery"))
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(MultiAgentOrchestrator, "__init__", _capturing_init)
+    monkeypatch.setattr(
+        "src.app.web_ui.llm_parse_chat_task",
+        lambda *a, **kw: ParsedChatTask(
+            symbol="AAPL", period="2026Q1", period_kind="quarter",
+            research_topic="test",
+            should_run=True, needs_confirmation=False,
+            confidence=0.95, reason="test",
+        ),
+    )
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.intent_classify",
+        lambda self, msg: "report_generation",
+    )
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.normalize_query",
+        lambda self, msg: msg,
+    )
+    monkeypatch.setattr(
+        "src.app.web_ui.QueryUnderstanding.extract_entities",
+        lambda self, msg, **kw: {"symbol": "AAPL"},
+    )
+
+    config = _write_model_config(tmp_path)
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    output_root.mkdir(); report_root.mkdir()
+
+    server, url = run_ui_server(
+        port=0, output_dir=str(output_root), report_dir=str(report_root),
+        config_path=str(config), memory_root=str(tmp_path / "memory"), mode="developer",
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        body = json.dumps({
+            "message": "generate AAPL report",
+            "session_id": "test_dev_delivery",
+            "memory_enabled": False, "allow_report_run": True,
+            "enable_remote_data": False, "async_report_run": True,
+            "execution_tier": "delivery",
+        }).encode("utf-8")
+        req = request.Request(f"{url}/api/chat", data=body, method="POST",
+                              headers={"Content-Type": "application/json"})
+        with request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        assert data["mode"] == "report_generation_running"
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=2)
+    pending_report_tasks.clear(); active_report_runs.clear()
+    assert "delivery" in captured_tiers

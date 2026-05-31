@@ -74,8 +74,9 @@ def create_fastapi_app(
         return _forward(app, "/", method="GET")
 
     @app.get("/api/latest")
-    def latest() -> Response:
-        return _forward(app, "/api/latest", method="GET")
+    def latest(incoming: Request) -> Response:
+        suffix = f"?{incoming.url.query}" if incoming.url.query else ""
+        return _forward(app, f"/api/latest{suffix}", method="GET")
 
     @app.post("/api/chat")
     async def chat(incoming: Request) -> Response:
