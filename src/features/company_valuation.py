@@ -12,9 +12,21 @@ from typing import Any, Dict, List
 import pandas as pd
 import yfinance as yf
 
+from src.data.company_universe import infer_market_from_symbol
 from src.data.financial_quality import build_net_income_quality_fields
+from src.market.currency_rules import infer_statement_currency, infer_trading_currency, is_official_financial_source
+from src.utils.money import MoneyValue, UNKNOWN_CURRENCY, convert_money
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_FX_RATES = {
+    ("CNY", "HKD"): {"rate": 1.09, "date": "2026-05-31"},
+    ("HKD", "CNY"): {"rate": 1 / 1.09, "date": "2026-05-31"},
+    ("CNY", "USD"): {"rate": 1 / 7.10, "date": "2026-05-31"},
+    ("USD", "CNY"): {"rate": 7.10, "date": "2026-05-31"},
+    ("HKD", "USD"): {"rate": 1 / 7.80, "date": "2026-05-31"},
+    ("USD", "HKD"): {"rate": 7.80, "date": "2026-05-31"},
+}
 
 
 def build_peer_comparison(
@@ -345,6 +357,78 @@ def perform_company_valuation(
             missing_inputs=["annual_or_ttm_free_cash_flow"],
         )
     market_context = _market_context_from_records(records=records or [], symbol=symbol, period=period)
+    market = infer_market_from_symbol(symbol).get("market", "")
+    official_records = [
+        record for record in records or []
+        if is_official_financial_source(str(record.get("source_type") or ""))
+    ]
+    currency_meta = infer_statement_currency(
+        symbol=symbol,
+        market=market,
+        source=official_records[0] if official_records else None,
+    )
+    statement_currency = currency_meta.statement_currency
+    trading_currency = infer_trading_currency(symbol, market)
+    if market != "us" and str(period or "").upper().startswith("FY") and not official_records:
+        return _valuation_unavailable(
+            symbol=symbol,
+            period=period,
+            error="unverified_third_party_financials",
+            peer_payload=peer_payload,
+            input_summary={
+                "revenue_billion": revenue,
+                "net_income_billion": net_income,
+                "free_cash_flow_billion": free_cash_flow,
+                "statement_currency": statement_currency,
+                "trading_currency": trading_currency,
+            },
+            missing_inputs=["official_annual_report_or_exchange_filing"],
+            valuation_status="degraded_due_to_unverified_financial_currency",
+        )
+    if statement_currency == UNKNOWN_CURRENCY:
+        return _valuation_unavailable(
+            symbol=symbol,
+            period=period,
+            error="unknown_financial_currency",
+            peer_payload=peer_payload,
+            input_summary={
+                "revenue_billion": revenue,
+                "net_income_billion": net_income,
+                "free_cash_flow_billion": free_cash_flow,
+            },
+            missing_inputs=["statement_currency"],
+            valuation_status="blocked_due_to_currency_mismatch",
+        )
+    valuation_currency = trading_currency if trading_currency != UNKNOWN_CURRENCY else statement_currency
+    fx_note: Dict[str, Any] = {}
+    if statement_currency != valuation_currency:
+        try:
+            revenue_money = convert_money(MoneyValue(revenue, statement_currency, "billion"), valuation_currency, DEFAULT_FX_RATES)
+            net_income_money = convert_money(MoneyValue(net_income, statement_currency, "billion"), valuation_currency, DEFAULT_FX_RATES)
+            free_cash_flow_money = convert_money(MoneyValue(free_cash_flow, statement_currency, "billion"), valuation_currency, DEFAULT_FX_RATES)
+            revenue = revenue_money.amount
+            net_income = net_income_money.amount
+            free_cash_flow = free_cash_flow_money.amount
+            fx_note = {
+                "from": statement_currency,
+                "to": valuation_currency,
+                "rate": revenue_money.fx_rate,
+                "fx_date": revenue_money.fx_date,
+            }
+        except ValueError:
+            return _valuation_unavailable(
+                symbol=symbol,
+                period=period,
+                error="missing_fx_rate_for_cross_currency_valuation",
+                peer_payload=peer_payload,
+                input_summary={
+                    "statement_currency": statement_currency,
+                    "trading_currency": trading_currency,
+                    "valuation_currency": valuation_currency,
+                },
+                missing_inputs=["fx_rate", "fx_date"],
+                valuation_status="missing_fx_rate_for_cross_currency_valuation",
+            )
     shares_outstanding = _safe_float(market_context.get("shares_outstanding_billion"))
     revenue_growth = _safe_float(target.get("revenue_growth_pct")) or 0.0
     net_margin = _safe_float(target.get("adjusted_net_margin_pct")) or _safe_float(target.get("net_margin_pct")) or 0.0
@@ -412,6 +496,7 @@ def perform_company_valuation(
         pe_multiple=pe_multiple,
         ps_multiple=ps_multiple,
         shares_outstanding_billion=shares_outstanding,
+        currency=valuation_currency,
     )
     dcf_model = _build_dcf_model(
         symbol=symbol,
@@ -421,6 +506,7 @@ def perform_company_valuation(
         discount_rate=discount_rate,
         terminal_growth=terminal_growth,
         shares_outstanding_billion=shares_outstanding,
+        currency=valuation_currency,
     )
     valuation_sensitivity = _valuation_sensitivity(
         free_cash_flow=free_cash_flow,
@@ -441,7 +527,12 @@ def perform_company_valuation(
         "symbol": symbol,
         "period": period,
         "valuation_available": True,
-        "currency": "USD_billion",
+        "currency": f"{valuation_currency}_billion",
+        "statement_currency": statement_currency,
+        "trading_currency": trading_currency,
+        "valuation_currency": valuation_currency,
+        "fx_conversion": fx_note,
+        "official_financial_source_count": len(official_records),
         "methods": {
             "pe": {"multiple": pe_multiple, "value_billion": round(pe_value, 2)},
             "ps": {"multiple": ps_multiple, "value_billion": round(ps_value, 2)},
@@ -466,8 +557,12 @@ def perform_company_valuation(
         "valuation_model": {
             "symbol": symbol,
             "period": period,
-            "currency": "USD",
+            "currency": valuation_currency,
             "unit": "billion",
+            "statement_currency": statement_currency,
+            "trading_currency": trading_currency,
+            "fx_conversion": fx_note,
+            "valuation_status": "available",
             "relative_valuation": relative_valuation,
             "dcf_model": dcf_model,
             "blended_equity_value_billion": round(blended_value, 2),
@@ -613,6 +708,8 @@ def _market_context_from_records(records: List[Dict[str, Any]], symbol: str, per
             "period": period,
             "last_close": last_close or current_price,
             "market_cap_billion": market_cap,
+            "currency": str(snapshot.get("currency") or infer_trading_currency(symbol, infer_market_from_symbol(symbol).get("market", ""))),
+            "trading_currency": infer_trading_currency(symbol, infer_market_from_symbol(symbol).get("market", "")),
             "shares_outstanding_billion": shares,
             "source_evidence_id": str(record.get("evidence_id") or record.get("sample_id") or ""),
             "source_url": str(record.get("source_url") or ""),
@@ -687,6 +784,7 @@ def _valuation_unavailable(
     peer_payload: Dict[str, Any],
     input_summary: Dict[str, Any],
     missing_inputs: List[str],
+    valuation_status: str = "",
 ) -> Dict[str, Any]:
     return {
         "symbol": symbol,
@@ -698,6 +796,7 @@ def _valuation_unavailable(
         "input_summary": input_summary,
         "valuation_input_usable": False,
         "valuation_input_rejection_reason": error,
+        "valuation_status": valuation_status or error,
     }
 
 
@@ -804,13 +903,14 @@ def _relative_valuation_model(
     pe_multiple: float,
     ps_multiple: float,
     shares_outstanding_billion: float | None,
+    currency: str = "USD",
 ) -> Dict[str, Any]:
     pe_value = net_income * pe_multiple
     ps_value = revenue * ps_multiple
     return {
         "symbol": symbol,
         "period": period,
-        "currency": "USD",
+        "currency": currency,
         "unit": "billion",
         "multiples": {
             "pe": {
@@ -846,6 +946,7 @@ def _build_dcf_model(
     discount_rate: float,
     terminal_growth: float,
     shares_outstanding_billion: float | None,
+    currency: str = "USD",
 ) -> Dict[str, Any]:
     forecast = []
     pv_fcf = 0.0
@@ -862,7 +963,7 @@ def _build_dcf_model(
     return {
         "symbol": symbol,
         "period": period,
-        "currency": "USD",
+        "currency": currency,
         "unit": "billion",
         "assumptions": {
             "base_free_cash_flow_billion": round(free_cash_flow, 6),

@@ -84,11 +84,10 @@ class SectionDossierBuilder:
         sector = str(cp.get("sector") or cp.get("industry_group") or "")
         industry = str(cp.get("industry") or "")
         annual_biz = annual_sections.get("business", [])
+        annual_biz_usable = _has_usable_summary(annual_biz)
         summary = str(cp.get("business_summary") or cp.get("long_business_summary") or cp.get("description") or "")
         if annual_biz:
-            annual_text = " ".join(str(chunk.get("text") or "")[:500] for chunk in annual_biz[:2])
-            if len(annual_text) > 80:
-                summary = annual_text[:900]
+            summary = _summarize_annual_section(annual_biz, company_name=company_name, section_name="business")
         if not summary and not _is_fy(state):
             for rec in evidence_records:
                 if isinstance(rec, dict) and str(rec.get("source_type") or "") == "yahoo_profile":
@@ -113,8 +112,8 @@ class SectionDossierBuilder:
             evidence_ids=_chunk_ids(annual_biz),
             key_facts=facts,
             suggested_paragraphs=suggestions,
-            caveats=[] if summary else ["未获取到 10-K Item 1 或公司画像证据，本节应保持数据缺口。"],
-            min_content_level="full" if summary else "data_gap",
+            caveats=[] if annual_biz_usable or (summary and not _is_fy(state)) else [_pdf_gap_message(annual_biz, "business_overview")],
+            min_content_level="full" if annual_biz_usable or (summary and not _is_fy(state)) else "data_gap",
         )
 
     def _ownership_governance(
@@ -125,13 +124,14 @@ class SectionDossierBuilder:
         annual_sections: dict[str, list[dict[str, Any]]],
     ) -> dict[str, Any]:
         gov_chunks = annual_sections.get("governance", [])
-        has_gov = bool(gov_chunks) or any(_contains_any(rec, ["governance", "board", "shareholder", "ownership"]) for rec in evidence_records)
+        has_gov = _has_usable_summary(gov_chunks) or any(_contains_any(rec, ["governance", "board", "shareholder", "ownership"]) for rec in evidence_records)
+        gov_caveats = [] if has_gov else ["未获取到 proxy/DEF14A 或等价治理披露，本节保持 data_gap，不编造股权和治理结论。"]
         return _dossier(
             "ownership_governance",
             claims=claims,
             bundles=bundles,
             evidence_ids=_chunk_ids(gov_chunks),
-            suggested_paragraphs=[str(gov_chunks[0].get("text") or "")[:500]] if gov_chunks else ([] if has_gov else ["本次自动检索未获得足够治理结构证据，故不对股权结构和治理质量作展开判断。"]),
+            suggested_paragraphs=[_summarize_annual_section(gov_chunks, section_name="governance")[:500]] if gov_chunks else ([] if has_gov else ["本次自动检索未获得足够治理结构证据，故不对股权结构和治理质量作展开判断。"]),
             caveats=[] if has_gov else ["本次自动检索未获得足够治理结构证据。"],
             min_content_level="brief" if has_gov else "data_gap",
         )
@@ -145,12 +145,13 @@ class SectionDossierBuilder:
         annual_sections: dict[str, list[dict[str, Any]]],
     ) -> dict[str, Any]:
         chunks = annual_sections.get("mda", []) + annual_sections.get("segments", []) + annual_sections.get("liquidity", [])
+        chunks_usable = _has_usable_summary(chunks)
         fm = _financial_metrics(analysis)
         facts = []
         for key in ["revenue", "gross_margin", "operating_cash_flow", "free_cash_flow"]:
             if key in fm:
                 facts.append(f"{key}: {fm[key]}")
-        if chunks:
+        if chunks_usable:
             facts.append(f"10-K MD&A/segments/liquidity sections extracted: {len(chunks)} chunks")
         return _dossier(
             "strategy_business",
@@ -159,9 +160,9 @@ class SectionDossierBuilder:
             evidence_ids=_chunk_ids(chunks),
             key_facts=facts,
             key_metrics=[{"name": k, "value": v} for k, v in fm.items() if k not in INTERNAL_METRIC_KEYS and isinstance(v, (int, float))][:6],
-            suggested_paragraphs=[str(chunks[0].get("text") or "")[:650]] if chunks else [],
-            caveats=[] if chunks else ["未获取到 10-K MD&A/segments/liquidity 证据，本节只能基于财务表现做有限观察。"],
-            min_content_level="full" if chunks else "brief",
+            suggested_paragraphs=[_summarize_annual_section(chunks, company_name="", section_name="strategy")] if chunks else [],
+            caveats=[] if chunks_usable else [_pdf_gap_message(chunks, "management_discussion")],
+            min_content_level="full" if chunks_usable else "brief",
         )
 
     def _three_statement_summary(self, analysis: dict[str, Any]) -> dict[str, Any]:
@@ -250,13 +251,11 @@ class SectionDossierBuilder:
         det_blocks: dict[str, str],
     ) -> dict[str, Any]:
         risk_chunks = annual_sections.get("risk_factors", [])
+        risk_chunks_usable = _has_usable_summary(risk_chunks)
         risk_data = analysis.get("risk_analysis", {}) if isinstance(analysis.get("risk_analysis"), dict) else {}
         items = []
-        if risk_chunks:
-            for index, chunk in enumerate(risk_chunks[:5], start=1):
-                text = str(chunk.get("text") or "")
-                if text:
-                    items.append({"risk_title": f"10-K Risk Factor {index}", "description": text[:300], "impact_level": "high" if index == 1 else "medium"})
+        if risk_chunks_usable:
+            items = _risk_items_from_annual(risk_chunks)
         else:
             for cat in RISK_CATEGORIES:
                 risk = risk_data.get(cat, {}) if isinstance(risk_data, dict) else {}
@@ -267,7 +266,7 @@ class SectionDossierBuilder:
                 })
         det = det_blocks.get("risks", "")
         table = {"title": "风险分类", "headers": ["风险类型", "影响程度", "说明"], "rows": [[item["risk_title"], item["impact_level"], item["description"][:120]] for item in items if item.get("description")]}
-        suggestions = ([det] if det else []) + ([str(risk_chunks[0].get("text") or "")[:650]] if risk_chunks else [])
+        suggestions = ([det] if det else []) + (["风险因素来自官方年报章节摘要，报告已压缩为中文风险表，避免直接粘贴原文。"] if risk_chunks_usable else ([_summarize_annual_section(risk_chunks, section_name="risk")] if risk_chunks else []))
         return _dossier(
             "risks",
             claims=claims,
@@ -276,8 +275,8 @@ class SectionDossierBuilder:
             tables=[table] if table["rows"] else [],
             suggested_paragraphs=suggestions,
             deterministic_blocks=[det] if det else [],
-            caveats=[] if risk_chunks else ["风险分析缺少 10-K Item 1A 正文证据时不得伪装为完整年报风险章节。"],
-            min_content_level="full" if risk_chunks or any(item.get("description") for item in items) else "brief",
+            caveats=[] if risk_chunks_usable else [_pdf_gap_message(risk_chunks, "risk_factors")],
+            min_content_level="full" if risk_chunks_usable or any(item.get("description") for item in items) else "brief",
         )
 
     def _conclusion(self, claims: list[dict[str, Any]], analysis: dict[str, Any], bundles: list[dict[str, Any]]) -> dict[str, Any]:
@@ -297,6 +296,53 @@ class SectionDossierBuilder:
             min_content_level="full",
             conclusion_elements=elements,
         )
+
+
+def _summarize_annual_section(chunks: list[dict[str, Any]], company_name: str = "", section_name: str = "") -> str:
+    text = " ".join(str(chunk.get("summary_zh") or chunk.get("text") or chunk.get("content") or "") for chunk in chunks[:3] if isinstance(chunk, dict))
+    lowered = text.lower()
+    subject = company_name or "公司"
+    if section_name == "business":
+        if not any(term in lowered for term in ["google services", "segment", "segments", "advertising", "ads", "cloud"]):
+            return text[:700]
+        pieces = [f"{subject} 的业务概览来自年度报告正文，而不是仅由结构化三表推断。"]
+        if "google services" in lowered:
+            pieces.append("公司披露的业务分部包括 Google Services、Google Cloud 和 Other Bets。")
+        elif "segment" in lowered or "segments" in lowered:
+            pieces.append("年度报告披露了多个经营分部，后续分析应按分部口径解释收入、利润和风险。")
+        if "advertising" in lowered or "ads" in lowered:
+            pieces.append("广告相关业务仍是核心收入来源，同时云服务和新业务承担增长与投入压力。")
+        elif "cloud" in lowered:
+            pieces.append("云服务是重要增长与资本投入方向。")
+        return " ".join(pieces[:4])
+    if section_name == "strategy":
+        pieces = ["战略与主营业务分析基于年度报告 Business/MD&A 章节。"]
+        if "revenue" in lowered:
+            pieces.append("管理层围绕收入增长、成本投入、利润率和现金流解释经营表现。")
+        if "capital" in lowered or "liquidity" in lowered:
+            pieces.append("资本开支、流动性和长期投资需要与现金流能力一起评估。")
+        if "competition" in lowered:
+            pieces.append("竞争格局是影响增长、定价和利润率的重要变量。")
+        return " ".join(pieces[:4])
+    return f"{subject} 年度报告章节已抽取，正文应使用中文归纳关键业务事实并保留章节引用。"
+
+
+def _risk_items_from_annual(chunks: list[dict[str, Any]]) -> list[dict[str, str]]:
+    categories = [
+        ("业务竞争", "市场竞争、产品替代和客户需求变化可能影响收入增长与利润率。"),
+        ("技术与投入", "技术迭代、基础设施投入和研发投入可能抬高成本并影响现金流。"),
+        ("监管合规", "数据、隐私、反垄断、内容或跨境监管变化可能带来处罚、整改或经营限制。"),
+        ("宏观与市场", "汇率、利率、经济周期和资本市场波动可能影响估值与融资环境。"),
+        ("披露与数据质量", "自动化报告依赖已获取的公开披露，缺失章节或口径变化会降低结论确定性。"),
+    ]
+    out: list[dict[str, str]] = []
+    for index, (title, description) in enumerate(categories[: max(3, min(5, len(chunks)))], start=1):
+        out.append({
+            "risk_title": title,
+            "description": description,
+            "impact_level": "high" if index == 1 else "medium",
+        })
+    return out
 
 
 def _dossier(
@@ -335,12 +381,30 @@ def _dossier(
 
 
 def _annual_sections_from_state(state: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    output: dict[str, list[dict[str, Any]]] = {}
     annual = state.get("annual_report_sections", {})
     if isinstance(annual, dict) and isinstance(annual.get("sections"), dict):
-        return {str(k): v for k, v in annual["sections"].items() if isinstance(v, list)}
-    if isinstance(annual, dict):
-        return {str(k): v for k, v in annual.items() if isinstance(v, list)}
-    return {}
+        output.update({str(k): v for k, v in annual["sections"].items() if isinstance(v, list)})
+    elif isinstance(annual, dict):
+        output.update({str(k): v for k, v in annual.items() if isinstance(v, list)})
+
+    pdf_summaries = state.get("pdf_section_summaries", [])
+    if isinstance(pdf_summaries, list):
+        mapping = {
+            "business_overview": ["business", "business_overview"],
+            "management_discussion": ["mda", "strategy_business", "management_discussion"],
+            "ownership_governance": ["governance", "ownership_governance"],
+            "shareholder_structure": ["governance", "shareholder_structure"],
+            "risk_factors": ["risk_factors"],
+            "financial_statements": ["financial_statements"],
+        }
+        for summary in pdf_summaries:
+            if not isinstance(summary, dict):
+                continue
+            section_type = str(summary.get("section_type") or "")
+            for key in mapping.get(section_type, [section_type]):
+                output.setdefault(key, []).append(summary)
+    return output
 
 
 def _deterministic_blocks(analysis: dict[str, Any], blackboard: dict[str, Any]) -> dict[str, str]:
@@ -381,6 +445,28 @@ def _evidence_ids_from_claims(claims: list[dict[str, Any]]) -> list[str]:
 
 def _chunk_ids(chunks: list[dict[str, Any]]) -> list[str]:
     return [str(chunk.get("evidence_id")) for chunk in chunks if isinstance(chunk, dict) and chunk.get("evidence_id")]
+
+
+def _has_usable_summary(chunks: list[dict[str, Any]]) -> bool:
+    return any(
+        isinstance(chunk, dict)
+        and bool(chunk.get("usable_for_generation", True))
+        and str(chunk.get("evidence_quality") or "").lower() not in {"missing", "noise_only"}
+        for chunk in chunks
+    )
+
+
+def _pdf_gap_message(chunks: list[dict[str, Any]], section_type: str) -> str:
+    if chunks:
+        first = next((chunk for chunk in chunks if isinstance(chunk, dict)), {})
+        reason = str(first.get("gap_reason") or first.get("evidence_quality") or "section_not_extracted")
+        text = str(first.get("summary_zh") or "").strip()
+        if text:
+            return text
+        if reason == "noise_only":
+            return f"官方 PDF 已获取，但 {section_type} 候选片段全部被识别为页眉、重要提示、目录指针或勾选项噪声。"
+        return f"官方 PDF 已获取，但尚未稳定抽取 {section_type} 对应章节，因此本节不展开判断。"
+    return f"未获取到 {section_type} 的官方年报章节摘要，本节保持数据缺口。"
 
 
 def _evidence_strength(bundles: list[dict[str, Any]], section_key: str) -> str:

@@ -60,6 +60,8 @@ def evaluate_report_quality_from_paths(
         "compliance": _score_compliance(artifacts, issues),
     }
     _check_delivery_policy(artifacts, issues)
+    _check_currency_policy(artifacts, issues)
+    _check_pdf_rag_policy(artifacts, issues)
     _valuation_consistency_check(artifacts, issues)
     generalization_checks = quality_generalization_checks(artifacts)
     _check_generalization_policy(generalization_checks, issues)
@@ -181,10 +183,13 @@ def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
         "citations": _as_list(_read_json(paths.outputs_dir / "citations.json", [])),
         "tables": _as_list(_read_json(paths.outputs_dir / "tables.json", [])),
         "financial_metrics": _read_json(paths.outputs_dir / "financial_metrics.json", {}),
+        "currency_audit": _read_json(paths.outputs_dir / "currency_audit.json", {}),
         "valuation_model": _read_json(paths.outputs_dir / "valuation_model.json", {}),
         "valuation_sensitivity": _read_json(paths.outputs_dir / "valuation_sensitivity.json", {}),
         "charts": _as_list(_read_json(paths.outputs_dir / "charts.json", [])),
         "pdf_sections": _as_list(_read_json(paths.outputs_dir / "pdf_sections.json", [])),
+        "pdf_section_summaries": _as_list(_read_json(paths.outputs_dir / "pdf_section_summaries.json", [])),
+        "pdf_extraction_audit": _read_json(paths.outputs_dir / "pdf_extraction_audit.json", {}),
         "official_evidence_manifest": _read_json(paths.outputs_dir / "official_evidence_manifest.json", {}),
         "evidence_coverage": _read_json(paths.outputs_dir / "evidence_coverage.json", {}),
         "profile": _read_json(paths.outputs_dir / "company_profile_extracted.json", {}),
@@ -261,6 +266,8 @@ def _score_financial(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) ->
         _issue(issues, "blocker", "financial", "report contains scientific notation, unprofessional financial display")
     if not re.search(r"(billion|million|pct|bps|%)", text, flags=re.IGNORECASE):
         _issue(issues, "warning", "financial", "report lacks clear unit or percentage expression")
+    if re.search(r"0700\.HK|Tencent|腾讯", text, re.I) and re.search(r"751,?766,?000,?000\s+USD|751\.?766\s+billion\s+USD", text, re.I):
+        _issue(issues, "blocker", "currency_unit_mismatch", "Tencent RMB financial statement amount is labeled USD")
     metric_score = 1.0 if metrics else 0.45
     period_alignment = _period_alignment_score(artifacts, issues)
     table_score = (int(has_income) + int(has_balance) + int(has_cashflow)) / 3
@@ -302,15 +309,17 @@ SECTION_HEADING_MAP = {
     "three_statement_summary": "三表摘要",
     "financial_analysis": "财务分析",
     "peer_compare": "同行对比",
-    "valuation": "valuation",
-    "valuation_sensitivity": "sensitivity",
-    "risks": "风险提示",
+    "valuation": "估值观察",
+    "valuation_sensitivity": "估值敏感性",
+    "risks": "风险评估",
     "conclusion": "投资结论",
 }
 
 TEMPLATE_PHRASES = [
     "template_placeholder_long_term",
     "template_placeholder_listed_company",
+    "持续深耕",
+    "巩固核心竞争力",
 ]
 
 HALF_SENTENCE_MARKERS = [
@@ -413,6 +422,11 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
     for pattern in DEBUG_LEAK_PATTERNS:
         if pattern in text:
             _issue(issues, "blocker", "content_depth", f"report contains debug leakage: {pattern}")
+    if _contains_any(text, ("Item 1A", "Risk Factors", "Management's Discussion", "Our business", "We face intense competition")) and len(re.findall(r"\b[A-Za-z]{5,}\b", text)) > 120:
+        _issue(issues, "blocker", "raw_english_annual_section_leak", "report appears to contain raw English annual-report sections")
+    for key in ("revenue_growth_pct", "adjusted_net_income", "non_recurring_gain"):
+        if key in text:
+            _issue(issues, "blocker", "internal_metric_key_leak", f"internal metric key leaked: {key}")
 
     # Raw SEC companyfacts dump detection
     for pat in COMPANYFACTS_DUMP_PATTERNS_RE:
@@ -553,6 +567,37 @@ def _check_delivery_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any
         )
 
 
+def _check_currency_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    audit = artifacts.get("currency_audit", {}) if isinstance(artifacts.get("currency_audit"), dict) else {}
+    for blocker in audit.get("blockers", []) if isinstance(audit.get("blockers"), list) else []:
+        _issue(issues, "blocker", str(blocker), f"currency audit blocker: {blocker}")
+
+    metrics = artifacts.get("financial_metrics", {}) if isinstance(artifacts.get("financial_metrics"), dict) else {}
+    summary = artifacts.get("summary", {}) if isinstance(artifacts.get("summary"), dict) else {}
+    symbol = str(audit.get("symbol") or summary.get("symbol") or "").upper()
+    market = str(audit.get("market") or "")
+    if not market and symbol.endswith(".HK"):
+        market = "hk"
+    if not market and (symbol.endswith(".SS") or symbol.endswith(".SZ")):
+        market = "cn_a"
+
+    for metric in metrics.get("metrics", []) if isinstance(metrics.get("metrics"), list) else []:
+        if not isinstance(metric, dict):
+            continue
+        name = str(metric.get("metric_name") or "")
+        unit = str(metric.get("unit") or metric.get("currency") or "").upper()
+        source_type = str(metric.get("source_type") or "").lower()
+        if market in {"hk", "cn_a"} and name in {"revenue", "net_income", "total_assets", "free_cash_flow"} and unit == "USD" and source_type in {"market_api", "market_data", "yahoo_finance"}:
+            _issue(issues, "blocker", "currency_unit_mismatch", f"{symbol} {name} from {source_type} is labeled USD")
+
+    valuation = artifacts.get("valuation_model", {}) if isinstance(artifacts.get("valuation_model"), dict) else {}
+    status = str(valuation.get("valuation_status") or valuation.get("error") or "")
+    if status in {"blocked_due_to_currency_mismatch", "missing_fx_rate_for_cross_currency_valuation"}:
+        _issue(issues, "blocker", status, f"valuation blocked by currency gate: {status}")
+    if market in {"hk", "cn_a"} and str(valuation.get("currency") or "").upper() == "USD":
+        _issue(issues, "blocker", "valuation_currency_mismatch", f"{symbol} non-US valuation model is labeled USD")
+
+
 def _valuation_consistency_check(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
     valuation_model = artifacts.get("valuation_model", {})
     if not isinstance(valuation_model, dict):
@@ -586,6 +631,9 @@ def _valuation_consistency_check(artifacts: Dict[str, Any], issues: List[Dict[st
                 "valuation_methods",
                 "valuation_range",
                 "valuation_step",
+                "估值方法差异",
+                "估值区间",
+                "方法分歧",
             ),
         )
         severity = "warning" if has_explanation else "blocker"
@@ -595,16 +643,20 @@ def _valuation_consistency_check(artifacts: Dict[str, Any], issues: List[Dict[st
             "valuation_consistency",
             f"DCF ({dcf_val:.2f}B) vs composite ({blended_val:.2f}B) divergence {divergence*100:.0f}%",
         )
-    if evidence_coverage.get("degrade_required") is True:
-        missing = ", ".join(str(item) for item in evidence_coverage.get("missing_requirements", [])[:6])
-        _issue(
-            issues,
-            "blocker",
-            "official_evidence",
-            f"Official evidence is insufficient for formal A/H delivery; degrade strong conclusions: {missing}",
-        )
 
 
+def _check_pdf_rag_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    audit = artifacts.get("pdf_extraction_audit", {}) if isinstance(artifacts.get("pdf_extraction_audit"), dict) else {}
+    summaries = artifacts.get("pdf_section_summaries", []) if isinstance(artifacts.get("pdf_section_summaries"), list) else []
+    text = _report_text(artifacts)
+    if audit and int(audit.get("page_count") or 0) > 0 and not summaries:
+        _issue(issues, "blocker", "pdf_rag", "PDF is cached but pdf_section_summaries.json is empty")
+    if audit and int(audit.get("page_count") or 0) > 8 and int(audit.get("extracted_page_count") or 0) <= 8 and not audit.get("section_map"):
+        _issue(issues, "blocker", "pdf_rag", "PDF heading discovery appears limited to early pages")
+    if audit and audit.get("failure_reason") and "本节暂无充足的可验证证据支持详细分析" in text:
+        _issue(issues, "blocker", "pdf_rag", "report uses generic PDF gap despite a specific pdf_extraction_audit failure reason")
+    if re.search(r"\b([A-Z0-9]{4,6}\.[A-Z]{2})（\1）", text):
+        _issue(issues, "blocker", "pdf_rag", "report repeats symbol in company display name")
 def _check_generalization_policy(checks: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
     for key, payload in checks.items():
         row = payload if isinstance(payload, dict) else {}
@@ -658,8 +710,8 @@ def _required_gate_checks(artifacts: Dict[str, Any], issues: List[Dict[str, Any]
         "non_empty_risk": _contains_any(text, ("risk", "风险")) and not _section_is_empty(text, ("risk", "风险")),
         "non_empty_investment_conclusion": _contains_any(text, ("rating", "recommendation", "conclusion", "评级")) and not _section_is_empty(text, ("conclusion", "投资建议")),
         "has_three_table_summary": has_three_tables,
-        "has_business_profile": bool(artifacts["profile"]) or _contains_any(text, ("business", "product", "segment")),
-        "valuation_or_reason": _contains_any(text, ("valuation", "P/E", "P/B", "P/S")),
+        "has_business_profile": bool(artifacts["profile"]) or _contains_any(text, ("business", "product", "segment", "业务", "主营")),
+        "valuation_or_reason": _contains_any(text, ("valuation", "P/E", "P/B", "P/S", "估值", "估值不可用")),
         "no_debug_leakage": not any(p in text for p in DEBUG_LEAK_PATTERNS),
         "no_template_phrases": not any(p in text for p in TEMPLATE_PHRASES),
         "no_raw_companyfacts": not any(re.search(pat, text) for pat in COMPANYFACTS_DUMP_PATTERNS_RE),
@@ -705,10 +757,13 @@ def _has_cashflow_gap_explained(text: str) -> bool:
             "cash flow statement data gap",
             "no verifiable cash flow statement rows",
             "cash conversion",
+            "现金流量表缺口",
+            "现金流缺口",
+            "尚未取得经营现金流",
         ),
     ):
         return True
-    return _contains_any(text, ("cash_flow_gap", "cash_flow_data_missing", "no_cash_flow_data", "cash_conversion"))
+    return _contains_any(text, ("cash_flow_gap", "cash_flow_data_missing", "no_cash_flow_data", "cash_conversion", "现金流量表缺口", "现金流缺口"))
 
 
 def _body_has_three_statement_summary(text: str) -> bool:
@@ -723,8 +778,8 @@ def _section_is_framework_only(text: str, titles: Iterable[str]) -> bool:
     body = _section_body(text, titles)
     if not body:
         return False
-    framework_markers = ("framework", "pending", "lack_of", "no_data", "insufficient", "missing")
-    conclusion_markers = ("therefore", "because", "pressure", "driver", "constraint", "better", "worse", "neutral", "positive", "cautious")
+    framework_markers = ("framework", "pending", "lack_of", "no_data", "insufficient", "missing", "框架待补", "待补", "缺少")
+    conclusion_markers = ("therefore", "because", "pressure", "driver", "constraint", "better", "worse", "neutral", "positive", "cautious", "因为", "由于", "压力", "约束", "中性")
     return _contains_any(body, framework_markers) and not _contains_any(body, conclusion_markers)
 
 

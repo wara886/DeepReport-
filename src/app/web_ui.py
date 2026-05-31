@@ -105,7 +105,7 @@ A_SHARE_ENGINES = (
     "eastmoney_financials,yahoo_finance,eastmoney,local_evidence"
 )
 US_ENGINES = "local_real_data,sec_edgar,yahoo_finance,independent_macro,local_evidence"
-HK_ENGINES = "local_real_data,yahoo_finance,tavily,local_evidence"
+HK_ENGINES = "local_real_data,yahoo_finance,tavily,hkex_announcements,local_evidence"
 
 ENGINE_USER_LABELS: dict[str, str] = {
     "local_real_data": "本地已缓存财务数据",

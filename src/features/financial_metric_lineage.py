@@ -6,11 +6,14 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
+from src.data.company_universe import infer_market_from_symbol
 from src.data.financial_statement_metrics import (
     build_standard_financial_metrics,
     build_standard_table_artifacts,
 )
 from src.data.financial_quality import build_net_income_quality_fields
+from src.market.currency_rules import infer_statement_currency
+from src.utils.money import UNKNOWN_CURRENCY, normalize_currency_code
 from src.features.financial_ratios import build_financial_ratios
 from src.features.financial_statements import build_three_statement_view
 from src.utils.periods import parse_iso_date, parse_quarter, period_match, period_target_date
@@ -45,6 +48,12 @@ def build_financial_metric_lineage(records: List[Dict[str, Any]]) -> Dict[str, A
         symbol = str(record.get("symbol", ""))
         period = str(record.get("period", ""))
         metadata = dict(record.get("metadata", {})) if isinstance(record.get("metadata"), dict) else {}
+        currency_meta = infer_statement_currency(
+            symbol=symbol,
+            market=infer_market_from_symbol(symbol).get("market", ""),
+            source=record,
+        )
+        money_unit = f"{currency_meta.statement_currency}_billion" if currency_meta.statement_currency != UNKNOWN_CURRENCY else "unknown_billion"
         report_date = str(metadata.get("report_date") or metadata.get("end") or metadata.get("as_of_date") or "")
         notice_date = str(metadata.get("notice_date") or record.get("publish_time") or "")
         metrics = _coerce_metrics(record)
@@ -56,7 +65,7 @@ def build_financial_metric_lineage(records: List[Dict[str, Any]]) -> Dict[str, A
                 _metric_row(
                     metric_name="revenue",
                     value=metrics["revenue_billion"],
-                    unit="USD_billion",
+                    unit=money_unit,
                     period=period,
                     source_table_id=table_id,
                     source_evidence_id=evidence_id,
@@ -104,7 +113,7 @@ def build_financial_metric_lineage(records: List[Dict[str, Any]]) -> Dict[str, A
                 _metric_row(
                     metric_name="net_income",
                     value=net_income,
-                    unit="USD_billion",
+                    unit=money_unit,
                     period=period,
                     source_table_id=table_id,
                     source_evidence_id=evidence_id,
@@ -122,7 +131,7 @@ def build_financial_metric_lineage(records: List[Dict[str, Any]]) -> Dict[str, A
                 _metric_row(
                     metric_name="adjusted_net_income",
                     value=metrics["adjusted_net_income_billion"],
-                    unit="USD_billion",
+                    unit=money_unit,
                     period=period,
                     source_table_id=table_id,
                     source_evidence_id=evidence_id,
@@ -140,7 +149,7 @@ def build_financial_metric_lineage(records: List[Dict[str, Any]]) -> Dict[str, A
                 _metric_row(
                     metric_name="non_recurring_gain",
                     value=metrics["non_recurring_gain_billion"],
-                    unit="USD_billion",
+                    unit=money_unit,
                     period=period,
                     source_table_id=table_id,
                     source_evidence_id=evidence_id,
@@ -158,7 +167,7 @@ def build_financial_metric_lineage(records: List[Dict[str, Any]]) -> Dict[str, A
                 _metric_row(
                     metric_name="free_cash_flow",
                     value=metrics["free_cash_flow_billion"],
-                    unit="USD_billion",
+                    unit=money_unit,
                     period=period,
                     source_table_id=table_id,
                     source_evidence_id=evidence_id,
@@ -218,7 +227,7 @@ def build_financial_metric_tables(records: List[Dict[str, Any]]) -> List[Dict[st
                 "columns": sorted({key for row in rows for key in row.keys()}),
                 "source_evidence_id": str(first.get("evidence_id", "")),
                 "period": str(first.get("period", "")),
-                "currency": "USD",
+                "currency": normalize_currency_code(first.get("currency") or first.get("unit")),
                 "unit": "billion",
                 "extraction_method": "financial_summary_normalization",
                 "confidence": 0.8,
@@ -242,11 +251,18 @@ def _metric_row(
     notice_date: str = "",
     source_period: str = "",
 ) -> Dict[str, Any]:
+    currency = _currency_from_unit(unit)
     return {
+        "metric_key": metric_name,
         "metric_lineage_id": _metric_lineage_id(symbol, period, metric_name, source_table_id, source_evidence_id, report_date),
         "metric_name": metric_name,
         "value": round(float(value), 6),
         "unit": unit,
+        "currency": currency,
+        "scale": _scale_from_unit(unit),
+        "source_id": source_evidence_id,
+        "source_type": "",
+        "currency_basis": "unknown" if currency == UNKNOWN_CURRENCY else "source_or_rule",
         "period": period,
         "source_period": source_period or period,
         "report_date": report_date,
@@ -258,6 +274,24 @@ def _metric_row(
         "confidence": confidence,
         "symbol": symbol,
     }
+
+
+def _currency_from_unit(unit: Any) -> str:
+    text = str(unit or "")
+    if "_" in text:
+        text = text.split("_", 1)[0]
+    return normalize_currency_code(text)
+
+
+def _scale_from_unit(unit: Any) -> str:
+    text = str(unit or "").lower()
+    if "billion" in text:
+        return "billion"
+    if "million" in text:
+        return "million"
+    if "thousand" in text:
+        return "thousand"
+    return "unit"
 
 
 def _coerce_metrics(record: Dict[str, Any]) -> Dict[str, Any]:

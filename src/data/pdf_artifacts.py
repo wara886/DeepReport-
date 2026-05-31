@@ -18,7 +18,11 @@ SECTION_KEYWORDS = {
     "management_discussion": ["管理层讨论", "经营情况讨论", "management discussion", "md&a"],
     "risk_factors": ["风险因素", "风险提示", "risk"],
     "financial_statements": ["财务报表", "合并资产负债表", "利润表", "现金流量表", "financial statements"],
-    "ownership_governance": ["股本", "股东", "董事", "监事", "高级管理人员", "shareholder", "governance"],
+    # P0.8.5: Removed "董事"/"监事"/"高级管理人员" from ownership_governance —
+    # these match 重要提示 disclaimers ("本公司董事会及董事、高级管理人员保证...")
+    # which are NOT governance evidence. Use 股东/股本/shareholder/governance/公司治理 only.
+    "ownership_governance": ["股东", "股本", "公司治理", "shareholder", "governance"],
+    "shareholder_structure": ["股份变动", "前十", "控股股东", "实际控制人"],
 }
 
 
@@ -202,6 +206,9 @@ def _extract_sections(path: Path, evidence_id: str, source_url: str, max_pages: 
                     if not match:
                         continue
                     snippet = _snippet_around(normalized, match)
+                    # P0.8.5: Skip noise snippets (headers, disclaimers, TOC)
+                    if _is_snippet_noise(snippet, section_type):
+                        continue
                     section_id = hashlib.sha1(f"{evidence_id}|{page_index}|{section_type}|{snippet}".encode("utf-8")).hexdigest()[:12]
                     sections.append(
                         {
@@ -515,6 +522,32 @@ def _table_confidence(table_type: str, rows: List[Dict[str, Any]]) -> float:
     present = {str(row.get("line_item") or "") for row in rows}
     coverage = len(required & present) / max(1, len(required))
     return round(0.62 + 0.28 * coverage, 3)
+
+
+def _is_snippet_noise(snippet: str, section_type: str) -> bool:
+    """Return True if snippet is a known PDF noise pattern that should be skipped."""
+    t = str(snippet or "").strip()
+    if len(t) < 30:
+        return True
+    # Page headers / important notice / disclaimer patterns
+    noise_pats = [
+        r"年度报告\s*\d+\s*/\s*\d+",
+        r"第\s*\d+\s*页\s*共\s*\d+\s*页",
+        r"重要提示",
+        r"本公司董事会及董事.*保证",
+        r"不存在虚假记载",
+        r"□适用\s*√不适用",
+        r"√适用\s*□不适用",
+        r"标准无保留意见",
+    ]
+    for pat in noise_pats:
+        if re.search(pat, t):
+            return True
+    # Critical: important_notice text must never serve as governance/risk evidence
+    if section_type in ("ownership_governance", "shareholder_structure", "risk_factors"):
+        if re.search(r"董事会.*保证|不存在虚假|标准无保留意见|全体董事出席", t):
+            return True
+    return False
 
 
 def _snippet_around(text: str, keyword: str, radius: int = 420) -> str:

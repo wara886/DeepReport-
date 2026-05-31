@@ -207,11 +207,29 @@ def generate_report_charts(
     return charts
 
 
+def normalize_financial_scale(chart: dict[str, Any]) -> dict[str, Any]:
+    """Convert raw CNY values to 亿元人民币 for financial_scale_bar charts."""
+    chart_id = str(chart.get("chart_id") or "")
+    if chart_id != "financial_scale_bar":
+        return chart
+    chart_js = chart.get("chart_js", {}) if isinstance(chart.get("chart_js"), dict) else {}
+    data = chart_js.get("data", []) if isinstance(chart_js.get("data"), list) else []
+    if not data:
+        return chart
+    # Detect if values are raw CNY (>1e8)
+    if any(isinstance(v, (int, float)) and abs(v) > 1e10 for v in data):
+        scaled = [v / 1e8 if isinstance(v, (int, float)) else v for v in data]
+        chart["chart_js"] = {**chart_js, "data": scaled}
+        chart["chart_js"]["unit_label"] = "亿元人民币"
+    return chart
+
+
 def sanitize_chart_payloads(charts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Remove internal labels from chart payloads and drop charts with <2 valid points."""
     clean: List[Dict[str, Any]] = []
     for chart in charts:
         if isinstance(chart, dict):
+            chart = normalize_financial_scale(chart)
             chart_id = str(chart.get("chart_id") or "")
             title = _sanitize_chart_label(chart.get("title") or chart_id or "图表", 1)
             if title.startswith("指标 ") and chart_id:

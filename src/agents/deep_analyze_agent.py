@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from src.agents.base_agent import AgentTask, BaseAgent, TaskResult
 from src.agents.react_loop import run_react_tool_loop
 from src.features.financial_metric_lineage import build_financial_metric_lineage, build_financial_metric_tables
+from src.evaluation.financial_currency_audit import build_currency_audit
 from src.models import ModelAdapter
 from src.schemas.claim import ClaimItem
 from src.tools import ToolRegistry, build_core_tool_registry
@@ -134,6 +135,23 @@ class DeepAnalyzeAgent(BaseAgent):
         financial_metric_lineage = build_financial_metric_lineage(records)
         table_artifacts = build_financial_metric_tables(records)
         valuation_model = valuation.get("valuation_model", {}) if isinstance(valuation, dict) else {}
+        if not valuation_model and isinstance(valuation, dict) and valuation.get("valuation_available") is False:
+            valuation_model = {
+                "symbol": symbol,
+                "period": period,
+                "valuation_available": False,
+                "valuation_status": valuation.get("valuation_status") or valuation.get("error") or "valuation_unavailable",
+                "error": valuation.get("error", ""),
+                "missing_inputs": valuation.get("missing_inputs", []),
+                "input_summary": valuation.get("input_summary", {}),
+            }
+        currency_audit = build_currency_audit(
+            symbol=symbol,
+            period=period,
+            records=records,
+            financial_metrics=financial_metric_lineage,
+            valuation_model=valuation_model or (valuation if isinstance(valuation, dict) else {}),
+        )
         valuation_assumptions = valuation.get("valuation_assumptions", {}) if isinstance(valuation, dict) else {}
         valuation_sensitivity = valuation.get("valuation_sensitivity", {}) if isinstance(valuation, dict) else {}
         claims = build_rule_claims(
@@ -219,6 +237,7 @@ class DeepAnalyzeAgent(BaseAgent):
                     "trend_rows": trend_rows,
                     "statement_view": statement_view,
                     "financial_metrics": financial_metric_lineage,
+                    "currency_audit": currency_audit,
                     "tables": table_artifacts,
                     "peer_context": peer_context,
                     "valuation": valuation,
@@ -1048,7 +1067,7 @@ def _statement_metric_findings(statement_view: Dict[str, Any], financial_metric_
             row = by_metric.get(name)
             if not row:
                 continue
-            parts.append(f"{_role_metric_label(name)} {_format_role_number(row.get('value'))} {str(row.get('unit') or '').strip()}".strip())
+            parts.append(f"{_role_metric_label(name)} {_format_financial_amount(float(value), str(row.get('unit') or row.get('currency') or ''))}".strip())
             evidence_id = str(row.get("source_evidence_id") or row.get("evidence_id") or "")
             if evidence_id:
                 evidence_ids.append(evidence_id)
@@ -2228,6 +2247,11 @@ def _format_sec_value(metric: Dict[str, Any]) -> str:
 
 def _format_financial_amount(value: float, unit: str = "") -> str:
     unit_key = str(unit or "").upper()
+    if unit_key.endswith("_BILLION"):
+        base = unit_key.split("_", 1)[0]
+        return _format_financial_amount(float(value) * 1_000_000_000, base)
+    if unit_key == "HKD":
+        return f"{float(value) / 100_000_000:.2f}亿港元"
     if unit_key in {"CNY", "RMB", "人民币", "元"}:
         return f"{float(value) / 100_000_000:.2f}亿元"
     if unit_key in {"USD", "US$"}:

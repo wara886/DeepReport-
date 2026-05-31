@@ -32,9 +32,20 @@ def render_peer_compare_table(peer_rows: list[dict[str, Any]]) -> str:
     return _markdown_table(headers, rows)
 
 
-def render_valuation_table(valuation_model: dict[str, Any]) -> str:
+def render_valuation_table(valuation_model: dict[str, Any], currency_context: dict[str, Any] | None = None) -> str:
     if not isinstance(valuation_model, dict) or not valuation_model:
         return ""
+    # P0.8.2: Block valuation output when cross-currency without FX rate
+    ctx = currency_context or {}
+    stmt_ccy = str(ctx.get("statement_currency") or "").upper()
+    trade_ccy = str(ctx.get("trading_currency") or "").upper()
+    fx_rate = ctx.get("fx_rate")
+    official = str(ctx.get("official_source_status") or "")
+    is_cross = stmt_ccy and trade_ccy and stmt_ccy != trade_ccy
+    if is_cross and not fx_rate:
+        return ""  # block: CNY financials + HKD market cap, no FX → no P/E/P/S
+    if official and official != "found":
+        return ""  # block: no official source validation → no deterministic valuation
     methods = valuation_model.get("methods")
     if not isinstance(methods, list):
         methods = []
@@ -118,15 +129,21 @@ def render_financial_ratio_table(metrics: dict[str, Any]) -> str:
             if not isinstance(item, dict):
                 continue
             name = str(item.get("metric_name") or item.get("name") or "")
+            if name.lower() in {"adjusted_net_income", "non_recurring_gain", "revenue_growth_pct", "metric_count", "rejected_metric_count"}:
+                continue
             value = item.get("value")
             if not name or value is None:
                 continue
-            rows.append([_metric_label(name), _format_number(value), str(item.get("period") or item.get("unit") or "-")])
+            rows.append([_metric_label(name), _format_number(value), str(item.get("period") or item.get("unit") or item.get("currency") or "-")])
         return _markdown_table(["指标", "数值", "期间/单位"], rows)
 
     rows = []
     for key, value in metrics.items():
         if key in {"metric_count", "rejected_metric_count", "rejected_metrics"}:
+            continue
+        # P0.8.1: Map internal keys to Chinese labels instead of skipping
+        if key.lower() in {"adjusted_net_income", "non_recurring_gain", "revenue_growth_pct"}:
+            rows.append([_metric_label(str(key)), _format_number(value), _metric_note(str(key))])
             continue
         if isinstance(value, (int, float)):
             rows.append([_metric_label(str(key)), _format_number(value), _metric_note(str(key))])
@@ -236,6 +253,7 @@ def _metric_label(key: str) -> str:
         "total_assets": "总资产",
         "total_liabilities": "总负债",
         "total_equity": "股东权益",
+        "equity": "股东权益",
         "operating_cash_flow": "经营现金流",
         "free_cash_flow": "自由现金流",
         "capex": "资本开支",
@@ -246,6 +264,15 @@ def _metric_label(key: str) -> str:
         "ps_ratio": "P/S",
         "pb_ratio": "P/B",
         "market_cap": "市值",
+        # P0.8.1: Internal keys that leak to user reports
+        "adjusted_net_income": "调整后净利润",
+        "non_recurring_gain": "非经常性收益",
+        "revenue_growth_pct": "收入增速",
+        "gross_margin_pct": "毛利率",
+        "net_margin_pct": "净利率",
+        "roe_pct": "ROE",
+        "pe_ttm": "市盈率",
+        "ps_ttm": "市销率",
     }
     return mapping.get(key.lower(), key)
 

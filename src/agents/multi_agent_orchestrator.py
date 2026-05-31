@@ -44,6 +44,7 @@ from src.agents.verifier_agent import VerifierAgent
 from src.data.company_universe import resolve_company_identifier, resolve_company_identifier_with_diagnostics
 from src.data.official_evidence_archive import archive_official_evidence_manifest, build_official_evidence_artifacts
 from src.data.pdf_artifacts import build_pdf_artifacts
+from src.data.pdf_rag_pipeline import build_pdf_rag_artifacts
 from src.data.sec_filing_resolver import resolve_sec_annual_filing
 from src.evaluation.company_report_scorecard import build_company_report_scorecard
 from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
@@ -626,6 +627,10 @@ class MultiAgentOrchestrator:
             "financial_metrics.json",
             analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
         )
+        currency_audit_path = self._write_json(
+            "currency_audit.json",
+            analysis_artifacts.get("currency_audit", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
         rejected_metrics_path = self._write_json(
             "rejected_metrics.json",
             dict(analysis_artifacts.get("financial_metrics", {})).get("rejected_metrics", [])
@@ -734,6 +739,8 @@ class MultiAgentOrchestrator:
                     "skill_brief": self._skill_brief("report markdown citations charts", "final_answer", max_items=2),
                     "tables": tables,
                     "financial_metrics": analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
+                    "currency_audit": analysis_artifacts.get("currency_audit", {}) if isinstance(analysis_artifacts, dict) else {},
+                    "valuation_model": analysis_artifacts.get("valuation_model", {}) if isinstance(analysis_artifacts, dict) else {},
                     "pdf_sections": analysis_artifacts.get("pdf_sections", []) if isinstance(analysis_artifacts, dict) else [],
                     "company_profile": analysis_artifacts.get("company_profile", {}) if isinstance(analysis_artifacts, dict) else {},
                     "quality_remediation_plan": quality_remediation_plan or {},
@@ -785,6 +792,7 @@ class MultiAgentOrchestrator:
             title=report_title,
             charts=charts,
             citations=citations,
+            delivery_status=str(report_json.get("delivery_status") or "normal") if isinstance(report_json, dict) else "normal",
         )
         markdown = append_compliance_disclosures(markdown, citations=citations)
         html = append_compliance_disclosures_to_html(html, citations=citations)
@@ -968,6 +976,7 @@ class MultiAgentOrchestrator:
             "claims": str(self.output_dir / "claims.json"),
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
             "financial_metrics": str(financial_metrics_path),
+            "currency_audit": str(currency_audit_path),
             "rejected_metrics": str(rejected_metrics_path),
             "claim_rejection_report": str(claim_rejection_path),
             "tables": str(tables_path),
@@ -1173,6 +1182,20 @@ class MultiAgentOrchestrator:
                 max_pdfs=2 if fast else 4,
                 max_pages=6 if fast else 12,
             )
+            pdf_rag = build_pdf_rag_artifacts(
+                pdf_artifacts=pdf_artifacts,
+                output_dir=self.output_dir,
+                symbol=str(state.get("symbol", "")),
+                period=str(state.get("period", "")),
+                max_pages_per_section=6 if fast else 10,
+            )
+            pdf_artifacts.update(pdf_rag)
+            state["pdf_section_summaries"] = pdf_rag.get("pdf_section_summaries", [])
+            state["section_evidence"] = pdf_rag.get("pdf_section_summaries", [])
+            analysis_artifacts = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
+            analysis_artifacts["pdf_section_summaries"] = pdf_rag.get("pdf_section_summaries", [])
+            analysis_artifacts["pdf_extraction_audit"] = pdf_rag.get("pdf_extraction_audit", {})
+            state["analysis_artifacts"] = analysis_artifacts
         if not isinstance(pdf_artifacts, dict):
             pdf_artifacts = {
                 "pdf_manifest": [],
@@ -1183,6 +1206,8 @@ class MultiAgentOrchestrator:
             }
         pdf_manifest_path = self._write_json("pdf_manifest.json", pdf_artifacts.get("pdf_manifest", []))
         pdf_sections_path = self._write_json("pdf_sections.json", pdf_artifacts.get("pdf_sections", []))
+        pdf_section_summaries_path = self._write_json("pdf_section_summaries.json", pdf_artifacts.get("pdf_section_summaries", []))
+        pdf_extraction_audit_path = self._write_json("pdf_extraction_audit.json", pdf_artifacts.get("pdf_extraction_audit", {}))
         company_profile_extracted_path = self._write_json(
             "company_profile_extracted.json",
             pdf_artifacts.get("company_profile_extracted", {}),
@@ -1190,6 +1215,10 @@ class MultiAgentOrchestrator:
         financial_metrics_path = self._write_json(
             "financial_metrics.json",
             analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
+        currency_audit_path = self._write_json(
+            "currency_audit.json",
+            analysis_artifacts.get("currency_audit", {}) if isinstance(analysis_artifacts, dict) else {},
         )
         rejected_metrics_path = self._write_json(
             "rejected_metrics.json",
@@ -1377,10 +1406,13 @@ class MultiAgentOrchestrator:
             "claims": str(self.output_dir / "claims.json"),
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
             "financial_metrics": str(financial_metrics_path),
+            "currency_audit": str(currency_audit_path),
             "rejected_metrics": str(rejected_metrics_path),
             "claim_rejection_report": str(claim_rejection_path),
             "pdf_manifest": str(pdf_manifest_path),
             "pdf_sections": str(pdf_sections_path),
+            "pdf_section_summaries": str(pdf_section_summaries_path),
+            "pdf_extraction_audit": str(pdf_extraction_audit_path),
             "official_evidence_manifest": str(official_manifest_path),
             "evidence_coverage": str(evidence_coverage_path),
             "sec_filing_resolver": str(sec_filing_resolver_path),
@@ -1829,6 +1861,7 @@ class MultiAgentOrchestrator:
         analysis = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
         self._write_json("tables.json", analysis.get("tables", []))
         self._write_json("financial_metrics.json", analysis.get("financial_metrics", {}))
+        self._write_json("currency_audit.json", analysis.get("currency_audit", {}))
         self._write_json("valuation_model.json", analysis.get("valuation_model", {}))
         self._write_json("valuation_sensitivity.json", analysis.get("valuation_sensitivity", {}))
         self._write_json("research_blackboard.json", state.get("research_blackboard", {}))
@@ -2778,7 +2811,9 @@ def enrich_task_parameters(
         analysis_artifacts = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
         params.setdefault("tables", analysis_artifacts.get("tables", []))
         params.setdefault("financial_metrics", analysis_artifacts.get("financial_metrics", {}))
-        params.setdefault("pdf_sections", analysis_artifacts.get("pdf_sections", []))
+        params.setdefault("currency_audit", analysis_artifacts.get("currency_audit", {}))
+        params.setdefault("valuation_model", analysis_artifacts.get("valuation_model", {}))
+        params.setdefault("pdf_sections", state.get("pdf_section_summaries") or analysis_artifacts.get("pdf_section_summaries") or analysis_artifacts.get("pdf_sections", []))
         params.setdefault("company_profile", analysis_artifacts.get("company_profile", {}))
         params.setdefault("annual_report_sections", state.get("annual_report_sections", {}))
         params.setdefault("quality_remediation_plan", dict(state.get("quality_remediation_plan", {})) if isinstance(state.get("quality_remediation_plan"), dict) else {})
@@ -2905,6 +2940,7 @@ def merge_task_result(state: Dict[str, Any], task_type: str, result: TaskResult)
             title=llm_title or fallback_title,
             charts=charts,
             citations=state["citations"],
+            delivery_status=str(report_json.get("delivery_status") or "normal") if isinstance(report_json, dict) else "normal",
         )
         state["report_title"] = llm_title or fallback_title
         state["markdown"] = append_compliance_disclosures(state["markdown"], citations=state["citations"])
@@ -2941,7 +2977,21 @@ def attach_pdf_artifacts_to_state(state: Dict[str, Any]) -> None:
         max_pdfs=2 if fast else 4,
         max_pages=6 if fast else 12,
     )
+    pdf_rag = build_pdf_rag_artifacts(
+        pdf_artifacts=pdf_artifacts,
+        output_dir=output_dir,
+        symbol=str(state.get("symbol", "")),
+        period=str(state.get("period", "")),
+        max_pages_per_section=6 if fast else 10,
+    )
+    pdf_artifacts.update(pdf_rag)
     state["pdf_artifacts"] = pdf_artifacts
+    state["pdf_section_summaries"] = pdf_rag.get("pdf_section_summaries", [])
+    state["section_evidence"] = pdf_rag.get("pdf_section_summaries", [])
+    analysis = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
+    analysis["pdf_section_summaries"] = pdf_rag.get("pdf_section_summaries", [])
+    analysis["pdf_extraction_audit"] = pdf_rag.get("pdf_extraction_audit", {})
+    state["analysis_artifacts"] = analysis
     section_records = _pdf_sections_as_evidence_records(
         sections=pdf_artifacts.get("pdf_sections", []),
         symbol=str(state.get("symbol", "")),

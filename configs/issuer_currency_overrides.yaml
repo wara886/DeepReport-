@@ -1,0 +1,8 @@
+issuers:
+  0700.HK:
+    company_name: Tencent Holdings Limited
+    statement_currency: CNY
+    trading_currency: HKD
+    display_currency: CNY
+    confidence: inferred
+    source: issuer_currency_rules

@@ -1,58 +1,55 @@
-<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="1280" height="620" viewBox="0 0 1280 620" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="80" y1="60" x2="1200" y2="660" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F4F1EA"/>
-      <stop offset="1" stop-color="#E7EEF8"/>
+    <linearGradient id="bg" x1="70" y1="40" x2="1210" y2="580" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFC"/>
+      <stop offset="1" stop-color="#FFF4E2"/>
     </linearGradient>
-    <linearGradient id="panelA" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#18212B"/>
-      <stop offset="1" stop-color="#243748"/>
-    </linearGradient>
-    <linearGradient id="panelB" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#FFF7E8"/>
-      <stop offset="1" stop-color="#FFE7BE"/>
+    <linearGradient id="dark" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#16212C"/>
+      <stop offset="1" stop-color="#263A4B"/>
     </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#1B2430" flood-opacity="0.12"/>
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#1F2937" flood-opacity="0.14"/>
     </filter>
   </defs>
-  <rect width="1280" height="720" rx="40" fill="url(#bg)"/>
-  <rect x="64" y="56" width="1152" height="608" rx="32" fill="#FBFAF7" filter="url(#shadow)"/>
-  <rect x="112" y="112" width="344" height="496" rx="28" fill="url(#panelA)"/>
-  <rect x="496" y="112" width="312" height="230" rx="26" fill="#FFFFFF" stroke="#D9E1EA"/>
-  <rect x="496" y="378" width="312" height="230" rx="26" fill="#FFFFFF" stroke="#D9E1EA"/>
-  <rect x="848" y="112" width="320" height="496" rx="28" fill="url(#panelB)"/>
-  <text x="148" y="180" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="700">FinSight</text>
-  <text x="148" y="224" fill="#B9C8D8" font-family="Segoe UI, Arial, sans-serif" font-size="24">Evidence-first company research</text>
-  <rect x="148" y="274" width="272" height="74" rx="22" fill="#2E4357"/>
-  <text x="174" y="320" fill="#F8FAFC" font-family="Consolas, monospace" font-size="24">生成 META 最新财报</text>
-  <rect x="148" y="376" width="272" height="118" rx="22" fill="#213140"/>
-  <circle cx="181" cy="416" r="8" fill="#6BE7A6"/>
-  <circle cx="181" cy="452" r="8" fill="#6BE7A6"/>
-  <circle cx="181" cy="488" r="8" fill="#6BE7A6"/>
-  <text x="203" y="424" fill="#D8E5F1" font-family="Segoe UI, Arial, sans-serif" font-size="22">理解任务与公司身份</text>
-  <text x="203" y="460" fill="#D8E5F1" font-family="Segoe UI, Arial, sans-serif" font-size="22">抓取 SEC / 行情 / 披露</text>
-  <text x="203" y="496" fill="#D8E5F1" font-family="Segoe UI, Arial, sans-serif" font-size="22">生成 HTML / Markdown / JSON</text>
-  <text x="532" y="166" fill="#202B36" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Planning</text>
-  <text x="532" y="206" fill="#5C6B79" font-family="Segoe UI, Arial, sans-serif" font-size="20">LLM-first target resolution</text>
-  <rect x="532" y="234" width="240" height="72" rx="18" fill="#F5F7FA"/>
-  <text x="554" y="276" fill="#1F2933" font-family="Consolas, monospace" font-size="20">META | US | 2026Q1</text>
-  <text x="532" y="432" fill="#202B36" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Evidence</text>
-  <text x="532" y="472" fill="#5C6B79" font-family="Segoe UI, Arial, sans-serif" font-size="20">10-K / companyfacts / market snapshots</text>
-  <rect x="532" y="500" width="240" height="72" rx="18" fill="#F5F7FA"/>
-  <text x="554" y="544" fill="#1F2933" font-family="Consolas, monospace" font-size="20">claims.json + citations.json</text>
-  <text x="884" y="168" fill="#6C4B00" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Deliverables</text>
-  <rect x="884" y="212" width="248" height="92" rx="22" fill="#FFFDF8" stroke="#EDC982"/>
-  <text x="910" y="248" fill="#6C4B00" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">HTML report</text>
-  <text x="910" y="282" fill="#8A6A21" font-family="Segoe UI, Arial, sans-serif" font-size="18">browser-ready, citation-aware</text>
-  <rect x="884" y="330" width="248" height="92" rx="22" fill="#FFFDF8" stroke="#EDC982"/>
-  <text x="910" y="366" fill="#6C4B00" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">Markdown report</text>
-  <text x="910" y="400" fill="#8A6A21" font-family="Segoe UI, Arial, sans-serif" font-size="18">clean diffable artifact</text>
-  <rect x="884" y="448" width="248" height="92" rx="22" fill="#FFFDF8" stroke="#EDC982"/>
-  <text x="910" y="484" fill="#6C4B00" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">Verification gate</text>
-  <text x="910" y="518" fill="#8A6A21" font-family="Segoe UI, Arial, sans-serif" font-size="18">degrade instead of hallucinate</text>
-  <path d="M456 218H482" stroke="#7E8B99" stroke-width="6" stroke-linecap="round"/>
-  <path d="M808 230H834" stroke="#7E8B99" stroke-width="6" stroke-linecap="round"/>
-  <path d="M652 342V362" stroke="#7E8B99" stroke-width="6" stroke-linecap="round"/>
-  <path d="M808 494H834" stroke="#7E8B99" stroke-width="6" stroke-linecap="round"/>
+  <rect width="1280" height="620" rx="36" fill="url(#bg)"/>
+  <rect x="64" y="56" width="1152" height="508" rx="32" fill="#FFFFFF" filter="url(#shadow)"/>
+
+  <rect x="112" y="112" width="330" height="396" rx="28" fill="url(#dark)"/>
+  <text x="148" y="178" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="38" font-weight="700">Open DeepReport++</text>
+  <text x="148" y="222" fill="#B9C8D8" font-family="Segoe UI, Arial, sans-serif" font-size="21">Evidence-first reports</text>
+  <rect x="148" y="276" width="250" height="64" rx="18" fill="#314B63"/>
+  <text x="173" y="316" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="600">Generate META report</text>
+  <circle cx="162" cy="389" r="7" fill="#6BE7A6"/>
+  <circle cx="162" cy="425" r="7" fill="#6BE7A6"/>
+  <circle cx="162" cy="461" r="7" fill="#6BE7A6"/>
+  <text x="184" y="396" fill="#E7EEF7" font-family="Segoe UI, Arial, sans-serif" font-size="18">Resolve target</text>
+  <text x="184" y="432" fill="#E7EEF7" font-family="Segoe UI, Arial, sans-serif" font-size="18">Collect filings</text>
+  <text x="184" y="468" fill="#E7EEF7" font-family="Segoe UI, Arial, sans-serif" font-size="18">Write with cites</text>
+
+  <rect x="506" y="116" width="220" height="150" rx="22" fill="#F8FAFC" stroke="#D6E0EA"/>
+  <text x="542" y="174" fill="#16212C" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Plan</text>
+  <text x="542" y="210" fill="#64748B" font-family="Segoe UI, Arial, sans-serif" font-size="18">Company + period</text>
+  <rect x="506" y="354" width="220" height="150" rx="22" fill="#F8FAFC" stroke="#D6E0EA"/>
+  <text x="542" y="412" fill="#16212C" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Route</text>
+  <text x="542" y="448" fill="#64748B" font-family="Segoe UI, Arial, sans-serif" font-size="18">Official sources</text>
+
+  <rect x="782" y="116" width="220" height="150" rx="22" fill="#F8FAFC" stroke="#D6E0EA"/>
+  <text x="818" y="174" fill="#16212C" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Analyze</text>
+  <text x="818" y="210" fill="#64748B" font-family="Segoe UI, Arial, sans-serif" font-size="18">Claims + metrics</text>
+  <rect x="782" y="354" width="220" height="150" rx="22" fill="#FFF7E8" stroke="#E8C982"/>
+  <text x="818" y="412" fill="#6C4B00" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Deliver</text>
+  <text x="818" y="448" fill="#8A6A21" font-family="Segoe UI, Arial, sans-serif" font-size="18">HTML / MD / JSON</text>
+
+  <path d="M442 190H492" stroke="#8B98A7" stroke-width="6" stroke-linecap="round"/>
+  <path d="M616 266V340" stroke="#8B98A7" stroke-width="6" stroke-linecap="round"/>
+  <path d="M726 190H768" stroke="#8B98A7" stroke-width="6" stroke-linecap="round"/>
+  <path d="M892 266V340" stroke="#8B98A7" stroke-width="6" stroke-linecap="round"/>
+  <path d="M726 430H768" stroke="#8B98A7" stroke-width="6" stroke-linecap="round"/>
+  <rect x="1042" y="196" width="112" height="228" rx="24" fill="#16212C"/>
+  <text x="1074" y="262" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="700">Gate</text>
+  <text x="1072" y="314" fill="#D8E5F1" font-family="Segoe UI, Arial, sans-serif" font-size="17">Cites</text>
+  <text x="1072" y="350" fill="#D8E5F1" font-family="Segoe UI, Arial, sans-serif" font-size="17">Units</text>
+  <text x="1072" y="386" fill="#D8E5F1" font-family="Segoe UI, Arial, sans-serif" font-size="17">Quality</text>
+  <path d="M1002 430H1028" stroke="#8B98A7" stroke-width="6" stroke-linecap="round"/>
 </svg>

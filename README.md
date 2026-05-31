@@ -16,11 +16,6 @@ official-source evidence, charts, and quality gates.
 
 ![FinSight overview](docs/assets/finsight-overview.svg)
 
-> Open DeepReport++ is inspired by the engineering skeleton of
-> [DeepReport](https://github.com/wisdom-pan/DeepReport), but does not copy its
-> business logic. This repository focuses on company and stock research reports,
-> evidence contracts, and reproducible report artifacts.
-
 ## Highlights
 
 - **Claim-first writing**: every important statement is tied to `evidence_id`.
@@ -51,37 +46,12 @@ official-source evidence, charts, and quality gates.
 
 ```mermaid
 flowchart LR
-    U[User request] --> P[Intent and company planning]
-    P --> E[Official evidence routing]
-    E --> K[SEC 10-K / filings / market data]
-    K --> C[Claim and metric extraction]
-    C --> D[Section dossiers]
-    D --> W[Report writer]
-    W --> Q[Verifier and quality gate]
-    Q --> R[HTML / Markdown / JSON]
-```
-
-```mermaid
-flowchart TB
-    subgraph Evidence
-        A[evidence.json]
-        B[sec_filing_resolver.json]
-        C[annual_report_sections.json]
-        D[official_evidence_manifest.json]
-    end
-    subgraph Analysis
-        E[claims.json]
-        F[financial_metrics.json]
-        G[section_dossiers.json]
-        H[charts.json]
-    end
-    subgraph Delivery
-        I[report.md]
-        J[report.html]
-        K[report.json]
-        L[verification_report.json]
-    end
-    Evidence --> Analysis --> Delivery
+    U[Request] --> P[Plan]
+    P --> R[Route]
+    R --> E[Evidence]
+    E --> A[Analyze]
+    A --> G[Gate]
+    G --> O[Report]
 ```
 
 ## Quick Start

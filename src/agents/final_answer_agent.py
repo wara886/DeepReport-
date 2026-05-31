@@ -91,6 +91,8 @@ class FinalAnswerAgent(BaseAgent):
         company_name = str(task.parameters.get("company_name", "")).strip()
         tables = task.parameters.get("tables", [])
         financial_metrics = task.parameters.get("financial_metrics", {})
+        currency_audit = task.parameters.get("currency_audit", {})
+        valuation_model = task.parameters.get("valuation_model", {})
         pdf_sections = task.parameters.get("pdf_sections", [])
         company_profile = task.parameters.get("company_profile", {})
         research_blackboard = task.parameters.get("research_blackboard", {})
@@ -211,10 +213,12 @@ class FinalAnswerAgent(BaseAgent):
         markdown = ensure_period_disclosure(markdown, period, evidence_records, tables, financial_metrics)
         if degraded_report:
             markdown = _append_degraded_report_note(markdown, pre_write_critic, pre_write_rework_history)
+        markdown = _append_currency_gate_note(markdown, currency_audit, valuation_model)
         markdown = normalize_report_headings(markdown)
         markdown = insert_deterministic_blocks_from_dossiers(markdown, section_dossiers)
         markdown = enforce_section_depth(markdown, section_dossiers)
         markdown = _sanitize_generic_phrases(markdown)
+        markdown = _sanitize_pdf_gap_language(markdown)
         # Final cleanup pass — after all deterministic overrides that may re-insert bad content
         markdown = remove_debug_leakage(markdown)
         markdown = remove_internal_ids(markdown)
@@ -237,11 +241,13 @@ class FinalAnswerAgent(BaseAgent):
             "degraded_report": degraded_report,
             "pre_write_rework_history": pre_write_rework_history if isinstance(pre_write_rework_history, list) else [],
             "section_dossiers": section_dossiers,
-            "delivery_status": blocker_meta.get("delivery_status", "normal"),
+            "currency_audit": currency_audit if isinstance(currency_audit, dict) else {},
+            "valuation_model": valuation_model if isinstance(valuation_model, dict) else {},
+            "delivery_status": _delivery_status_from_currency(currency_audit, valuation_model, blocker_meta.get("delivery_status", "normal")),
             "sparse_or_invalid_sections": blocker_meta.get("sparse_or_invalid_sections", []),
             "user_warning": blocker_meta.get("user_warning", ""),
         }
-        metadata["delivery_status"] = blocker_meta.get("delivery_status", "normal")
+        metadata["delivery_status"] = report_json["delivery_status"]
 
         return self.success(
             task,
@@ -318,6 +324,87 @@ def _append_degraded_report_note(markdown: str, critic: Any, rework_history: Any
     if isinstance(rework_history, list) and rework_history:
         lines.append(f"- 已执行责任 Agent 返工轮次：{len(rework_history)}。")
     return markdown.rstrip() + "\n" + "\n".join(lines) + "\n"
+
+
+def _append_currency_gate_note(markdown: str, currency_audit: Any, valuation_model: Any) -> str:
+    if not isinstance(currency_audit, dict) or not currency_audit:
+        return markdown
+    blockers = currency_audit.get("blockers", []) if isinstance(currency_audit.get("blockers"), list) else []
+    warnings = currency_audit.get("warnings", []) if isinstance(currency_audit.get("warnings"), list) else []
+    statement_currency = str(currency_audit.get("statement_currency") or "")
+    trading_currency = str(currency_audit.get("trading_currency") or "")
+    display_currency = str(currency_audit.get("display_currency") or statement_currency)
+    valuation_status = ""
+    if isinstance(valuation_model, dict):
+        valuation_status = str(valuation_model.get("valuation_status") or valuation_model.get("error") or "")
+    official_status = str(currency_audit.get("official_source_status") or "")
+    has_fx = bool(isinstance(valuation_model, dict) and valuation_model.get("fx_rate"))
+    is_cross = statement_currency and trading_currency and statement_currency.upper() != trading_currency.upper()
+    valuation_blocked = is_cross and not has_fx
+
+    if not statement_currency or statement_currency == "unknown":
+        return markdown
+
+    lines = ["", "## 货币与数据质量说明", ""]
+    # Currency line
+    ccy_parts = []
+    if statement_currency:
+        ccy_parts.append(f"财务报表货币：{statement_currency}")
+    if trading_currency:
+        ccy_parts.append(f"交易货币：{trading_currency}")
+    if display_currency:
+        ccy_parts.append(f"报告展示货币：{display_currency}")
+    if ccy_parts:
+        lines.append("- " + "；".join(ccy_parts) + "")
+
+    # Official source status — human-readable Chinese
+    if official_status in ("resolver_not_enabled", "not_integrated"):
+        lines.append("- 官方来源接入状态：当前港股默认生成链路尚未稳定接入或启用港交所公告 / 公司 IR 官方年报源；本报告主要基于第三方结构化数据，尚未完成官方年报或港交所公告交叉验证。")
+    elif official_status == "resolver_unavailable":
+        lines.append("- 官方来源接入状态：港交所公告检索器已配置但当前不可用，可能由于远程搜索 API key 缺失或网络不可用。")
+    elif official_status == "attempted_not_found":
+        lines.append("- 官方来源接入状态：已尝试检索港交所公告与公司 IR，但未获取到匹配 FY2025 的可解析官方文件。")
+    elif official_status == "found":
+        lines.append("- 官方来源接入状态：已获取港交所公告或公司 IR 来源，并用于官方来源交叉验证。")
+
+    # Valuation restriction
+    if valuation_blocked:
+        lines.append("- 估值限制：由于官方来源校验与跨货币汇率换算尚未闭环，本报告不输出确定性 P/E、P/S、DCF 或目标价。")
+    elif valuation_status and valuation_status.startswith("blocked"):
+        lines.append(f"- 估值限制：估值模型状态为 {valuation_status}，本报告不输出确定性估值倍数。")
+
+    # Filter internal codes from blockers/warnings
+    visible_blockers = [b for b in blockers if isinstance(b, str) and not b.startswith(("official_source", "resolver_", "not_integrated"))]
+    if visible_blockers:
+        # Translate known internal codes
+        translated = []
+        for b in visible_blockers[:3]:
+            if "cross_currency" in b or "missing_fx" in b:
+                translated.append("跨币种估值缺少汇率换算")
+            elif "currency" in b:
+                translated.append("财务数据货币标注需复核")
+            else:
+                translated.append(b)
+        lines.append("- 质量门禁：" + "；".join(translated) + "")
+
+    return markdown.rstrip() + "\n" + "\n".join(lines) + "\n"
+
+
+def _delivery_status_from_currency(currency_audit: Any, valuation_model: Any, current: str = "normal") -> str:
+    if current != "normal":
+        return current
+    blockers = currency_audit.get("blockers", []) if isinstance(currency_audit, dict) and isinstance(currency_audit.get("blockers"), list) else []
+    if any(str(item).startswith("valuation") or str(item).startswith("missing_fx") for item in blockers):
+        return "blocked_due_to_currency_mismatch"
+    if blockers:
+        return "degraded_due_to_currency_quality"
+    if isinstance(valuation_model, dict):
+        status = str(valuation_model.get("valuation_status") or valuation_model.get("error") or "")
+        if status.startswith("blocked") or status.startswith("missing_fx"):
+            return "blocked_due_to_currency_mismatch"
+        if status.startswith("degraded"):
+            return "degraded_due_to_currency_quality"
+    return current
 
 
 def _compact_blackboard(raw: Any) -> Dict[str, Any]:
@@ -416,7 +503,8 @@ def _section_evidence_gap_prompt(section_status: Dict[str, str]) -> str:
             + "For each of these sections, you MUST write a concise data-gap disclosure "
             + "rather than generic templated description. A gap disclosure explains what data "
             + "is missing and why the section cannot be fully analyzed, e.g.: "
-            + f"'资料缺口：本节暂无充足的可验证证据支持详细分析。' "
+            + f"'本轮尚未通过港交所公告、公司 IR 年报或年度业绩公告获取可验证来源，"
+            + f"因此本节不展开详细分析，后续应以官方年报为准。' "
             + "Do NOT invent numbers, sources, or conclusions. "
             + "Do NOT use phrases like '董事会监督、股权结构和激励机制可能影响长期战略' or '是上市公司'."
         )
@@ -451,6 +539,21 @@ def _sanitize_generic_phrases(markdown: str) -> str:
         markdown,
     )
     return markdown
+
+
+def _sanitize_pdf_gap_language(markdown: str) -> str:
+    text = str(markdown or "")
+    text = re.sub(r"\b([A-Z0-9]{4,6}\.[A-Z]{2})（\1）", r"\1", text)
+    text = re.sub(r"(。){2,}", "。", text)
+    text = text.replace(
+        "资料缺口：本节暂无充足的可验证证据支持详细分析。",
+        "本节尚未获得可直接支撑分析的官方章节摘要，因此保持数据缺口。",
+    )
+    text = text.replace(
+        "本轮已获取公司年度报告PDF，但尚未稳定抽取相关章节，因此本节暂不展开详细分析",
+        "本轮已获取公司年度报告 PDF，但尚未稳定抽取本节所需的具体章节或字段，因此本节暂不展开详细分析",
+    )
+    return text
 
 
 def _build_final_prompt(
@@ -589,8 +692,12 @@ def _build_final_prompt(
             "and business model, not debug wording like '证据覆盖 X 条'. "
             "三表摘要 must present key line items (revenue, net income, operating cash flow, "
             "free cash flow, assets/equity) in context. "
-            "估值观察 must state the methodology (e.g. P/E + P/S + DCF for tech) "
-            "and provide the computed valuation range. "
+            "估值观察 section: if the dossier contains deterministic_blocks with a valuation table, "
+            "describe the methodology and values in prose. "
+            "If valuation is blocked (no deterministic_blocks for valuation), you MUST write: "
+            "'由于财务报表货币与交易货币不一致，且本轮尚未完成官方年报校验与可验证汇率换算，"
+            "本报告不输出确定性P/E、P/S、DCF或目标价。' "
+            "Do NOT invent P/E, P/S, DCF numbers or target prices when valuation is blocked. "
             "The 投资结论 section must only reference dimensions actually supported by claims."
             "Add a short 数据期间说明 when target report period differs from the latest available disclosure period."
             "Treat claims and evidence as the primary source of truth for all quantitative data. "
@@ -598,6 +705,10 @@ def _build_final_prompt(
             "sector, products, and business model. "
             "For all other sections (especially 估值观察, 估值敏感性, 财务分析, 投资结论), "
             "do not infer financial data or valuation inputs beyond what claims and evidence provide. "
+            "For 同行对比 section: if provided a markdown peer comparison table, "
+            "preserve the table verbatim — do NOT rewrite it as prose or concatenate "
+            "metrics like '收入增速9.1;毛利率56.45'. Always show the table and add "
+            "a brief caveat that peer data is from third-party structured sources pending official validation. "
             "IMPORTANT: Write as a professional research analyst. "
             "Do NOT include system instructions, writing boundaries, meta-descriptions about evidence sources, "
             "or any text that sounds like a system prompt or debug output. "
@@ -1568,6 +1679,22 @@ def _collect_structured_fallback_sources(tables: Any = None, financial_metrics: 
     return sorted(sources)
 
 
+def _has_official_source(financial_metrics: Any = None, tables: Any = None) -> bool:
+    """Check if any financial metrics or tables come from official (non-market-data) sources."""
+    official_types = {"official_filing", "official_annual_report", "hkex_announcement",
+                      "company_ir", "sec_edgar", "official_10k", "official_10q"}
+    metric_items = financial_metrics.get("metrics", []) if isinstance(financial_metrics, dict) else []
+    for m in (metric_items if isinstance(metric_items, list) else []):
+        if isinstance(m, dict) and str(m.get("source_type") or "") in official_types:
+            return True
+    table_items = tables if isinstance(tables, list) else []
+    for t in table_items:
+        for row in (t.get("rows", []) if isinstance(t, dict) and isinstance(t.get("rows"), list) else []):
+            if isinstance(row, dict) and str(row.get("source_type") or "") in official_types:
+                return True
+    return False
+
+
 def _add_period(periods: set[str], raw: Any) -> None:
     period = str(raw or "").strip().upper()
     if re.match(r"^20\d{2}Q[1-4]$", period):
@@ -1736,10 +1863,16 @@ def ensure_period_disclosure(
         f"- 数据延迟判断：{'存在数据期与目标期不一致，正文结论需按最新可得公开披露解释。' if has_delay else '未识别到目标期与可得数据期错配。'}",
     ]
     fallback_sources = _collect_structured_fallback_sources(tables, financial_metrics)
+    official_found = _has_official_source(financial_metrics, tables)
     if fallback_sources:
-        lines.append(
-            "- 三表数据基于最新可获取的公开财务数据，核心指标已与权威来源交叉验证。"
-        )
+        if official_found:
+            lines.append(
+                "- 三表数据基于最新可获取的公开财务数据，核心指标已与官方来源交叉验证。"
+            )
+        else:
+            lines.append(
+                "- 当前三表数据主要来自第三方结构化数据，尚未完成官方年报或交易所公告交叉验证。"
+            )
     return markdown.rstrip() + "\n\n" + "\n".join(lines) + "\n"
 
 
@@ -2071,7 +2204,7 @@ def _financial_analysis_body(rows: List[Dict[str, Any]], claims: List[Dict[str, 
     fcf = _first_row(grouped.get("cash_flow_statement", []), ["free_cash_flow"])
     assets = _first_row(grouped.get("balance_sheet", []), ["total_assets"])
     liabilities = _first_row(grouped.get("balance_sheet", []), ["total_liabilities"])
-    lines = ["- 以下财务分析基于三表数据，关键经营指标已通过公开财务数据交叉验证。"]
+    lines = ["- 以下财务分析基于可获取的公开财务数据，部分指标待官方年报交叉验证。"]
     if revenue or net_income:
         bits = [_format_statement_row(row) for row in [revenue, net_income] if row]
         lines.append("- 盈利能力：" + "；".join(bits) + "。")
@@ -2317,6 +2450,7 @@ def _clean_to_numbered_citations(markdown: str, evidence_records: List[Dict[str,
         return f"[{num}]"
 
     cleaned = evidence_pattern.sub(_replace_match, markdown)
+    cleaned = re.sub(r"(\[\d+\])(?:\s+\1)+", r"\1", cleaned)
 
     # Remove any existing "参考来源" / "参考来源" section so we can rewrite it cleanly
     ref_section_pattern = re.compile(r"^##\s*参考来源\s*$(?:\n.*)*", re.MULTILINE)

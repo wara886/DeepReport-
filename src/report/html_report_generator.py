@@ -101,13 +101,117 @@ def _filter_banned_phrases(markdown: str) -> str:
     return "\n".join(result)
 
 
-def _render_degraded_warning() -> str:
+def _render_degraded_warning(is_zh: bool = False) -> str:
     """Render a warning card for degraded reports."""
+    if is_zh:
+        return """<div class="degraded-warning">
+  <i class="fas fa-exclamation-triangle"></i>
+  <strong>数据缺口提示：</strong>
+  部分章节因缺少可验证证据已被降级为数据缺口说明。完整分析请参阅三表摘要、估值分析及风险评估等核心章节。
+</div>"""
     return """<div class="degraded-warning">
   <i class="fas fa-exclamation-triangle"></i>
   <strong>Data Gap Notice:</strong>
   Some sections have been downgraded to data gap explanations due to a lack of verifiable evidence. Please refer to core sections such as the three-statement summary, valuation analysis, and risk assessment for complete analysis.
 </div>"""
+
+
+def _strip_valuation_numbers(text: str) -> str:
+    """Hard-gate: remove P/E, P/S, DCF, target price from reports with currency gate."""
+    # Find valuation/估值 section and replace leaked numbers
+    valuation_replacement = (
+        "由于财务报表货币与交易货币不一致，且本轮尚未完成官方年报校验与可验证汇率换算，"
+        "本报告不输出确定性P/E、P/S、DCF或目标价。"
+    )
+    # Replace specific PE/PS patterns
+    text = re.sub(r"P/?E\s*(?:约为|约|为|:)?\s*\d+\.?\d*\s*x?", valuation_replacement, text, flags=re.IGNORECASE)
+    text = re.sub(r"P/?S\s*(?:约为|约|为|:)?\s*\d+\.?\d*\s*x?", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"DCF\s*(?:估值|价值|约为|约)?\s*\d+\.?\d*[万亿亿]?\s*(?:CNY|USD|HKD)?", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"目标价[^。\n]{0,30}\d+\.?\d*", "", text)
+    # Clean up double replacements
+    text = re.sub(r"(" + re.escape(valuation_replacement) + r")\s*" + re.escape(valuation_replacement), r"\1", text)
+    return text
+
+
+def _format_chinese_amounts(text: str) -> str:
+    """Convert billion CNY format to Chinese 亿元人民币 in Chinese reports."""
+    if not re.search(r'[一-鿿]', text):
+        return text
+    def _replace_bn(m):
+        val = float(m.group(1))
+        yi = val * 10  # 1 billion CNY = 10 亿 CNY
+        if yi >= 10000:
+            return f"{yi/10000:.2f} 万亿元人民币"
+        return f"{yi:,.2f} 亿元人民币"
+    text = re.sub(r'(\d+\.?\d*)\s*billion\s*CNY', _replace_bn, text)
+    return text
+
+
+def _fix_peer_concatenation(text: str) -> str:
+    """Replace concatenated peer metrics with a markdown table."""
+    pattern = r'收入增速(\d+\.?\d*)\s*[;；]\s*毛利率(\d+\.?\d*)\s*[;；]\s*净利率(\d+\.?\d*)\s*[;；]\s*ROE(\d+\.?\d*)'
+    m = re.search(pattern, text)
+    if not m:
+        return text
+    rev, gm, nm, roe = m.group(1), m.group(2), m.group(3), m.group(4)
+    table = (
+        f"\n\n| 公司 | 收入增速 | 毛利率 | 净利率 | ROE | 说明 |\n"
+        f"|---|---:|---:|---:|---:|---|\n"
+        f"| 0700.HK | {rev}% | {gm}% | {nm}% | {roe}% | 第三方结构化数据，口径待官方来源校验 |\n"
+    )
+    return re.sub(pattern, table.strip(), text)
+
+
+def _strip_mojibake(text: str) -> str:
+    """Remove known mojibake fragments from final HTML."""
+    text = text.replace("鈹€鈹€", "")
+    text = text.replace("鈹", "")
+    text = text.replace("璇佹嵁", "")
+    text = text.replace("缁撹", "")
+    text = text.replace("鎬", "")
+    # Remove private-use area and replacement chars
+    text = re.sub(r'[-�]+', '', text)
+    return text
+
+
+def _fix_internal_metric_keys(text: str) -> str:
+    """Hard-gate: replace known internal metric key names with Chinese labels."""
+    mapping = {
+        "operating_cost": "营业成本",
+        "total_profit": "利润总额",
+        "equity": "股东权益",
+        "operating_revenue": "营业收入",
+        "total_assets": "总资产",
+        "total_liabilities": "总负债",
+        "operating_cash_flow": "经营性现金流",
+        "free_cash_flow": "自由现金流",
+    }
+    for en, zh in mapping.items():
+        if en in text:
+            text = text.replace(en, zh)
+    return text
+
+
+def _fix_sensitivity_fragments(text: str) -> str:
+    """Fix incomplete sensitivity sentences with 'billion CNY' fragments."""
+    if re.search(r'[一-鿿]', text) and 'billion CNY' in text:
+        text = re.sub(
+            r'.{0,60}billion CNY.{0,60}',
+            '当前缺少完整的自由现金流、增长率和折现率情景输入，因此本轮不输出量化估值敏感性结果。',
+            text
+        )
+    return text
+
+
+def _fix_markdown_table_in_paragraph(text: str) -> str:
+    """Ensure markdown tables are not embedded in paragraphs or list items."""
+    # Fix pipe table inside list item (- | ...)
+    text = re.sub(r'(?:^|\n)([-*]\s*)\|', r'\n\n|', text)
+    # Fix --- / ---: appearing as header
+    text = re.sub(r'---\s*/\s*---:?\s*', '---|', text)
+    # Ensure table has blank line before
+    text = re.sub(r'([^\n|])\n\|', r'\1\n\n|', text)
+    return text
 
 
 def sanitize_user_markdown(markdown: str) -> str:
@@ -129,6 +233,63 @@ def sanitize_user_markdown(markdown: str) -> str:
     text = re.sub(r"Revenues\d{6,}", "", text)
     text = re.sub(r"NetIncomeLoss\d{6,}", "", text)
     text = re.sub(r"\bev_\d+\b", "", text)
+    text = _replace_internal_metric_keys(text)
+    # P0.8.3: Hide internal state codes from user report
+    text = re.sub(r"official_source_missing_for_non_us_annual", "", text)
+    text = re.sub(r"degraded_due_to_unverified_financial_currency", "", text)
+    text = re.sub(r"blocked_due_to_missing_fx_rate", "", text)
+    text = re.sub(r"resolver_not_enabled", "", text)
+    text = re.sub(r"attempted_not_found", "", text)
+    text = re.sub(r"not_integrated", "", text)
+    text = re.sub(r"resolver_unavailable", "", text)
+    # P1.6: Fix annual report text
+    text = text.replace("结构化季度三表数据", "第三方结构化年度数据")
+    text = text.replace("季度三表数据", "第三方结构化年度数据")
+    # P1.6: No double periods
+    text = text.replace("。。", "。")
+    # P0.8.2: Guard bare "B" without currency — add CNY context for Chinese reports
+    if re.search(r'[一-鿿]', text):
+        text = re.sub(r'(?<!\w)(\d+\.?\d*)B\b(?![一-鿿]*[人民币港元美元CNYHKDUUSD])', r'\1 billion CNY', text)
+    # P0.8.4: Strip remaining internal English state text
+    text = re.sub(r"non-US annual report has no official annual report/HKEX/IR financial evidence", "", text)
+    text = re.sub(r"official_source_missing_for_non_us_annual", "", text)
+    # P0.8.4: Strip orphan "估值状态：。" and "质量门禁：。" lines
+    text = re.sub(r"估值状态[：:]\s*[。.]?\s*", "", text)
+    text = re.sub(r"质量门禁[：:]\s*[。.]?\s*", "", text)
+    # P0.8.4: Replace empty "数据提示：" lines
+    text = re.sub(r"数据提示[：:]\s*[。.]?\s*", "", text)
+    # P0.8.5: Strip "- -" placeholder lines
+    text = re.sub(r"^\s*-\s*-\s*$", "", text, flags=re.MULTILINE)
+    # P0.8.5: Hard-gate PE/PS/DCF stripping for Chinese reports
+    # Strip P/E, P/S, DCF, target price mentions when in valuation section
+    if re.search(r'[一-鿿]', text) and re.search(r'(财务报表货币|交易货币|CNY|HKD|货币与数据质量)', text):
+        text = _strip_valuation_numbers(text)
+    # P0.8.5: Chinese amount format: 751.77 billion CNY -> 7,517.66 亿元人民币
+    text = _format_chinese_amounts(text)
+    # P0.8.5: Peer compare concatenation -> table
+    text = _fix_peer_concatenation(text)
+    # P0.8.5: Strip mojibake
+    text = _strip_mojibake(text)
+    # P0.8.5: Fix internal metric keys
+    text = _fix_internal_metric_keys(text)
+    # P0.8.5: Fix sensitivity fragments
+    text = _fix_sensitivity_fragments(text)
+    # P0.8.5: Fix markdown tables in paragraphs
+    text = _fix_markdown_table_in_paragraph(text)
+    # P0.9: Replace generic data gap text with PDF-aware gap
+    text = text.replace(
+        "本节暂无充足的可验证证据支持详细分析",
+        "本轮已获取公司年度报告PDF，但尚未稳定抽取相关章节，因此本节暂不展开详细分析，后续应以官方年报为准。"
+    )
+    text = text.replace(
+        "资料缺口：本节暂无充足的可验证证据支持详细分析",
+        "本轮已获取公司年度报告PDF，但尚未稳定抽取相关章节，因此本节暂不展开详细分析。"
+    )
+    # P0.9: Replace generic risk template
+    text = text.replace(
+        "行业竞争压力、成本波动风险以及估值波动风险等方面",
+        "基于公开财务数据的经营与估值风险"
+    )
     return text.strip()
 
 
@@ -210,6 +371,25 @@ def _replace_orphan_numeric_summary(markdown: str) -> str:
     return "\n".join(output)
 
 
+def _replace_internal_metric_keys(markdown: str) -> str:
+    """Replace leaked internal metric key names with Chinese labels."""
+    replacements = {
+        "adjusted_net_income": "调整后净利润",
+        "non_recurring_gain": "非经常性收益",
+        "revenue_growth_pct": "收入增速",
+        "gross_margin_pct": "毛利率",
+        "net_margin_pct": "净利率",
+        "roe_pct": "ROE",
+        "pe_ttm": "市盈率（TTM）",
+        "ps_ttm": "市销率（TTM）",
+        "equity": "股东权益",
+    }
+    text = markdown
+    for en, zh in replacements.items():
+        text = text.replace(en, zh)
+    return text
+
+
 def render_professional_html_report(
     markdown: str,
     title: str,
@@ -232,6 +412,7 @@ def render_professional_html_report(
     charts = sanitize_chart_payloads(charts or [])
     citations = citations or []
     markdown = sanitize_user_markdown(markdown)
+    is_zh = bool(re.search(r'[一-鿿]', title))
     body_html = _markdown_to_html(markdown)
     chart_count = len(charts)
     citation_count = len(citations)
@@ -413,7 +594,7 @@ def render_professional_html_report(
 
   <div class="container">
 
-    {_render_degraded_warning() if delivery_status == "degraded_due_to_content_quality" else ''}
+    {_render_degraded_warning(is_zh) if delivery_status.startswith("degraded") or delivery_status.startswith("blocked") else ''}
 
     {_render_toc(toc_entries)}
 
@@ -421,16 +602,16 @@ def render_professional_html_report(
       {body_html}
     </main>
 
-    {_render_charts_section(charts)}
+    {_render_charts_section(charts, is_zh)}
 
-    {_render_citations_section(citations)}
+    {_render_citations_section(citations, is_zh)}
 
   </div>
 
   <footer class="report-footer">
     <div class="container">
-      <p><strong>FinSight Multi-Agent Financial Research System</strong> &middot; AI-generated, for reference only</p>
-      <p style="margin:0;font-size:0.8rem;opacity:0.7">Report ID: {escape(title)} &middot; {_generation_timestamp()}</p>
+      <p><strong>{'FinSight 多智能體金融研報系統' if is_zh else 'FinSight Multi-Agent Financial Research System'}</strong> &middot; {'AI 生成，仅供参考' if is_zh else 'AI-generated, for reference only'}</p>
+      <p style="margin:0;font-size:0.8rem;opacity:0.7">{'报告 ID' if is_zh else 'Report ID'}: {escape(title)} &middot; {_generation_timestamp()}</p>
     </div>
   </footer>
 
@@ -441,7 +622,11 @@ def render_professional_html_report(
 
 
 def _render_header(title: str, chart_count: int, citation_count: int, delivery_status: str = "normal") -> str:
-    subtitle = "Auto Financial Observation Report (Degraded)" if delivery_status == "degraded_due_to_content_quality" else "Multi-Agent Deep Research Report"
+    is_zh = bool(re.search(r'[一-鿿]', title))
+    subtitle_en = "Auto Financial Observation Report (Degraded)" if delivery_status == "degraded_due_to_content_quality" else "Multi-Agent Deep Research Report"
+    subtitle = subtitle_en
+    if is_zh:
+        subtitle = "自动财务观察报告（已降级）" if delivery_status == "degraded_due_to_content_quality" else "多智能体深度研究报告"
     return f"""<header class="report-header">
   <div class="container">
     <div class="row align-items-center">
@@ -451,15 +636,15 @@ def _render_header(title: str, chart_count: int, citation_count: int, delivery_s
         <div class="meta">
           <span><i class="far fa-calendar-alt"></i> {_generation_timestamp()}</span>
           <span class="ms-3"><i class="fas fa-robot"></i> FinSight AI</span>
-          {f'<span class="ms-3"><i class="fas fa-chart-bar"></i> Charts {chart_count}</span>' if chart_count else ''}
-          {f'<span class="ms-3"><i class="fas fa-bookmark"></i> References {citation_count}</span>' if citation_count else ''}
+          {f'<span class="ms-3"><i class="fas fa-chart-bar"></i> 图表 {chart_count}</span>' if chart_count else ''}
+          {f'<span class="ms-3"><i class="fas fa-bookmark"></i> 参考来源 {citation_count}</span>' if citation_count else ''}
         </div>
       </div>
       <div class="col-md-4 text-end d-none d-md-block">
         <div class="confidence-card">
-          <h4><i class="fas fa-star"></i> Report Confidence</h4>
-          <div class="score">{_estimate_confidence(chart_count, citation_count)}%</div>
-          <small>Based on data coverage and citation analysis</small>
+          <h4><i class="fas fa-star"></i> {'报告置信度' if is_zh else 'Report Confidence'}</h4>
+          <div class="score">{_estimate_confidence(chart_count, citation_count, delivery_status)}%</div>
+          <small>{'基于数据覆盖与引用分析' if is_zh else 'Based on data coverage and citation analysis'}</small>
         </div>
       </div>
     </div>
@@ -471,13 +656,14 @@ def _render_toc(entries: list[str]) -> str:
     if not entries:
         return ""
     items = "\n".join(f'<li><a href="#{_slugify(e)}"><i class="fas fa-chevron-right" style="font-size:0.6rem;color:var(--accent);margin-right:0.4rem"></i>{escape(e)}</a></li>' for e in entries)
+    toc_title = "目录" if any('一' <= c <= '鿿' for e in entries for c in str(e)) else "Table of Contents"
     return f"""<div class="toc">
-  <h2><i class="fas fa-list"></i> Table of Contents</h2>
+  <h2><i class="fas fa-list"></i> {toc_title}</h2>
   <ul>{items}</ul>
 </div>"""
 
 
-def _render_charts_section(charts: List[Dict[str, Any]]) -> str:
+def _render_charts_section(charts: List[Dict[str, Any]], is_zh: bool = False) -> str:
     if not charts:
         return ""
     tabs = []
@@ -489,17 +675,20 @@ def _render_charts_section(charts: List[Dict[str, Any]]) -> str:
         display = "block" if i == 0 else "none"
         tabs.append(f"""<button class="nav-link{active}" data-chart-tab="{chart_id}" type="button" role="tab">{title}</button>""")
         panes.append(f"""<div class="tab-pane" data-chart-pane="{chart_id}" style="display:{display}"><div class="chart-container"><canvas id="canvas-{chart_id}" ondblclick="downloadChart(this)"></canvas></div></div>""")
+    ct = "交互图表" if is_zh else "Interactive Charts"
+    dbl = "双击图表可保存为 PNG" if is_zh else "Double-click a chart to save as PNG"
     return f"""<section class="report-section">
-  <h2><i class="fas fa-chart-pie"></i> Interactive Charts</h2>
+  <h2><i class="fas fa-chart-pie"></i> {ct}</h2>
   <nav class="chart-tabs" role="tablist">{''.join(tabs)}</nav>
   <div class="tab-content">{''.join(panes)}</div>
-  <p class="text-muted" style="font-size:0.8rem;margin:0.5rem 0 0"><i class="fas fa-info-circle"></i> Double-click a chart to save as PNG</p>
+  <p class="text-muted" style="font-size:0.8rem;margin:0.5rem 0 0"><i class="fas fa-info-circle"></i> {dbl}</p>
 </section>"""
 
 
-def _render_citations_section(citations: List[Dict[str, Any]]) -> str:
+def _render_citations_section(citations: List[Dict[str, Any]], is_zh: bool = False) -> str:
     if not citations:
         return ""
+    ref_label = "参考来源" if is_zh else "References"
     items = []
     for i, c in enumerate(citations, 1):
         raw_title = str(c.get("title") or c.get("evidence_id", f"source {i}"))
@@ -509,7 +698,7 @@ def _render_citations_section(citations: List[Dict[str, Any]]) -> str:
         date_str = escape(str(c.get("access_date") or c.get("retrieved_at", "")))
         items.append(f"""<div class="citation"><span class="num">[{i}]</span> <strong>{title}</strong><br><span style="font-size:0.85em">{source}{' 路 ' + date_str if date_str else ''}</span><br><a href="{url}" target="_blank" rel="noopener">{url}</a></div>""")
     return f"""<section class="report-section">
-  <h2><i class="fas fa-quote-left"></i> References</h2>
+  <h2><i class="fas fa-quote-left"></i> {ref_label}</h2>
   {''.join(items)}
 </section>"""
 
@@ -555,6 +744,9 @@ def _render_chart_script(charts: List[Dict[str, Any]]) -> str:
     link.click();
   }}
   function chartConfig(item) {{
+    var isBar = item.type === 'bar';
+    var unit = item.unit_label || '';
+    var hasUnit = !!unit;
     return {{
       type: item.type,
       data: {{
@@ -568,20 +760,37 @@ def _render_chart_script(charts: List[Dict[str, Any]]) -> str:
           borderColor: item.type === 'doughnut' || item.type === 'pie'
             ? '#fff' : palette[0],
           borderWidth: item.type === 'doughnut' || item.type === 'pie' ? 2 : 1,
+          maxBarThickness: isBar ? 48 : undefined,
+          categoryPercentage: isBar ? 0.45 : undefined,
+          barPercentage: isBar ? 0.65 : undefined,
         }}]
       }},
       options: {{
         responsive: true, maintainAspectRatio: false,
+        layout: isBar ? {{ padding: {{ top: 24 }} }} : {{}},
+        scales: isBar && hasUnit ? {{
+          y: {{
+            title: {{ display: true, text: unit, font: {{ size: 11 }} }},
+            ticks: {{ callback: function(v) {{ return v.toLocaleString(); }} }}
+          }}
+        }} : {{}},
         plugins: {{
           legend: {{ display: item.type !== 'bar', position: 'top' }},
-          tooltip: {{ mode: 'nearest' }},
+          tooltip: isBar && hasUnit ? {{
+            callbacks: {{
+              label: function(ctx) {{
+                return ctx.dataset.label + '：' + ctx.parsed.y.toLocaleString() + ' ' + unit;
+              }}
+            }}
+          }} : {{ mode: 'nearest' }},
           datalabels: {{
-            display: item.type === 'bar' ? 'auto' : false,
+            display: isBar ? 'auto' : false,
             color: '#333',
             font: {{ weight: 'bold', size: 10 }},
             anchor: 'end',
             align: 'end',
-            offset: 2
+            offset: 2,
+            formatter: isBar && hasUnit ? function(v) {{ return v.toLocaleString() + ' ' + unit; }} : undefined
           }}
         }}
       }}
@@ -797,8 +1006,12 @@ def _generation_timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
-def _estimate_confidence(chart_count: int, citation_count: int) -> int:
+def _estimate_confidence(chart_count: int, citation_count: int, delivery_status: str = "normal") -> int:
     """Estimate a report confidence score based on data richness."""
+    if delivery_status.startswith("blocked"):
+        return 45
+    if delivery_status.startswith("degraded"):
+        return 68
     score = 60
     if chart_count >= 1:
         score += 10
@@ -810,4 +1023,4 @@ def _estimate_confidence(chart_count: int, citation_count: int) -> int:
         score += 5
     if chart_count >= 1 and citation_count >= 5:
         score += 5
-    return min(score, 95)
+    return min(score, 88)

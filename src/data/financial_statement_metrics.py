@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Dict, Iterable, List
 
+from src.data.company_universe import infer_market_from_symbol
+from src.market.currency_rules import infer_statement_currency
+from src.utils.money import UNKNOWN_CURRENCY, normalize_currency_code
 from src.utils.periods import parse_iso_date, parse_quarter, period_match, period_target_date
 from src.data.financial_quality import build_net_income_quality_fields
 
@@ -99,8 +102,8 @@ def build_standard_table_artifacts(records: Iterable[Dict[str, Any]]) -> List[Di
                 "columns": sorted({key for row in table_rows for key in row.keys()}),
                 "source_evidence_id": str(first.get("evidence_id", "")),
                 "period": str(first.get("period", "")),
-                "currency": "CNY" if str(first.get("source_type", "")) == "eastmoney_financials" else "",
-                "unit": "raw",
+                "currency": normalize_currency_code(first.get("currency") or first.get("unit")),
+                "unit": str(first.get("scale") or "raw"),
                 "extraction_method": "structured_statement_api_normalization",
                 "confidence": 0.86,
                 "metadata": {"provider": str(first.get("provider", ""))},
@@ -388,6 +391,9 @@ def _market_api_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     evidence_id = _evidence_id(record)
     symbol = str(record.get("symbol") or "")
     period = str(record.get("period") or "")
+    currency_meta = _currency_meta_for_record(record)
+    currency = currency_meta.statement_currency
+    confidence = 0.62 if currency != UNKNOWN_CURRENCY else 0.46
     table_id = _table_id(symbol, period, evidence_id, "yahoo_financials")
     income = _latest_statement_row(financials, "income", period)
     balance = _latest_statement_row(financials, "balance", period)
@@ -410,6 +416,7 @@ def _market_api_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     raw = {
         "period": period,
         "end": report_date,
+        "source_type": str(record.get("source_type") or "market_api"),
         "net_income_quality_flag": quality.get("net_income_quality_flag"),
         "valuation_input_usable": quality.get("valuation_input_usable"),
         "valuation_input_rejection_reason": quality.get("valuation_input_rejection_reason"),
@@ -435,7 +442,7 @@ def _market_api_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]:
         if value is None:
             continue
-        rows.append(_metric_row(metric_name, value, "USD", period, table_id, evidence_id, formula, 0.62, symbol, report_date, str(record.get("publish_time") or ""), raw))
+        rows.append(_metric_row(metric_name, value, currency, period, table_id, evidence_id, formula, confidence, symbol, report_date, str(record.get("publish_time") or ""), {**raw, "currency_basis": currency_meta.currency_basis, "inferred_from": currency_meta.inferred_from}))
     if gross_profit is not None and revenue not in (None, 0):
         rows.append(_metric_row("gross_margin", float(gross_profit) / float(revenue) * 100.0, "pct", period, table_id, evidence_id, "gross_profit / revenue", 0.62, symbol, report_date, str(record.get("publish_time") or ""), raw))
     return rows
@@ -447,6 +454,8 @@ def _market_api_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     evidence_id = _evidence_id(record)
     symbol = str(record.get("symbol") or "")
     period = str(record.get("period") or "")
+    currency_meta = _currency_meta_for_record(record)
+    currency = currency_meta.statement_currency
     table_id = _table_id(symbol, period, evidence_id, "yahoo_financials")
     income = _latest_statement_row(financials, "income", period)
     balance = _latest_statement_row(financials, "balance", period)
@@ -506,7 +515,12 @@ def _market_api_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "statement": statement,
                 "line_item": line_item,
                 "value": value,
-                "unit": "USD",
+                "unit": currency,
+                "currency": currency,
+                "scale": "unit",
+                "currency_basis": currency_meta.currency_basis,
+                "currency_confidence": currency_meta.confidence,
+                "inferred_from": currency_meta.inferred_from,
                 "estimated": False,
                 "evidence_id": evidence_id,
                 "source_evidence_id": evidence_id,
@@ -529,7 +543,9 @@ def _pdf_statement_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     period = str(record.get("period") or "")
     table_type = str(metadata.get("table_type") or "")
     table_id = str(metadata.get("table_id") or _table_id(symbol, period, evidence_id, table_type or "pdf_statement_table"))
-    currency = str(metadata.get("currency") or "USD")
+    currency = str(metadata.get("currency") or "")
+    if not currency:
+        currency = _currency_meta_for_record(record).statement_currency
     unit = _pdf_unit(currency, str(metadata.get("unit") or "raw"))
     report_date = str(metadata.get("report_date") or record.get("publish_time") or "")
     notice_date = str(metadata.get("notice_date") or record.get("publish_time") or "")
@@ -582,7 +598,9 @@ def _pdf_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     period = str(record.get("period") or "")
     table_type = str(metadata.get("table_type") or "financial_statement")
     table_id = str(metadata.get("table_id") or _table_id(symbol, period, evidence_id, table_type))
-    currency = str(metadata.get("currency") or "USD")
+    currency = str(metadata.get("currency") or "")
+    if not currency:
+        currency = _currency_meta_for_record(record).statement_currency
     unit = _pdf_unit(currency, str(metadata.get("unit") or "raw"))
     report_date = str(metadata.get("report_date") or record.get("publish_time") or "")
     rows = metadata.get("rows") if isinstance(metadata.get("rows"), list) else []
@@ -618,7 +636,7 @@ def _pdf_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _pdf_unit(currency: str, unit: str) -> str:
-    base = currency or "USD"
+    base = normalize_currency_code(currency)
     if unit == "millions":
         return f"{base}_million"
     if unit == "thousands":
@@ -640,11 +658,21 @@ def _metric_row(
     notice_date: str,
     raw: Dict[str, Any],
 ) -> Dict[str, Any]:
+    currency = _currency_from_unit(unit)
+    scale = _scale_from_unit(unit)
     return {
+        "metric_key": metric_name,
         "metric_lineage_id": _metric_lineage_id(symbol, period, metric_name, source_table_id, source_evidence_id, report_date),
         "metric_name": metric_name,
         "value": round(float(value), 6),
         "unit": unit,
+        "currency": currency,
+        "scale": scale,
+        "source_id": source_evidence_id,
+        "source_type": str(raw.get("source_type") or ""),
+        "currency_basis": str(raw.get("currency_basis") or ("unknown" if currency == UNKNOWN_CURRENCY else "source_or_rule")),
+        "currency_confidence": str(raw.get("currency_confidence") or ("unknown" if currency == UNKNOWN_CURRENCY else "medium")),
+        "inferred_from": str(raw.get("inferred_from") or ""),
         "period": period,
         "source_period": str(raw.get("fy") or raw.get("fp") or raw.get("period") or period),
         "period_match": _period_match(period=period, report_date=report_date, raw=raw),
@@ -657,6 +685,30 @@ def _metric_row(
         "notice_date": notice_date,
         "raw_field_keys": sorted(str(key) for key in raw.keys()),
     }
+
+
+def _currency_meta_for_record(record: Dict[str, Any]):
+    symbol = str(record.get("symbol") or "")
+    market = infer_market_from_symbol(symbol).get("market", "")
+    return infer_statement_currency(symbol=symbol, market=market, source=record)
+
+
+def _currency_from_unit(unit: Any) -> str:
+    text = str(unit or "")
+    if "_" in text:
+        text = text.split("_", 1)[0]
+    return normalize_currency_code(text)
+
+
+def _scale_from_unit(unit: Any) -> str:
+    text = str(unit or "").lower()
+    if "billion" in text:
+        return "billion"
+    if "million" in text:
+        return "million"
+    if "thousand" in text:
+        return "thousand"
+    return "unit"
 
 
 def _partition_period_rows(rows: List[Dict[str, Any]], record: Dict[str, Any]) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
