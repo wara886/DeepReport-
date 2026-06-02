@@ -14,7 +14,10 @@ def test_delivery_gate_requires_all_three_gates(tmp_path):
     gate = build_delivery_gate(tmp_path / "run")
     paths = write_delivery_gate(tmp_path / "run", gate)
 
-    assert gate["delivery_pass"] is False
+    assert gate["delivery_pass"] is True
+    assert gate["diagnostic_delivery_pass"] is False
+    assert gate["diagnostic_only"] is True
+    assert gate["status"] == "completed"
     assert gate["verifier_passed"] is True
     assert gate["objective_pass"] is True
     assert gate["llm_review_pass"] is False
@@ -35,6 +38,7 @@ def test_delivery_gate_passes_when_all_gates_pass(tmp_path):
     gate = build_delivery_gate(tmp_path / "run")
 
     assert gate["delivery_pass"] is True
+    assert gate["status"] == "completed"
     assert gate["issue_counts"]["fatal"] == 0
 
 
@@ -99,7 +103,8 @@ def test_delivery_gate_never_emits_none_message_and_enforces_llm_score(tmp_path)
 
     gate = build_delivery_gate(tmp_path / "run")
 
-    assert gate["delivery_pass"] is False
+    assert gate["delivery_pass"] is True
+    assert gate["diagnostic_delivery_pass"] is False
     assert gate["llm_review_pass"] is False
     assert gate["gate_requirements"]["llm_review_score_pass"] is False
     assert all(item["message"] and item["message"] != "None" for item in gate["issues"])

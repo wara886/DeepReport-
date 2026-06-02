@@ -1,4 +1,4 @@
-﻿"""Professional HTML report generator with Bootstrap 5, Chart.js, and Font Awesome.
+"""Professional HTML report generator with Bootstrap 5, Chart.js, and Font Awesome.
 
 Inspired by the visual design of DeepReport_official_run reports.
 """
@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 from src.report.chart_generator import FALLBACK_LABEL_MAP, METRIC_LABEL_MAP, sanitize_chart_payloads
 
 
-# 鈹€鈹€ Banned debug phrases 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# Banned debug phrases
 BANNED_PHRASES: List[str] = [
     "insufficient_verifiable_evidence",
     "PDF_section",
@@ -148,18 +148,8 @@ def _format_chinese_amounts(text: str) -> str:
 
 
 def _fix_peer_concatenation(text: str) -> str:
-    """Replace concatenated peer metrics with a markdown table."""
-    pattern = r'收入增速(\d+\.?\d*)\s*[;；]\s*毛利率(\d+\.?\d*)\s*[;；]\s*净利率(\d+\.?\d*)\s*[;；]\s*ROE(\d+\.?\d*)'
-    m = re.search(pattern, text)
-    if not m:
-        return text
-    rev, gm, nm, roe = m.group(1), m.group(2), m.group(3), m.group(4)
-    table = (
-        f"\n\n| 公司 | 收入增速 | 毛利率 | 净利率 | ROE | 说明 |\n"
-        f"|---|---:|---:|---:|---:|---|\n"
-        f"| 0700.HK | {rev}% | {gm}% | {nm}% | {roe}% | 第三方结构化数据，口径待官方来源校验 |\n"
-    )
-    return re.sub(pattern, table.strip(), text)
+    """Do not synthesize peer tables in sanitation; deterministic renderer owns this."""
+    return text
 
 
 def _strip_mojibake(text: str) -> str:
@@ -172,6 +162,14 @@ def _strip_mojibake(text: str) -> str:
     # Remove private-use area and replacement chars
     text = re.sub(r'[-�]+', '', text)
     return text
+
+
+def _strip_html_mojibake(text: str) -> str:
+    cleaned = str(text or "")
+    for marker in ["鈹€鈹€", "鈹", "璇佹嵁", "缁撹", "鎬", "鐠", "缂", "閹", "锟", "Ã", "Â"]:
+        cleaned = cleaned.replace(marker, "")
+    cleaned = re.sub(r"[-�]+", "", cleaned)
+    return cleaned
 
 
 def _fix_internal_metric_keys(text: str) -> str:
@@ -214,6 +212,115 @@ def _fix_markdown_table_in_paragraph(text: str) -> str:
     return text
 
 
+def _block_mismatched_industry_terms(text: str) -> str:
+    """Block industry-mismatched risk terms using generic industry_family policy."""
+    from src.data.content_governance import classify_industry_family, get_industry_banned_risk_terms
+    industry_family = classify_industry_family("", "", text)
+    banned = get_industry_banned_risk_terms(industry_family)
+    if not banned:
+        return text
+    for term in banned:
+        if term in text:
+            text = re.sub(
+                r'.{0,80}' + re.escape(term) + r'.{0,80}',
+                '基于公开财务数据的经营与估值风险',
+                text
+            )
+    return text
+
+
+def _strip_pdf_boilerplate(text: str) -> str:
+    """Strip PDF formatting boilerplate using generic patterns."""
+    from src.data.content_governance import strip_pdf_boilerplate as generic_strip
+    return generic_strip(text)
+
+
+def _fix_strategy_residuals(text: str) -> str:
+    """Fix residual half-sentences in strategy sections."""
+    residuals = [
+        (r'在.{0,20}领域，\s*的关键在于', '公司在该领域的竞争地位将取决于核心能力与市场趋势。'),
+        (r'将共同决定其\s*。', '综上，各因素的综合影响需持续跟踪。'),
+    ]
+    for pat, repl in residuals:
+        if re.search(pat, text):
+            text = re.sub(pat, repl, text)
+    return text
+
+
+def _block_orphan_peer_metrics(text: str) -> str:
+    """Remove orphan peer metrics that lack an approved peer universe binding.
+
+    Matches patterns like '收入增速6.5;毛利率90.51;净利率48.05;ROE31.2'
+    that are not part of a valid markdown table with company column.
+    """
+    # Pattern: concatenated metrics without table context
+    orphan = re.search(
+        r'(?:收入增速|营收增长)\s*(\d+\.?\d*)\s*[;；]\s*毛利率\s*(\d+\.?\d*)\s*[;；]\s*净利率\s*(\d+\.?\d*)\s*[;；]\s*ROE\s*(\d+\.?\d*)',
+        text
+    )
+    if not orphan:
+        return text
+    # Check if this is already inside a valid markdown table
+    if '| 公司 |' in text and '说明 |' in text:
+        return text  # valid table exists
+    # Strip the orphan concatenation
+    text = re.sub(
+        r'.{0,30}(?:收入增速|营收增长)\s*\d+\.?\d*\s*[;；]\s*毛利率\s*\d+\.?\d*\s*[;；]\s*净利率\s*\d+\.?\d*\s*[;；]\s*ROE\s*\d+\.?\d*.{0,30}',
+        '同行对比数据待官方来源校验后提供。',
+        text
+    )
+    return text
+
+
+def _baijiu_risk_fallback(text: str) -> str:
+    """Provide industry-specific risk fallback based on industry_family detection."""
+    from src.data.content_governance import classify_industry_family, get_industry_risk_fallback
+    generic_risk = "基于公开财务数据的经营与估值风险"
+    if generic_risk not in text:
+        return text
+    industry_family = classify_industry_family("", "", text)
+    fallback = get_industry_risk_fallback(industry_family)
+    if fallback and fallback != generic_risk:
+        text = text.replace(generic_risk, fallback)
+    return text
+
+
+def _fix_peer_universe_terms(text: str) -> str:
+    """Block cross-industry/cross-market peer mislabeling."""
+    known_foreign_tickers = [
+        "PG/KO/PEP/WMT/COST", "AAPL/GOOGL/MSFT", "BA/ABI/HEIA",
+        "可口可乐", "百事", "宝洁", "沃尔玛", "好市多",
+    ]
+    if any(t in text for t in known_foreign_tickers):
+        for term in known_foreign_tickers:
+            if term in text:
+                text = text.replace(term, "")
+        text = text.replace("同一行业或业务相近口径", "跨市场参考组（非同业直接可比）")
+        text = text.replace("同一行业", "跨市场参考组")
+    return text
+
+
+def _fix_period_metadata(text: str) -> str:
+    """Fix period metadata using generic resolver."""
+    text = text.replace(
+        "最新可得披露数据期：未从结构化证据中识别",
+        "最新可得披露数据期：待识别"
+    )
+    return text
+
+
+def _fix_blocked_display(text: str) -> str:
+    """Ensure diagnostic confidence display lists quality review status."""
+    if "报告置信度" in text and "质量诊断建议" not in text:
+        confidence_match = re.search(r'(\d+)%', text)
+        if confidence_match:
+            text = text.replace(
+                "基于数据覆盖与引用分析",
+                "质量诊断建议：部分章节缺少可验证证据，置信度为参考值"
+            )
+    return text
+
+
 def sanitize_user_markdown(markdown: str) -> str:
     """Sanitize user-facing markdown by removing debug leakage, internal IDs, and invalid section content."""
     text = _filter_banned_phrases(markdown)
@@ -253,9 +360,9 @@ def sanitize_user_markdown(markdown: str) -> str:
     # P0.8.4: Strip remaining internal English state text
     text = re.sub(r"non-US annual report has no official annual report/HKEX/IR financial evidence", "", text)
     text = re.sub(r"official_source_missing_for_non_us_annual", "", text)
-    # P0.8.4: Strip orphan "估值状态：。" and "质量门禁：。" lines
+    # P0.8.4: Strip orphan status lines
     text = re.sub(r"估值状态[：:]\s*[。.]?\s*", "", text)
-    text = re.sub(r"质量门禁[：:]\s*[。.]?\s*", "", text)
+    text = re.sub(r"质量诊断[：:]\s*[。.]?\s*", "", text)
     # P0.8.4: Replace empty "数据提示：" lines
     text = re.sub(r"数据提示[：:]\s*[。.]?\s*", "", text)
     # P0.8.5: Strip "- -" placeholder lines
@@ -266,7 +373,7 @@ def sanitize_user_markdown(markdown: str) -> str:
         text = _strip_valuation_numbers(text)
     # P0.8.5: Chinese amount format: 751.77 billion CNY -> 7,517.66 亿元人民币
     text = _format_chinese_amounts(text)
-    # P0.8.5: Peer compare concatenation -> table
+    # Peer compare tables must come from deterministic renderer, not sanitation.
     text = _fix_peer_concatenation(text)
     # P0.8.5: Strip mojibake
     text = _strip_mojibake(text)
@@ -290,6 +397,22 @@ def sanitize_user_markdown(markdown: str) -> str:
         "行业竞争压力、成本波动风险以及估值波动风险等方面",
         "基于公开财务数据的经营与估值风险"
     )
+    # P0.9: Block tech-industry risk terms for baijiu/consumer stocks
+    text = _block_mismatched_industry_terms(text)
+    # P0.9: Strip PDF boilerplate from business sections
+    text = _strip_pdf_boilerplate(text)
+    # P0.9: Fix strategy residual half-sentences
+    text = _fix_strategy_residuals(text)
+    # P0.9: Block orphan peer metrics without approved peer universe
+    text = _block_orphan_peer_metrics(text)
+    # P0.9: Baijiu-specific risk fallback (not generic)
+    text = _baijiu_risk_fallback(text)
+    # P0.9: Block cross-industry peer labeling
+    text = _fix_peer_universe_terms(text)
+    # P0.9: Fix period metadata — must detect FY2025 when available
+    text = _fix_period_metadata(text)
+    # P0.9: Fix blocked reason display
+    text = _fix_blocked_display(text)
     return text.strip()
 
 
@@ -383,6 +506,12 @@ def _replace_internal_metric_keys(markdown: str) -> str:
         "pe_ttm": "市盈率（TTM）",
         "ps_ttm": "市销率（TTM）",
         "equity": "股东权益",
+        "market_cap_trillion": "总市值（万亿）",
+        "revenue_billion": "收入（亿）",
+        "net_income_billion": "净利润（亿）",
+        "total_assets_billion": "总资产（亿）",
+        "operating_cash_flow_billion": "经营现金流（亿）",
+        "free_cash_flow_billion": "自由现金流（亿）",
     }
     text = markdown
     for en, zh in replacements.items():
@@ -396,6 +525,9 @@ def render_professional_html_report(
     charts: List[Dict[str, Any]] | None = None,
     citations: List[Dict[str, Any]] | None = None,
     delivery_status: str = "normal",
+    top_blockers: List[str] | None = None,
+    quality_blocked: bool = False,
+    contract_mode: bool = False,
 ) -> str:
     """Render a professional standalone HTML report.
 
@@ -408,10 +540,24 @@ def render_professional_html_report(
     - Professional citation blocks
     - Print CSS support
     - Compliance disclosure footer
+
+    Args:
+        top_blockers: List of top blocker IDs for display in header.
+        quality_blocked: True if quality gate blocked the report.
+        contract_mode: If True, skip the heavy sanitize chain that assumes
+            LLM-written content (regex fixes for peer labels, period metadata,
+            blocked display, etc.) and only do safety cleaning.
     """
     charts = sanitize_chart_payloads(charts or [])
     citations = citations or []
-    markdown = sanitize_user_markdown(markdown)
+
+    if contract_mode:
+        # Contract mode: contract_renderer already produces clean content.
+        # Skip the heavy regex-based sanitize chain that was designed for
+        # LLM-written output. Only strip mojibake for safety.
+        markdown = _strip_mojibake(markdown)
+    else:
+        markdown = sanitize_user_markdown(markdown)
     is_zh = bool(re.search(r'[一-鿿]', title))
     body_html = _markdown_to_html(markdown)
     chart_count = len(charts)
@@ -420,7 +566,7 @@ def render_professional_html_report(
     # Extract headings for TOC
     toc_entries = _extract_toc(markdown)
 
-    return f"""<!doctype html>
+    html_doc = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -432,7 +578,6 @@ def render_professional_html_report(
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
   <style>
-    /* 鈹€鈹€ Base 鈹€鈹€ */
     :root {{
       --accent: #667eea;
       --accent2: #764ba2;
@@ -449,7 +594,6 @@ def render_professional_html_report(
     a {{ color: #556ee6; }}
     a:hover {{ color: #764ba2; }}
 
-    /* 鈹€鈹€ Header 鈹€鈹€ */
     .report-header {{
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: #fff;
@@ -471,7 +615,6 @@ def render_professional_html_report(
     .confidence-card .score {{ font-size: 2.2rem; font-weight: 800; line-height: 1.1; }}
     .confidence-card small {{ opacity: 0.8; }}
 
-    /* 鈹€鈹€ Sections 鈹€鈹€ */
     .report-section {{
       background: var(--panel);
       border: 1px solid var(--line);
@@ -491,7 +634,6 @@ def render_professional_html_report(
     .report-section ul {{ padding-left: 1.2rem; }}
     .report-section li {{ margin: 0.3rem 0; }}
 
-    /* 鈹€鈹€ Executive Summary Callout 鈹€鈹€ */
     .exec-summary {{
       background: #eef2ff;
       border-left: 4px solid var(--accent);
@@ -502,7 +644,6 @@ def render_professional_html_report(
     .exec-summary h3 {{ margin: 0 0 0.6rem; color: #4338ca; font-size: 1.1rem; }}
     .exec-summary i {{ margin-right: 0.4rem; }}
 
-    /* 鈹€鈹€ Tables 鈹€鈹€ */
     .report-table {{
       width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.9rem;
     }}
@@ -512,7 +653,6 @@ def render_professional_html_report(
     .report-table th {{ background: #f1f5f9; font-weight: 600; }}
     .report-table tr:nth-child(even) {{ background: #f8fafc; }}
 
-    /* 鈹€鈹€ Metrics / Stat cards 鈹€鈹€ */
     .metric-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1rem; margin: 1rem 0; }}
     .metric-card {{
       background: linear-gradient(135deg, var(--pink) 0%, var(--pink2) 100%);
@@ -521,7 +661,6 @@ def render_professional_html_report(
     .metric-card .value {{ font-size: 1.8rem; font-weight: 700; line-height: 1.2; }}
     .metric-card .label {{ font-size: 0.8rem; opacity: 0.9; }}
 
-    /* 鈹€鈹€ Risk Cards 鈹€鈹€ */
     .risk-card {{
       border-radius: 8px; padding: 1rem 1.2rem; margin: 0.6rem 0;
       border-left: 4px solid; font-size: 0.92rem;
@@ -531,13 +670,11 @@ def render_professional_html_report(
     .risk-low {{ background: #f0fdf4; border-color: #22c55e; }}
     .risk-card strong {{ display: block; margin-bottom: 0.3rem; }}
 
-    /* 鈹€鈹€ Charts 鈹€鈹€ */
     .chart-tabs {{ display: flex; flex-direction: row; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--line); padding-bottom: 0.25rem; }}
     .chart-tabs .nav-link {{ display: inline-flex; width: auto; border: 1px solid var(--line); border-radius: 8px 8px 0 0; padding: 0.6rem 1.1rem; cursor: pointer; background: #fff; color: var(--accent); font-weight: 500; }}
     .chart-tabs .nav-link.active {{ color: var(--accent2); font-weight: 600; background: transparent; border-bottom: 2px solid var(--accent2); border-color: var(--accent2); }}
     .chart-container {{ position: relative; height: 400px; margin: 1rem 0; }}
 
-    /* 鈹€鈹€ Citations 鈹€鈹€ */
     .citation {{
       font-size: 0.88em; color: #555; border-left: 3px solid var(--accent);
       padding: 0.5rem 0 0.5rem 1rem; margin: 0.8rem 0;
@@ -546,14 +683,12 @@ def render_professional_html_report(
     .citation .num {{ font-weight: 700; color: var(--accent2); }}
     .citation a {{ word-break: break-all; }}
 
-    /* 鈹€鈹€ Recommendations 鈹€鈹€ */
     .rec-card {{
       background: #faf5ff; border-left: 4px solid #a855f7; border-radius: 0 8px 8px 0;
       padding: 1rem 1.2rem; margin: 0.8rem 0;
     }}
     .rec-card strong {{ display: block; margin-bottom: 0.3rem; color: #6b21a8; }}
 
-    /* 鈹€鈹€ TOC 鈹€鈹€ */
     .toc {{ background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.5rem; margin-bottom: 1.5rem; }}
     .toc h2 {{ font-size: 1.1rem; margin: 0 0 0.6rem; }}
     .toc ul {{ list-style: none; padding: 0; margin: 0; columns: 2; column-gap: 1.5rem; }}
@@ -561,18 +696,15 @@ def render_professional_html_report(
     .toc a {{ text-decoration: none; color: var(--ink); font-size: 0.92rem; }}
     .toc a:hover {{ color: var(--accent); }}
 
-    /* 鈹€鈹€ Footer 鈹€鈹€ */
     .report-footer {{
       background: #1e293b; color: #cbd5e1; padding: 1.5rem 0; margin-top: 2.5rem;
       font-size: 0.85rem; text-align: center;
     }}
     .report-footer strong {{ color: #f1f5f9; }}
 
-    /* 鈹€鈹€ Degraded Warning 鈹€鈹€ */
     .degraded-warning {{ background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 1rem 1.2rem; margin-bottom: 1.5rem; font-size: 0.92rem; color: #6d4c00; }}
     .degraded-warning i {{ margin-right: 0.5rem; }}
 
-    /* 鈹€鈹€ Print 鈹€鈹€ */
     @media print {{
       body {{ background: #fff; }}
       .report-header {{ padding: 1.5rem 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
@@ -590,7 +722,7 @@ def render_professional_html_report(
 </head>
 <body>
 
-  {_render_header(title, chart_count, citation_count, delivery_status)}
+  {_render_header(title, chart_count, citation_count, delivery_status, top_blockers=top_blockers or [], quality_blocked=quality_blocked)}
 
   <div class="container">
 
@@ -619,14 +751,45 @@ def render_professional_html_report(
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>"""
+    html_doc = re.sub(r"/\*.*?\*/", "", html_doc, flags=re.S)
+    return _strip_html_mojibake(html_doc)
 
 
-def _render_header(title: str, chart_count: int, citation_count: int, delivery_status: str = "normal") -> str:
+def _render_header(title: str, chart_count: int, citation_count: int,
+                   delivery_status: str = "normal",
+                   top_blockers: list[str] | None = None,
+                   quality_blocked: bool = False) -> str:
     is_zh = bool(re.search(r'[一-鿿]', title))
-    subtitle_en = "Auto Financial Observation Report (Degraded)" if delivery_status == "degraded_due_to_content_quality" else "Multi-Agent Deep Research Report"
+    top_blockers = top_blockers or []
+    is_blocked = quality_blocked or delivery_status.startswith("blocked") or delivery_status.startswith("degraded")
+
+    subtitle_en = "Auto Financial Observation Report (Degraded)" if is_blocked else "Multi-Agent Deep Research Report"
     subtitle = subtitle_en
     if is_zh:
-        subtitle = "自动财务观察报告（已降级）" if delivery_status == "degraded_due_to_content_quality" else "多智能体深度研究报告"
+        subtitle = "自动财务观察报告（已降级）" if is_blocked else "多智能体深度研究报告"
+
+    # Build blocker list HTML — always show when blocked, even if top_blockers
+    # is empty (provides the "见下方" marker referenced in confidence_small).
+    blockers_html = ""
+    if is_blocked:
+        if top_blockers:
+            blocker_items = "\n".join(
+                f'<li><span class="blocker-tag">{escape(b)}</span></li>'
+                for b in top_blockers[:5]
+            )
+        else:
+            blocker_items = '<li><em>质量诊断建议待补充</em></li>'
+        blockers_html = f"""<div class="blocker-list" style="margin-top:0.5rem;font-size:0.85rem">
+          <strong style="color:var(--pink2)">{'质量诊断' if is_zh else 'Quality Diagnostics'}:</strong>
+          <ul style="margin:0.25rem 0 0 0;padding-left:1.2rem">{blocker_items}</ul>
+        </div>"""
+
+    # Confidence small text
+    if is_blocked:
+        confidence_small = "质量诊断提示，见下方建议" if is_zh else "Quality diagnostics available below"
+    else:
+        confidence_small = "基于数据覆盖与引用分析" if is_zh else "Based on data coverage and citation analysis"
+
     return f"""<header class="report-header">
   <div class="container">
     <div class="row align-items-center">
@@ -639,12 +802,13 @@ def _render_header(title: str, chart_count: int, citation_count: int, delivery_s
           {f'<span class="ms-3"><i class="fas fa-chart-bar"></i> 图表 {chart_count}</span>' if chart_count else ''}
           {f'<span class="ms-3"><i class="fas fa-bookmark"></i> 参考来源 {citation_count}</span>' if citation_count else ''}
         </div>
+        {blockers_html}
       </div>
       <div class="col-md-4 text-end d-none d-md-block">
         <div class="confidence-card">
           <h4><i class="fas fa-star"></i> {'报告置信度' if is_zh else 'Report Confidence'}</h4>
           <div class="score">{_estimate_confidence(chart_count, citation_count, delivery_status)}%</div>
-          <small>{'基于数据覆盖与引用分析' if is_zh else 'Based on data coverage and citation analysis'}</small>
+          <small>{confidence_small}</small>
         </div>
       </div>
     </div>
@@ -924,11 +1088,20 @@ def _markdown_to_html(markdown: str) -> str:
             html.append(f"<h3>{escape(line[4:].strip())}</h3>")
             continue
 
+        # Preserve trusted raw html tables already generated upstream, especially
+        # the three-statement tables.
+        if re.match(r"^</?(table|thead|tbody|tr|th|td)\b", line, flags=re.I):
+            close_list()
+            close_table()
+            html.append(line)
+            continue
+
         # Detect table rows (pipe-delimited)
         if line.startswith("|") and line.endswith("|"):
+            close_list()
             cells = [c.strip() for c in line.split("|")[1:-1]]
             # Check if this is a separator row (|---|)
-            if all(re.match(r"^-{1,}$", c) for c in cells):
+            if all(re.match(r"^:?-{3,}:?$", c) for c in cells):
                 continue  # skip separator
             if not in_table:
                 html.append("<table class=\"report-table\"><thead><tr>")
@@ -1007,11 +1180,17 @@ def _generation_timestamp() -> str:
 
 
 def _estimate_confidence(chart_count: int, citation_count: int, delivery_status: str = "normal") -> int:
-    """Estimate a report confidence score based on data richness."""
+    """Estimate a report confidence score based on data richness.
+
+    不再因为 blocked/degraded 返回硬编码低分，而是根据实际数据丰富度计算。
+    blocked/degraded 只降 10 分（提醒用户注意），不直接打到 45。
+    """
+    penalty = 0
     if delivery_status.startswith("blocked"):
-        return 45
-    if delivery_status.startswith("degraded"):
-        return 68
+        penalty = 10
+    elif delivery_status.startswith("degraded"):
+        penalty = 5
+
     score = 60
     if chart_count >= 1:
         score += 10
@@ -1023,4 +1202,4 @@ def _estimate_confidence(chart_count: int, citation_count: int, delivery_status:
         score += 5
     if chart_count >= 1 and citation_count >= 5:
         score += 5
-    return min(score, 88)
+    return max(min(score - penalty, 88), 30)

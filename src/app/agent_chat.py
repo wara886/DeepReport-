@@ -386,7 +386,7 @@ class AgentChatService:
         if latest_dirs is None:
             answer = (
                 "当前没有可复盘的已完成报告。"
-                "请先完成一次报告生成，再让我读取质量门禁与引用结果。"
+                "请先完成一次报告生成，再让我读取质量诊断与引用结果。"
             )
             return answer, {"status": "empty"}, []
 
@@ -419,19 +419,20 @@ class AgentChatService:
                 and not list(item.get("evidence_ids") or [])
             )
 
-        status = "通过" if delivery_gate.get("delivery_pass") is True else "未通过"
+        diagnostic_pass = delivery_gate.get("diagnostic_delivery_pass", delivery_gate.get("delivery_pass"))
+        status = "通过" if diagnostic_pass is True else "需复核"
         lines = [
             f"最近有效报告：{summary.get('symbol', '')} {summary.get('period', '')}",
-            f"交付门禁：{status}",
+            f"质量诊断：{status}",
             f"客观质量分：{quality_report.get('total_score', 'N/A')}",
             f"Verifier通过：{verification_report.get('passed', False)}",
             f"缺证据claim数：{len(evidence_gaps) if isinstance(evidence_gaps, list) else 0}",
             f"缺引用claim数：{claim_citation_gaps}",
         ]
         if blockers:
-            lines.append("阻塞问题：" + " | ".join(blockers[:3]))
-        if delivery_gate.get("delivery_pass") is not True:
-            lines.append("建议：先修复 blocker/fatal，再重跑 delivery gate。")
+            lines.append("诊断建议：" + " | ".join(blockers[:3]))
+        if diagnostic_pass is not True:
+            lines.append("建议：优先补齐诊断中标出的 blocker/fatal。")
         lines.append("边界说明：以上判断仅基于最近报告 artifacts，不引入新外部事实。")
         if evidence_coverage:
             lines.append(
