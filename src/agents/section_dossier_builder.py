@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -84,10 +85,11 @@ class SectionDossierBuilder:
         sector = str(cp.get("sector") or cp.get("industry_group") or "")
         industry = str(cp.get("industry") or "")
         annual_biz = annual_sections.get("business", [])
-        annual_biz_usable = _has_usable_summary(annual_biz)
+        usable_annual_biz = _usable_chunks(annual_biz)
+        annual_biz_usable = bool(usable_annual_biz)
         summary = str(cp.get("business_summary") or cp.get("long_business_summary") or cp.get("description") or "")
-        if annual_biz:
-            summary = _summarize_annual_section(annual_biz, company_name=company_name, section_name="business")
+        if usable_annual_biz:
+            summary = _summarize_annual_section(usable_annual_biz, company_name=company_name, section_name="business")
         if not summary and not _is_fy(state):
             for rec in evidence_records:
                 if isinstance(rec, dict) and str(rec.get("source_type") or "") == "yahoo_profile":
@@ -109,7 +111,7 @@ class SectionDossierBuilder:
             "business_overview",
             claims=list(state.get("claims", [])) if isinstance(state.get("claims"), list) else [],
             bundles=bundles,
-            evidence_ids=_chunk_ids(annual_biz),
+            evidence_ids=_chunk_ids(usable_annual_biz),
             key_facts=facts,
             suggested_paragraphs=suggestions,
             caveats=[] if annual_biz_usable or (summary and not _is_fy(state)) else [_pdf_gap_message(annual_biz, "business_overview")],
@@ -123,7 +125,7 @@ class SectionDossierBuilder:
         bundles: list[dict[str, Any]],
         annual_sections: dict[str, list[dict[str, Any]]],
     ) -> dict[str, Any]:
-        gov_chunks = annual_sections.get("governance", [])
+        gov_chunks = _usable_chunks(annual_sections.get("governance", []))
         has_gov = _has_usable_summary(gov_chunks) or any(_contains_any(rec, ["governance", "board", "shareholder", "ownership"]) for rec in evidence_records)
         gov_caveats = [] if has_gov else ["未获取到 proxy/DEF14A 或等价治理披露，本节保持 data_gap，不编造股权和治理结论。"]
         return _dossier(
@@ -144,7 +146,7 @@ class SectionDossierBuilder:
         bundles: list[dict[str, Any]],
         annual_sections: dict[str, list[dict[str, Any]]],
     ) -> dict[str, Any]:
-        chunks = annual_sections.get("mda", []) + annual_sections.get("segments", []) + annual_sections.get("liquidity", [])
+        chunks = _usable_chunks(annual_sections.get("mda", []) + annual_sections.get("segments", []) + annual_sections.get("liquidity", []))
         chunks_usable = _has_usable_summary(chunks)
         fm = _financial_metrics(analysis)
         facts = []
@@ -196,6 +198,9 @@ class SectionDossierBuilder:
         peer_data = analysis.get("peer_analysis", {}) if isinstance(analysis.get("peer_analysis"), dict) else {}
         peer_rows = peer_data.get("peer_rows") or peer_data.get("rows") or analysis.get("peer_rows") or blackboard.get("peer_rows") or []
         peer_rows = peer_rows if isinstance(peer_rows, list) else []
+        approved = _approved_peer_symbols_from_analysis(analysis, blackboard)
+        target_symbol = str(analysis.get("symbol") or blackboard.get("symbol") or "").strip().upper()
+        peer_rows = _filter_peer_rows(peer_rows, target_symbol=target_symbol, approved_symbols=approved)
         det = det_blocks.get("peer_compare", "")
         tables = [{"title": "可比公司分析", "rows": peer_rows}] if peer_rows else []
         return _dossier(
@@ -210,6 +215,24 @@ class SectionDossierBuilder:
 
     def _valuation(self, claims: list[dict[str, Any]], analysis: dict[str, Any], bundles: list[dict[str, Any]], det_blocks: dict[str, str]) -> dict[str, Any]:
         valuation = analysis.get("valuation", {}) if isinstance(analysis.get("valuation"), dict) else {}
+        if not valuation and isinstance(analysis.get("valuation_model"), dict):
+            valuation = analysis.get("valuation_model", {})
+        status = str(valuation.get("valuation_status") or valuation.get("error") or "").lower()
+        if status in {"rough_observation_only", "blocked_due_to_incomplete_inputs"} or valuation.get("valuation_available") is False:
+            missing = valuation.get("missing_inputs", []) if isinstance(valuation.get("missing_inputs"), list) else []
+            note = "估值输入尚不完整，本轮仅保留方向性观察，不输出确定性 DCF、综合股权价值或目标价。"
+            if missing:
+                note += " 缺失项：" + "、".join(str(item) for item in missing[:6]) + "。"
+            return _dossier(
+                "valuation",
+                claims=claims,
+                bundles=bundles,
+                suggested_paragraphs=[note],
+                caveats=["估值模型处于粗略观察状态，不能作为投资结论或目标价依据。"],
+                min_content_level="brief",
+                evidence_strength="weak",
+                valuation_status=status or "rough_observation_only",
+            )
         det = det_blocks.get("valuation", "")
         methods = []
         for key, label in [("pe_ratio", "P/E"), ("pb_ratio", "P/B"), ("ps_ratio", "P/S"), ("dcf_value", "DCF")]:
@@ -229,6 +252,17 @@ class SectionDossierBuilder:
 
     def _valuation_sensitivity(self, analysis: dict[str, Any], det_blocks: dict[str, str]) -> dict[str, Any]:
         valuation = analysis.get("valuation", {}) if isinstance(analysis.get("valuation"), dict) else {}
+        if not valuation and isinstance(analysis.get("valuation_model"), dict):
+            valuation = analysis.get("valuation_model", {})
+        status = str(valuation.get("valuation_status") or valuation.get("error") or "").lower()
+        if status in {"rough_observation_only", "blocked_due_to_incomplete_inputs"} or valuation.get("valuation_available") is False:
+            return _dossier(
+                "valuation_sensitivity",
+                suggested_paragraphs=["敏感性输入尚不完整，本轮不输出 DCF 情景数值，仅说明关键变量缺口。"],
+                caveats=["缺少完整基准 FCF、增长率、折现率、终值增长率、市值或股本口径时，敏感性结果不得量化展示。"],
+                min_content_level="brief",
+                evidence_strength="weak",
+            )
         sensitivity = analysis.get("valuation_sensitivity") or valuation.get("sensitivity") or []
         det = det_blocks.get("valuation_sensitivity", "")
         return _dossier(
@@ -250,13 +284,13 @@ class SectionDossierBuilder:
         annual_sections: dict[str, list[dict[str, Any]]],
         det_blocks: dict[str, str],
     ) -> dict[str, Any]:
-        risk_chunks = annual_sections.get("risk_factors", [])
+        risk_chunks = _usable_chunks(annual_sections.get("risk_factors", []))
         risk_chunks_usable = _has_usable_summary(risk_chunks)
         risk_data = analysis.get("risk_analysis", {}) if isinstance(analysis.get("risk_analysis"), dict) else {}
         items = []
         if risk_chunks_usable:
             items = _risk_items_from_annual(risk_chunks)
-        else:
+        elif not annual_sections.get("risk_factors"):
             for cat in RISK_CATEGORIES:
                 risk = risk_data.get(cat, {}) if isinstance(risk_data, dict) else {}
                 items.append({
@@ -264,7 +298,7 @@ class SectionDossierBuilder:
                     "description": str(risk.get("description") or "")[:300] if isinstance(risk, dict) else "",
                     "impact_level": str(risk.get("impact_level") or "medium") if isinstance(risk, dict) else "medium",
                 })
-        det = det_blocks.get("risks", "")
+        det = det_blocks.get("risks", "") if (risk_chunks_usable or not annual_sections.get("risk_factors")) else ""
         table = {"title": "风险分类", "headers": ["风险类型", "影响程度", "说明"], "rows": [[item["risk_title"], item["impact_level"], item["description"][:120]] for item in items if item.get("description")]}
         suggestions = ([det] if det else []) + (["风险因素来自官方年报章节摘要，报告已压缩为中文风险表，避免直接粘贴原文。"] if risk_chunks_usable else ([_summarize_annual_section(risk_chunks, section_name="risk")] if risk_chunks else []))
         return _dossier(
@@ -391,12 +425,12 @@ def _annual_sections_from_state(state: dict[str, Any]) -> dict[str, list[dict[st
     pdf_summaries = state.get("pdf_section_summaries", [])
     if isinstance(pdf_summaries, list):
         mapping = {
-            "business_overview": ["business", "business_overview"],
+            "business_overview": ["business", "business_overview", "strategy_business"],
             "management_discussion": ["mda", "strategy_business", "management_discussion"],
             "ownership_governance": ["governance", "ownership_governance"],
             "shareholder_structure": ["governance", "shareholder_structure"],
-            "risk_factors": ["risk_factors"],
-            "financial_statements": ["financial_statements"],
+            "risk_factors": ["risk_factors", "risks"],
+            "financial_statements": ["financial_statements", "three_statement_summary"],
         }
         for summary in pdf_summaries:
             if not isinstance(summary, dict):
@@ -407,12 +441,33 @@ def _annual_sections_from_state(state: dict[str, Any]) -> dict[str, list[dict[st
     return output
 
 
+def sanitize_peer_rows_for_report(analysis: dict[str, Any], blackboard: dict[str, Any] | None = None, target_symbol: str = "") -> list[dict[str, Any]]:
+    blackboard = blackboard if isinstance(blackboard, dict) else {}
+    peer_data = analysis.get("peer_analysis", {}) if isinstance(analysis.get("peer_analysis"), dict) else {}
+    peer_rows = analysis.get("peer_rows") or peer_data.get("peer_rows") or peer_data.get("rows") or blackboard.get("peer_rows") or []
+    peer_rows = peer_rows if isinstance(peer_rows, list) else []
+    approved = _approved_peer_symbols_from_analysis(analysis, blackboard)
+    clean_rows = _filter_peer_rows(
+        peer_rows,
+        target_symbol=str(target_symbol or "").strip().upper(),
+        approved_symbols=approved,
+        target_profile=_target_peer_profile(analysis, blackboard, target_symbol),
+    )
+    if isinstance(peer_data, dict):
+        peer_data["peer_rows"] = clean_rows
+        peer_data["rows"] = clean_rows
+        peer_data["dropped_peer_row_count"] = max(len(peer_rows) - len(clean_rows), 0)
+        analysis["peer_analysis"] = peer_data
+    analysis["peer_rows"] = clean_rows
+    blackboard["peer_rows"] = clean_rows
+    return clean_rows
+
+
 def _deterministic_blocks(analysis: dict[str, Any], blackboard: dict[str, Any]) -> dict[str, str]:
     try:
         from src.report.deterministic_section_renderer import render_all_deterministic_blocks
 
-        peer_data = analysis.get("peer_analysis", {}) if isinstance(analysis.get("peer_analysis"), dict) else {}
-        peer_rows = analysis.get("peer_rows") or peer_data.get("peer_rows") or peer_data.get("rows") or blackboard.get("peer_rows")
+        peer_rows = sanitize_peer_rows_for_report(analysis, blackboard, target_symbol=str(analysis.get("symbol") or blackboard.get("symbol") or ""))
         valuation_model = analysis.get("valuation_model") or analysis.get("valuation")
         return render_all_deterministic_blocks(
             peer_rows=peer_rows if isinstance(peer_rows, list) else [],
@@ -452,8 +507,23 @@ def _has_usable_summary(chunks: list[dict[str, Any]]) -> bool:
         isinstance(chunk, dict)
         and bool(chunk.get("usable_for_generation", True))
         and str(chunk.get("evidence_quality") or "").lower() not in {"missing", "noise_only"}
+        and not _has_mojibake(_chunk_text(chunk))
+        and not _looks_like_raw_pdf_dump(_chunk_text(chunk))
         for chunk in chunks
     )
+
+
+def _usable_chunks(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        chunk
+        for chunk in chunks
+        if isinstance(chunk, dict)
+        and bool(chunk.get("usable_for_generation", True))
+        and str(chunk.get("evidence_quality") or "").lower() not in {"missing", "noise_only"}
+        and not _has_mojibake(_chunk_text(chunk))
+        and not _looks_like_raw_pdf_dump(_chunk_text(chunk))
+        and not _section_summary_is_unusable(chunk)
+    ]
 
 
 def _pdf_gap_message(chunks: list[dict[str, Any]], section_type: str) -> str:
@@ -491,6 +561,144 @@ def _is_fy(state: dict[str, Any]) -> bool:
     return str(state.get("period") or "").upper().startswith("FY")
 
 
+def _approved_peer_symbols_from_analysis(analysis: dict[str, Any], blackboard: dict[str, Any]) -> set[str]:
+    approved: set[str] = set()
+    peer_data = analysis.get("peer_analysis", {}) if isinstance(analysis.get("peer_analysis"), dict) else {}
+    for source in [peer_data, analysis, blackboard]:
+        if not isinstance(source, dict):
+            continue
+        for key in ["approved_peer_symbols", "peer_symbols"]:
+            values = source.get(key)
+            if isinstance(values, list):
+                for value in values:
+                    symbol = str(value or "").strip().upper()
+                    if symbol:
+                        approved.add(symbol)
+    return approved
+
+
+def _target_peer_profile(analysis: dict[str, Any], blackboard: dict[str, Any], target_symbol: str) -> dict[str, Any]:
+    profile = analysis.get("company_profile") if isinstance(analysis.get("company_profile"), dict) else {}
+    if not profile:
+        profile = blackboard.get("company_profile") if isinstance(blackboard.get("company_profile"), dict) else {}
+    identity = blackboard.get("company_identity") if isinstance(blackboard.get("company_identity"), dict) else {}
+    return {
+        "symbol": str(target_symbol or analysis.get("symbol") or blackboard.get("symbol") or "").strip().upper(),
+        "company_name": profile.get("company_name") or identity.get("company_name") or analysis.get("company_name") or target_symbol,
+        "sector": profile.get("sector") or identity.get("sector") or analysis.get("sector") or "",
+        "industry": profile.get("industry") or identity.get("industry") or analysis.get("industry") or "",
+    }
+
+
+def _filter_peer_rows(
+    peer_rows: list[dict[str, Any]],
+    target_symbol: str,
+    approved_symbols: set[str],
+    target_profile: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    filtered: list[dict[str, Any]] = []
+    allowed = {str(symbol).strip().upper() for symbol in approved_symbols if str(symbol).strip()}
+    if target_symbol:
+        allowed.add(target_symbol)
+    target_row = next(
+        (
+            row for row in peer_rows
+            if isinstance(row, dict)
+            and str(row.get("symbol") or row.get("ticker") or "").strip().upper() == target_symbol
+        ),
+        target_profile if isinstance(target_profile, dict) else {},
+    )
+    target_market = _symbol_market(target_symbol)
+    target_family = _peer_industry_family(target_row)
+    for row in peer_rows:
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol") or row.get("ticker") or "").strip().upper()
+        if not symbol:
+            continue
+        if symbol not in allowed:
+            continue
+        if symbol != target_symbol:
+            row_market = _symbol_market(symbol)
+            if target_market and row_market and row_market != target_market:
+                continue
+            row_family = _peer_industry_family(row)
+            if target_family not in {"", "generic"} and row_family not in {"", "generic", target_family}:
+                continue
+        filtered.append(row)
+    return filtered
+
+
+def _symbol_market(symbol: str) -> str:
+    value = str(symbol or "").strip().upper()
+    if value.endswith((".SS", ".SZ")):
+        return "cn_a"
+    if value.endswith(".HK"):
+        return "hk"
+    if re.fullmatch(r"[A-Z]{1,6}", value):
+        return "us"
+    return ""
+
+
+def _peer_industry_family(row: dict[str, Any]) -> str:
+    try:
+        from src.data.content_governance import classify_industry_family
+
+        return classify_industry_family(
+            str(row.get("sector") or ""),
+            str(row.get("industry") or row.get("peer_group") or ""),
+            str(row.get("company_name") or row.get("company") or row.get("name") or row.get("symbol") or ""),
+        )
+    except Exception:
+        return "generic"
+
+
+def _summarize_annual_section(chunks: list[dict[str, Any]], company_name: str = "", section_name: str = "") -> str:
+    text = " ".join(
+        str(chunk.get("summary_zh") or chunk.get("text") or chunk.get("content") or "")
+        for chunk in chunks[:3]
+        if isinstance(chunk, dict)
+    ).strip()
+    lowered = text.lower()
+    subject = company_name or "公司"
+    if section_name == "business":
+        if not any(term in lowered for term in ["google services", "segment", "segments", "advertising", "ads", "cloud"]):
+            return text[:700]
+        pieces = [f"{subject}的业务概览来自年度报告正文，而不是只由结构化三表反推。"]
+        if "google services" in lowered:
+            pieces.append("公司披露的主要分部包括 Google Services、Google Cloud 和 Other Bets。")
+        elif "segment" in lowered or "segments" in lowered:
+            pieces.append("年度报告披露了多个经营分部，后续分析应按分部口径解释收入、利润和风险。")
+        if "advertising" in lowered or "ads" in lowered:
+            pieces.append("广告相关业务仍是核心收入来源，同时云服务和新业务承担增长与投入压力。")
+        elif "cloud" in lowered:
+            pieces.append("云服务是重要的增长与资本投入方向。")
+        return " ".join(pieces[:4])
+    if section_name == "strategy":
+        pieces = ["战略与主营业务分析基于年度报告 Business 或 MD&A 章节。"]
+        if "revenue" in lowered:
+            pieces.append("管理层通常围绕收入增长、成本投入、利润率和现金流解释经营表现。")
+        if "capital" in lowered or "liquidity" in lowered:
+            pieces.append("资本开支、流动性和长期投资需要结合现金流能力一并评估。")
+        if "competition" in lowered:
+            pieces.append("竞争格局会直接影响增长、定价和利润率。")
+        return " ".join(pieces[:4])
+    return text[:700]
+
+
+def _pdf_gap_message(chunks: list[dict[str, Any]], section_type: str) -> str:
+    if chunks:
+        first = next((chunk for chunk in chunks if isinstance(chunk, dict)), {})
+        reason = str(first.get("gap_reason") or first.get("evidence_quality") or "section_not_extracted")
+        text = str(first.get("summary_zh") or "").strip()
+        if text:
+            return text
+        if reason == "noise_only":
+            return f"已获取官方 PDF，但 {section_type} 候选片段主要是页眉、目录指针、重要提示或审计样板语，未能形成可用摘要。"
+        return f"已获取官方 PDF，但尚未稳定抽取 {section_type} 对应章节，因此本节暂不展开判断。"
+    return f"尚未取得 {section_type} 的官方 PDF 章节摘要，因此本节保持 data_gap。"
+
+
 def _get(value: Any, *keys: str) -> Any:
     cur = value
     for key in keys:
@@ -506,3 +714,144 @@ def _dedupe(values: list[str]) -> list[str]:
         if value and value not in out:
             out.append(value)
     return out
+
+
+def _chunk_text(chunk: dict[str, Any]) -> str:
+    return str(chunk.get("summary_zh") or chunk.get("text") or chunk.get("content") or "")
+
+
+def _has_mojibake(text: str) -> bool:
+    value = str(text or "")
+    patterns = (
+        "\ufffd",
+        "鈥",
+        "鈭",
+        "鈻",
+        "鈹",
+        "璐靛",
+        "璇佹",
+        "缁撹",
+        "鎽樿",
+        "鐩",
+        "鍏",
+        "涓氬",
+        "锛",
+        "Ã",
+        "Â",
+    )
+    return any(pattern in value for pattern in patterns)
+
+
+def _looks_like_raw_pdf_dump(text: str) -> bool:
+    value = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(value) <= 700:
+        return False
+    sentence_marks = len(re.findall(r"[。！？.!?]", value))
+    return sentence_marks < 3 or len(value) > 1200
+
+
+def _clean_generation_text(text: str) -> str:
+    value = re.sub(r"\s+", " ", str(text or "")).strip()
+    value = re.sub(r"\b[A-Za-z\s.,&()-]+(?:Annual Report|Form 10-[KQ]).{0,40}", "", value)
+    value = re.sub(r"贵州茅台酒股份有限公司\s*\d{4}\s*年年度报告", "", value)
+    value = re.sub(r"第[一二三四五六七八九十\d]+\s*节\s*[^。；\n]{0,30}", "", value)
+    value = re.sub(r"[一二三四五六七八九十]、(?=(公司|报告期|本公司|主要|核心|经营))", "", value)
+    for phrase in [
+        "正文应使用中文归纳",
+        "公司 年度报告章节已抽取",
+        "年度报告章节已抽取",
+        "保留章节引用",
+        "使用中文归纳关键业务事实",
+    ]:
+        value = value.replace(phrase, "")
+    return value.strip()
+
+
+def _compact_text(text: str, max_chars: int) -> str:
+    value = _clean_generation_text(text)
+    if len(value) <= max_chars:
+        return value
+    sentences = re.split(r"(?<=[。！？.!?])\s+", value)
+    output: list[str] = []
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        output.append(sentence)
+        if len(" ".join(output)) >= max_chars or len(output) >= 4:
+            break
+    return (" ".join(output).strip() or value[:max_chars])[:max_chars]
+
+
+def _section_summary_is_unusable(chunk: dict[str, Any]) -> bool:
+    section_type = str(chunk.get("section_type") or "").lower()
+    if section_type not in {"business_overview", "business"}:
+        return False
+    text = _chunk_text(chunk)
+    lowered = str(text or "").lower()
+    negatives = [
+        "释义",
+        "公司信息",
+        "联系人和联系方式",
+        "主要财务指标",
+        "法定代表人",
+        "财务费用变动原因说明",
+        "现金流量净额变动原因说明",
+    ]
+    positives = [
+        "主营业务",
+        "经营模式",
+        "产品结构",
+        "销售渠道",
+        "茅台酒",
+        "系列酒",
+        "直销",
+        "i茅台",
+        "批发代理",
+        "business model",
+        "products",
+        "segments",
+    ]
+    if any(term.lower() in lowered for term in negatives):
+        return True
+    return not any(term.lower() in lowered for term in positives)
+
+
+def _summarize_annual_section(chunks: list[dict[str, Any]], company_name: str = "", section_name: str = "") -> str:
+    text = " ".join(
+        str(chunk.get("summary_zh") or chunk.get("text") or chunk.get("content") or "")
+        for chunk in chunks[:3]
+        if isinstance(chunk, dict)
+    ).strip()
+    text = _compact_text(text, 420)
+    if _has_mojibake(text):
+        return ""
+    lowered = text.lower()
+    subject = company_name or "公司"
+    if section_name == "business" and any(term in lowered for term in ["google services", "segment", "segments", "advertising", "ads", "cloud"]):
+        pieces = [f"{subject} 的业务概览来自年度报告正文，而不是仅由结构化三表反推。"]
+        if "google services" in lowered:
+            pieces.append("公司披露的主要分部包括 Google Services、Google Cloud 和 Other Bets。")
+        elif "segment" in lowered or "segments" in lowered:
+            pieces.append("年度报告披露了多个经营分部，后续分析应按分部口径解释收入、利润和风险。")
+        if "advertising" in lowered or "ads" in lowered:
+            pieces.append("广告相关业务仍是核心收入来源，同时云服务和新业务承担增长与投入压力。")
+        elif "cloud" in lowered:
+            pieces.append("云服务是重要的增长与资本投入方向。")
+        return " ".join(pieces[:4])
+    return text
+
+
+def _pdf_gap_message(chunks: list[dict[str, Any]], section_type: str) -> str:
+    if chunks:
+        first = next((chunk for chunk in chunks if isinstance(chunk, dict)), {})
+        reason = str(first.get("gap_reason") or first.get("evidence_quality") or "section_not_extracted")
+        text = _clean_generation_text(str(first.get("summary_zh") or "").strip())
+        if text and not _has_mojibake(text):
+            return _compact_text(text, 260)
+        if reason == "noise_only":
+            return f"已获取官方 PDF，但 {section_type} 候选片段主要是页眉、目录、重要提示、乱码或模板文本，未能形成可用摘要。"
+        if reason == "mojibake":
+            return f"已获取官方 PDF，但 {section_type} 候选章节存在乱码，已阻断进入正文。"
+        return f"已获取官方 PDF，但尚未稳定抽取 {section_type} 对应章节，因此本节暂不展开判断。"
+    return f"尚未取得 {section_type} 的官方 PDF 章节摘要，因此本节保持 data_gap。"

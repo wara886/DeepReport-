@@ -1,80 +1,80 @@
-"""Deterministic markdown table renderer for report sections."""
+"""Deterministic markdown-table renderer for report sections."""
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 
 def render_peer_compare_table(peer_rows: list[dict[str, Any]]) -> str:
-    if not peer_rows:
-        return ""
-    headers = ["公司", "营收增长", "毛利率", "净利率", "ROE", "P/E", "P/S"]
-    keys = [
-        ("company", "company_name", "symbol", "公司"),
-        ("revenue_growth", "revenue_growth_pct", "营收增长"),
-        ("gross_margin", "gross_margin_pct", "毛利率"),
-        ("net_margin", "net_margin_pct", "净利率"),
-        ("roe", "roe_pct", "ROE"),
-        ("pe_ratio", "forward_pe", "trailing_pe", "P/E"),
-        ("ps_ratio", "price_to_sales", "P/S"),
-    ]
-    rows: list[list[str]] = []
-    for row in peer_rows[:8]:
-        if not isinstance(row, dict):
-            continue
-        values = []
-        for aliases in keys:
-            value = _first_value(row, aliases)
-            values.append(_format_cell(value, aliases[0]))
-        if any(value != "-" for value in values):
-            rows.append(values)
-    return _markdown_table(headers, rows)
+    return _render_table(
+        headers=["公司", "收入增速", "毛利率", "净利率", "ROE", "P/E", "P/S"],
+        rows=[
+            [
+                _format_text(_first_value(row, ("company_name", "company", "symbol"))),
+                _format_percent(_first_value(row, ("revenue_growth_pct", "revenue_growth"))),
+                _format_percent(_first_value(row, ("gross_margin_pct", "gross_margin"))),
+                _format_percent(_first_value(row, ("net_margin_pct", "net_margin"))),
+                _format_percent(_first_value(row, ("roe_pct", "roe"))),
+                _format_multiple(_first_value(row, ("forward_pe", "trailing_pe", "pe_ratio"))),
+                _format_multiple(_first_value(row, ("price_to_sales", "ps_ratio"))),
+            ]
+            for row in peer_rows
+            if isinstance(row, dict)
+        ],
+    )
 
 
-def render_valuation_table(valuation_model: dict[str, Any], currency_context: dict[str, Any] | None = None) -> str:
+def render_valuation_table(
+    valuation_model: dict[str, Any],
+    currency_context: dict[str, Any] | None = None,
+) -> str:
     if not isinstance(valuation_model, dict) or not valuation_model:
         return ""
-    # P0.8.2: Block valuation output when cross-currency without FX rate
-    ctx = currency_context or {}
-    stmt_ccy = str(ctx.get("statement_currency") or "").upper()
-    trade_ccy = str(ctx.get("trading_currency") or "").upper()
-    fx_rate = ctx.get("fx_rate")
-    official = str(ctx.get("official_source_status") or "")
-    is_cross = stmt_ccy and trade_ccy and stmt_ccy != trade_ccy
-    if is_cross and not fx_rate:
-        return ""  # block: CNY financials + HKD market cap, no FX → no P/E/P/S
-    if official and official != "found":
-        return ""  # block: no official source validation → no deterministic valuation
+    status = str(valuation_model.get("valuation_status") or valuation_model.get("error") or "").lower()
+    if status in {"rough_observation_only", "blocked_due_to_incomplete_inputs"}:
+        return ""
+    if valuation_model.get("valuation_available") is False:
+        return ""
+    context = currency_context or {}
+    statement_currency = str(context.get("statement_currency") or "").upper()
+    trading_currency = str(context.get("trading_currency") or "").upper()
+    official_status = str(context.get("official_source_status") or "")
+    if statement_currency and trading_currency and statement_currency != trading_currency and not context.get("fx_rate"):
+        return ""
+    if official_status and official_status != "found":
+        return ""
+
     methods = valuation_model.get("methods")
     if not isinstance(methods, list):
         methods = []
     if not methods:
         for key, label in [("dcf_value", "DCF"), ("pe_ratio", "P/E"), ("pb_ratio", "P/B"), ("ps_ratio", "P/S")]:
-            if valuation_model.get(key) is not None:
-                methods.append(
-                    {
-                        "method": label,
-                        "key_assumption": valuation_model.get(f"{key}_assumption", ""),
-                        "equity_value": valuation_model.get(key),
-                        "per_share": valuation_model.get(f"{key}_per_share", ""),
-                        "vs_market": valuation_model.get(f"{key}_vs_market", ""),
-                    }
-                )
-    rows = []
-    for method in methods[:6]:
-        if not isinstance(method, dict):
-            continue
-        rows.append(
+            if valuation_model.get(key) is None:
+                continue
+            methods.append(
+                {
+                    "method": label,
+                    "assumption": valuation_model.get(f"{key}_assumption", ""),
+                    "equity_value": valuation_model.get(key),
+                    "per_share": valuation_model.get(f"{key}_per_share"),
+                    "vs_market": valuation_model.get(f"{key}_vs_market", ""),
+                }
+            )
+
+    return _render_table(
+        headers=["估值方法", "核心假设", "权益价值", "每股价值", "相对市场"],
+        rows=[
             [
-                str(method.get("method") or "-"),
-                str(method.get("key_assumption") or method.get("assumption") or "-")[:90],
-                _format_number(method.get("equity_value", method.get("value"))),
+                _format_text(method.get("method")),
+                _format_text(method.get("key_assumption") or method.get("assumption"), max_len=90),
+                _format_number(method.get("equity_value") or method.get("value")),
                 _format_number(method.get("per_share")),
-                str(method.get("vs_market") or method.get("market_diff") or "-")[:60],
+                _format_text(method.get("vs_market") or method.get("market_diff"), max_len=60),
             ]
-        )
-    return _markdown_table(["估值方法", "核心假设", "股权价值/倍数", "每股价值", "与市场差异"], rows)
+            for method in methods
+            if isinstance(method, dict)
+        ],
+    )
 
 
 def render_sensitivity_table(sensitivity: dict[str, Any] | list[dict[str, Any]]) -> str:
@@ -84,74 +84,71 @@ def render_sensitivity_table(sensitivity: dict[str, Any] | list[dict[str, Any]])
         scenarios = sensitivity.get("scenarios") or sensitivity.get("cases") or sensitivity.get("rows") or []
     else:
         scenarios = []
-    if not isinstance(scenarios, list):
-        return ""
-    rows = []
-    for scenario in scenarios[:8]:
-        if not isinstance(scenario, dict):
-            continue
-        rows.append(
+    return _render_table(
+        headers=["情景", "FCF 增长", "折现率", "估值", "变化"],
+        rows=[
             [
-                str(scenario.get("name") or scenario.get("scenario") or scenario.get("case") or "-"),
-                _format_percent(scenario.get("fcf_growth", scenario.get("growth"))),
-                _format_percent(scenario.get("discount_rate", scenario.get("wacc"))),
-                _format_number(scenario.get("dcf_value", scenario.get("value"))),
-                str(scenario.get("change") or scenario.get("delta") or scenario.get("change_vs_base") or "-")[:40],
+                _format_text(item.get("name") or item.get("scenario") or item.get("case")),
+                _format_percent(item.get("fcf_growth") or item.get("growth")),
+                _format_percent(item.get("discount_rate") or item.get("wacc")),
+                _format_number(item.get("dcf_value") or item.get("value")),
+                _format_text(item.get("change") or item.get("delta") or item.get("change_vs_base"), max_len=40),
             ]
-        )
-    return _markdown_table(["情景", "FCF 增长", "折现率", "DCF 价值", "变化"], rows)
+            for item in scenarios
+            if isinstance(item, dict)
+        ],
+    )
 
 
 def render_risk_table(risk_items: list[dict[str, Any]]) -> str:
-    if not risk_items:
-        return ""
-    rows = []
-    for item in risk_items[:8]:
-        if not isinstance(item, dict):
-            continue
-        rows.append(
+    return _render_table(
+        headers=["风险类别", "风险描述", "来源", "影响方向"],
+        rows=[
             [
-                str(_first_value(item, ("category", "risk_title", "风险类别")) or "-")[:40],
-                str(_first_value(item, ("description", "risk_description", "风险描述")) or "-")[:120],
-                str(_first_value(item, ("source", "evidence_source", "证据来源")) or "-")[:60],
-                str(_first_value(item, ("direction", "impact_level", "影响方向")) or "-")[:40],
+                _format_text(_first_value(item, ("category", "risk_title", "name")), max_len=40),
+                _format_text(_first_value(item, ("description", "risk_description", "summary")), max_len=120),
+                _format_text(_first_value(item, ("source", "evidence_source", "citation_title")), max_len=60),
+                _format_text(_first_value(item, ("direction", "impact_level", "impact")), max_len=40),
             ]
-        )
-    return _markdown_table(["风险类别", "风险描述", "证据来源", "影响方向"], rows)
+            for item in risk_items
+            if isinstance(item, dict)
+        ],
+    )
 
 
 def render_financial_ratio_table(metrics: dict[str, Any]) -> str:
     if not isinstance(metrics, dict) or not metrics:
         return ""
-    if isinstance(metrics.get("metrics"), list):
-        rows = []
-        for item in metrics["metrics"][:14]:
+    rows: list[list[str]] = []
+    metric_items = metrics.get("metrics")
+    if isinstance(metric_items, list):
+        for item in metric_items[:14]:
             if not isinstance(item, dict):
                 continue
             name = str(item.get("metric_name") or item.get("name") or "")
             if name.lower() in {"adjusted_net_income", "non_recurring_gain", "revenue_growth_pct", "metric_count", "rejected_metric_count"}:
                 continue
-            value = item.get("value")
-            if not name or value is None:
+            if item.get("value") is None:
                 continue
-            rows.append([_metric_label(name), _format_number(value), str(item.get("period") or item.get("unit") or item.get("currency") or "-")])
-        return _markdown_table(["指标", "数值", "期间/单位"], rows)
-
-    rows = []
-    for key, value in metrics.items():
-        if key in {"metric_count", "rejected_metric_count", "rejected_metrics"}:
-            continue
-        # P0.8.1: Map internal keys to Chinese labels instead of skipping
-        if key.lower() in {"adjusted_net_income", "non_recurring_gain", "revenue_growth_pct"}:
-            rows.append([_metric_label(str(key)), _format_number(value), _metric_note(str(key))])
-            continue
-        if isinstance(value, (int, float)):
-            rows.append([_metric_label(str(key)), _format_number(value), _metric_note(str(key))])
-        elif isinstance(value, dict):
-            nested = value.get("value")
-            if nested is not None:
-                rows.append([_metric_label(str(key)), _format_number(nested), str(value.get("period") or value.get("unit") or "-")])
-    return _markdown_table(["指标", "数值", "说明"], rows[:14])
+            rows.append([
+                _metric_label(name),
+                _format_number(item.get("value")),
+                _format_text(item.get("period") or item.get("unit") or item.get("currency")),
+            ])
+    else:
+        for key, value in metrics.items():
+            lower_key = str(key).lower()
+            if lower_key in {"metric_count", "rejected_metric_count", "rejected_metrics"}:
+                continue
+            if isinstance(value, (int, float)):
+                rows.append([_metric_label(str(key)), _format_number(value), _metric_note(str(key))])
+            elif isinstance(value, dict) and value.get("value") is not None:
+                rows.append([
+                    _metric_label(str(key)),
+                    _format_number(value.get("value")),
+                    _format_text(value.get("period") or value.get("unit") or value.get("currency")),
+                ])
+    return _render_table(headers=["指标", "数值", "说明"], rows=rows[:14])
 
 
 def render_all_deterministic_blocks(
@@ -162,30 +159,31 @@ def render_all_deterministic_blocks(
     financial_metrics: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     blocks: dict[str, str] = {}
-    peer = render_peer_compare_table(peer_rows or [])
-    if peer:
-        blocks["peer_compare"] = peer
-    valuation = render_valuation_table(valuation_model or {})
-    if valuation:
-        blocks["valuation"] = valuation
-    sens = render_sensitivity_table(sensitivity or {})
-    if sens:
-        blocks["valuation_sensitivity"] = sens
-    risks = render_risk_table(risk_items or [])
-    if risks:
-        blocks["risks"] = risks
-    ratios = render_financial_ratio_table(financial_metrics or {})
-    if ratios:
-        blocks["financial_analysis"] = ratios
+    for key, value in {
+        "peer_compare": render_peer_compare_table(peer_rows or []),
+        "valuation": render_valuation_table(valuation_model or {}),
+        "valuation_sensitivity": render_sensitivity_table(sensitivity or {}),
+        "risks": render_risk_table(risk_items or []),
+        "financial_analysis": render_financial_ratio_table(financial_metrics or {}),
+    }.items():
+        if value:
+            blocks[key] = value
     return blocks
 
 
-def _markdown_table(headers: list[str], rows: list[list[str]]) -> str:
-    rows = [[_escape_cell(cell) for cell in row] for row in rows if any(str(cell).strip() and str(cell).strip() != "-" for cell in row)]
-    if not headers or not rows:
+def _render_table(headers: list[str], rows: list[list[str]]) -> str:
+    clean_rows = []
+    for row in rows:
+        normalized = [str(cell or "-").replace("\n", " ").strip() or "-" for cell in row[: len(headers)]]
+        if any(cell != "-" for cell in normalized):
+            clean_rows.append([cell.replace("|", "\\|") for cell in normalized])
+    if not headers or not clean_rows:
         return ""
-    lines = [f"| {' | '.join(headers)} |", f"|{'|'.join([' --- ' for _ in headers])}|"]
-    lines.extend(f"| {' | '.join(row[: len(headers)])} |" for row in rows)
+    lines = [
+        f"| {' | '.join(header.replace('|', '/').strip() for header in headers)} |",
+        "|" + "|".join([" --- " for _ in headers]) + "|",
+    ]
+    lines.extend(f"| {' | '.join(row)} |" for row in clean_rows)
     return "\n".join(lines)
 
 
@@ -197,17 +195,13 @@ def _first_value(row: dict[str, Any], aliases: tuple[str, ...]) -> Any:
     return None
 
 
-def _format_cell(value: Any, key: str) -> str:
+def _format_text(value: Any, max_len: int | None = None) -> str:
     if value in (None, ""):
         return "-"
-    if key in {"revenue_growth", "gross_margin", "net_margin", "roe"}:
-        return _format_percent(value)
-    if key in {"pe_ratio", "ps_ratio"}:
-        try:
-            return f"{float(value):.2f}x"
-        except (TypeError, ValueError):
-            return str(value)
-    return _format_number(value)
+    text = str(value).replace("\n", " ").strip()
+    if max_len and len(text) > max_len:
+        return text[: max_len - 1].rstrip() + "…"
+    return text or "-"
 
 
 def _format_number(value: Any) -> str:
@@ -216,7 +210,7 @@ def _format_number(value: Any) -> str:
     try:
         number = float(value)
     except (TypeError, ValueError):
-        return str(value)
+        return _format_text(value)
     if abs(number) >= 1e12:
         return f"{number / 1e12:.2f} 万亿"
     if abs(number) >= 1e8:
@@ -229,16 +223,25 @@ def _format_number(value: Any) -> str:
 def _format_percent(value: Any) -> str:
     if value in (None, ""):
         return "-"
-    text = str(value)
+    text = str(value).strip()
     if "%" in text:
         return text
     try:
         number = float(value)
     except (TypeError, ValueError):
-        return text
+        return _format_text(value)
     if -1 < number < 1:
-        return f"{number * 100:.1f}%"
+        number *= 100
     return f"{number:.1f}%"
+
+
+def _format_multiple(value: Any) -> str:
+    if value in (None, ""):
+        return "-"
+    try:
+        return f"{float(value):.2f}x"
+    except (TypeError, ValueError):
+        return _format_text(value)
 
 
 def _metric_label(key: str) -> str:
@@ -264,32 +267,14 @@ def _metric_label(key: str) -> str:
         "ps_ratio": "P/S",
         "pb_ratio": "P/B",
         "market_cap": "市值",
-        # P0.8.1: Internal keys that leak to user reports
-        "adjusted_net_income": "调整后净利润",
-        "non_recurring_gain": "非经常性收益",
-        "revenue_growth_pct": "收入增速",
-        "gross_margin_pct": "毛利率",
-        "net_margin_pct": "净利率",
-        "roe_pct": "ROE",
-        "pe_ttm": "市盈率",
-        "ps_ttm": "市销率",
     }
-    return mapping.get(key.lower(), key)
+    return mapping.get(key, key)
 
 
 def _metric_note(key: str) -> str:
     notes = {
-        "revenue": "主营业务收入规模",
-        "net_income": "归母或可归属净利润",
-        "gross_margin": "盈利能力指标",
-        "free_cash_flow": "现金转化与资本开支后的结果",
-        "operating_cash_flow": "经营活动现金流",
-        "roe": "股东权益回报",
+        "revenue_growth_pct": "收入同比增速",
+        "adjusted_net_income": "调整后口径",
+        "non_recurring_gain": "非经常性损益",
     }
-    return notes.get(key.lower(), "-")
-
-
-def _escape_cell(value: Any) -> str:
-    text = str(value).replace("\n", " ").replace("|", "\\|").strip()
-    text = re.sub(r"\s{2,}", " ", text)
-    return text or "-"
+    return notes.get(key, "-")
