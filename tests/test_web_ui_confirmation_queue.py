@@ -446,7 +446,7 @@ def test_write_delivery_rework_history(tmp_path):
 
     output_dir = tmp_path / "outputs"
     output_dir.mkdir()
-    history = [{"round": 1, "trigger": "delivery_gate_failed", "status": "skipped", "handled": False}]
+    history = [{"round": 1, "trigger": "quality_diagnostic", "status": "skipped", "handled": False}]
     _write_delivery_rework_history(output_dir, history)
     history_path = output_dir / "delivery_rework_history.json"
     assert history_path.exists()

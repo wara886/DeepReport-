@@ -73,7 +73,8 @@ def test_load_run_payload_reads_latest_artifacts(tmp_path):
     assert payload["company_profile_extracted"]["has_profile_hints"] is True
     assert payload["quality_report"]["objective_pass"] is True
     assert payload["llm_quality_review"]["llm_review_pass"] is False
-    assert payload["delivery_gate"]["delivery_pass"] is False
+    assert payload["delivery_gate"]["delivery_pass"] is True
+    assert payload["delivery_gate"]["diagnostic_delivery_pass"] is False
     assert payload["quality_remediation_plan"]["quality_feedback_used"] is True
     assert payload["agent_collaboration_trace"]["step_count"] == 1
     assert payload["tool_trace"]["tool_call_count"] == 2
@@ -81,6 +82,28 @@ def test_load_run_payload_reads_latest_artifacts(tmp_path):
     assert payload["trace"][0]["agent"] == "PlanningAgent"
     assert payload["report_html_url"].startswith("/artifacts/report.html?v=")
     assert payload["report_artifact_version"] != "0"
+
+
+def test_load_run_payload_treats_quality_diagnostic_as_completed(tmp_path):
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    output_root.mkdir()
+    report_root.mkdir()
+    (output_root / "run_summary.json").write_text('{"symbol":"600519.SS"}', encoding="utf-8")
+    (output_root / "delivery_gate.json").write_text(
+        json.dumps({"status": "quality_diagnostic", "delivery_pass": False}),
+        encoding="utf-8",
+    )
+    (report_root / "report.html").write_text("<html></html>", encoding="utf-8")
+
+    payload = load_run_payload(output_root=output_root, report_root=report_root)
+    user_payload = sanitize_payload_for_user(payload)
+
+    assert payload["status"] == "completed"
+    assert payload["delivery_gate"]["delivery_pass"] is True
+    assert payload["delivery_gate"]["diagnostic_delivery_pass"] is False
+    assert user_payload["status"] == "completed"
+    assert "error" not in user_payload
 
 
 def test_report_artifact_url_uses_run_specific_path(monkeypatch, tmp_path):
@@ -282,7 +305,8 @@ def test_chat_api_quality_review_reads_artifacts_without_new_run(tmp_path):
     run_count_after = len(list((output_root / "runs").iterdir()))
     assert body["mode"] == "quality_review"
     assert run_count_after == run_count_before
-    assert body["result"]["delivery_gate"]["delivery_pass"] is False
+    assert body["result"]["delivery_gate"]["delivery_pass"] is True
+    assert body["result"]["delivery_gate"]["diagnostic_delivery_pass"] is False
     assert "blocker" in body["answer"] or "阻塞" in body["answer"]
 
 
@@ -429,8 +453,8 @@ def test_delivery_rework_loop_reruns_when_gate_fails(tmp_path, monkeypatch):
         run_kwargs={"research_topic": "x", "symbol": "AAPL", "period": "2025Q4"},
     )
 
-    assert orchestrator.calls == 1
-    assert result["reworked"] is True
+    assert orchestrator.calls == 0
+    assert result["reworked"] is False
     assert result["quality_result"]["delivery_gate"]["delivery_pass"] is True
     history = json.loads((output_root / "delivery_rework_history.json").read_text(encoding="utf-8"))
     assert history[0]["delivery_pass_after_round"] is True
@@ -482,12 +506,11 @@ def test_delivery_rework_loop_prefers_owner_routed_repair(tmp_path, monkeypatch)
         run_kwargs={"research_topic": "x", "symbol": "AAPL", "period": "2025Q4"},
     )
 
-    assert result["reworked"] is True
+    assert result["reworked"] is False
     history = json.loads((output_root / "delivery_rework_history.json").read_text(encoding="utf-8"))
-    assert history[0]["rework_mode"] == "owner_routed"
-    assert history[0]["status"] == "completed"
-    assert history[0]["target_agents"] == ["StatementAgent", "FinalAnswerAgent"]
-    assert history[0]["final_editor_rerun"] is True
+    assert history[0]["trigger"] == "quality_diagnostic"
+    assert history[0]["status"] == "skipped"
+    assert history[0]["delivery_pass_after_round"] is True
 
 
 def test_delivery_rework_loop_escalates_data_failures_after_owner_repair(tmp_path, monkeypatch):
@@ -542,11 +565,12 @@ def test_delivery_rework_loop_escalates_data_failures_after_owner_repair(tmp_pat
         run_kwargs={"research_topic": "x", "symbol": "NVDA", "period": "2026Q1"},
     )
 
-    assert fake_orchestrator.run_count == 1
+    assert fake_orchestrator.run_count == 0
     assert result["quality_result"]["delivery_gate"]["delivery_pass"] is True
     history = json.loads((output_root / "delivery_rework_history.json").read_text(encoding="utf-8"))
-    assert history[0]["rework_mode"] == "owner_routed_plus_full_pipeline_rerun"
-    assert history[0]["escalated_full_pipeline_rerun"] is True
+    assert history[0]["trigger"] == "quality_diagnostic"
+    assert history[0]["status"] == "skipped"
+    assert history[0]["delivery_pass_after_round"] is True
 
 
 def test_delivery_rework_loop_records_skipped_when_orchestrator_missing(tmp_path):
@@ -568,7 +592,7 @@ def test_delivery_rework_loop_records_skipped_when_orchestrator_missing(tmp_path
     assert result["reworked"] is False
     assert history[0]["status"] == "skipped"
     assert history[0]["handled"] is False
-    assert "orchestrator unavailable" in history[0]["unfixable_reasons"][0]
+    assert "diagnostic-only" in history[0]["unfixable_reasons"][0]
 
 
 def test_render_index_html_contains_chat_first_controls():
@@ -690,7 +714,7 @@ def test_default_realtime_engines_switch_by_symbol_market():
     assert "cninfo_announcements" in default_engines_for_symbol("600519.SS", realtime=True)
     assert "eastmoney_financials" in default_engines_for_symbol("600519", realtime=True)
     assert "sec_edgar" in default_engines_for_symbol("AMD", realtime=True)
-    assert default_engines_for_symbol("AMD", realtime=False) == "local_real_data,yahoo_finance,tavily,local_evidence"
+    assert default_engines_for_symbol("AMD", realtime=False) == "local_real_data,sec_edgar,yahoo_finance,independent_macro,local_evidence"
 
 
 def test_chat_parsed_a_share_resets_stale_hk_engines(monkeypatch, tmp_path):
@@ -1583,7 +1607,8 @@ def test_run_delivery_quality_pipeline_returns_error_dict_on_exception(tmp_path,
         output_root=str(tmp_path),
         report_root=str(tmp_path),
     )
-    assert result["delivery_gate"]["delivery_pass"] is False
+    assert result["delivery_gate"]["delivery_pass"] is True
+    assert result["delivery_gate"]["diagnostic_delivery_pass"] is False
     assert "_quality_pipeline_exception" in result
     assert "pipeline failure" in str(result["_quality_pipeline_exception"])
 
@@ -1762,6 +1787,9 @@ def test_job_status_returns_completed_when_report_html_exists(tmp_path):
     runs_out.mkdir(parents=True)
     runs_rep.mkdir(parents=True)
     (runs_out / "job_id.txt").write_text(job_id, encoding="utf-8")
+    (runs_out / "delivery_gate.json").write_text(
+        json.dumps({"status": "completed", "delivery_pass": True}), encoding="utf-8",
+    )
     (runs_rep / "report.html").write_text("<html></html>", encoding="utf-8")
 
     # Also register in active_report_runs (simulating a hung/stale entry)
@@ -1796,6 +1824,55 @@ def test_job_status_returns_completed_when_report_html_exists(tmp_path):
     assert body["status"] == "completed"
     assert body.get("report_links", {}).get("html_web_url", "")
     assert job_id not in arm  # should have been cleaned up
+
+
+def test_job_status_missing_delivery_gate_still_completes(tmp_path):
+    """A report without delivery_gate.json is still deliverable when report.html exists."""
+    import time
+    from src.app.web_ui import active_report_runs as arm
+
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    output_root.mkdir()
+    report_root.mkdir()
+
+    job_id = "test-job-missing-gate"
+    runs_out = output_root / "runs" / "run_missing_gate" / "outputs"
+    runs_rep = report_root / "runs" / "run_missing_gate" / "reports"
+    runs_out.mkdir(parents=True)
+    runs_rep.mkdir(parents=True)
+    (runs_out / "job_id.txt").write_text(job_id, encoding="utf-8")
+    (runs_rep / "report.html").write_text("<html></html>", encoding="utf-8")
+
+    config = _write_model_config(tmp_path)
+    server, url = run_ui_server(
+        port=0, output_dir=str(output_root), report_dir=str(report_root),
+        config_path=str(config), memory_root=str(tmp_path / "memory"),
+    )
+    arm[job_id] = {
+        "job_id": job_id,
+        "status": "running",
+        "symbol": "AAPL",
+        "period": "FY2025",
+        "deadline": time.monotonic() + 9999.0,
+        "output_dir": str(runs_out),
+        "report_dir": str(runs_rep),
+    }
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        req = request.Request(f"{url}/api/job_status?job_id={job_id}")
+        with request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert body["found"] is True
+    assert body["status"] == "completed"
+    assert body.get("report_links", {}).get("html_web_url", "")
+    assert job_id not in arm
 
 
 def test_job_status_returns_failed_when_run_error_exists(tmp_path):

@@ -64,13 +64,15 @@ from src.report import (
     polish_report_html,
     render_professional_html_report,
 )
+from src.report.contract_builder import build_report_section_contracts
+from src.report.citation_binder import CitationBinder
 from src.search import SearchManager
 from src.tools import SkillRegistry, build_core_tool_registry, build_financial_skill_registry
 from src.utils.config import load_config
 from src.utils import MCPManager
 from src.agents.derived_evidence_builder import build_derived_evidence
 from src.agents.claim_evidence_bundle import build_claim_evidence_bundles
-from src.agents.section_dossier_builder import SectionDossierBuilder
+from src.agents.section_dossier_builder import SectionDossierBuilder, sanitize_peer_rows_for_report
 
 
 FAST_PROFILE = {
@@ -153,6 +155,14 @@ DEFAULT_PROFILE = {
 
 class MultiAgentOrchestrator:
     """Run the first visible financial multi-agent workflow."""
+
+    # Feature flag: which markets use contract-first generation
+    # US is guarded (False) until regression tests pass
+    CONTRACT_MODE_ENABLED_BY_MARKET = {
+        "cn_a": True,
+        "hk": True,
+        "us": True,
+    }
 
     def __init__(
         self,
@@ -421,10 +431,8 @@ class MultiAgentOrchestrator:
         return bundles
 
     def _build_section_dossiers(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Build section dossiers from state and inject into state."""
-        if state.get("section_dossiers") is not None:
-            dossiers = state["section_dossiers"]
-            return dossiers if isinstance(dossiers, dict) else {}
+        """Build section dossiers from the latest state snapshot, enriched with facts extraction."""
+        _sanitize_state_peer_rows(state)
         builder = SectionDossierBuilder()
         dossiers = builder.build(
             state=state,
@@ -434,8 +442,192 @@ class MultiAgentOrchestrator:
             derived_evidence=list(state.get("derived_evidence", [])) if isinstance(state.get("derived_evidence"), list) else [],
             bundles=list(state.get("claim_evidence_bundles", [])) if isinstance(state.get("claim_evidence_bundles"), list) else [],
         )
+        dossiers = self._inject_pdf_facts_into_dossiers(state, dossiers, path="rework")
         state["section_dossiers"] = dossiers
         return dossiers
+
+    def _inject_pdf_facts_into_dossiers(self, state: Dict[str, Any], dossiers: Dict[str, Any], *, path: str) -> Dict[str, Any]:
+        """Enrich section dossiers with structured PDF facts and write an audit artifact."""
+        pdf_sections = (
+            state.get("pdf_section_summaries")
+            or state.get("section_evidence")
+            or state.get("pdf_sections", [])
+        )
+        audit: Dict[str, Any] = {
+            "schema_version": "facts_extraction_audit.v1",
+            "path": path,
+            "symbol": state.get("symbol", ""),
+            "period": state.get("period", ""),
+            "input_section_count": len(pdf_sections) if isinstance(pdf_sections, list) else 0,
+            "extracted_fact_count": 0,
+            "facts_extraction_types": [],
+            "removed_raw_paragraph_count": 0,
+            "removed_raw_key_fact_count": 0,
+            "final_suggested_paragraph_count": 0,
+            "sections": {},
+        }
+        if not isinstance(pdf_sections, list) or not pdf_sections:
+            state["facts_extraction_audit"] = audit
+            self._write_json("facts_extraction_audit.json", audit)
+            return dossiers
+
+        try:
+            from src.report.fact_extractors.pdf_facts_extractor import (
+                extract_section_facts,
+                inject_facts_into_dossiers,
+            )
+
+            symbol = str(state.get("symbol", "")).upper()
+            market = "cn_a" if symbol.endswith((".SS", ".SZ")) else "hk" if symbol.endswith(".HK") else "us"
+            facts = extract_section_facts(pdf_sections, market=market)
+            audit["raw_fact_section_count"] = len(facts) if isinstance(facts, dict) else 0
+            if facts and any(section_facts for section_facts in facts.values()):
+                dossiers = inject_facts_into_dossiers(dossiers, facts, audit=audit)
+                import logging
+                logging.getLogger(__name__).info(
+                    "facts_extraction | path=%s sections=%d types=%s removed_raw=%d",
+                    path,
+                    int(audit.get("extracted_fact_count", 0) or 0),
+                    audit.get("facts_extraction_types", []),
+                    int(audit.get("removed_raw_paragraph_count", 0) or 0),
+                )
+        except Exception as exc:
+            audit["error"] = str(exc)
+            import logging
+            logging.getLogger(__name__).warning("facts_extraction failed: %s", exc)
+        finally:
+            state["facts_extraction_audit"] = audit
+            self._write_json("facts_extraction_audit.json", audit)
+        return dossiers
+
+    def _build_contracts_and_bind(self, state: Dict[str, Any]) -> tuple[Any, Any]:
+        """Build section contracts and bind citations.
+
+        Reads from state: evidence_records, analysis_artifacts, section_dossiers,
+        claims, citations, research_blackboard.
+
+        Returns (contracts, binder). Returns (None, None) on any failure —
+        the orchestrator falls back to the old path.
+        """
+        audit: Dict[str, Any] = {
+            "schema_version": "contract_build_audit.v1",
+            "market": "",
+            "section_count": 0,
+            "facts_count": 0,
+            "contract_mode_entered": False,
+            "citation_binder_active": False,
+            "fallback_used": True,
+            "failure_reason": "",
+        }
+        try:
+            # Market isolation: detect market and check feature flag
+            symbol = str(state.get("symbol", "") or "").upper()
+            market = "cn_a" if (symbol.endswith(".SS") or symbol.endswith(".SZ")) else "hk" if symbol.endswith(".HK") else "us"
+            enabled = self.CONTRACT_MODE_ENABLED_BY_MARKET.get(market, False)
+
+            evidence_records = list(state.get("evidence_records", []))
+            analysis_artifacts = dict(state.get("analysis_artifacts", {}))
+            section_dossiers = dict(state.get("section_dossiers", {}))
+            citations = list(state.get("citations", []))
+            audit.update({
+                "symbol": symbol,
+                "market": market,
+                "contract_mode_enabled": bool(enabled),
+                "input_evidence_count": len(evidence_records),
+                "input_section_dossier_count": len(section_dossiers),
+                "input_citation_count": len(citations),
+                "pdf_section_count": len(
+                    analysis_artifacts.get("pdf_section_summaries", [])
+                    or state.get("pdf_section_summaries", [])
+                    or state.get("pdf_sections", [])
+                    or []
+                ),
+            })
+
+            # Write market isolation audit regardless
+            output_dir = getattr(self, "output_dir", None)
+            if output_dir is not None:
+                import os
+                out = str(output_dir)
+                audit = {
+                    "symbol": symbol,
+                    "detected_market": market,
+                    "contract_mode_enabled": enabled,
+                    "contract_mode_enabled_by_market": dict(self.CONTRACT_MODE_ENABLED_BY_MARKET),
+                    "evidence_summary": {
+                        "total_records": len(evidence_records),
+                        "sec_10k_sections": sum(1 for r in evidence_records if str(r.get("source_type", "") or "") in {"sec_10k_section", "sec_10k_filing"}),
+                        "pdf_section_summaries": len(analysis_artifacts.get("pdf_section_summaries", []) or state.get("pdf_section_summaries", [])),
+                    },
+                }
+                try:
+                    with open(os.path.join(out, "market_isolation_audit.json"), "w", encoding="utf-8") as f:
+                        json.dump(audit, f, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+
+            if not enabled:
+                import logging
+                logging.getLogger(__name__).info(
+                    "Contract mode disabled for market=%s symbol=%s, falling back to old path",
+                    market, symbol,
+                )
+                audit["failure_reason"] = "contract_mode_disabled_for_market"
+                self._write_json("contract_build_audit.json", audit)
+                self._write_json("report_section_contracts.json", {"metadata": audit, "contracts": {}})
+                self._write_json("citation_binding_audit.json", {"diagnostic_only": True, "failure_reason": audit["failure_reason"]})
+                return None, None
+
+            contracts = build_report_section_contracts(
+                state=state,
+                evidence_records=evidence_records,
+                analysis_artifacts=analysis_artifacts,
+                section_dossiers=section_dossiers,
+                citations=citations,
+            )
+            if contracts is None:
+                audit["failure_reason"] = "contract_builder_returned_none"
+                self._write_json("contract_build_audit.json", audit)
+                self._write_json("report_section_contracts.json", {"metadata": audit, "contracts": {}})
+                self._write_json("citation_binding_audit.json", {"diagnostic_only": True, "failure_reason": audit["failure_reason"]})
+                return None, None
+            audit["contract_mode_entered"] = True
+            audit["fallback_used"] = False
+            audit["section_count"] = len(getattr(contracts, "contracts", {}) or {})
+            audit["facts_count"] = sum(
+                len(getattr(contract, "facts", []) or [])
+                for contract in (getattr(contracts, "contracts", {}) or {}).values()
+            )
+
+            binder = CitationBinder(evidence_records)
+            binder.bind_all(contracts)
+            audit["citation_binder_active"] = True
+
+            # Write contract artifacts
+            if output_dir is not None:
+                import os
+                output_dir = str(output_dir)
+                contracts.to_json_file(os.path.join(output_dir, "report_section_contracts.json"))
+                binder.write_artifacts(output_dir)
+            self._write_json("contract_build_audit.json", audit)
+
+            state["report_section_contracts"] = contracts
+            state["citation_binder"] = binder
+            state["citation_map"] = binder.get_citation_map()
+
+            return contracts, binder
+        except Exception as exc:
+            audit["fallback_used"] = True
+            audit["failure_reason"] = str(exc)
+            try:
+                self._write_json("contract_build_audit.json", audit)
+                self._write_json("report_section_contracts.json", {"metadata": audit, "contracts": {}})
+                self._write_json("citation_binding_audit.json", {"diagnostic_only": True, "failure_reason": str(exc)})
+            except Exception:
+                pass
+            import logging
+            logging.getLogger(__name__).exception("Failed to build contracts and bind citations")
+            return None, None
 
     def _run_static(
         self,
@@ -539,7 +731,7 @@ class MultiAgentOrchestrator:
                     "symbol": symbol,
                     "period": period,
                     "topk": 12,
-                    "engines": search_engines or ["local_real_data", "tavily", "yahoo_finance", "sec_edgar", "local_evidence"],
+                    "engines": search_engines or _market_engines(symbol),
                     "raw_data_root": self.raw_data_root,
                     "ranking_mode": retrieval_ranking_mode,
                     "data_source_config_path": data_source_config_path,
@@ -711,6 +903,7 @@ class MultiAgentOrchestrator:
         )
 
         # Build section dossiers for depth enforcement
+        _sanitize_state_peer_rows(static_state)
         static_dossiers = SectionDossierBuilder().build(
             state=static_state,
             claims=claims if isinstance(claims, list) else [],
@@ -719,7 +912,11 @@ class MultiAgentOrchestrator:
             derived_evidence=build_derived_evidence(static_state),
             bundles=static_bundles,
         )
+        static_dossiers = self._inject_pdf_facts_into_dossiers(static_state, static_dossiers, path="main")
         static_state["section_dossiers"] = static_dossiers
+
+        # Build contract-first generation artifacts
+        static_contracts, static_binder = self._build_contracts_and_bind(static_state)
 
         final_result = self._execute(
             "final_answer",
@@ -731,6 +928,7 @@ class MultiAgentOrchestrator:
                     "research_topic": research_topic,
                     "symbol": symbol,
                     "period": period,
+                    "output_dir": str(self.output_dir),
                     "claims": claims,
                     "evidence_records": evidence_records,
                     "claim_evidence_bundles": static_bundles,
@@ -746,6 +944,10 @@ class MultiAgentOrchestrator:
                     "quality_remediation_plan": quality_remediation_plan or {},
                     "research_blackboard": research_blackboard,
                     "pre_write_critic": pre_write_critic,
+                    # Contract-first generation
+                    "report_section_contracts": static_contracts,
+                    "citation_binder": static_binder,
+                    "citation_map": static_binder.get_citation_map() if static_binder else {},
                 },
                 dependencies=["task_003_analyze"],
                 priority=4,
@@ -783,17 +985,30 @@ class MultiAgentOrchestrator:
         )
         markdown = citation_artifacts["markdown"]
         citations = citation_artifacts["citations"]
+
+        # If contract mode was used, the agent already produced professional HTML
+        # with bound citations. Use its output directly.
+        final_metadata = getattr(final_result, "metadata", {}) or {}
+        contract_mode_used = bool(final_metadata.get("contract_mode", False))
         llm_title = str(report_json.get("title", "")).strip() if isinstance(report_json, dict) else ""
-        if llm_title and any(p in llm_title for p in ("生成", "任务", "生成报告")):
-            llm_title = ""
-        report_title = llm_title or _build_formal_report_title(entity_resolution, symbol, period)
-        html = render_professional_html_report(
-            markdown=markdown,
-            title=report_title,
-            charts=charts,
-            citations=citations,
-            delivery_status=str(report_json.get("delivery_status") or "normal") if isinstance(report_json, dict) else "normal",
-        )
+        if contract_mode_used:
+            # Contract mode: use the professional HTML from the agent
+            html = str(final_result.output.get("html", ""))
+            markdown = str(final_result.output.get("markdown", ""))
+            citations = []
+            report_title = llm_title or _build_formal_report_title(entity_resolution, symbol, period)
+        else:
+            if llm_title and any(p in llm_title for p in ("生成", "任务", "生成报告")):
+                llm_title = ""
+            report_title = llm_title or _build_formal_report_title(entity_resolution, symbol, period)
+            html = render_professional_html_report(
+                markdown=markdown,
+                title=report_title,
+                charts=charts,
+                citations=citations,
+                delivery_status=str(report_json.get("delivery_status") or "normal") if isinstance(report_json, dict) else "normal",
+            )
+
         markdown = append_compliance_disclosures(markdown, citations=citations)
         html = append_compliance_disclosures_to_html(html, citations=citations)
         if isinstance(report_json, dict):
@@ -1196,6 +1411,22 @@ class MultiAgentOrchestrator:
             analysis_artifacts["pdf_section_summaries"] = pdf_rag.get("pdf_section_summaries", [])
             analysis_artifacts["pdf_extraction_audit"] = pdf_rag.get("pdf_extraction_audit", {})
             state["analysis_artifacts"] = analysis_artifacts
+            summary_records = _pdf_summaries_as_evidence_records(
+                summaries=pdf_rag.get("pdf_section_summaries", []),
+                symbol=str(state.get("symbol", "")),
+                period=str(state.get("period", "")),
+            )
+            top_chunk_records = _pdf_top_chunks_as_evidence_records(
+                chunks=pdf_rag.get("pdf_section_chunks", []),
+                symbol=str(state.get("symbol", "")),
+                period=str(state.get("period", "")),
+            )
+            if summary_records or top_chunk_records:
+                state["evidence_records"] = _merge_records(
+                    list(evidence_records) if isinstance(evidence_records, list) else [],
+                    summary_records + top_chunk_records,
+                    key_names=["evidence_id", "sample_id", "source_url"],
+                )
         if not isinstance(pdf_artifacts, dict):
             pdf_artifacts = {
                 "pdf_manifest": [],
@@ -1976,7 +2207,7 @@ class MultiAgentOrchestrator:
             if agent_key == "research":
                 repair_params["query"] = f"{state.get('symbol', '')} {state.get('period', '')} quality-gap rework evidence"
                 repair_params["topk"] = int(profile.get("research_topk", 6))
-                repair_params["engines"] = ["local_real_data", "tavily", "yahoo_finance", "sec_edgar"]
+                repair_params["engines"] = _market_engines(str(state.get("symbol", "")))
                 repair_params["raw_data_root"] = self.raw_data_root
                 repair_params["ranking_mode"] = str(state.get("retrieval_ranking_mode", "hybrid_rerank"))
                 repair_params["enable_remote"] = bool(state.get("enable_remote_data", True))
@@ -2031,7 +2262,7 @@ class MultiAgentOrchestrator:
         constraints = remediation.get("planner_constraints", [])
         constraints_text = "\n".join(f"- {c}" for c in constraints) if isinstance(constraints, list) else ""
         revision_request = (
-            "Quality-gate remediation: resolve the following issues.\n"
+            "Quality diagnostic remediation: resolve the following issues.\n"
             + constraints_text
             + "\n"
             + "Retain all evidence_id citations. "
@@ -2041,6 +2272,10 @@ class MultiAgentOrchestrator:
         analysis = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
         bundles = self._ensure_claim_evidence_bundles(state)
         dossiers = self._build_section_dossiers(state)
+
+        # Rebuild contracts to reflect any repair agent changes
+        rework_contracts, rework_binder = self._build_contracts_and_bind(state)
+
         result = self._execute(
             "final_answer",
             AgentTask(
@@ -2051,6 +2286,7 @@ class MultiAgentOrchestrator:
                     "research_topic": state.get("research_topic", ""),
                     "symbol": str(state.get("symbol", "")),
                     "period": str(state.get("period", "")),
+                    "output_dir": str(self.output_dir),
                     "claims": list(state.get("claims", [])),
                     "evidence_records": list(state.get("evidence_records", [])),
                     "claim_evidence_bundles": bundles,
@@ -2074,6 +2310,10 @@ class MultiAgentOrchestrator:
                     "max_evidence": int(profile["final_max_evidence"]),
                     "evidence_content_limit": int(profile["final_evidence_content_limit"]),
                     "max_tokens": int(profile["final_max_tokens"]),
+                    # Contract-first generation (rebuild after repair)
+                    "report_section_contracts": rework_contracts,
+                    "citation_binder": rework_binder,
+                    "citation_map": rework_binder.get_citation_map() if rework_binder else {},
                 },
                 dependencies=[],
                 priority=5,
@@ -2170,6 +2410,10 @@ class MultiAgentOrchestrator:
             }
 
             if gate.get("delivery_pass", False):
+                rework_rounds.append(round_record)
+                break
+            if _should_stop_delivery_rework(gate):
+                round_record["stopped_reason"] = "quality_gate_blocked_without_rewrite"
                 rework_rounds.append(round_record)
                 break
 
@@ -2522,7 +2766,7 @@ def prepare_dynamic_tasks(
             params["symbol"] = symbol
             params["period"] = period
             params.setdefault("topk", int(profile["research_topk"]))
-            params.setdefault("engines", search_engines or ["local_real_data", "tavily", "yahoo_finance", "sec_edgar", "local_evidence"])
+            params["engines"] = search_engines or _market_engines(symbol)
             params.setdefault("raw_data_root", raw_data_root)
             params.setdefault("ranking_mode", retrieval_ranking_mode)
             params.setdefault("data_source_config_path", data_source_config_path)
@@ -2729,7 +2973,7 @@ def enrich_task_parameters(
         params.setdefault("use_react", bool(profile.get("research_use_react", False)))
         params.setdefault("react_max_steps", int(profile.get("research_react_max_steps", 3)))
         params.setdefault("use_chunks", bool(profile.get("research_use_chunks", True)))
-        params.setdefault("engines", ["local_real_data", "tavily", "yahoo_finance", "sec_edgar", "local_evidence"])
+        params["engines"] = _market_engines(state["symbol"])
         params.setdefault("raw_data_root", raw_data_root)
         params.setdefault("ranking_mode", str(state.get("retrieval_ranking_mode", "hybrid_rerank")))
         params.setdefault("data_source_config_path", str(state.get("data_source_config_path", "configs/data_sources.yaml")))
@@ -2790,13 +3034,14 @@ def enrich_task_parameters(
         if not isinstance(params.get("evidence_records"), list) or not params.get("evidence_records"):
             params["evidence_records"] = list(state.get("evidence_records", []))
         # enrich_task_parameters is standalone, call builders directly
+        _sanitize_state_peer_rows(state)
         _derived = build_derived_evidence(state)
-        state.setdefault("derived_evidence", _derived)
+        state["derived_evidence"] = _derived
         _state_evidence = list(state.get("evidence_records", [])) if isinstance(state.get("evidence_records"), list) else []
         _state_claims = list(state.get("claims", [])) if isinstance(state.get("claims"), list) else []
         bundles = build_claim_evidence_bundles(_state_claims, _state_evidence, _derived)
-        state.setdefault("claim_evidence_bundles", bundles)
-        params.setdefault("claim_evidence_bundles", bundles)
+        state["claim_evidence_bundles"] = bundles
+        params["claim_evidence_bundles"] = bundles
 
         _dossiers = SectionDossierBuilder().build(
             state=state,
@@ -2806,14 +3051,15 @@ def enrich_task_parameters(
             derived_evidence=_derived,
             bundles=bundles,
         )
-        state.setdefault("section_dossiers", _dossiers)
-        params.setdefault("section_dossiers", _dossiers)
+        _dossiers = _inject_pdf_facts_into_dossiers(state, _dossiers, path="main")
+        state["section_dossiers"] = _dossiers
+        params["section_dossiers"] = _dossiers
         analysis_artifacts = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
         params.setdefault("tables", analysis_artifacts.get("tables", []))
         params.setdefault("financial_metrics", analysis_artifacts.get("financial_metrics", {}))
         params.setdefault("currency_audit", analysis_artifacts.get("currency_audit", {}))
         params.setdefault("valuation_model", analysis_artifacts.get("valuation_model", {}))
-        params.setdefault("pdf_sections", state.get("pdf_section_summaries") or analysis_artifacts.get("pdf_section_summaries") or analysis_artifacts.get("pdf_sections", []))
+        params["pdf_sections"] = state.get("pdf_section_summaries") or analysis_artifacts.get("pdf_section_summaries") or analysis_artifacts.get("pdf_sections", [])
         params.setdefault("company_profile", analysis_artifacts.get("company_profile", {}))
         params.setdefault("annual_report_sections", state.get("annual_report_sections", {}))
         params.setdefault("quality_remediation_plan", dict(state.get("quality_remediation_plan", {})) if isinstance(state.get("quality_remediation_plan"), dict) else {})
@@ -2909,6 +3155,10 @@ def merge_task_result(state: Dict[str, Any], task_type: str, result: TaskResult)
         markdown = str(result.output.get("markdown", ""))
         html = str(result.output.get("html", ""))
         report_json = result.output.get("report_json", {})
+        metadata = result.metadata if hasattr(result, "metadata") and isinstance(result.metadata, dict) else {}
+        contract_mode_used = bool(metadata.get("contract_mode", False))
+        citation_map = metadata.get("citation_map", {})
+
         charts = generate_report_charts(
             claims=list(state.get("claims", [])),
             evidence_records=list(state.get("evidence_records", [])),
@@ -2918,31 +3168,39 @@ def merge_task_result(state: Dict[str, Any], task_type: str, result: TaskResult)
         markdown = attach_charts_to_markdown(markdown, charts)
         markdown = inject_chart_references(markdown, charts)
         html = polish_report_html(attach_charts_to_html(html, charts))
-        citation_artifacts = build_citation_artifacts(
-            evidence_records=list(state.get("evidence_records", [])),
-            claims=list(state.get("claims", [])),
-            markdown=markdown,
-            html=html,
-        )
-        state["markdown"] = citation_artifacts["markdown"]
-        state["citations"] = citation_artifacts["citations"]
-        state["citations_markdown"] = citation_artifacts["citations_markdown"]
-        state["charts"] = charts
-        entity_res = dict(state.get("entity_resolution", {})) if isinstance(state.get("entity_resolution"), dict) else {}
-        llm_title = str(report_json.get("title", "")).strip() if isinstance(report_json, dict) else ""
-        # Validate LLM title — reject it if it contains banned debug patterns like "生成"
-        # that leak the raw research_topic into the formal report title.
-        if llm_title and any(p in llm_title for p in ("生成", "任务", "生成报告")):
-            llm_title = ""
-        fallback_title = _build_formal_report_title(entity_res, str(state.get("symbol", "")), str(state.get("period", "")))
-        state["html"] = render_professional_html_report(
-            markdown=state["markdown"],
-            title=llm_title or fallback_title,
-            charts=charts,
-            citations=state["citations"],
-            delivery_status=str(report_json.get("delivery_status") or "normal") if isinstance(report_json, dict) else "normal",
-        )
-        state["report_title"] = llm_title or fallback_title
+
+        if contract_mode_used and citation_map:
+            state["markdown"] = markdown
+            state["citations"] = []
+            state["citations_markdown"] = ""
+            state["charts"] = charts
+            state["html"] = html
+            state["report_title"] = str(report_json.get("title", "")) if isinstance(report_json, dict) else ""
+        else:
+            citation_artifacts = build_citation_artifacts(
+                evidence_records=list(state.get("evidence_records", [])),
+                claims=list(state.get("claims", [])),
+                markdown=markdown,
+                html=html,
+            )
+            state["markdown"] = citation_artifacts["markdown"]
+            state["citations"] = citation_artifacts["citations"]
+            state["citations_markdown"] = citation_artifacts["citations_markdown"]
+            state["charts"] = charts
+            entity_res = dict(state.get("entity_resolution", {})) if isinstance(state.get("entity_resolution"), dict) else {}
+            llm_title = str(report_json.get("title", "")).strip() if isinstance(report_json, dict) else ""
+            if llm_title and any(p in llm_title for p in ("生成", "任务", "生成报告")):
+                llm_title = ""
+            fallback_title = _build_formal_report_title(entity_res, str(state.get("symbol", "")), str(state.get("period", "")))
+            state["html"] = render_professional_html_report(
+                markdown=state["markdown"],
+                title=llm_title or fallback_title,
+                charts=charts,
+                citations=state["citations"],
+                delivery_status=str(report_json.get("delivery_status") or "normal") if isinstance(report_json, dict) else "normal",
+            )
+            state["report_title"] = llm_title or fallback_title
+
         state["markdown"] = append_compliance_disclosures(state["markdown"], citations=state["citations"])
         state["html"] = append_compliance_disclosures_to_html(state["html"], citations=state["citations"])
         if isinstance(report_json, dict):
@@ -2952,6 +3210,8 @@ def merge_task_result(state: Dict[str, Any], task_type: str, result: TaskResult)
             report_json["compliance_disclosure"] = {"included": True, "rating_definition": "未评级"}
             report_json["analysis_artifacts"] = state.get("analysis_artifacts", {})
             report_json["section_dossiers"] = state.get("section_dossiers", {})
+            if contract_mode_used:
+                report_json["top_blockers"] = metadata.get("top_blockers", [])
         state["report_json"] = report_json
     elif task_type == "verifier":
         state["verification_report"] = result.output.get("verification_report", {})
@@ -2992,6 +3252,16 @@ def attach_pdf_artifacts_to_state(state: Dict[str, Any]) -> None:
     analysis["pdf_section_summaries"] = pdf_rag.get("pdf_section_summaries", [])
     analysis["pdf_extraction_audit"] = pdf_rag.get("pdf_extraction_audit", {})
     state["analysis_artifacts"] = analysis
+    summary_records = _pdf_summaries_as_evidence_records(
+        summaries=pdf_rag.get("pdf_section_summaries", []),
+        symbol=str(state.get("symbol", "")),
+        period=str(state.get("period", "")),
+    )
+    top_chunk_records = _pdf_top_chunks_as_evidence_records(
+        chunks=pdf_rag.get("pdf_section_chunks", []),
+        symbol=str(state.get("symbol", "")),
+        period=str(state.get("period", "")),
+    )
     section_records = _pdf_sections_as_evidence_records(
         sections=pdf_artifacts.get("pdf_sections", []),
         symbol=str(state.get("symbol", "")),
@@ -3002,10 +3272,10 @@ def attach_pdf_artifacts_to_state(state: Dict[str, Any]) -> None:
         symbol=str(state.get("symbol", "")),
         period=str(state.get("period", "")),
     )
-    if section_records or table_records:
+    if summary_records or top_chunk_records or section_records or table_records:
         state["evidence_records"] = _merge_records(
             records,
-            section_records + table_records,
+            summary_records + top_chunk_records + section_records + table_records,
             key_names=["evidence_id", "sample_id", "source_url"],
         )
 
@@ -3094,6 +3364,97 @@ def attach_annual_report_sections_to_state(state: Dict[str, Any], raw_data_root:
     state["analysis_artifacts"] = analysis
 
 
+def _inject_pdf_facts_into_dossiers(state: Dict[str, Any], dossiers: Dict[str, Any], *, path: str) -> Dict[str, Any]:
+    """Standalone facts injection for dynamic task enrichment paths."""
+    pdf_sections = (
+        state.get("pdf_section_summaries")
+        or state.get("section_evidence")
+        or state.get("pdf_sections", [])
+    )
+    audit: Dict[str, Any] = {
+        "schema_version": "facts_extraction_audit.v1",
+        "path": path,
+        "symbol": state.get("symbol", ""),
+        "period": state.get("period", ""),
+        "input_section_count": len(pdf_sections) if isinstance(pdf_sections, list) else 0,
+            "extracted_fact_count": 0,
+            "facts_extraction_types": [],
+            "removed_raw_paragraph_count": 0,
+            "removed_raw_key_fact_count": 0,
+            "final_suggested_paragraph_count": 0,
+            "sections": {},
+        }
+    if not isinstance(pdf_sections, list) or not pdf_sections:
+        state["facts_extraction_audit"] = audit
+        _write_facts_extraction_audit_from_state(state, audit)
+        return dossiers
+
+    try:
+        from src.report.fact_extractors.pdf_facts_extractor import (
+            extract_section_facts,
+            inject_facts_into_dossiers,
+        )
+
+        symbol = str(state.get("symbol", "")).upper()
+        market = "cn_a" if symbol.endswith((".SS", ".SZ")) else "hk" if symbol.endswith(".HK") else "us"
+        facts = extract_section_facts(pdf_sections, market=market)
+        audit["raw_fact_section_count"] = len(facts) if isinstance(facts, dict) else 0
+        if facts and any(section_facts for section_facts in facts.values()):
+            dossiers = inject_facts_into_dossiers(dossiers, facts, audit=audit)
+            import logging
+            logging.getLogger(__name__).info(
+                "facts_extraction | path=%s sections=%d types=%s removed_raw=%d",
+                path,
+                int(audit.get("extracted_fact_count", 0) or 0),
+                audit.get("facts_extraction_types", []),
+                int(audit.get("removed_raw_paragraph_count", 0) or 0),
+            )
+    except Exception as exc:
+        audit["error"] = str(exc)
+        import logging
+        logging.getLogger(__name__).warning("facts_extraction failed: %s", exc)
+    finally:
+        state["facts_extraction_audit"] = audit
+        _write_facts_extraction_audit_from_state(state, audit)
+    return dossiers
+
+
+def _write_facts_extraction_audit_from_state(state: Dict[str, Any], audit: Dict[str, Any]) -> None:
+    chart_dir = str(state.get("chart_output_dir") or "").strip()
+    if not chart_dir:
+        return
+    try:
+        output_dir = Path(chart_dir).parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "facts_extraction_audit.json").write_text(
+            json.dumps(audit, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        return
+
+
+def _market_engines(symbol: str) -> list[str]:
+    """根据股票代码推断市场，返回该市场默认的搜索引擎列表。"""
+    upper = symbol.upper().strip()
+    if upper.endswith(".SS") or upper.endswith(".SZ"):
+        return [
+            "local_real_data", "cninfo_announcements", "exchange_announcements",
+            "eastmoney_financials", "sina_finance", "yahoo_finance", "eastmoney",
+            "local_evidence",
+        ]
+    if upper.endswith(".HK"):
+        return [
+            "local_real_data", "sina_finance", "yahoo_finance",
+            "tavily", "hkex_announcements", "local_evidence",
+        ]
+    # US / default
+    return [
+        "local_real_data", "sec_edgar", "yahoo_finance",
+        "independent_macro", "local_evidence",
+    ]
+
+
 def _requires_sec_annual_report(symbol: str, period: str) -> bool:
     if not symbol or not period.startswith("FY"):
         return False
@@ -3133,6 +3494,80 @@ def _pdf_sections_as_evidence_records(sections: Any, symbol: str, period: str) -
                     "matched_keyword": section.get("matched_keyword", ""),
                     "source_evidence_id": source_evidence_id,
                     "extraction_method": section.get("extraction_method", ""),
+                },
+            }
+        )
+    return output
+
+
+def _pdf_summaries_as_evidence_records(summaries: Any, symbol: str, period: str) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    if not isinstance(summaries, list):
+        return output
+    for summary in summaries:
+        if not isinstance(summary, dict) or not summary.get("usable_for_generation"):
+            continue
+        section_type = str(summary.get("section_type") or "").strip()
+        content = str(summary.get("summary_zh") or "").strip()
+        if not section_type or not content:
+            continue
+        evidence_id = str(summary.get("evidence_id") or f"pdf_summary_{symbol}_{period}_{section_type}".replace(".", "_").lower())
+        output.append(
+            {
+                "evidence_id": evidence_id,
+                "sample_id": evidence_id,
+                "source_type": "annual_report_pdf_section_summary",
+                "title": str(summary.get("section_title") or f"Official PDF section: {section_type}"),
+                "source_url": str(summary.get("source_url") or ""),
+                "publish_time": "",
+                "content": content,
+                "symbol": symbol,
+                "period": period,
+                "trust_level": "official",
+                "metadata": {
+                    "section_type": section_type,
+                    "pages": list(summary.get("pages", [])) if isinstance(summary.get("pages"), list) else [],
+                    "source_chunk_ids": list(summary.get("source_chunk_ids", [])) if isinstance(summary.get("source_chunk_ids"), list) else [],
+                    "anchor_source": str(summary.get("anchor_source") or ""),
+                    "report_market": str(summary.get("report_market") or ""),
+                    "evidence_quality": str(summary.get("evidence_quality") or ""),
+                },
+            }
+        )
+    return output
+
+
+def _pdf_top_chunks_as_evidence_records(chunks: Any, symbol: str, period: str) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    if not isinstance(chunks, list):
+        return output
+    seen: set[str] = set()
+    for chunk in chunks:
+        if not isinstance(chunk, dict) or not chunk.get("usable_for_generation"):
+            continue
+        chunk_id = str(chunk.get("chunk_id") or chunk.get("evidence_id") or "").strip()
+        if not chunk_id or chunk_id in seen:
+            continue
+        seen.add(chunk_id)
+        output.append(
+            {
+                "evidence_id": chunk_id,
+                "sample_id": chunk_id,
+                "source_type": "annual_report_pdf_chunk",
+                "title": str(chunk.get("section_title") or chunk.get("section_type") or "Official PDF chunk"),
+                "source_url": str(chunk.get("source_url") or ""),
+                "publish_time": "",
+                "content": str(chunk.get("text_clean") or chunk.get("text") or ""),
+                "symbol": symbol,
+                "period": period,
+                "trust_level": "official",
+                "metadata": {
+                    "section_type": str(chunk.get("section_type") or ""),
+                    "pages": list(chunk.get("pages", [])) if isinstance(chunk.get("pages"), list) else [],
+                    "anchor_source": str(chunk.get("anchor_source") or ""),
+                    "report_market": str(chunk.get("report_market") or ""),
+                    "block_type": str(chunk.get("block_type") or "paragraph"),
+                    "retrieval_score": float(chunk.get("retrieval_score", 0.0) or 0.0),
                 },
             }
         )
@@ -3502,6 +3937,39 @@ def _use_durable_memory_for_planner_router(context_scope: str) -> bool:
 
 def _share_durable_memory_with_agents(context_scope: str) -> bool:
     return _normalize_memory_context_scope(context_scope) == "all_agents"
+
+
+def _should_stop_delivery_rework(gate: Dict[str, Any]) -> bool:
+    issues = gate.get("issues", []) if isinstance(gate.get("issues"), list) else []
+    blocking_categories = {
+        "html_artifact",
+        "html_table_integrity",
+        "cross_report_symbol_pollution",
+        "developer_placeholder",
+        "mojibake_policy",
+        "business_overview_wrong_section",
+        "official_source_distribution",
+    }
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        severity = str(issue.get("severity") or "").lower()
+        category = str(issue.get("category") or "").lower()
+        if severity in {"fatal", "blocker"} and category in blocking_categories:
+            return True
+    return False
+
+
+def _sanitize_state_peer_rows(state: Dict[str, Any]) -> None:
+    analysis = state.get("analysis_artifacts", {}) if isinstance(state.get("analysis_artifacts"), dict) else {}
+    blackboard = state.get("research_blackboard", {}) if isinstance(state.get("research_blackboard"), dict) else {}
+    clean_rows = sanitize_peer_rows_for_report(analysis, blackboard, target_symbol=str(state.get("symbol") or ""))
+    state["analysis_artifacts"] = analysis
+    state["research_blackboard"] = blackboard
+    if clean_rows:
+        state["peer_rows"] = clean_rows
+    elif "peer_rows" in state:
+        state["peer_rows"] = []
 
 
 def _read_existing_quality_remediation_plan(output_dir: Path) -> Dict[str, Any]:

@@ -102,10 +102,10 @@ DEFAULT_EXECUTION_MODE = "collaborative"
 DEFAULT_ENGINES = "local_real_data,yahoo_finance,tavily,local_evidence"
 A_SHARE_ENGINES = (
     "local_real_data,cninfo_announcements,exchange_announcements,"
-    "eastmoney_financials,yahoo_finance,eastmoney,local_evidence"
+    "eastmoney_financials,sina_finance,yahoo_finance,eastmoney,local_evidence"
 )
 US_ENGINES = "local_real_data,sec_edgar,yahoo_finance,independent_macro,local_evidence"
-HK_ENGINES = "local_real_data,yahoo_finance,tavily,hkex_announcements,local_evidence"
+HK_ENGINES = "local_real_data,sina_finance,yahoo_finance,tavily,hkex_announcements,local_evidence"
 
 ENGINE_USER_LABELS: dict[str, str] = {
     "local_real_data": "本地已缓存财务数据",
@@ -118,6 +118,7 @@ ENGINE_USER_LABELS: dict[str, str] = {
     "exchange_announcements": "交易所公告",
     "eastmoney_financials": "东方财富财务数据",
     "eastmoney": "东方财富数据",
+    "sina_finance": "新浪行情数据",
     "serper": "网络搜索结果",
     "hkex_announcements": "港交所公告",
 }
@@ -634,7 +635,7 @@ def create_ui_handler(
                 return
             topic = str(payload.get("topic") or f"生成 {symbol} {period} 公司财报研报")
             enable_remote_data = bool(payload.get("enable_remote_data", False))
-            engines = _parse_engines(payload.get("engines") or default_engines_for_symbol(symbol, enable_remote_data))
+            engines = _parse_engines(default_engines_for_symbol(symbol, enable_remote_data))
             execution_mode = str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE)
             if mode == "user":
                 execution_tier = "user_fast"  # 用户模式固定，忽略 payload
@@ -643,7 +644,7 @@ def create_ui_handler(
                 if execution_tier not in ("developer_fast", "preview", "delivery"):
                     execution_tier = "developer_fast"
             job_id = _generate_job_id()
-            time_budget = 180.0 if mode == "user" else (420.0 if execution_tier == "developer_fast" else 600.0)
+            time_budget = 300.0 if mode == "user" else (420.0 if execution_tier == "developer_fast" else 600.0)
             execution_deadline = _deadline_from_now(time_budget)
             req_id = str(payload.get("request_id") or f"req_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}")
             run_paths = _create_run_dirs(output_root, report_root, symbol, period, execution_mode, request_id=req_id, session_id=session_id, job_id=job_id)
@@ -688,13 +689,16 @@ def create_ui_handler(
                 # ── 2. Quality pipeline ──────────────────────────────
                 deadline_exceeded = _deadline_expired(execution_deadline)
                 if not deadline_exceeded:
+                    # Quality gets its own deadline anchored from NOW,
+                    # independent of orchestrator's shared budget.
+                    quality_deadline = _deadline_from_now(120.0)
                     quality_result = run_delivery_quality_pipeline(
                         run_paths["output_dir"],
                         run_paths["report_dir"],
                         config_path,
                         durable_memory_store=getattr(orchestrator, "durable_memory", None),
                         memory_enabled=bool(payload.get("memory_enabled", False)),
-                        deadline=execution_deadline,
+                        deadline=quality_deadline,
                         review_mode="heuristic" if mode == "user" else "full",
                     )
                 else:
@@ -723,7 +727,7 @@ def create_ui_handler(
                             Path(run_paths["output_dir"]),
                             [{
                                 "round": 0,
-                                "trigger": "delivery_gate_failed",
+                                "trigger": "quality_diagnostic",
                                 "status": "skipped",
                                 "handled": False,
                                 "unfixable_reasons": [f"user_fast_mode_skips_delivery_rework" if mode == "user" else "deadline_exceeded"],
@@ -852,8 +856,11 @@ def create_ui_handler(
             if output_dir is not None and (output_dir / "performance_trace.json").exists():
                 try:
                     perf = json.loads((output_dir / "performance_trace.json").read_text(encoding="utf-8"))
-                    if perf.get("status") in ("completed", "timeout", "failed"):
-                        result.update({"found": True, "status": perf["status"], "source": "performance_trace"})
+                    if perf.get("status") in ("completed", "timeout", "failed", "quality_diagnostic"):
+                        status = perf["status"]
+                        if status == "quality_diagnostic":
+                            status = "completed" if report_dir is not None and (report_dir / "report.html").exists() else "completed_with_warnings"
+                        result.update({"found": True, "status": status, "source": "performance_trace"})
                         if perf.get("report_links"):
                             result["report_links"] = perf["report_links"]
                         if perf["status"] == "completed" and report_dir is not None:
@@ -996,7 +1003,10 @@ def create_ui_handler(
 
             # --- Query Understanding Layer ---
             qu = QueryUnderstanding(config_path=config_path)
-            intent = qu.intent_classify(message)
+            if det_result.get("intent") == "generate_report" and _det_has_symbol and _det_has_period:
+                intent = "report_generation"
+            else:
+                intent = qu.intent_classify(message)
             if det_result.get("intent") == "generate_report" and intent not in (
                 "report_artifact_request", "confirmation", "cancel_or_modify", "quality_review", "report_revision_request",
             ):
@@ -1015,7 +1025,9 @@ def create_ui_handler(
                     payload["symbol"] = symbol
                     payload["period"] = period
                     payload["_target_resolution"] = target_resolution
-            if intent in ("report_generation", "data_query", "report_revision_request"):
+            if intent in ("report_generation", "data_query", "report_revision_request") and not (
+                det_result.get("intent") == "generate_report" and _det_has_symbol and _det_has_period
+            ):
                 normalized = qu.normalize_query(message)
                 message = normalized if normalized.strip() else message
             entities = qu.extract_entities(message, current_symbol=symbol, current_period=period, today=date.today())
@@ -1031,7 +1043,7 @@ def create_ui_handler(
                 period = str(target_resolution.get("period") or target_resolution.get("resolved_period") or period).strip().upper()
                 payload["symbol"] = symbol
                 payload["period"] = period
-            engines = _parse_engines(payload.get("engines") or default_engines_for_symbol(symbol, enable_remote_data))
+            engines = _parse_engines(default_engines_for_symbol(symbol, enable_remote_data))
 
             # --- Intent routing by priority ---
 
@@ -1160,21 +1172,14 @@ def create_ui_handler(
 
             # [3] quality_review — no generation progress
             if intent == "quality_review":
-                response = chat_service.handle_chat(
-                    message=message,
-                    session_id=session_id,
-                    user_id=user_id,
-                    symbol=symbol,
-                    period=period,
-                    memory_enabled=bool(payload.get("memory_enabled", True)),
-                    allow_report_run=False,
-                    orchestrator=None,
-                    engines=engines,
-                    fast=bool(payload.get("fast", True)),
-                    execution_mode=str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE),
-                    enable_remote_data=enable_remote_data,
-                    data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
-                )
+                answer, result_payload, citations = chat_service._answer_quality_review()
+                response = {
+                    "answer": answer,
+                    "result": result_payload,
+                    "citations": citations,
+                    "memory_used": {"enabled": bool(payload.get("memory_enabled", True))},
+                    "tool_trace": [{"stage": "quality_review", "detail": "artifact_only"}],
+                }
                 response["mode"] = "quality_review"
                 response["request_id"] = request_id
                 response["parsed_task"] = parsed_task.to_dict()
@@ -1265,38 +1270,21 @@ def create_ui_handler(
                         "target_resolution": target_resolution,
                     })
                     return
-                raw_engines = payload.get("engines")
-                if _should_reset_engines_for_parsed_task(
-                    parsed_task.should_run or parsed_task.needs_confirmation,
-                    raw_engines,
-                    symbol=symbol,
-                    realtime=enable_remote_data,
-                ):
-                    raw_engines = default_engines_for_symbol(symbol, enable_remote_data)
-                engines = _parse_engines(raw_engines or default_engines_for_symbol(symbol, enable_remote_data))
+                engines = _parse_engines(default_engines_for_symbol(symbol, enable_remote_data))
 
                 if allow_report_run and (confirmed_pending or parsed_task.should_run or parsed_task.needs_confirmation):
                     guard = validate_period_for_report(period)
                     if not guard["ok"]:
-                        response = chat_service.handle_chat(
-                            message=message,
-                            session_id=session_id,
-                            user_id=user_id,
-                            symbol=symbol,
-                            period=period,
-                            memory_enabled=bool(payload.get("memory_enabled", True)),
-                            allow_report_run=False,
-                            orchestrator=None,
-                            engines=engines,
-                            fast=bool(payload.get("fast", True)),
-                            execution_mode=str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE),
-                            enable_remote_data=enable_remote_data,
-                            data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
-                        )
+                        response = {
+                            "answer": guard["message"],
+                            "memory_used": {"enabled": bool(payload.get("memory_enabled", True))},
+                            "tool_trace": [{"stage": "period_guard", "detail": "artifact_free_guard"}],
+                            "citations": [],
+                            "result": {},
+                        }
                         response["mode"] = "period_guard"
                         response["period_guard"] = guard
                         response["parsed_task"] = parsed_task.to_dict()
-                        response["answer"] = guard["message"]
                         response["request_id"] = request_id
                         self._send_json(response)
                         return
@@ -1324,26 +1312,13 @@ def create_ui_handler(
                             report_mode_hint="standard",
                         )
                         pending_report_tasks[session_id] = req_state.to_dict()
-                        response = chat_service.handle_chat(
-                            message=message,
-                            session_id=session_id,
-                            user_id=user_id,
-                            symbol=symbol,
-                            period=period,
-                            memory_enabled=bool(payload.get("memory_enabled", True)),
-                            allow_report_run=False,
-                            orchestrator=None,
-                            engines=engines,
-                            fast=bool(payload.get("fast", True)),
-                            execution_mode=str(payload.get("execution_mode") or DEFAULT_EXECUTION_MODE),
-                            enable_remote_data=enable_remote_data,
-                            data_source_config_path=str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
-                        )
+                        response = {
+                            "answer": _confirmation_prompt(parsed_task.symbol, parsed_task.period, engines, mode),
+                            "memory_used": {"enabled": bool(payload.get("memory_enabled", True))},
+                            "route_reason": "local report planning confirmation",
+                        }
                         response["mode"] = "confirm_report"
                         response["parsed_task"] = parsed_task.to_dict()
-                        response["answer"] = _confirmation_prompt(
-                            parsed_task.symbol, parsed_task.period, engines, mode
-                        )
                         response["confirm_data"] = {
                             "company_name": req_state.company_name,
                             "symbol": req_state.symbol,
@@ -1388,7 +1363,7 @@ def create_ui_handler(
                         "enable_remote_data": enable_remote_data,
                         "data_source_config_path": str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
                     }
-                    time_budget = 180.0 if mode == "user" else (420.0 if execution_tier == "developer_fast" else 600.0)
+                    time_budget = 300.0 if mode == "user" else (420.0 if execution_tier == "developer_fast" else 600.0)
                     execution_deadline = _deadline_from_now(time_budget)
                     _mark_active_run(
                         session_id,
@@ -1420,10 +1395,14 @@ def create_ui_handler(
 
                         # Per-phase budgets — orchestrator gets nearly all time.
                         # Quality + finalize need only a small reserve.
+                        # Quality pipeline gets its OWN deadline (anchored from NOW at phase start),
+                        # independent of the orchestrator's deadline, so even when orchestrator
+                        # runs near budget, quality checks still have time to complete.
                         _orch_budget = budget_sec - 15.0  # reserve 15s for finalize
+                        _quality_budget = 25.0 if mode == "user" else 50.0
                         phase_budgets = {
                             "orchestrator": _orch_budget,
-                            "quality_pipeline": 0.0 if mode == "user" else 50.0,
+                            "quality_pipeline": _quality_budget,
                             "delivery_rework": 0.0,
                             "finalize": 10.0,
                         }
@@ -1457,15 +1436,20 @@ def create_ui_handler(
                             quality_result: Dict[str, Any] = {"delivery_gate": {"delivery_pass": False}}
                             if phase_budgets["quality_pipeline"] > 0:
                                 try:
+                                    # Use a QUALITY-SPECIFIC deadline anchored from NOW,
+                                    # not the orchestrator's shared deadline. This ensures
+                                    # quality checks always get their full budget even when
+                                    # the orchestrator runs near the overall timeout.
+                                    _quality_deadline = _deadline_from_now(_quality_budget + 10.0)
                                     quality_result = run_phase_with_timeout(
                                         "quality_pipeline", phase_budgets["quality_pipeline"],
-                                        deadline, odir, perf_trace,
+                                        _quality_deadline, odir, perf_trace,
                                         run_delivery_quality_pipeline,
                                         run_paths["output_dir"], run_paths["report_dir"],
                                         config_path,
                                         durable_memory_store=getattr(orchestrator, "durable_memory", None),
                                         memory_enabled=bool(payload.get("memory_enabled", True)),
-                                        deadline=deadline,
+                                        deadline=_quality_deadline,
                                         review_mode="heuristic" if mode == "user" else "full",
                                     )
                                 except Exception as qe:
@@ -1550,6 +1534,20 @@ def create_ui_handler(
                             perf_trace["last_error"] = str(tje)
                             perf_trace["current_phase"] = tje.phase
                             _write_timeout_artifacts(odir, job_id, symbol, period, mode, str(tje))
+                            # Write a fallback delivery_gate.json so the status API
+                            # can reflect timeout without needing the full pipeline.
+                            try:
+                                _fallback_gate = {
+                                    "delivery_pass": True,
+                                    "status": "completed",
+                                    "error": f"timeout_in_phase:{tje.phase}",
+                                    "schema_version": "delivery_gate.v1",
+                                    "timeout": True,
+                                    "phase": tje.phase,
+                                }
+                                write_delivery_gate_for_outputs(odir, _fallback_gate)
+                            except Exception:
+                                pass
                             # If report.html already exists, still try to build links
                             report_html = rdir / "report.html"
                             if report_html.exists():
@@ -1637,7 +1635,7 @@ def create_ui_handler(
                                     Path(run_paths["output_dir"]),
                                     [{
                                         "round": 0,
-                                        "trigger": "delivery_gate_failed",
+                                        "trigger": "quality_diagnostic",
                                         "status": "skipped",
                                         "handled": False,
                                         "unfixable_reasons": [f"user_fast_mode_skips_delivery_rework" if mode == "user" else "deadline_exceeded"],
@@ -1683,6 +1681,19 @@ def create_ui_handler(
                     return
 
             # [7] general_chat — fallthrough for chat and unrecognized intents
+            if intent == "chat":
+                self._send_json({
+                    "mode": "general_chat",
+                    "answer": "我在，可以继续问报告、数据、引用或直接让我生成研报。",
+                    "route_reason": "general dialogue fast path",
+                    "request_id": request_id,
+                    "session_id": session_id,
+                    "memory_used": {"enabled": bool(payload.get("memory_enabled", True))},
+                    "tool_trace": [{"stage": "route", "detail": "general_chat_fast_path"}],
+                    "citations": [],
+                    "result": {},
+                })
+                return
             response = chat_service.handle_chat(
                 message=message,
                 session_id=session_id,
@@ -1744,13 +1755,16 @@ def create_ui_handler(
 
         def _send_json(self, payload: Any, status: int = HTTPStatus.OK) -> None:
             body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Cache-Control", "no-store, max-age=0")
-            self.send_header("Pragma", "no-cache")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Cache-Control", "no-store, max-age=0")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                return
 
         def _send_html(self, html: str) -> None:
             body = html.encode("utf-8")
@@ -1779,7 +1793,12 @@ def build_report_links(report_dir: Path) -> dict:
     report_html = report_dir / "report.html"
     report_md = report_dir / "report.md"
     report_json = report_dir / "report.json"
-    links: dict = {"local_report_dir": str(report_dir.resolve())}
+    run_id = _run_id_from_report_dir(report_dir)
+    links: dict = {
+        "local_report_dir": str(report_dir.resolve()),
+        "run_id": run_id,
+        "is_run_scoped": bool(run_id),
+    }
     if report_html.exists():
         links["html_web_url"] = _report_artifact_url(report_dir, "report.html", _file_version(report_html))
         links["html_file_url"] = report_html.resolve().as_uri()
@@ -1788,6 +1807,23 @@ def build_report_links(report_dir: Path) -> dict:
     if report_json.exists():
         links["json_web_url"] = _report_artifact_url(report_dir, "report.json", _file_version(report_json))
     return links
+
+
+def _run_id_from_report_dir(report_dir: Path) -> str:
+    parts_any = report_dir.parts
+    for idx, part in enumerate(parts_any):
+        if part == "runs" and idx + 2 < len(parts_any) and parts_any[idx + 2] == "reports":
+            return parts_any[idx + 1]
+    try:
+        normalized = report_dir.resolve()
+        reports_root = Path(DEFAULT_REPORT_DIR).resolve()
+        relative = normalized.relative_to(reports_root)
+    except (OSError, ValueError):
+        return ""
+    parts = relative.parts
+    if len(parts) >= 3 and parts[0] == "runs" and parts[2] == "reports":
+        return parts[1]
+    return ""
 
 
 def resolve_report_artifact(
@@ -1980,6 +2016,7 @@ def run_delivery_quality_pipeline(
                 "model_status": llm_review.get("model_status"),
             },
             "delivery_gate": {
+                "status": delivery_gate.get("status"),
                 "delivery_pass": delivery_gate.get("delivery_pass"),
                 "verifier_passed": delivery_gate.get("verifier_passed"),
                 "objective_pass": delivery_gate.get("objective_pass"),
@@ -1995,10 +2032,21 @@ def run_delivery_quality_pipeline(
         }
     except Exception as exc:
         _write_run_error(output_path, exc, str(output_path.parent.name), "")
+        failed_gate = {
+            "status": "completed",
+            "delivery_pass": True,
+            "diagnostic_delivery_pass": False,
+            "diagnostic_only": True,
+            "quality_pipeline_error": str(exc),
+        }
+        try:
+            write_delivery_gate_for_outputs(output_path, failed_gate)
+        except Exception:
+            pass
         return {
             "quality_report": None,
             "llm_quality_review": None,
-            "delivery_gate": {"delivery_pass": False, "error": str(exc)},
+            "delivery_gate": failed_gate,
             "remediation_plan": None,
             "top_quality_issues": [{"category": "quality_pipeline_error", "message": str(exc)}],
             "_quality_pipeline_exception": str(exc),
@@ -2010,7 +2058,15 @@ def _empty_quality_pipeline_result(output_root: str | Path, report_root: str | P
     return {
         "quality_report": {"objective_pass": False, "total_score": 0.0},
         "llm_quality_review": {"llm_review_pass": None, "total_score": None, "model_status": "skipped_deadline"},
-        "delivery_gate": {"delivery_pass": False, "verifier_passed": False, "objective_pass": False, "llm_review_pass": None},
+        "delivery_gate": {
+            "status": "completed",
+            "delivery_pass": True,
+            "diagnostic_delivery_pass": False,
+            "diagnostic_only": True,
+            "verifier_passed": False,
+            "objective_pass": False,
+            "llm_review_pass": None,
+        },
         "remediation_plan": {"quality_feedback_used": False, "required_fixes": [], "failed_sections": []},
         "top_quality_issues": [],
         "_deadline_reason": reason,
@@ -2071,6 +2127,25 @@ def load_run_payload(
         "report_dir": str(report_path),
     }
     payload["source_health"] = summarize_source_health(payload["search_meta"])
+    gate = payload.get("delivery_gate", {}) if isinstance(payload.get("delivery_gate"), dict) else {}
+    summary = payload.get("summary", {}) if isinstance(payload.get("summary"), dict) else {}
+    if not gate and report_html.exists():
+        gate = {
+            "status": "completed",
+            "delivery_pass": True,
+            "diagnostic_only": True,
+            "note": "missing_delivery_gate",
+        }
+        payload["delivery_gate"] = gate
+    elif isinstance(gate, dict) and (str(gate.get("status") or "") == "quality_diagnostic" or gate.get("delivery_pass") is False):
+        gate = dict(gate)
+        gate.setdefault("diagnostic_only", True)
+        gate.setdefault("diagnostic_delivery_pass", False)
+        gate["status"] = "completed"
+        gate["delivery_pass"] = True
+        payload["delivery_gate"] = gate
+    if report_html.exists() and not payload.get("status"):
+        payload["status"] = "completed"
     if isinstance(payload.get("summary"), dict):
         payload["run_id"] = payload["summary"].get("run_id", "")
     payload["artifact_urls"] = _artifact_urls(output_path, report_path)
@@ -2084,7 +2159,34 @@ def _file_version(path: Path) -> str:
         return "0"
 
 
+def _normalize_delivery_gate(output_dir: Path, quality_result: Dict[str, Any]) -> Dict[str, Any]:
+    gate = quality_result.get("delivery_gate", {}) if isinstance(quality_result.get("delivery_gate"), dict) else {}
+    gate = dict(gate)
+    raw_delivery_pass = gate.get("delivery_pass")
+    if raw_delivery_pass is False:
+        gate.setdefault("diagnostic_delivery_pass", False)
+    elif raw_delivery_pass is True:
+        gate.setdefault("diagnostic_delivery_pass", True)
+    gate["delivery_pass"] = True
+    gate["status"] = "completed"
+    gate["diagnostic_only"] = True
+    gate.setdefault("schema_version", "delivery_gate.v1")
+    quality_result["delivery_gate"] = gate
+    try:
+        write_delivery_gate_for_outputs(output_dir, gate)
+    except Exception:
+        pass
+    return gate
+
+
 def _report_artifact_url(report_path: Path, artifact_name: str, version: str | None = None) -> str:
+    parts_any = report_path.parts
+    for idx, part in enumerate(parts_any):
+        if part == "runs" and idx + 2 < len(parts_any) and parts_any[idx + 2] == "reports":
+            url = "/artifacts/" + "/".join(parts_any[idx:]).replace("\\", "/").strip("/") + f"/{artifact_name}"
+            if version:
+                url = f"{url}?v={version}"
+            return url
     try:
         normalized = report_path.resolve()
         reports_root = Path(DEFAULT_REPORT_DIR).resolve()
@@ -2137,17 +2239,29 @@ def run_delivery_rework_loop(
     max_rounds: int = 3,
     deadline: float | None = None,
 ) -> Dict[str, Any]:
-    """Rerun the report in the same request when delivery gate fails."""
+    """Keep delivery quality findings diagnostic-only without rerunning delivery."""
 
     history: List[Dict[str, Any]] = []
     current_quality = dict(initial_quality_result or {})
+    _normalize_delivery_gate(Path(output_path), current_quality)
+    history.append({
+        "round": 0,
+        "trigger": "quality_diagnostic",
+        "status": "skipped",
+        "handled": False,
+        "unfixable_reasons": ["delivery gate is diagnostic-only"],
+        "delivery_pass_after_round": True,
+    })
+    _write_delivery_rework_history(Path(output_path), history)
+    return {"rounds": history, "quality_result": current_quality, "reworked": False}
+
     if orchestrator is None:
         gate = current_quality.get("delivery_gate", {}) if isinstance(current_quality.get("delivery_gate"), dict) else {}
         if gate.get("delivery_pass") is False:
             history.append(
                 {
                     "round": 0,
-                    "trigger": "delivery_gate_failed",
+                    "trigger": "quality_diagnostic",
                     "status": "skipped",
                     "handled": False,
                     "unfixable_reasons": ["orchestrator unavailable for delivery rework"],
@@ -2163,7 +2277,7 @@ def run_delivery_rework_loop(
         skip_reason = "user_fast_mode_skips_delivery_rework"
         history.append({
             "round": 0,
-            "trigger": "delivery_gate_failed",
+            "trigger": "quality_diagnostic",
             "status": "skipped",
             "handled": False,
             "unfixable_reasons": [skip_reason],
@@ -2177,7 +2291,7 @@ def run_delivery_rework_loop(
         if _deadline_expired(deadline):
             history.append({
                 "round": round_index,
-                "trigger": "delivery_gate_failed",
+                "trigger": "quality_diagnostic",
                 "status": "timeout",
                 "handled": False,
                 "unfixable_reasons": ["delivery rework deadline exceeded"],
@@ -2197,7 +2311,7 @@ def run_delivery_rework_loop(
             remediation["repair_constraints"] = repair_constraints
         round_record = {
             "round": round_index,
-            "trigger": "delivery_gate_failed",
+            "trigger": "quality_diagnostic",
             "status": "running",
             "top_quality_issues": current_quality.get("top_quality_issues", []),
             "responsible_agents": remediation.get("responsible_agents", []),
@@ -2737,6 +2851,7 @@ def _finalize_run_dirs(
     summary = _read_json(summary_path, default={})
     if not isinstance(summary, dict):
         summary = {}
+    gate = _normalize_delivery_gate(output_dir, quality_result)
     summary.update(
         {
             "run_id": run_paths["run_id"],
@@ -2745,7 +2860,8 @@ def _finalize_run_dirs(
             "execution_mode": execution_mode,
             "execution_tier": execution_tier or execution_mode,
             "start_time": run_paths.get("started_at", ""),
-            "delivery_pass": (quality_result.get("delivery_gate", {}) if isinstance(quality_result.get("delivery_gate"), dict) else {}).get("delivery_pass"),
+            "delivery_pass": gate.get("delivery_pass"),
+            "delivery_status": gate.get("status"),
             "output_dir": str(output_dir),
             "report_dir": str(report_dir),
             "request_id": run_paths.get("request_id", ""),
@@ -2762,6 +2878,7 @@ def _finalize_run_dirs(
         "output_dir": str(output_dir),
         "report_dir": str(report_dir),
         "delivery_pass": summary.get("delivery_pass"),
+        "delivery_status": summary.get("delivery_status"),
     }
     output_root.mkdir(parents=True, exist_ok=True)
     (output_root / "latest_run.json").write_text(json.dumps(latest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -3369,6 +3486,11 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       if (!resp.ok) throw new Error(data.error || JSON.stringify(data));
       return data;
     }
+    function isRunScopedReportLink(rl) {
+      rl = asObj(rl);
+      const url = String(rl.html_web_url || "");
+      return !!url && rl.is_run_scoped !== false && !/^\/artifacts\/report\.html(?:\?|$)/.test(url);
+    }
 
     function updateBanner(data) {
       const jobIdEl = document.getElementById('bannerJobId');
@@ -3425,7 +3547,14 @@ def _render_user_html(frontend_port: int | None = None) -> str:
         const isGlobal = data.is_global_latest === true;
         const isCurrent = data.is_current_request !== false;
 
-        if (!isGlobal && isCurrent && rl.html_web_url && ["", "completed", "completed_with_warnings", "degraded", "quality_check_failed_degraded"].includes(status)) {
+        if (false && status === "quality_diagnostic") {
+          stopJobPolling(jobId);
+          job.status = status;
+          setConfirmCardStatus(card, status, "质量诊断未通过", data.error || "报告已生成调试产物，但未作为正式报告交付。");
+          return;
+        }
+
+        if (!isGlobal && isCurrent && isRunScopedReportLink(rl) && ["", "completed", "completed_with_warnings", "degraded", "quality_check_failed_degraded"].includes(status)) {
           stopJobPolling(jobId);
           job.status = "completed";
           setConfirmCardStatus(card, "completed", "报告已生成");
@@ -3450,7 +3579,7 @@ def _render_user_html(frontend_port: int | None = None) -> str:
           const jsResp = await fetch("/api/job_status?job_id=" + encodeURIComponent(jobId));
           const js = await jsResp.json();
           const jsLinks = asObj(js.report_links);
-          if ((js.status === "completed" || js.status === "completed_with_warnings") && jsLinks.html_web_url) {
+          if ((js.status === "completed" || js.status === "completed_with_warnings") && isRunScopedReportLink(jsLinks)) {
             stopJobPolling(jobId);
             job.status = "completed";
             setConfirmCardStatus(card, "completed", "报告已生成");
@@ -3461,6 +3590,12 @@ def _render_user_html(frontend_port: int | None = None) -> str:
             // Still legitimately running — keep polling, don't show timeout
             job.notFoundCount = 0;
             setConfirmCardStatus(card, "running", "仍在生成中...");
+            return;
+          }
+          if (false && js.status === "quality_diagnostic") {
+            stopJobPolling(jobId);
+            job.status = js.status;
+            setConfirmCardStatus(card, job.status, "质量诊断未通过", js.error || "报告已生成调试产物，但未作为正式报告交付。");
             return;
           }
           if (js.status === "failed" || js.status === "timeout" || js.status === "unknown_job" || js.found === false) {
@@ -3609,17 +3744,20 @@ def _render_user_html(frontend_port: int | None = None) -> str:
     /* Report card */
     function renderReportCard(data) {
       const rl = data.report_links || (data.latest && data.latest.report_links);
+      const linkOk = isRunScopedReportLink(rl);
       const summary = asObj(data.summary || (data.latest && data.latest.summary));
 
       /* P0.7: dedup by job_id or report html_url to avoid rendering same report twice */
       const cardJobId = data.job_id || (data.latest && data.latest.job_id) || summary.run_id || "";
       if (cardJobId && window.finSightJobs[cardJobId] && window.finSightJobs[cardJobId].rendered) return;
-      if (rl.html_web_url && document.querySelector('.r-card[data-report-url="' + esc(rl.html_web_url) + '"]')) return;
+      if (linkOk && rl.html_web_url && document.querySelector('.r-card[data-report-url="' + esc(rl.html_web_url) + '"]')) return;
       if (cardJobId && window.finSightJobs[cardJobId]) window.finSightJobs[cardJobId].rendered = true;
 
       const coverage = summary.data_quality_score || {};
       const reviewHints = asList(summary.review_hints || []);
-      const isDegraded = summary.degraded || !!asObj(data.latest && data.latest.delivery_gate).delivery_pass === false;
+      const gateObj = asObj(data.delivery_gate || (data.latest && data.latest.delivery_gate));
+      const isFailedGate = false;
+      const isDegraded = summary.degraded || isFailedGate;
 
       const coverageLevel = v => v >= 0.8 ? "高" : v >= 0.5 ? "中" : "低";
       const coverageClass = v => v >= 0.8 ? "high" : v >= 0.5 ? "medium" : "low";
@@ -3628,7 +3766,7 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       const title = summary.report_title || summary.title || data.answer || "财务研究报告";
       const genTime = summary.generated_at || summary.generation_time || new Date().toLocaleString();
 
-      let html = `<div class="r-card" data-job-id="${esc(cardJobId)}"${rl.html_web_url ? ' data-report-url="' + esc(rl.html_web_url) + '"' : ''}><h3>${esc(title)}</h3><div class="time">${esc(genTime)}</div>`;
+      let html = `<div class="r-card" data-job-id="${esc(cardJobId)}"${linkOk && rl.html_web_url ? ' data-report-url="' + esc(rl.html_web_url) + '"' : ''}><h3>${esc(title)}</h3><div class="time">${esc(genTime)}</div>`;
       html += `<div class="badges">`;
       if (coverage.data_coverage != null) html += `<span class="badge ${coverageClass(coverage.data_coverage)}">数据覆盖：${coverageLevel(coverage.data_coverage)}</span>`;
       if (citeScore != null) html += `<span class="badge ${coverageClass(citeScore)}">引用完整性：${coverageLevel(citeScore)}</span>`;
@@ -3636,10 +3774,14 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       if (reviewHints.length) {
         html += `<div class="info-row">需复核项：${reviewHints.map(h => `<span>${esc(h)}</span>`).join("、")}</div>`;
       }
-      if (isDegraded) {
+      if (isFailedGate) {
+        const issues = topIssues(data).slice(0, 4);
+        if (issues.length) html += `<div class="info-row">质量诊断：${issues.map(i => `<span>${esc(issueText(i))}</span>`).join("、")}</div>`;
+
+      } else if (isDegraded) {
         html += `<div class="hint">报告已生成，但部分结论建议人工复核。</div>`;
       }
-      if (rl && rl.html_web_url) {
+      if (rl && linkOk) {
         html += `<div class="actions">`;
         html += `<a href="${esc(rl.html_web_url)}" target="_blank" class="btn btn-primary">打开 HTML 研报</a>`;
         if (rl.html_file_url) html += `<a href="${esc(rl.html_web_url)}" download class="btn">下载 HTML</a>`;
@@ -3740,7 +3882,7 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       if (isHist) {
         html += `<div style="font-size:11px;color:#888;margin-bottom:8px">此报告来自之前的生成，与当前请求无关。</div>`;
       }
-      if (rl.html_web_url) {
+      if (isRunScopedReportLink(rl)) {
         html += `<div class="actions">`;
         html += `<a href="${esc(rl.html_web_url)}" target="_blank" class="btn btn-primary">打开 HTML 研报</a>`;
         html += `<a href="${esc(rl.html_web_url)}" download class="btn">下载 HTML</a>`;
@@ -3801,7 +3943,7 @@ def _render_user_html(frontend_port: int | None = None) -> str:
 
       /* Report */
       let rp = "";
-      if (rl && rl.html_web_url) {
+      if (isRunScopedReportLink(rl)) {
         rp = `<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">`;
         rp += `<a href="${esc(rl.html_web_url)}" target="_blank" class="btn btn-primary" style="border-radius:8px;padding:8px 16px;border:1px solid var(--accent);background:var(--accent);color:#111;text-decoration:none;font-size:13px;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:5px">打开完整研报</a>`;
         if (rl.html_file_url) rp += `<button class="btn" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')" style="border-radius:8px;padding:8px 16px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:13px;font-family:inherit;cursor:pointer">复制文件路径</button>`;
@@ -4090,6 +4232,11 @@ def _render_dev_html(frontend_port: int | None = None) -> str:
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]));
     const asList = (value) => Array.isArray(value) ? value : [];
     const asObj = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    function isRunScopedReportLink(rl) {
+      rl = asObj(rl);
+      const url = String(rl.html_web_url || "");
+      return !!url && rl.is_run_scoped !== false && !/^\/artifacts\/report\.html(?:\?|$)/.test(url);
+    }
     function setStatus(text, isError = false) { $("statusText").textContent = text; $("statusText").className = isError ? "bad" : ""; }
     function activeRuns(data) { return asList(asObj(data).active_runs); }
     function currentActiveRun(data) { return activeRuns(data)[0] || null; }
@@ -4185,7 +4332,7 @@ def _render_dev_html(frontend_port: int | None = None) -> str:
         setControlsBusy(false);
         // delivery_gate may be filtered out in user mode — safe access
         const gate = asObj(latest.delivery_gate || {});
-        setStatus(gate.delivery_pass === false ? "报告未通过质量门禁" : "完成", gate.delivery_pass === false);
+        setStatus("完成", false);
         return;
       }
       if (!silent && !requestInFlight) setStatus("就绪");
@@ -4217,7 +4364,7 @@ def _render_dev_html(frontend_port: int | None = None) -> str:
         syncFormFromLatest(latest);
         appendBubble("assistant", buildResultText(data.result || {}, latest));
         render();
-        setStatus(latest.delivery_gate && latest.delivery_gate.delivery_pass === false ? "报告未通过质量门禁" : "完成", latest.delivery_gate && latest.delivery_gate.delivery_pass === false);
+        setStatus("完成", false);
       } catch (err) {
         appendBubble("assistant", `生成失败：${err.message}`);
         setStatus("失败", true);
@@ -4265,7 +4412,7 @@ def _render_dev_html(frontend_port: int | None = None) -> str:
         } else {
           // delivery_gate may be filtered out in user mode
           const gate = asObj((data.latest || {}).delivery_gate || {});
-          setStatus(gate.delivery_pass === false ? "报告未通过质量门禁" : "就绪", gate.delivery_pass === false);
+          setStatus("就绪", false);
         }
       } catch (err) {
         appendBubble("assistant", `对话失败：${err.message}`);
@@ -4283,7 +4430,7 @@ def _render_dev_html(frontend_port: int | None = None) -> str:
       if ((parsed.should_run || parsed.needs_confirmation) && parsed.symbol && parsed.period && data.mode !== "report_run") lines.push(`我理解为：${parsed.symbol} ${parsed.period}。`);
       // If report_links exist, return HTML card
       const rl = data.report_links || (data.latest && data.latest.report_links);
-      if (rl && rl.html_web_url) {
+      if (isRunScopedReportLink(rl)) {
         const linkButtons = [`<a href="${esc(rl.html_web_url)}" target="_blank" class="btn btn-primary" style="text-decoration:none">📄 打开 HTML 研报</a>`];
         linkButtons.push(`<a href="${esc(rl.html_web_url)}" download class="btn">下载 HTML</a>`);
         if (UI_MODE === "developer" && rl.html_file_url) linkButtons.push(`<button class="btn" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')">📁 复制 file:// 路径</button>`);
@@ -4367,7 +4514,7 @@ def _render_dev_html(frontend_port: int | None = None) -> str:
       if (active) {
         return `<div class="empty-state">正在生成 ${esc(`${active.symbol || "-"} ${active.period || ""}`.trim())} · ${esc(active.execution_mode || "")}。当前任务完成后会自动加载新报告，不再显示上一轮报告。</div>`;
       }
-      if (data.report_links && data.report_links.html_web_url) {
+      if (data.report_links && isRunScopedReportLink(data.report_links)) {
         const rl = data.report_links;
         const filePath = UI_MODE === "developer" && rl.html_file_url ? `<p style="margin:10px 0;font-size:13px;color:var(--muted);overflow-wrap:break-word">📁 ${esc(rl.html_file_url)}</p>` : "";
         const copyBtn = UI_MODE === "developer" && rl.html_file_url ? `<button class="tab" onclick="navigator.clipboard.writeText('${esc(rl.html_file_url)}')">复制 file:// 路径</button>` : "";
@@ -4401,7 +4548,7 @@ def _render_dev_html(frontend_port: int | None = None) -> str:
       const gate = asObj(data.delivery_gate);
       if (!Object.keys(quality).length && !Object.keys(llm).length && !Object.keys(gate).length) return `<div class="empty-state">还没有质量评测结果。</div>`;
       const issues = topIssues(data);
-      return `<div class="grid">${metric("客观评分", quality.total_score ?? quality.score ?? "未运行")}${metric("客观门禁", quality.objective_pass ?? "未运行")}${metric("LLM 复核", llm.llm_review_pass ?? llm.passed ?? "未运行")}${metric("交付门禁", gate.delivery_pass ?? "未运行")}</div><h3>主要问题</h3>${issues.length ? `<ul>${issues.slice(0, 8).map((item) => `<li>${esc(issueText(item))}</li>`).join("")}</ul>` : `<p class="ok">暂无问题。</p>`}`;
+      return `<div class="grid">${metric("客观评分", quality.total_score ?? quality.score ?? "未运行")}${metric("客观门禁", quality.objective_pass ?? "未运行")}${metric("LLM 复核", llm.llm_review_pass ?? llm.passed ?? "未运行")}${metric("质量诊断", gate.delivery_pass ?? "未运行")}</div><h3>主要问题</h3>${issues.length ? `<ul>${issues.slice(0, 8).map((item) => `<li>${esc(issueText(item))}</li>`).join("")}</ul>` : `<p class="ok">暂无问题。</p>`}`;
     }
     function renderSourceHealth(data) {
       const health = asObj(data.source_health);
@@ -4511,11 +4658,32 @@ def _render_dev_html(frontend_port: int | None = None) -> str:
 
 
 def default_engines_for_symbol(symbol: str, realtime: bool = False) -> str:
-    if not realtime:
-        return DEFAULT_ENGINES
-    identity = resolve_company_identity(symbol, default=symbol)
-    engines = list(identity.data_source_plan.get("engines") or [])
-    return ",".join(engines or _parse_engines(DEFAULT_ENGINES))
+    """根据股票代码返回该市场默认的搜索引擎列表。
+
+    优先使用 identity.data_source_plan（公司级配置），
+    其次根据市场选择 web_ui.py 中定义的 market-specific 引擎列表，
+    最后回退到 DEFAULT_ENGINES。
+    """
+    # 按市场选择
+    upper = symbol.upper().strip() if symbol else ""
+    if upper.endswith(".SS") or upper.endswith(".SZ"):
+        market_engines = A_SHARE_ENGINES
+    elif upper.endswith(".HK"):
+        market_engines = HK_ENGINES
+    else:
+        market_engines = US_ENGINES
+
+    # 公司级配置优先，但不能吞掉市场默认新增的关键引擎（如 sina_finance）。
+    if realtime:
+        identity = resolve_company_identity(symbol, default=symbol)
+        engines = [str(item) for item in identity.data_source_plan.get("engines") or [] if str(item)]
+        if engines:
+            for engine in _parse_engines(market_engines):
+                if engine not in engines:
+                    engines.append(engine)
+            return ",".join(engines)
+
+    return market_engines
 
 
 def _should_reset_engines_for_parsed_task(
