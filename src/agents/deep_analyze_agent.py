@@ -926,6 +926,9 @@ def build_role_outputs(
     valuation = valuation if isinstance(valuation, dict) else {}
     financial_metric_lineage = financial_metric_lineage if isinstance(financial_metric_lineage, dict) else {}
     table_artifacts = table_artifacts if isinstance(table_artifacts, list) else []
+    is_cn_a = _is_cn_a_symbol(symbol)
+    if is_cn_a:
+        peer_context = _sanitize_peer_context_for_market(peer_context, symbol)
 
     identity_evidence = _evidence_ids_for_sources(records, OFFICIAL_IDENTITY_SOURCE_TYPES)
     financial_evidence = _evidence_ids_for_sources(records, FINANCIAL_SOURCE_TYPES)
@@ -969,7 +972,11 @@ def build_role_outputs(
     risk_findings = [f"Risk-related claim evidence count: {len(risk_evidence)}."]
     risk_claims = [claim for claim in claims if str(claim.get("section_name") or "") in {"risks", "risk_factors"}]
     if risk_claims:
-        risk_findings.extend(_dedupe_strings(claim.get("claim_text") for claim in risk_claims[:3]))
+        risk_findings.extend(
+            _dedupe_strings(_sanitize_role_finding_for_market(claim.get("claim_text"), symbol) for claim in risk_claims[:3])
+        )
+    if is_cn_a and len(risk_findings) == 1:
+        risk_findings.append("A 股风险分析聚焦消费需求、渠道库存、产品价格、原材料成本、监管合规和披露口径差异。")
 
     return {
         "identity_profile": _role_output(
@@ -1067,7 +1074,10 @@ def _statement_metric_findings(statement_view: Dict[str, Any], financial_metric_
             row = by_metric.get(name)
             if not row:
                 continue
-            parts.append(f"{_role_metric_label(name)} {_format_financial_amount(float(value), str(row.get('unit') or row.get('currency') or ''))}".strip())
+            row_value = _safe_role_number(row.get("value"))
+            if row_value is None:
+                continue
+            parts.append(f"{_role_metric_label(name)} {_format_financial_amount(float(row_value), str(row.get('unit') or row.get('currency') or ''))}".strip())
             evidence_id = str(row.get("source_evidence_id") or row.get("evidence_id") or "")
             if evidence_id:
                 evidence_ids.append(evidence_id)
@@ -1082,9 +1092,19 @@ def _peer_context_findings(peer_context: Dict[str, Any], symbol: str) -> List[st
     symbols = _as_text_list(peer_context.get("peer_symbols"))
     if not symbols and peer_rows:
         symbols = _dedupe_strings(row.get("symbol") for row in peer_rows if isinstance(row, dict) and str(row.get("symbol") or "").upper() != str(symbol or "").upper())
+    if _is_cn_a_symbol(symbol):
+        target_market = _symbol_market(symbol)
+        symbols = [item for item in symbols if _symbol_market(item) in {"", target_market}]
+        peer_rows = [
+            row for row in peer_rows
+            if isinstance(row, dict)
+            and _symbol_market(str(row.get("symbol") or row.get("ticker") or "")) in {"", target_market}
+        ]
     findings: List[str] = []
     if symbols:
         findings.append(f"可比公司范畴覆盖 {', '.join(symbols[:6])}，按同一行业或业务相近口径选取。")
+    elif _is_cn_a_symbol(symbol):
+        findings.append("本轮未获得同市场、同行业的可验证 peer universe，同行对比仅保留口径约束，不使用跨市场样本作直接可比。")
     ranking = peer_context.get("ranking", []) if isinstance(peer_context.get("ranking"), list) else []
     if ranking:
         excerpts = []
@@ -1103,6 +1123,68 @@ def _peer_context_findings(peer_context: Dict[str, Any], symbol: str) -> List[st
         if parts:
             findings.append("目标公司核心对比指标：" + "；".join(parts[:4]) + "。")
     return findings
+
+
+def _sanitize_peer_context_for_market(peer_context: Dict[str, Any], symbol: str) -> Dict[str, Any]:
+    target_market = _symbol_market(symbol)
+    if not target_market:
+        return peer_context
+    clean = dict(peer_context)
+    rows = clean.get("peer_rows", []) if isinstance(clean.get("peer_rows"), list) else []
+    clean_rows = [
+        row for row in rows
+        if isinstance(row, dict)
+        and _symbol_market(str(row.get("symbol") or row.get("ticker") or "")) in {"", target_market}
+    ]
+    symbols = _as_text_list(clean.get("peer_symbols"))
+    clean_symbols = [item for item in symbols if _symbol_market(item) in {"", target_market}]
+    clean["peer_rows"] = clean_rows
+    clean["peer_symbols"] = clean_symbols
+    clean["peer_count"] = max(
+        len([s for s in clean_symbols if str(s).upper() != str(symbol).upper()]),
+        len([
+            r for r in clean_rows
+            if str(r.get("symbol") or r.get("ticker") or "").upper() != str(symbol).upper()
+        ]),
+    )
+    if rows and not clean_rows:
+        clean["market_isolation_note"] = "cross_market_peers_dropped"
+    return clean
+
+
+def _sanitize_role_finding_for_market(text: Any, symbol: str) -> str:
+    value = str(text or "")
+    if not _is_cn_a_symbol(symbol):
+        return value
+    replacements = {
+        "云厂商采购节奏": "渠道库存与消费需求节奏",
+        "云厂商": "渠道与需求",
+        "云服务": "数字化渠道",
+        "算力投入": "渠道与产能投入",
+        "GPU": "渠道库存",
+        "半导体": "消费品",
+        "科技公司": "消费品公司",
+        "研发费用率": "销售费用率",
+    }
+    for old, new in replacements.items():
+        value = value.replace(old, new)
+    value = re.sub(r"\b(?:PG|KO|PEP|WMT|COST)\b[、,\s]*", "", value, flags=re.IGNORECASE)
+    return value
+
+
+def _is_cn_a_symbol(symbol: str) -> bool:
+    return str(symbol or "").upper().endswith((".SS", ".SZ"))
+
+
+def _symbol_market(symbol: str) -> str:
+    value = str(symbol or "").strip().upper()
+    if value.endswith((".SS", ".SZ")):
+        return "cn_a"
+    if value.endswith(".HK"):
+        return "hk"
+    if re.fullmatch(r"[A-Z]{1,6}", value):
+        return "us"
+    return ""
 
 
 def _valuation_findings(valuation: Dict[str, Any]) -> List[str]:
@@ -1506,10 +1588,9 @@ def _add_minimum_company_report_claims(
         )
 
     if not _has_claim_section(output, "strategy_business"):
-        axes = "?".join(profile["business_axes"])
         add_claim(
             "strategy_business",
-            f"{symbol} 在{profile['label']}领域持续深耕，巩固核心竞争力的关键在于{'/'.join(profile['business_axes'])}等维度。行业竞争格局和公司战略执行将共同决定其长期发展空间。",
+            f"{symbol} 所处的{profile['label']}领域需要重点观察{'、'.join(profile['business_axes'])}等经营变量。当前证据尚不足以展开完整战略判断，因此本节保持审慎分析。",
             confidence=0.66,
             notes="战略与业务 backfill——primary 未生成时的兜底文本",
         )
@@ -1552,11 +1633,7 @@ def _add_minimum_company_report_claims(
     if not _has_claim_section(output, "risks"):
         add_claim(
             "risks",
-            (
-                f"{symbol} 的主要风险包括三类：第一，行业竞争和供给扩张可能压缩高毛利业务的持续性；"
-                "第二，宏观利率、资本开支周期和云厂商采购节奏会放大收入波动；第三，公开财务数据与原始披露文件之间可能存在口径差异，"
-                "若后续披露数据调整，盈利质量、自由现金流和估值结论均需相应修正。"
-            ),
+            _fallback_risk_claim(symbol, profile),
             risk="high",
             confidence=0.66,
             notes="风险 backfill——primary 未生成时的兜底文本",
@@ -1572,6 +1649,19 @@ def _add_minimum_company_report_claims(
         )
 
     return output
+
+
+def _fallback_risk_claim(symbol: str, profile: Dict[str, Any]) -> str:
+    label = str(profile.get("label") or "").lower()
+    if any(term in label for term in ["消费", "白酒", "consumer", "beverage", "retail"]):
+        return (
+            f"{symbol} 的主要风险集中在消费需求、渠道库存、产品价格体系、原材料成本和监管合规。"
+            "这些因素可能影响收入节奏、毛利率、经营现金流和估值假设；若后续官方披露口径调整，相关结论需要同步复核。"
+        )
+    return (
+        f"{symbol} 的主要风险包括行业竞争、需求波动、成本变化、监管合规和公开数据口径差异。"
+        "这些因素可能影响收入、利润率、现金流和估值判断；若后续披露数据调整，结论需要同步复核。"
+    )
 
 
 def _get_sector_knowledge_hints(profile: Dict[str, Any]) -> str:

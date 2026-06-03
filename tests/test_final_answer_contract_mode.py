@@ -25,6 +25,11 @@ from src.report.contract_renderer import (
     render_section_to_markdown,
     render_full_report_from_contracts,
 )
+from src.agents.final_answer_agent import (
+    dedupe_section_paragraphs,
+    enforce_section_depth,
+    remove_instructional_report_text,
+)
 
 
 class TestContractRenderer:
@@ -128,6 +133,17 @@ class TestContractRenderer:
         md = render_full_report_from_contracts(contracts, "Test", top_blockers=contracts.top_blockers())
         assert "质量诊断建议" in md
         assert "governance_section_not_found" in md or "period_metadata_missing" in md
+
+
+def test_depth_fallback_dedupes_and_removes_instructional_text():
+    md = "# X\n\n## 执行摘要\n\n太短。\n\n## 同行对比\n\n太短。\n"
+    out = enforce_section_depth(md, {"executive_summary": {}, "peer_compare": {}})
+    out = remove_instructional_report_text(dedupe_section_paragraphs(out))
+
+    assert out.count("本报告当前证据链主要覆盖") == 1
+    assert "正文应" not in out
+    assert "本节不得" not in out
+    assert "避免把" not in out
 
 
 class TestContractModeNoGlobalLeakage:

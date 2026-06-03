@@ -505,7 +505,7 @@ def _facts_to_paragraphs(
             risks = "、".join(facts["industry_risks"][:6])
             paragraphs.append(f"风险评估以官方披露和行业变量为基础，当前识别的主要风险包括：{risks}。")
         if facts.get("has_official_risk_section"):
-            paragraphs.append("以上风险基于官方风险提示章节，后续正文应说明风险如何影响收入、毛利率、现金流或估值假设。")
+            paragraphs.append("以上风险基于官方风险提示章节，风险影响主要体现在收入、毛利率、现金流或估值假设的变化上。")
         else:
             paragraphs.append("以上风险基于公开财务数据与行业研究，待官方年报风险提示章节进一步校验。")
 
@@ -540,10 +540,10 @@ def _facts_to_paragraphs(
                 + "。"
             )
             paragraphs.append(
-                "正文应进一步解释收入规模、利润质量、资产负债结构与现金流之间的关系，"
+                "财务分析进一步解释收入规模、利润质量、资产负债结构与现金流之间的关系，"
                 "不把三表数字孤立罗列为结论。"
             )
         elif facts.get("has_financial_data"):
-            paragraphs.append("已识别官方财务报表章节，正文应结合结构化三表指标展开收入、利润、资产负债和现金流分析。")
+            paragraphs.append("已识别官方财务报表章节，后续分析结合结构化三表指标展开收入、利润、资产负债和现金流分析。")
 
     return paragraphs

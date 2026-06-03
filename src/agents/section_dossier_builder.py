@@ -358,7 +358,7 @@ def _summarize_annual_section(chunks: list[dict[str, Any]], company_name: str = 
         if "competition" in lowered:
             pieces.append("竞争格局是影响增长、定价和利润率的重要变量。")
         return " ".join(pieces[:4])
-    return f"{subject} 年度报告章节已抽取，正文应使用中文归纳关键业务事实并保留章节引用。"
+    return f"{subject} 年度报告章节已抽取，后续分析以中文归纳关键业务事实并保留章节引用。"
 
 
 def _risk_items_from_annual(chunks: list[dict[str, Any]]) -> list[dict[str, str]]:

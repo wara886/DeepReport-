@@ -235,6 +235,8 @@ class FinalAnswerAgent(BaseAgent):
         markdown = remove_internal_ids(markdown)
         markdown = remove_template_phrases(markdown)
         markdown = remove_a_share_template_contamination(markdown, symbol)
+        markdown = remove_instructional_report_text(markdown)
+        markdown = dedupe_section_paragraphs(markdown)
         markdown = remove_broken_or_half_sentences(markdown)
         markdown, blocker_meta = final_blocker_scan(markdown)
         markdown = _clean_to_numbered_citations(markdown, evidence_records if isinstance(evidence_records, list) else [])
@@ -396,6 +398,8 @@ class FinalAnswerAgent(BaseAgent):
         # Step 3: Inject bound [N] citation markers from contracts
         final_md = binder.inject_bound_citations(final_md, contracts)
         final_md = remove_a_share_template_contamination(final_md, symbol)
+        final_md = remove_instructional_report_text(final_md)
+        final_md = dedupe_section_paragraphs(final_md)
 
         # Step 4: Write citation artifacts to disk
         import os
@@ -1323,28 +1327,46 @@ def _build_section_depth_replacement(section_key: str, dossier: dict, threshold:
             return "\n\n".join(parts)
 
     section_templates = {
-        "executive_summary": "执行摘要基于已验证的财务指标、估值观察、同行对比和风险诊断形成。当前结论先强调证据链已经覆盖的事实，再说明仍需关注的数据缺口，避免把单一指标直接外推为投资判断。",
-        "business_overview": "业务概览围绕主营产品、销售渠道、品牌与经营模式展开。若官方年报章节可用，本节只采用结构化事实和归纳段落，不直接粘贴年报原文；若章节信息不足，则以公司身份、行业归属和已验证公开资料限定分析边界。",
-        "financial_analysis": "财务分析以三表和可追溯指标为核心，重点比较收入规模、利润质量、资产负债结构和经营现金流。正文需要说明指标之间的关系，例如收入增长是否转化为利润，利润是否得到现金流支撑，以及资产负债变化是否改变经营弹性。",
-        "peer_compare": "同行对比只使用通过市场和行业隔离后的可比对象。对 A 股公司，本节不得混入美股消费品或科技股模板；若同市场可比样本不足，应明确可比口径限制，而不是用跨市场公司直接替代。",
-        "valuation": "估值观察以公开市场数据、财务指标和模型状态为依据。若估值输入不完整，本节只讨论估值约束、可观察倍数和敏感变量，不输出目标价或确定性评级；若模型可用，则说明核心假设及其对结论的影响。",
-        "risks": "风险评估按需求、价格、渠道、成本、监管和数据质量分层表述。对消费品和白酒类 A 股公司，重点关注消费需求、渠道库存、产品价格、原材料和合规因素，不套用科技行业、软件订阅或重资本技术投入模板。",
-        "conclusion": "投资结论应把财务质量、估值约束、同行位置和风险因素合并为审慎判断。证据不足时保留观察结论和适用边界；证据充分时再说明偏正面或偏谨慎的理由，不把诊断分数当作投资建议。",
+        "executive_summary": [
+            "本报告当前证据链主要覆盖财务指标、估值输入状态、同行可比口径和风险线索，因此整体判断以公开数据可验证的经营表现为主。",
+            "在证据仍有缺口的情况下，结论采用审慎表述：优先说明已验证事实，再披露尚未取得官方页码级证据或完整估值输入的限制。",
+        ],
+        "business_overview": [
+            "公司业务分析聚焦主营产品、销售渠道、品牌资源和经营模式。已抽取到官方年报章节摘要时，本节以归纳后的业务事实呈现，不直接复述年报长段原文。",
+            "现有资料显示，公司业务叙述需要同时连接产品结构、渠道覆盖和品牌或工艺壁垒，并结合收入贡献判断主营业务稳定性。",
+        ],
+        "financial_analysis": [
+            "财务分析围绕收入规模、利润质量、资产负债结构和经营现金流展开。三表数据同时可用时，应观察利润是否由现金流支撑，以及资产负债变化是否削弱经营弹性。",
+            "从当前结构化指标看，收入、净利润、资产负债和经营现金流是本节的核心证据；缺失项会降低对趋势和盈利质量的判断确定性。",
+        ],
+        "peer_compare": [
+            "同行对比采用市场和行业隔离后的可比口径。若同市场样本不足，本节只保留可比性边界说明，不把跨市场公司作为直接同业结论。",
+            "对 A 股白酒或消费品公司，可比重点应放在收入增速、毛利率、净利率、ROE、渠道结构和品牌溢价，而不是跨行业科技指标。",
+        ],
+        "valuation": [
+            "估值观察以公开市场数据、财务指标和模型输入状态为基础。当前若缺少市值、股本或完整市场输入，则仅保留方向性估值约束。",
+            "在输入不完整时，本节不输出目标价或确定性评级，而是说明可观察倍数、现金流质量和关键敏感变量对判断的影响。",
+        ],
+        "risks": [
+            "风险评估聚焦需求、价格、渠道、成本、监管和数据质量。对消费品和白酒类 A 股公司，核心风险来自消费需求变化、渠道库存、产品价格体系、原材料成本和合规要求。",
+            "这些风险会分别影响收入节奏、毛利率、经营现金流和估值假设；若官方风险章节证据不足，结论应保持审慎并披露证据边界。",
+        ],
+        "conclusion": [
+            "投资结论综合财务质量、估值约束、同行位置和风险因素后形成。本报告当前更适合作为审慎观察结论，而不是直接给出买卖评级。",
+            "若财务质量较强但估值输入和官方页码级证据仍不足，结论应偏中性：认可经营韧性，同时保留对估值、风险和证据覆盖的限制说明。",
+        ],
     }
     if metric_facts:
-        parts.append("可用结构化指标包括：" + "、".join(metric_facts[:8]) + "。")
+        parts.append("可用结构化指标为：" + "、".join(metric_facts[:8]) + "。")
     if facts:
-        parts.append("关键事实包括：" + "；".join(facts[:6]) + "。")
+        parts.append("关键事实为：" + "；".join(facts[:6]) + "。")
     if tables:
-        parts.append(f"本节还引用了 {len(tables)} 组表格或同行数据，正文应优先解释表格口径和可比性。")
-    template = section_templates.get(section_key)
-    if template:
-        parts.append(template)
+        parts.append(f"本节引用了 {len(tables)} 组表格或同行数据，分析重点在于表格口径、数据来源和可比性。")
+    for item in section_templates.get(section_key, []):
+        if item not in parts:
+            parts.append(item)
 
-    replacement = "\n\n".join(item for item in parts if item).strip()
-    if _count_chinese_chars(replacement) < threshold and template:
-        replacement = (replacement + "\n\n" + template).strip()
-    return replacement
+    return _dedupe_paragraphs("\n\n".join(item for item in parts if item).strip())
 
 
 def _looks_like_raw_pdf_fallback(text: str) -> bool:
@@ -1503,6 +1525,62 @@ def remove_template_phrases(markdown: str) -> str:
     output = re.sub(r' +', ' ', output)
     output = re.sub(r'\n{3,}', '\n\n', output)
     return output.strip()
+
+
+INSTRUCTIONAL_REPORT_PATTERNS = [
+    r"正文应[^。\n]*。",
+    r"本节不得[^。\n]*。",
+    r"不套用[^。\n]*模板。",
+    r"避免直接[^。\n]*。",
+    r"避免把[^。\n]*。",
+    r"应围绕[^。\n]*。",
+]
+
+
+def remove_instructional_report_text(markdown: str) -> str:
+    """Remove prompt/rule residue that leaked into report prose."""
+    output = str(markdown or "")
+    for pattern in INSTRUCTIONAL_REPORT_PATTERNS:
+        output = re.sub(pattern, "", output)
+    output = re.sub(r"(?m)^\s*关键事实\s*$", "", output)
+    output = re.sub(r"\n{3,}", "\n\n", output)
+    return output.strip()
+
+
+def dedupe_section_paragraphs(markdown: str) -> str:
+    """Remove duplicate paragraphs within each markdown section."""
+    text = str(markdown or "").strip()
+    if not text:
+        return text
+    chunks = re.split(r"(?m)(^##\s+.+$)", text)
+    if len(chunks) <= 1:
+        return _dedupe_paragraphs(text)
+    output = [chunks[0].strip()]
+    for index in range(1, len(chunks), 2):
+        heading = chunks[index].strip()
+        body = chunks[index + 1] if index + 1 < len(chunks) else ""
+        output.append(heading)
+        output.append(_dedupe_paragraphs(body.strip()))
+    return "\n\n".join(part for part in output if part).strip()
+
+
+def _dedupe_paragraphs(text: str) -> str:
+    paragraphs = [item.strip() for item in re.split(r"\n\s*\n", str(text or "")) if item.strip()]
+    seen: set[str] = set()
+    output: list[str] = []
+    for paragraph in paragraphs:
+        key = _paragraph_dedupe_key(paragraph)
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(paragraph)
+    return "\n\n".join(output).strip()
+
+
+def _paragraph_dedupe_key(paragraph: str) -> str:
+    compact = re.sub(r"\s+", "", str(paragraph or ""))
+    compact = re.sub(r"\[[^\]]+\]", "", compact)
+    return compact[:180]
 
 
 def remove_a_share_template_contamination(markdown: str, symbol: str = "") -> str:
