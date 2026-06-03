@@ -1,4 +1,4 @@
-﻿"""Objective quality evaluation for generated company research reports."""
+"""Objective quality evaluation for generated company research reports."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import re
 from typing import Any, Dict, Iterable, List
 
 from src.agents.research_blackboard import quality_generalization_checks
+from src.utils.config import load_config
 
 
 GROUP_WEIGHTS = {
@@ -38,6 +39,45 @@ def evaluate_report_quality(run_dir: str | Path) -> Dict[str, Any]:
     return evaluate_report_quality_from_paths(paths.outputs_dir, paths.reports_dir, paths.run_dir)
 
 
+def _resolve_quality_threshold(artifacts: Dict[str, Any]) -> float:
+    """从 quality_gate.yaml 读取 market-specific 质量诊断阈值。
+
+    解析逻辑：
+      1. 从 run_summary.json 提取 symbol → 推断 market (cn_a/hk/us)
+      2. 从 quality_gate.yaml 加载 market_overrides
+      3. 如果有对应 market 的覆写值 → 使用覆写值
+      4. 否则 → 使用 default (0.82)
+
+    Returns:
+        阈值 (float)，如 0.82, 0.60
+    """
+    summary = artifacts.get("summary", {}) or {}
+    symbol = str(summary.get("symbol") or "").strip().upper()
+
+    # 推断 market
+    if symbol.endswith(".HK"):
+        market = "hk"
+    elif symbol.endswith((".SS", ".SZ")):
+        market = "cn_a"
+    elif symbol and "." not in symbol:
+        market = "us"
+    else:
+        market = "unknown"
+
+    # 从 quality_gate.yaml 加载阈值
+    try:
+        quality_config = load_config("configs/quality_gate.yaml")
+        thresholds = quality_config.get("thresholds", {}) or {}
+        default_threshold = float(thresholds.get("default", 0.82))
+        overrides = thresholds.get("market_overrides", {}) or {}
+        market_threshold = overrides.get(market)
+        if market_threshold is not None:
+            return float(market_threshold)
+        return default_threshold
+    except Exception:
+        return 0.82  # 加载失败时回退到硬编码默认值
+
+
 def evaluate_report_quality_from_paths(
     outputs_dir: str | Path,
     reports_dir: str | Path,
@@ -62,14 +102,25 @@ def evaluate_report_quality_from_paths(
     _check_delivery_policy(artifacts, issues)
     _check_currency_policy(artifacts, issues)
     _check_pdf_rag_policy(artifacts, issues)
+    _check_final_html_artifact_policy(artifacts, issues)
+    _check_cross_report_symbol_pollution(artifacts, issues)
+    _check_peer_metric_contamination(artifacts, issues)
+    _check_html_table_integrity(artifacts, issues)
+    _check_developer_placeholder_leakage(artifacts, issues)
+    _check_mojibake_policy(artifacts, issues)
+    _check_official_source_distribution_policy(artifacts, issues)
+    _check_business_overview_wrong_section_policy(artifacts, issues)
     _valuation_consistency_check(artifacts, issues)
     generalization_checks = quality_generalization_checks(artifacts)
     _check_generalization_policy(generalization_checks, issues)
+    # Contract-level checks (Phase 6)
+    _check_contract_policies(artifacts, issues)
     total = round(sum(scores[key] * GROUP_WEIGHTS[key] for key in GROUP_WEIGHTS), 4)
     required = _required_gate_checks(artifacts, issues)
     fatal_count = sum(1 for issue in issues if issue["severity"] == "fatal")
     blocker_count = sum(1 for issue in issues if issue["severity"] == "blocker")
-    objective_pass = bool(total >= 0.82 and fatal_count == 0 and blocker_count == 0 and required["passed"])
+    quality_threshold = _resolve_quality_threshold(artifacts)
+    objective_pass = bool(total >= quality_threshold and fatal_count == 0 and blocker_count == 0 and required["passed"])
     report = {
         "schema_version": "quality_report.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -77,6 +128,7 @@ def evaluate_report_quality_from_paths(
         "outputs_dir": str(paths.outputs_dir),
         "reports_dir": str(paths.reports_dir),
         "total_score": total,
+        "quality_threshold": quality_threshold,
         "objective_pass": objective_pass,
         "scores": scores,
         "weights": GROUP_WEIGHTS,
@@ -202,6 +254,10 @@ def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
         "report_html": _read_text(paths.reports_dir / "report.html"),
         "report_json": _read_json(paths.reports_dir / "report.json", {}),
         "section_dossiers": _read_json(paths.outputs_dir / "section_dossiers.json", {}),
+        # Contract-first artifacts (optional — only present in contract-mode runs)
+        "report_section_contracts": _read_json(paths.outputs_dir / "report_section_contracts.json", {}),
+        "citation_map": _read_json(paths.outputs_dir / "citation_map.json", {}),
+        "citation_binding_audit": _read_json(paths.outputs_dir / "citation_binding_audit.json", {}),
     }
 
 
@@ -597,6 +653,78 @@ def _check_currency_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any
     if market in {"hk", "cn_a"} and str(valuation.get("currency") or "").upper() == "USD":
         _issue(issues, "blocker", "valuation_currency_mismatch", f"{symbol} non-US valuation model is labeled USD")
 
+    # Check for CNY strings in USD report deliverables
+    _check_currency_market_mismatch(artifacts, issues, market, symbol)
+
+
+def _check_currency_market_mismatch(
+    artifacts: Dict[str, Any],
+    issues: List[Dict[str, Any]],
+    market: str,
+    symbol: str,
+) -> None:
+    """Check that USD report deliverables (report.html, report.md) don't contain
+    Chinese currency strings (人民币, 亿元/万亿元, CNY as unit).
+
+    Report language being Chinese does NOT mean currency units should be CNY
+    for a USD-reporting company.
+    """
+    # Determine report_currency from currency_audit
+    audit = artifacts.get("currency_audit", {}) if isinstance(artifacts.get("currency_audit"), dict) else {}
+    report_currency = str(audit.get("statement_currency") or audit.get("trading_currency") or "USD").upper()
+    # For US companies without explicit audit, default is USD
+    if market == "us" and report_currency in ("", "UNKNOWN"):
+        report_currency = "USD"
+
+    if report_currency != "USD":
+        return  # only check USD reports
+
+    # Scan report text for CNY currency strings
+    text = _report_text(artifacts)
+    if not text or len(text) < 50:
+        return
+
+    # Chinese currency unit patterns that should NOT appear in USD reports
+    # Note: "亿美元" = hundred million USD (legitimate), "亿元人民币" = RMB (illegitimate)
+    cny_patterns = [
+        r'人民币',
+        # "亿" followed by CNY unit; NOT standalone "亿" (which would match "亿美元")
+        r'(?<!\d)(\d+[\s,]*)?亿元',
+        r'(?<!\d)(\d+[\s,]*)?亿人民币',
+        r'(?<!\d)\d+[\s,]*万亿元',
+        r'(?<!\d)\d+[\s,]*万(?:元|人民币)',
+    ]
+    # Also check for "CNY" used as a currency unit (not as a ticker/symbol reference)
+    # and "RMB" as a display currency
+    cny_ref_patterns = [
+        r'\bCNY\b',
+        r'\bRMB\b',
+    ]
+
+    found_cny: List[str] = []
+    for pattern in cny_patterns:
+        matches = re.findall(pattern, text)
+        if matches:
+            found_cny.append(pattern)
+
+    # For CNY/RMB references, be more careful - check they're used as currency
+    # and not as part of a ticker or example
+    for pattern in cny_ref_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        if matches:
+            found_cny.append(pattern)
+
+    if found_cny:
+        # Check severity: 亿/万亿+数字 is more serious than just CNY reference
+        has_amount = any('亿' in p or '万亿' in p or '万' in p for p in found_cny)
+        severity = "blocker" if has_amount else "warning"
+        _issue(
+            issues,
+            severity,
+            "currency_market_mismatch",
+            f"{symbol} report_currency=USD but contains CNY currency strings: {', '.join(found_cny[:5])}",
+        )
+
 
 def _valuation_consistency_check(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
     valuation_model = artifacts.get("valuation_model", {})
@@ -657,6 +785,250 @@ def _check_pdf_rag_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]
         _issue(issues, "blocker", "pdf_rag", "report uses generic PDF gap despite a specific pdf_extraction_audit failure reason")
     if re.search(r"\b([A-Z0-9]{4,6}\.[A-Z]{2})（\1）", text):
         _issue(issues, "blocker", "pdf_rag", "report repeats symbol in company display name")
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            continue
+        summary_text = str(summary.get("summary_zh") or "")
+        section_type = str(summary.get("section_type") or "unknown")
+        if summary.get("usable_for_generation") and _contains_mojibake(summary_text):
+            _issue(issues, "blocker", "pdf_rag", f"usable PDF summary contains mojibake: {section_type}")
+        if summary.get("usable_for_generation") and _looks_like_raw_pdf_summary(summary_text):
+            _issue(issues, "blocker", "pdf_rag", f"usable PDF summary is raw/overlong instead of compressed: {section_type}")
+
+
+def _check_final_html_artifact_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    report_html = str(artifacts.get("report_html") or "")
+    if not report_html.strip():
+        _issue(issues, "fatal", "html_artifact", "final report.html is empty")
+        return
+    if "<html" not in report_html.lower():
+        _issue(issues, "blocker", "html_artifact", "final report.html is not a complete html artifact")
+
+
+def _check_cross_report_symbol_pollution(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    report_html = str(artifacts.get("report_html") or "")
+    if not report_html:
+        return
+    expected_symbol = _expected_symbol(artifacts)
+    approved = {expected_symbol} if expected_symbol else set()
+    approved.update(_approved_peer_symbols(artifacts))
+    if expected_symbol and expected_symbol.startswith("0"):
+        approved.add(expected_symbol.replace(".HK", ""))
+    matches = set(re.findall(r"\b\d{4}\.HK\b|\b\d{6}\.(?:SS|SZ)\b", report_html))
+    matches.update(re.findall(r"\(([A-Z]{1,6})\)", report_html))
+    currency_tokens = {"USD", "CNY", "RMB", "HKD", "JPY", "EUR", "GBP", "AUD", "CAD", "CHF"}
+    cleaned = {str(match).strip().upper() for match in matches if str(match).strip() and str(match).strip().upper() not in currency_tokens}
+    unexpected = sorted(symbol for symbol in cleaned if symbol and symbol not in approved)
+    if unexpected:
+        _issue(issues, "blocker", "cross_report_symbol_pollution", f"unexpected ticker-like symbols in final html: {unexpected[:8]}")
+
+
+def _check_peer_metric_contamination(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    text = _section_body(_report_text(artifacts), ("同行对比", "peer compare", "Peer Comparison"))
+    if not text:
+        return
+    metric_terms = ("收入增速", "毛利率", "净利率", "ROE")
+    if sum(1 for term in metric_terms if term in text) < 3:
+        return
+    if re.search(r"6\.5\s*[;%；].*90\.51\s*[;%；].*48\.05\s*[;%；].*31\.2", text, re.S):
+        _issue(issues, "blocker", "peer_metric_contamination", "orphan peer metric row remains without an approved peer symbol")
+
+
+def _check_html_table_integrity(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    report_html = str(artifacts.get("report_html") or "")
+    if not report_html:
+        return
+    if "&lt;table" in report_html.lower() or "&lt;thead" in report_html.lower() or "&lt;tbody" in report_html.lower():
+        _issue(issues, "blocker", "html_table_integrity", "final html contains escaped table markup")
+    if re.search(r"(?m)^\|.*\|$", report_html) or "| --- |" in report_html or "| ---: |" in report_html or "<th>---</th>" in report_html or "<th>---:</th>" in report_html:
+        _issue(issues, "blocker", "html_table_integrity", "final html still contains markdown table residue")
+    if re.search(r"<ul>\s*<table", report_html, re.I):
+        _issue(issues, "blocker", "html_table_integrity", "final html nests table directly inside ul")
+    if "<table" in report_html.lower() and "<th" not in report_html.lower():
+        _issue(issues, "blocker", "html_table_integrity", "final html table is missing header cells")
+    if re.search(r"<th>\s*</th>", report_html, re.I):
+        _issue(issues, "blocker", "html_table_integrity", "final html contains empty table headers")
+
+
+def _check_developer_placeholder_leakage(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    text = _report_text(artifacts)
+    patterns = [
+        "TODO",
+        "FIXME",
+        "developer placeholder",
+        "正文应使用中文归纳",
+        "章节已抽取",
+        "section extracted",
+    ]
+    for pattern in patterns:
+        if pattern in text:
+            _issue(issues, "blocker", "developer_placeholder", f"developer placeholder leaked to final artifact: {pattern}")
+
+
+def _check_mojibake_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    report_html = str(artifacts.get("report_html") or "")
+    mojibake_patterns = [
+        r"\uFFFD",
+        r"鈹",
+        r"璇佹嵁",
+        r"缁撹",
+        r"鎬",
+        r"鐠",
+        r"缂",
+        r"閹",
+        r"锟",
+        r"Ã",
+        r"Â",
+    ]
+    for pattern in mojibake_patterns:
+        if re.search(pattern, report_html):
+            _issue(issues, "blocker", "mojibake_policy", f"mojibake detected in final html: {pattern}")
+            break
+
+
+def _contains_mojibake(text: str) -> bool:
+    patterns = [
+        r"\uFFFD",
+        r"鈥|鈭|鈻|鈹",
+        r"璐靛|璇佹|缁撹|鎽樿|鐩",
+        r"鍏|涓氬|锛",
+        r"[ÃÂ]",
+    ]
+    return any(re.search(pattern, str(text or "")) for pattern in patterns)
+
+
+def _looks_like_raw_pdf_summary(text: str) -> bool:
+    value = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(value) <= 700:
+        return False
+    sentence_count = len(re.findall(r"[。！？.!?]", value))
+    return sentence_count < 3 or len(value) > 1200
+
+
+def _check_official_source_distribution_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    official_manifest = json.dumps(artifacts.get("official_evidence_manifest", {}), ensure_ascii=False)
+    evidence_coverage = json.dumps(artifacts.get("evidence_coverage", {}), ensure_ascii=False)
+    joined = f"{official_manifest}\n{evidence_coverage}"
+    if re.search(r"eastmoney", joined, re.I) and re.search(r"official|primary", joined, re.I):
+        _issue(issues, "blocker", "official_source_distribution", "Eastmoney is counted as official/primary source")
+
+
+def _check_business_overview_wrong_section_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    text = _report_text(artifacts)
+    business_body = _section_body(text, ("业务概览", "business overview", "主营业务与业务画像"))
+    if any(marker in business_body for marker in ["财务费用变动原因说明", "经营活动产生的现金流量净额变动原因说明", "投资活动产生的现金流量净额变动原因说明", "筹资活动产生的现金流量净额变动原因说明"]):
+        _issue(issues, "blocker", "business_overview_wrong_section", "business_overview appears to contain financial-note variance text")
+    audit = artifacts.get("pdf_extraction_audit", {}) if isinstance(artifacts.get("pdf_extraction_audit"), dict) else {}
+    summaries = artifacts.get("pdf_section_summaries", []) if isinstance(artifacts.get("pdf_section_summaries"), list) else []
+    has_usable_pdf_summary = bool(audit.get("page_count")) and any(bool(item.get("usable_for_generation")) for item in summaries if isinstance(item, dict))
+    if has_usable_pdf_summary and any(marker in text for marker in ["未获得官方证据", "未获得足够的官方治理结构证据", "尚未获得可直接支持分析的官方章节摘要"]):
+        _issue(issues, "blocker", "business_overview_wrong_section", "official PDF summary exists but report still claims no official evidence")
+
+
+def _check_contract_policies(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    """Run contract-level checks on report_section_contracts.json.
+
+    These checks detect violations that the contract system is designed to prevent:
+    - PDF boilerplate in business_overview
+    - governance gap despite PDF availability
+    - citation binding mismatch
+    - peer universe mismatch
+    - period metadata missing
+    - sentence fragments
+    - stale runtime source leak
+    """
+    contracts = artifacts.get("report_section_contracts", {})
+    has_contracts = isinstance(contracts, dict) and contracts.get("contracts") is not None
+    binding_audit = artifacts.get("citation_binding_audit", {})
+    has_audit = isinstance(binding_audit, dict) and bool(binding_audit)
+
+    if not has_contracts and not has_audit:
+        # Contract-first mode not active — skip
+        return
+
+    report_md = str(artifacts.get("report_md", ""))
+    contracts_data = contracts.get("contracts", {}) if isinstance(contracts, dict) else {}
+
+    # 1. business_overview_raw_pdf_paste
+    biz = contracts_data.get("business_overview", {})
+    if isinstance(biz, dict):
+        biz_facts = biz.get("facts", []) if isinstance(biz.get("facts"), list) else []
+        for fact in biz_facts:
+            if isinstance(fact, dict):
+                ft = str(fact.get("text", ""))
+                if "年度报告" in ft or "四、" in ft or "五、" in ft or "√适用" in ft:
+                    _issue(issues, "blocker", "business_overview_raw_pdf_paste",
+                           "business_overview fact contains PDF formatting boilerplate")
+                    break
+        for qf in (biz.get("quality_flags", []) if isinstance(biz.get("quality_flags"), list) else []):
+            if "boilerplate" in str(qf):
+                _issue(issues, "warning", "business_overview_raw_pdf_paste",
+                       f"business_overview quality flag: {qf}")
+
+    # 2. governance_gap
+    gov = contracts_data.get("ownership_governance", {})
+    if isinstance(gov, dict):
+        gov_status = str(gov.get("status", ""))
+        pdf_rag_available = bool(contracts.get("metadata", {}).get("pdf_rag_available", False))
+        if pdf_rag_available and gov_status == "gap":
+            blocked = [str(r) for r in (gov.get("blocked_reasons", []) if isinstance(gov.get("blocked_reasons"), list) else [])]
+            reason = blocked[0] if blocked else "governance_section_not_found"
+            _issue(issues, "blocker", "governance_gap",
+                   f"ownership_governance is gap despite PDF available: {reason}")
+
+    # 3. citation_binding_mismatch
+    if binding_audit.get("total_mismatches", 0) > 0:
+        mismatches = binding_audit.get("mismatches", [])[:3]
+        _issue(issues, "blocker", "citation_binding_mismatch",
+               f"citation binding has {binding_audit['total_mismatches']} mismatches: {'; '.join(mismatches)}")
+    for sk, cdata in contracts_data.items():
+        if isinstance(cdata, dict):
+            for qf in (cdata.get("quality_flags", []) if isinstance(cdata.get("quality_flags"), list) else []):
+                if "citation_binding_mismatch" in str(qf):
+                    _issue(issues, "warning", "citation_binding_mismatch",
+                           f"{sk}: {qf}")
+
+    # 4. peer_universe_mismatch
+    peer = contracts_data.get("peer_compare", {})
+    if isinstance(peer, dict):
+        for qf in (peer.get("quality_flags", []) if isinstance(peer.get("quality_flags"), list) else []):
+            if "peer_universe" in str(qf):
+                _issue(issues, "warning", "peer_universe_mismatch",
+                       f"peer_compare: {qf}")
+        if any(term in report_md for term in ["PG/KO/PEP/WMT/COST", "同一行业或业务相近口径"]):
+            _issue(issues, "blocker", "peer_universe_mismatch",
+                   "report lists foreign peers as same-industry comparables")
+
+    # 5. period_metadata_missing
+    period_note = contracts_data.get("period_note", {})
+    if isinstance(period_note, dict):
+        pn_status = str(period_note.get("status", ""))
+        if pn_status == "gap":
+            _issue(issues, "blocker", "period_metadata_missing",
+                   "period_note contract is gap — latest_available_period not detected")
+        for qf in (period_note.get("quality_flags", []) if isinstance(period_note.get("quality_flags"), list) else []):
+            if "period_mismatch" in str(qf):
+                _issue(issues, "warning", "period_metadata_missing",
+                       "period mismatch detected between target and available periods")
+
+    # 6. sentence_fragment
+    for sk, cdata in contracts_data.items():
+        if isinstance(cdata, dict):
+            for qf in (cdata.get("quality_flags", []) if isinstance(cdata.get("quality_flags"), list) else []):
+                qf_str = str(qf)
+                if "fragment" in qf_str:
+                    _issue(issues, "warning", "sentence_fragment",
+                           f"{sk}: contains fragment patterns: {qf_str}")
+
+    # 7. stale_runtime_source_leak
+    for sk, cdata in contracts_data.items():
+        if isinstance(cdata, dict):
+            for qf in (cdata.get("quality_flags", []) if isinstance(cdata.get("quality_flags"), list) else []):
+                if "risk_fallback_cashflow" in str(qf):
+                    _issue(issues, "blocker", "stale_runtime_source_leak",
+                           f"{sk}: {qf}")
+
+
 def _check_generalization_policy(checks: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
     for key, payload in checks.items():
         row = payload if isinstance(payload, dict) else {}
@@ -725,6 +1097,26 @@ def _required_gate_checks(artifacts: Dict[str, Any], issues: List[Dict[str, Any]
 
 def _report_text(artifacts: Dict[str, Any]) -> str:
     return "\n".join([str(artifacts.get("report_md") or ""), str(artifacts.get("report_html") or "")])
+
+
+def _expected_symbol(artifacts: Dict[str, Any]) -> str:
+    summary = artifacts.get("summary", {}) if isinstance(artifacts.get("summary"), dict) else {}
+    entity = summary.get("entity_resolution", {}) if isinstance(summary.get("entity_resolution"), dict) else {}
+    return str(entity.get("resolved_symbol") or summary.get("symbol") or artifacts.get("report_json", {}).get("symbol") or "").strip().upper()
+
+
+def _approved_peer_symbols(artifacts: Dict[str, Any]) -> set[str]:
+    approved: set[str] = set()
+    section_dossiers = artifacts.get("section_dossiers", {}) if isinstance(artifacts.get("section_dossiers"), dict) else {}
+    peer = section_dossiers.get("peer_compare", {}) if isinstance(section_dossiers.get("peer_compare"), dict) else {}
+    for table in peer.get("tables", []) if isinstance(peer.get("tables"), list) else []:
+        rows = table.get("rows", []) if isinstance(table, dict) else []
+        for row in rows if isinstance(rows, list) else []:
+            if isinstance(row, dict):
+                symbol = str(row.get("symbol") or row.get("ticker") or "").strip().upper()
+                if symbol:
+                    approved.add(symbol)
+    return approved
 
 
 def _statement_name(row: Dict[str, Any]) -> str:
@@ -919,7 +1311,9 @@ def _is_primary_source(item: Any) -> bool:
     if not isinstance(item, dict):
         return False
     joined = " ".join(str(item.get(key, "")) for key in ["source_type", "trust_level", "source_url", "title"]).lower()
-    return any(term in joined for term in ["primary", "sec", "edgar", "cninfo", "sse", "szse", "exchange", "eastmoney_financial"])
+    if "eastmoney" in joined or "yahoo" in joined or "reuters" in joined:
+        return False
+    return any(term in joined for term in ["primary", "sec", "edgar", "cninfo", "sse", "szse", "exchange", "hkex", "company ir", "official"])
 
 
 def _top_issues(issues: List[Dict[str, Any]], limit: int = 12) -> List[Dict[str, Any]]:
