@@ -1214,6 +1214,18 @@ def test_sanitize_payload_for_user_strips_debug_fields():
     assert "tool_trace" not in safe
 
 
+def test_user_html_keeps_completed_report_open_and_download_actions():
+    from src.app.web_ui import _render_user_html
+
+    html = _render_user_html()
+
+    assert "function normalizeReportLinks(data)" in html
+    assert "function attachConfirmReportActions(card, data)" in html
+    assert "打开 HTML 研报" in html
+    assert "下载 HTML" in html
+    assert "window.finSightJobs[cardJobId].rendered) return" not in html
+
+
 def test_human_readable_data_sources_maps_known_engines():
     """_human_readable_data_sources must map raw keys to friendly labels."""
     from src.app.web_ui import _human_readable_data_sources

@@ -3516,6 +3516,33 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       return !!url && rl.is_run_scoped !== false && !/^\/artifacts\/report\.html(?:\?|$)/.test(url);
     }
 
+    function normalizeReportLinks(data) {
+      data = asObj(data);
+      const latest = asObj(data.latest);
+      const links = { ...asObj(data.report_links || latest.report_links) };
+      const fallbackUrl = String(data.report_html_url || latest.report_html_url || "");
+      if (!links.html_web_url && fallbackUrl) links.html_web_url = fallbackUrl;
+      if (links.html_web_url && links.is_run_scoped == null) {
+        links.is_run_scoped = /\/artifacts\/runs\//.test(String(links.html_web_url));
+      }
+      return links;
+    }
+
+    function attachConfirmReportActions(card, data) {
+      if (!card) return;
+      const rl = normalizeReportLinks(data);
+      if (!isRunScopedReportLink(rl)) return;
+      let actions = card.querySelector(".completed-report-actions");
+      if (!actions) {
+        actions = document.createElement("div");
+        actions.className = "actions completed-report-actions";
+        card.appendChild(actions);
+      }
+      actions.innerHTML =
+        `<a href="${esc(rl.html_web_url)}" target="_blank" class="btn btn-primary">打开 HTML 研报</a>` +
+        `<a href="${esc(rl.html_web_url)}" download class="btn">下载 HTML</a>`;
+    }
+
     function updateBanner(data) {
       const jobIdEl = document.getElementById('bannerJobId');
       if (data && data.active_job_id) {
@@ -3591,6 +3618,7 @@ def _render_user_html(frontend_port: int | None = None) -> str:
           stopJobPolling(jobId);
           job.status = "completed";
           setConfirmCardStatus(card, "completed", "报告已生成");
+          attachConfirmReportActions(card, data);
           renderReportCard({ ...data, job_id: jobId });
           return;
         }
@@ -3616,7 +3644,9 @@ def _render_user_html(frontend_port: int | None = None) -> str:
             stopJobPolling(jobId);
             job.status = "completed";
             setConfirmCardStatus(card, "completed", "报告已生成");
-            renderReportCard({ ...data, report_links: jsLinks, delivery_gate: js.delivery_gate, status: js.status, job_id: jobId });
+            const completedData = { ...data, report_links: jsLinks, delivery_gate: js.delivery_gate, status: js.status, job_id: jobId };
+            attachConfirmReportActions(card, completedData);
+            renderReportCard(completedData);
             return;
           }
           if (js.status === "running" || js.status === "queued") {
@@ -3776,16 +3806,24 @@ def _render_user_html(frontend_port: int | None = None) -> str:
 
     /* Report card */
     function renderReportCard(data) {
-      const rl = data.report_links || (data.latest && data.latest.report_links);
+      const rl = normalizeReportLinks(data);
       const linkOk = isRunScopedReportLink(rl);
       const summary = asObj(data.summary || (data.latest && data.latest.summary));
 
       /* P0.7: dedup by job_id or report html_url to avoid rendering same report twice */
       const cardJobId = data.job_id || (data.latest && data.latest.job_id) || summary.run_id || "";
       clearTransientJobCards(cardJobId);
-      if (cardJobId && window.finSightJobs[cardJobId] && window.finSightJobs[cardJobId].rendered) return;
-      if (linkOk && rl.html_web_url && document.querySelector('.r-card[data-report-url="' + esc(rl.html_web_url) + '"]')) return;
-      if (cardJobId && window.finSightJobs[cardJobId]) window.finSightJobs[cardJobId].rendered = true;
+      const existingCard = Array.from(document.querySelectorAll(".r-card")).find((el) => {
+        const sameJob = cardJobId && el.dataset && el.dataset.jobId === String(cardJobId);
+        const sameUrl = linkOk && el.dataset && el.dataset.reportUrl === String(rl.html_web_url);
+        return sameJob || sameUrl;
+      });
+      if (existingCard) {
+        populateTabs({ ...data, report_links: rl });
+        $("reportArea").classList.add("visible");
+        initTabs();
+        return;
+      }
 
       const coverage = summary.data_quality_score || {};
       const reviewHints = asList(summary.review_hints || []);
@@ -3830,9 +3868,10 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       /* Add report card after terminal job cleanup */
       clearTransientJobCards(cardJobId);
       appendBubbleHtml("assistant", html);
+      if (cardJobId && window.finSightJobs[cardJobId]) window.finSightJobs[cardJobId].rendered = true;
 
       /* Populate tab panels */
-      populateTabs(data);
+      populateTabs({ ...data, report_links: rl });
       $("reportArea").classList.add("visible");
       initTabs();
     }
