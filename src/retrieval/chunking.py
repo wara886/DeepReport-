@@ -59,7 +59,8 @@ class EvidenceChunk:
     @property
     def searchable_text(self) -> str:
         metric_text = " ".join([self.metric_name, " ".join(self.numeric_values.keys())]).strip()
-        return f"{self.title} {self.source_type} {self.chunk_type} {metric_text} {self.content}".strip()
+        section_prefix = "[{}]".format(self.title) if self.title else ""
+        return f"{section_prefix} {self.source_type} {self.chunk_type} {metric_text} {self.content}".strip()
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -128,6 +129,7 @@ def _make_chunk(
     row_id: str = "",
     cell_refs: List[str] | None = None,
 ) -> EvidenceChunk:
+    metadata = data.get("metadata", {}) if isinstance(data.get("metadata"), dict) else {}
     page = data.get("page") or data.get("page_number")
     try:
         page_value = int(page) if page not in {None, ""} else None
@@ -163,7 +165,12 @@ def _make_chunk(
         metric_name=metric_name,
         numeric_values=numeric_values or {},
         metadata={
-            "parent_metadata": data.get("metadata", {}) if isinstance(data.get("metadata"), dict) else {},
+            "parent_metadata": metadata,
+            **{
+                key: data.get(key, metadata.get(key))
+                for key in ("source_period", "period_fallback")
+                if data.get(key, metadata.get(key)) not in (None, "")
+            },
             "chunking": {"strategy": "paragraph_table_metric_v1", "parent_sample_id": parent_id},
         },
     )

@@ -122,8 +122,8 @@ class TestContractRenderer:
         assert "balance" not in md.lower()
         assert "cashflow" not in md.lower()
 
-    def test_top_blockers_in_report(self):
-        """Top blockers should appear in the rendered report header."""
+    def test_top_blockers_not_shown_as_user_diagnostics(self):
+        """Top blockers stay in diagnostics and should not be shown as a report banner."""
         contracts = ReportSectionContracts()
         c1 = contracts.ensure("ownership_governance")
         c1.add_blocked_reason("governance_section_not_found")
@@ -131,7 +131,7 @@ class TestContractRenderer:
         c2.add_blocked_reason("period_metadata_missing")
 
         md = render_full_report_from_contracts(contracts, "Test", top_blockers=contracts.top_blockers())
-        assert "质量诊断建议" in md
+        assert "质量诊断建议" not in md
         assert "governance_section_not_found" in md or "period_metadata_missing" in md
 
 
@@ -144,6 +144,26 @@ def test_depth_fallback_dedupes_and_removes_instructional_text():
     assert "正文应" not in out
     assert "本节不得" not in out
     assert "避免把" not in out
+
+
+def test_final_cleanup_removes_key_value_fact_leakage():
+    md = (
+        "# X\n\n"
+        "## 业务概览\n\n"
+        "业务概览应围绕产品结构、销售渠道、品牌或工艺壁垒以及收入贡献展开。\n\n"
+        "关键事实为：公司Kweichow Moutai；products茅台酒；core_competitiveness品牌。\n\n"
+        "## 财务分析\n\n"
+        "关键事实为：has_financial_data是。\n\n"
+        "本节可用事实\n"
+    )
+    out = remove_instructional_report_text(md)
+
+    assert "业务概览应围绕" not in out
+    assert "关键事实为" not in out
+    assert "本节可用事实" not in out
+    assert "products" not in out
+    assert "core_competitiveness" not in out
+    assert "has_financial_data" not in out
 
 
 class TestContractModeNoGlobalLeakage:

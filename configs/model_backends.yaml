@@ -75,6 +75,17 @@ model_profiles:
     temperature_env: DEEPSEEK_TEMPERATURE
     timeout: 30
     retry: 1
+  mimo_flash:
+    provider: openai_compatible
+    mode: openai_compatible_chat
+    model_name: mimo-v2.5
+    base_url: https://api.xiaomimimo.com/v1
+    api_key: ""
+    api_key_env: MIMO_API_KEY
+    max_tokens: 4096
+    temperature: 0.2
+    timeout: 90
+    retry: 2
 
 agent_model_routes:
   defaults:
@@ -84,47 +95,47 @@ agent_model_routes:
     developer_fast: developer_fast
   chat:
     preview: flash
-    delivery: flash
+    delivery: mimo_flash
     user_fast: user_fast
     developer_fast: developer_fast
   task_parser:
     preview: flash
-    delivery: flash
+    delivery: mimo_flash
     user_fast: user_fast
     developer_fast: developer_fast
   planning:
     preview: flash
-    delivery: flash
+    delivery: mimo_flash
     user_fast: user_fast
     developer_fast: developer_fast
   research:
     preview: flash
-    delivery: flash
+    delivery: mimo_flash
     user_fast: user_fast
     developer_fast: developer_fast
   browser:
     preview: flash
-    delivery: flash
+    delivery: mimo_flash
     user_fast: user_fast
     developer_fast: developer_fast
   deep_analyze:
     preview: flash
-    delivery: pro
+    delivery: flash
     user_fast: user_fast
     developer_fast: developer_fast
   final_answer:
     preview: flash
-    delivery: pro
+    delivery: flash
     user_fast: user_fast
     developer_fast: developer_fast
   verifier:
     preview: flash
-    delivery: pro
+    delivery: flash
     user_fast: user_fast
     developer_fast: developer_fast
   llm_report_review:
     preview: flash
-    delivery: pro
+    delivery: flash
     user_fast: user_fast
     developer_fast: developer_fast
 

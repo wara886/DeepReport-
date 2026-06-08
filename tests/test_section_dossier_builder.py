@@ -65,6 +65,7 @@ def test_peer_compare_contains_table():
         evidence_records=[],
         analysis_artifacts={
             "peer_analysis": {
+                "approved_peer_symbols": ["NVDA", "INTC"],
                 "peer_rows": [
                     {"symbol": "NVDA", "company_name": "NVIDIA", "revenue": "100B"},
                     {"symbol": "INTC", "company_name": "Intel", "revenue": "50B"},
@@ -79,6 +80,80 @@ def test_peer_compare_contains_table():
     assert len(peer.get("tables", [])) >= 1
     assert peer.get("min_content_level") == "full"
     assert len(peer.get("suggested_paragraphs", [])) >= 1
+
+
+def test_pdf_summaries_drive_section_dossiers():
+    builder = SectionDossierBuilder()
+    dossiers = builder.build(
+        state={
+            "symbol": "600519.SS",
+            "period": "FY2025",
+            "claims": [],
+            "research_blackboard": {},
+            "pdf_section_summaries": [
+                {
+                    "section_type": "business_overview",
+                    "summary_zh": "公司主营业务包括茅台酒和系列酒，销售渠道覆盖直销、i茅台与批发代理。",
+                    "evidence_id": "pdf_business",
+                    "usable_for_generation": True,
+                    "evidence_quality": "strong",
+                },
+                {
+                    "section_type": "ownership_governance",
+                    "summary_zh": "公司治理章节披露董事会、监事会和高级管理人员职责。",
+                    "evidence_id": "pdf_governance",
+                    "usable_for_generation": True,
+                    "evidence_quality": "strong",
+                },
+                {
+                    "section_type": "risk_factors",
+                    "summary_zh": "风险提示包括市场需求、渠道价格、食品安全和监管政策风险。",
+                    "evidence_id": "pdf_risk",
+                    "usable_for_generation": True,
+                    "evidence_quality": "strong",
+                },
+            ],
+        },
+        claims=[],
+        evidence_records=[],
+        analysis_artifacts={},
+        derived_evidence=[],
+        bundles=[],
+    )
+
+    assert dossiers["business_overview"]["min_content_level"] == "full"
+    assert "pdf_business" in dossiers["business_overview"]["supporting_evidence_ids"]
+    assert dossiers["ownership_governance"]["min_content_level"] == "brief"
+    assert "pdf_governance" in dossiers["ownership_governance"]["supporting_evidence_ids"]
+    assert dossiers["risks"]["min_content_level"] == "full"
+    assert "pdf_risk" in dossiers["risks"]["supporting_evidence_ids"]
+
+
+def test_peer_sanitizer_removes_entire_unapproved_row():
+    builder = SectionDossierBuilder()
+    dossiers = builder.build(
+        state={"symbol": "600519.SS", "claims": [], "research_blackboard": {}},
+        claims=[],
+        evidence_records=[],
+        analysis_artifacts={
+            "symbol": "600519.SS",
+            "peer_analysis": {
+                "approved_peer_symbols": ["600519.SS"],
+                "peer_rows": [
+                    {"symbol": "600519.SS", "company_name": "Kweichow Moutai", "revenue_growth_pct": 10.0},
+                    {"symbol": "0700.HK", "company_name": "Tencent", "revenue_growth_pct": 6.5, "gross_margin_pct": 90.51, "net_margin_pct": 48.05, "roe_pct": 31.2},
+                ],
+            },
+        },
+        derived_evidence=[],
+        bundles=[],
+    )
+
+    text = str(dossiers["peer_compare"])
+    assert "0700.HK" not in text
+    assert "90.51" not in text
+    assert "48.05" not in text
+    assert "31.2" not in text
 
 
 def test_valuation_dossier_contains_methods():

@@ -9,6 +9,8 @@ import re
 
 from src.charts.bar_chart import render_bar_chart
 from src.charts.table_chart import render_table_chart
+from src.report.mojibake_guard import looks_like_mojibake
+from src.utils.money import CurrencyContext, build_currency_context
 
 # Map internal metric keys to user-readable Chinese labels
 METRIC_LABEL_MAP: Dict[str, str] = {
@@ -32,6 +34,14 @@ METRIC_LABEL_MAP: Dict[str, str] = {
     "eps_diluted": "稀释每股收益",
     "rd_expense_billion": "研发费用",
     "market_cap_billion": "总市值",
+    "revenue": "收入",
+    "net_income": "净利润",
+    "assets": "总资产",
+    "liabilities": "总负债",
+    "equity": "权益",
+    "operating_cash_flow": "经营现金流",
+    "investing_cash_flow": "投资现金流",
+    "financing_cash_flow": "筹资现金流",
 }
 
 # Fallback label map for raw metric keys not in METRIC_LABEL_MAP
@@ -107,6 +117,16 @@ _METRIC_CATEGORY: Dict[str, str] = {
     "eps_diluted": "financial_scale",
     "rd_expense_billion": "financial_scale",
     "market_cap_billion": "financial_scale",
+    "revenue": "financial_scale",
+    "net_income": "financial_scale",
+    "assets": "financial_scale",
+    "liabilities": "financial_scale",
+    "equity": "financial_scale",
+    "total_assets": "financial_scale",
+    "total_liabilities": "financial_scale",
+    "operating_cash_flow": "cash_flow",
+    "investing_cash_flow": "cash_flow",
+    "financing_cash_flow": "cash_flow",
 }
 
 CATEGORY_TITLES: Dict[str, str] = {
@@ -122,6 +142,9 @@ def generate_report_charts(
     evidence_records: List[Dict[str, Any]],
     output_dir: str | Path,
     tables: List[Dict[str, Any]] | None = None,
+    analysis_artifacts: Dict[str, Any] | None = None,
+    include_diagnostic_charts: bool = False,
+    currency_context: CurrencyContext | Dict[str, Any] | None = None,
 ) -> List[Dict[str, Any]]:
     """Render simple report charts directly from claims and evidence records."""
 
@@ -129,6 +152,8 @@ def generate_report_charts(
     chart_dir.mkdir(parents=True, exist_ok=True)
     charts: List[Dict[str, Any]] = []
     table_ids = _table_ids(tables or [])
+    artifacts = analysis_artifacts if isinstance(analysis_artifacts, dict) else {}
+    display_context = _resolve_currency_context(currency_context, artifacts)
 
     # Split metric points by category to avoid mixing units (billions vs percentages)
     category_points = _categorize_metric_points(claims)
@@ -156,8 +181,47 @@ def generate_report_charts(
             "chart_js": _chart_js_payload(chart_type="bar", points=points[:8], label=cat_title),
         })
 
+    peer_points = _peer_points_from_artifacts(artifacts)
+    if peer_points:
+        title = "同业比较"
+        path = render_bar_chart(
+            bars=peer_points[:8],
+            output_path=chart_dir / "peer_compare_bar.png",
+            title=title,
+        )
+        charts.append({
+            "chart_id": "peer_compare_bar",
+            "chart_type": "bar",
+            "title": title,
+            "section_name": "同行对比",
+            "output_path": str(path),
+            "source_fields": "analysis_artifacts.peer_analysis.rows",
+            "input_table_ids": table_ids,
+            "source_evidence_ids": _evidence_ids_from_claims(claims),
+            "chart_js": _chart_js_payload(chart_type="bar", points=peer_points[:8], label="净利率"),
+        })
+
+    sensitivity_points = _valuation_sensitivity_points(artifacts)
+    if sensitivity_points:
+        title = "估值敏感性"
+        path = render_bar_chart(
+            bars=sensitivity_points[:8],
+            output_path=chart_dir / "valuation_sensitivity_bar.png",
+            title=title,
+        )
+        charts.append({
+            "chart_id": "valuation_sensitivity_bar",
+            "chart_type": "bar",
+            "title": title,
+            "section_name": "估值敏感性",
+            "output_path": str(path),
+            "source_fields": "analysis_artifacts.valuation_sensitivity",
+            "source_evidence_ids": _evidence_ids_from_claims(claims),
+            "chart_js": _chart_js_payload(chart_type="bar", points=sensitivity_points[:8], label=title),
+        })
+
     confidence_points = _confidence_points_from_claims(claims)
-    if confidence_points:
+    if include_diagnostic_charts and confidence_points:
         path = render_bar_chart(
             bars=confidence_points[:10],
             output_path=chart_dir / "claim_confidence_bar.png",
@@ -166,6 +230,7 @@ def generate_report_charts(
         charts.append(
             {
                 "chart_id": "claim_confidence_bar",
+                "diagnostic_only": True,
                 "chart_type": "bar",
                 "title": "结论置信度",
                 "section_name": "投资结论",
@@ -178,7 +243,7 @@ def generate_report_charts(
         )
 
     source_rows = _source_rows_from_evidence(evidence_records)
-    if source_rows:
+    if include_diagnostic_charts and source_rows:
         path = render_table_chart(
             headers=["source_type", "count"],
             rows=source_rows,
@@ -188,6 +253,7 @@ def generate_report_charts(
         charts.append(
             {
                 "chart_id": "evidence_source_mix",
+                "diagnostic_only": True,
                 "chart_type": "table",
                 "title": "证据来源结构",
                 "section_name": "执行摘要",
@@ -203,33 +269,57 @@ def generate_report_charts(
         )
 
     # Sanitize chart payloads before returning
-    charts = sanitize_chart_payloads(charts)
+    charts = sanitize_chart_payloads(charts, currency_context=display_context)
     return charts
 
 
-def normalize_financial_scale(chart: dict[str, Any]) -> dict[str, Any]:
-    """Convert raw CNY values to 亿元人民币 for financial_scale_bar charts."""
+def normalize_financial_scale(
+    chart: dict[str, Any],
+    currency_context: CurrencyContext | None = None,
+) -> dict[str, Any]:
+    """Scale monetary charts using the report's market currency."""
     chart_id = str(chart.get("chart_id") or "")
-    if chart_id != "financial_scale_bar":
+    if chart_id not in {"financial_scale_bar", "cash_flow_bar"}:
         return chart
     chart_js = chart.get("chart_js", {}) if isinstance(chart.get("chart_js"), dict) else {}
     data = chart_js.get("data", []) if isinstance(chart_js.get("data"), list) else []
     if not data:
         return chart
-    # Detect if values are raw CNY (>1e8)
-    if any(isinstance(v, (int, float)) and abs(v) > 1e10 for v in data):
-        scaled = [v / 1e8 if isinstance(v, (int, float)) else v for v in data]
-        chart["chart_js"] = {**chart_js, "data": scaled}
-        chart["chart_js"]["unit_label"] = "亿元人民币"
+    context = currency_context or build_currency_context()
+    numeric = [float(v) for v in data if isinstance(v, (int, float))]
+    if not numeric:
+        return chart
+    already_scaled = max(abs(v) for v in numeric) < 1_000_000
+    raw_data = list(data)
+    scaled = list(data) if already_scaled else [
+        v / context.display_scale if isinstance(v, (int, float)) else v for v in data
+    ]
+    chart["chart_js"] = {
+        **chart_js,
+        "data": scaled,
+        "raw_data": raw_data,
+        "raw_currency": context.statement_currency,
+        "display_currency": context.display_currency,
+        "display_scale": context.display_scale,
+        "unit_label": context.unit_label,
+    }
+    if chart_id == "cash_flow_bar":
+        chart["title"] = "现金流"
     return chart
 
 
-def sanitize_chart_payloads(charts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def sanitize_chart_payloads(
+    charts: List[Dict[str, Any]],
+    currency_context: CurrencyContext | None = None,
+) -> List[Dict[str, Any]]:
     """Remove internal labels from chart payloads and drop charts with <2 valid points."""
     clean: List[Dict[str, Any]] = []
     for chart in charts:
         if isinstance(chart, dict):
-            chart = normalize_financial_scale(chart)
+            if chart.get("diagnostic_only") is True:
+                clean.append(chart)
+                continue
+            chart = normalize_financial_scale(chart, currency_context=currency_context)
             chart_id = str(chart.get("chart_id") or "")
             title = _sanitize_chart_label(chart.get("title") or chart_id or "图表", 1)
             if title.startswith("指标 ") and chart_id:
@@ -269,6 +359,12 @@ def sanitize_chart_payloads(charts: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 else _sanitize_chart_label(chart_js.get("label") or chart.get("title") or "指标", 1)
             ),
         }
+        unit_label = chart_js.get("unit_label")
+        if isinstance(unit_label, str) and unit_label:
+            unit_clean = _sanitize_chart_label(unit_label, 1)
+            if unit_clean.startswith("指标 ") and chart_id == "financial_scale_bar":
+                unit_clean = (currency_context or build_currency_context()).unit_label
+            chart["chart_js"]["unit_label"] = unit_clean
         clean.append(chart)
     return clean
 
@@ -299,6 +395,8 @@ def _sanitize_chart_label(label: Any, index: int = 1) -> str:
 
 def _looks_like_mojibake(text: str) -> bool:
     return bool(
+        looks_like_mojibake(text)
+        or
         re.search(r'[ÃÂÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ]', text)
         or re.search(r'[\ue000-\uf8ff]', text)
         or re.search(r'(缁撹|璇佹嵁|鏉ユ簮|鎽樿)', text)
@@ -367,6 +465,71 @@ def _source_rows_from_evidence(evidence_records: List[Dict[str, Any]]) -> List[L
             continue
         counter[str(item.get("source_type") or "unknown")] += 1
     return [[source_type, str(count)] for source_type, count in counter.most_common()]
+
+
+def _peer_points_from_artifacts(artifacts: Dict[str, Any]) -> List[Tuple[str, float]]:
+    peer_data = artifacts.get("peer_analysis") if isinstance(artifacts, dict) else {}
+    peer_context = artifacts.get("peer_context") if isinstance(artifacts, dict) else {}
+    rows = []
+    if isinstance(peer_data, dict):
+        rows = peer_data.get("rows") or peer_data.get("peer_rows") or []
+    if (not rows) and isinstance(peer_context, dict):
+        rows = peer_context.get("peer_rows") or []
+    if not isinstance(rows, list):
+        return []
+    points: List[Tuple[str, float]] = []
+    has_non_target = False
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("is_target") is not True:
+            has_non_target = True
+        label = str(row.get("company_name") or row.get("symbol") or "").strip()
+        value = _safe_float(row.get("net_margin_pct") or row.get("gross_margin_pct") or row.get("roe_pct"))
+        if label and value is not None:
+            points.append((label[:16], value))
+    return points if has_non_target and len(points) >= 2 else []
+
+
+def _valuation_sensitivity_points(artifacts: Dict[str, Any]) -> List[Tuple[str, float]]:
+    sensitivity = artifacts.get("valuation_sensitivity") if isinstance(artifacts, dict) else {}
+    if not isinstance(sensitivity, dict):
+        return []
+    rows = sensitivity.get("sensitivity") or sensitivity.get("rows") or []
+    if not rows and isinstance(sensitivity.get("scenario_values"), dict):
+        rows = [
+            {"scenario": key, **(value if isinstance(value, dict) else {"value": value})}
+            for key, value in sensitivity["scenario_values"].items()
+        ]
+    if not isinstance(rows, list):
+        return []
+    points: List[Tuple[str, float]] = []
+    for index, row in enumerate(rows, start=1):
+        if isinstance(row, dict):
+            label = str(row.get("label") or row.get("scenario") or row.get("assumption") or f"情景 {index}")
+            value = _safe_float(row.get("target_price") or row.get("equity_value_billion") or row.get("value"))
+        else:
+            label = f"情景 {index}"
+            value = _safe_float(row)
+        if value is not None:
+            points.append((_sanitize_chart_label(label, index), value))
+    return points if len(points) >= 2 else []
+
+
+def _resolve_currency_context(
+    value: CurrencyContext | Dict[str, Any] | None,
+    artifacts: Dict[str, Any],
+) -> CurrencyContext:
+    if isinstance(value, CurrencyContext):
+        return value
+    audit = artifacts.get("currency_audit") if isinstance(artifacts.get("currency_audit"), dict) else {}
+    source = value if isinstance(value, dict) else audit
+    return build_currency_context(
+        symbol=str(source.get("symbol") or artifacts.get("symbol") or ""),
+        market=str(source.get("market") or ""),
+        statement_currency=str(source.get("statement_currency") or ""),
+        display_currency=str(source.get("display_currency") or ""),
+    )
 
 
 def _claim_ids(claims: List[Dict[str, Any]]) -> List[str]:

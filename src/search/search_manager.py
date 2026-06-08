@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List
 from urllib import error, parse, request
 
 import pandas as pd
+import yfinance as yf
 
 from src.data.company_universe import resolve_company_identifier, resolve_symbol
 from src.data.independent_sources import fetch_macro_evidence, fetch_sec_companyfacts_evidence
@@ -22,6 +23,7 @@ from src.data.yahoo_finance import yahoo_financials_to_evidence, yahoo_snapshot_
 logger = getLogger(__name__)
 from src.retrieval.chunking import chunk_records
 from src.retrieval.retrieve import retrieve_evidence_with_mode
+from src.report.fact_extractors.cleaning_pipeline import clean_evidence
 from src.utils.config import load_config
 from src.utils.env import load_env_files, resolve_config_value
 
@@ -84,14 +86,18 @@ class SearchManager:
         manager.register_engine("sec_edgar", sec_edgar_search)
         manager.register_engine("yahoo_finance", yahoo_finance_search)
         manager.register_engine("eastmoney", eastmoney_search)
+        manager.register_engine("sina_finance", sina_finance_search)
+        #manager.register_engine("sina_financials", sina_financials_search)  # TODO: 需要找到新浪数据 JSON API 后启用
         manager.register_engine("cninfo_announcements", cninfo_announcement_search)
         manager.register_engine("exchange_announcements", exchange_announcement_search)
         manager.register_engine("eastmoney_financials", eastmoney_financials_search)
         manager.register_engine("hkex_announcements", hkex_announcement_search)
+        manager.register_engine("hk_financials", hk_financials_search)
         manager.register_engine("serper", serper_search)
         manager.register_engine("tavily", tavily_search)
-        manager.register_engine("metaso", metaso_search)
-        manager.register_engine("sogou", sogou_search)
+        # metaso / sogou: 无 API Key 配置，注册为 no_key 占位
+        # manager.register_engine("metaso", metaso_search)
+        # manager.register_engine("sogou", sogou_search)
         manager.register_engine("local_evidence", local_evidence_search)
         return manager
 
@@ -125,6 +131,10 @@ class SearchManager:
                 all_hits.extend(_normalize_hits(engine, raw_hits))
             except Exception as exc:
                 engine_meta[engine] = {"error": str(exc)}
+
+        # 证据清洗：在去重排序前统一过 cleaning_pipeline
+        market = _infer_market_from_kwargs(kwargs)
+        all_hits = _clean_search_results(all_hits, market=market)
 
         hits = _dedupe_and_rank(all_hits, topk=topk)
         return {
@@ -179,6 +189,7 @@ def local_real_data_search(
     resolved_symbol = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or "")
     query_info = adapt_financial_query(query=query, symbol=resolved_symbol or symbol, period=period, raw_data_root=raw_data_root)
     records = _load_real_data_records(raw_data_root=raw_data_root, symbol=resolved_symbol or symbol, period=period)
+    profile_fallback_records = [r for r in records if isinstance(r, dict) and r.get("period_fallback")]
     if use_chunks:
         records = [chunk.to_dict() for chunk in chunk_records(records)]
     scored = []
@@ -199,6 +210,8 @@ def local_real_data_search(
             "returned_hit_count": len(returned),
             "failure_reason": _local_search_failure_reason(records=records, hits=returned, symbol=resolved_symbol or symbol, period=period),
             "chunking_enabled": use_chunks,
+            "profile_period_fallback": bool(profile_fallback_records),
+            "profile_fallback_periods": sorted({str(r.get("source_period") or "") for r in profile_fallback_records if str(r.get("source_period") or "")}),
             **query_info,
         },
     }
@@ -346,6 +359,130 @@ def hkex_announcement_search(
     return {"hits": hits[:topk], "meta": meta}
 
 
+def hk_financials_search(
+    query: str,
+    topk: int = 5,
+    symbol: str | None = None,
+    period: str | None = None,
+    raw_data_root: str = "data/raw/real_data",
+    data_source_config_path: str = "configs/data_sources.yaml",
+    enable_remote: bool = True,
+    **_: Any,
+) -> Dict[str, Any]:
+    """港股结构化财报引擎——通过 yfinance 获取三表数据。
+
+    返回格式兼容 eastmoney_financials，下游走 _hk_financials_metric_rows 解析。
+    """
+    if not enable_remote:
+        return {"hits": [], "meta": {"mode": "hk_financials", "record_count": 0, "failure_reason": "remote_sources_disabled"}}
+    resolved = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or query or "")
+    if not resolved or not resolved.upper().endswith(".HK"):
+        return {"hits": [], "meta": {"mode": "hk_financials", "symbol": resolved or "", "record_count": 0, "failure_reason": "unsupported_symbol"}}
+    try:
+        ticker = yf.Ticker(resolved)
+        info = ticker.info or {}
+        income = ticker.financials
+        balance = ticker.balance_sheet
+        cashflow = ticker.cashflow
+    except Exception as exc:
+        return {"hits": [], "meta": {"mode": "hk_financials", "symbol": resolved, "record_count": 0, "failure_reason": "yfinance_error", "error": str(exc)}}
+
+    hits: List[Dict[str, Any]] = []
+    digest = hashlib.sha1(f"{resolved}|{period or ''}|hk_financials".encode("utf-8")).hexdigest()[:10]
+    tables = {"income": None, "balance": None, "cashflow": None}
+    for table_type, df in [("income", income), ("balance", balance), ("cashflow", cashflow)]:
+        if df is None or df.empty:
+            continue
+        try:
+            rows_list = _yf_df_to_rows(df, period)
+        except Exception:
+            rows_list = []
+        if not rows_list:
+            continue
+        tables[table_type] = rows_list
+        hit = {
+            "evidence_id": f"{resolved}_{period or 'latest'}_hk_financials_{table_type}_{digest}",
+            "sample_id": f"{resolved}_{period or 'latest'}_hk_financials_{table_type}_{digest}",
+            "symbol": resolved,
+            "period": str(period or ""),
+            "source_type": "hk_financials",
+            "title": f"{resolved} HK {table_type} financial table",
+            "content": f"{resolved} {table_type} financial data via yfinance",
+            "source_url": f"https://finance.yahoo.com/quote/{resolved}",
+            "publish_time": "",
+            "trust_level": "medium",
+            "score": 7.0,
+            "metadata": {
+                "table_type": table_type,
+                "rows": rows_list,
+                "financials_raw": tables,
+                "table_id": f"{resolved}_{period or 'latest'}_hk_financials_{table_type}_{digest}",
+                "currency": _hk_currency(info),
+                "unit": "raw",
+            },
+        }
+        hits.append(hit)
+    meta = {
+        "mode": "hk_financials",
+        "symbol": resolved,
+        "record_count": len(hits),
+        "table_types": [k for k, v in tables.items() if v],
+    }
+    return {"hits": hits[:topk], "meta": meta}
+
+
+def _hk_currency(info: Dict[str, Any]) -> str:
+    """从 yfinance info 推断港股财报货币（HKD 或 CNY）。"""
+    currency = str(info.get("currency") or "HKD").upper()
+    return "CNY" if currency in ("CNY", "RMB") else currency
+
+
+def _yf_df_to_rows(df: Any, period: str) -> List[Dict[str, Any]]:
+    """将 yfinance DataFrame（列为日期、行为科目）转为 list of dicts。
+
+    每条含 {end_date, line_item, value, unit}，值统一转 float。
+    """
+    rows: List[Dict[str, Any]] = []
+    if df is None or df.empty:
+        return rows
+    # yfinance columns are datetimes (report dates)
+    target_year = ""
+    if period and period.upper().startswith("FY"):
+        try:
+            target_year = str(int(period.replace("FY", "")))
+        except ValueError:
+            pass
+    for col in df.columns:
+        col_str = str(col)
+        # Filter to match period if given
+        if target_year and target_year not in col_str:
+            continue
+        for line_item in df.index:
+            try:
+                val = df.loc[line_item, col]
+            except Exception:
+                continue
+            if val is None:
+                continue
+            try:
+                num_val = float(val)
+            except (TypeError, ValueError):
+                num_val = val  # keep as-is, downstream will handle
+            rows.append({
+                "end_date": col_str,
+                "line_item": str(line_item),
+                "value": num_val,
+                "unit": "raw",
+            })
+        if target_year:
+            break  # Only need one matching period
+    # If no period filter, keep only the most recent 2 years
+    if not target_year and rows:
+        dates = sorted(set(r["end_date"] for r in rows), reverse=True)
+        rows = [r for r in rows if r["end_date"] in dates[:2]]
+    return rows
+
+
 def serper_search(
     query: str,
     topk: int = 5,
@@ -430,139 +567,6 @@ def serper_search(
             "result_count": len(hits),
             "search_parameters": parsed.get("searchParameters", {}),
         },
-    }
-
-
-def metaso_search(
-    query: str,
-    topk: int = 5,
-    data_source_config_path: str = "configs/data_sources.yaml",
-    symbol: str | None = None,
-    period: str | None = None,
-    raw_data_root: str = "data/raw/real_data",
-    **_: Any,
-) -> Dict[str, Any]:
-    config = load_config(data_source_config_path)
-    metaso_cfg = dict(config.get("search", {}).get("metaso", {}))
-    load_env_files(config_path=data_source_config_path)
-
-    api_key = str(resolve_config_value(metaso_cfg, "api_key", "")).strip()
-    if not api_key:
-        raise RuntimeError("missing Metaso API key: set METASO_API_KEY in .env")
-
-    max_results = int(metaso_cfg.get("max_results") or topk)
-    max_results = min(max(topk, 1), max_results) if max_results > 0 else topk
-    payload = {
-        "query": query,
-        "limit": max_results,
-        "offset": 0,
-        "language": str(metaso_cfg.get("language") or "zh-cn"),
-        "region": str(metaso_cfg.get("region") or "cn"),
-    }
-    parsed = _post_json_search(
-        base_url=str(metaso_cfg.get("base_url") or "https://api.metaso.com/v1/search").rstrip("/"),
-        payload=payload,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-        timeout=float(metaso_cfg.get("timeout", 20)),
-        engine="metaso",
-    )
-    items = _coerce_search_items(parsed, keys=["results", "data", "items"])
-    resolved_symbol = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or _extract_symbol_from_query(query) or "")
-    hits = []
-    for index, item in enumerate(items[:max_results], start=1):
-        url = str(item.get("url") or item.get("link") or "")
-        title = str(item.get("title") or url or f"metaso_result_{index}")
-        snippet = str(item.get("description") or item.get("snippet") or item.get("abstract") or item.get("content") or "")
-        hits.append(
-            {
-                "evidence_id": _search_evidence_id("metaso", url, title, index),
-                "source_type": "web_search",
-                "title": title,
-                "content": snippet,
-                "source_url": url,
-                "url": url,
-                "symbol": resolved_symbol,
-                "period": str(period or ""),
-                "publish_time": str(item.get("publishedDate") or item.get("published_date") or item.get("date") or ""),
-                "trust_level": "medium",
-                "score": _safe_float(item.get("score", max_results - index + 1)),
-                "metadata": {
-                    "engine": "metaso",
-                    "position": item.get("rank", index),
-                    "author": item.get("author", ""),
-                    "categories": item.get("categories", []),
-                },
-            }
-        )
-    hits = [apply_source_quality(hit) for hit in hits]
-    return {
-        "hits": hits[:topk],
-        "meta": {"mode": "metaso", "result_count": len(hits)},
-    }
-
-
-def sogou_search(
-    query: str,
-    topk: int = 5,
-    data_source_config_path: str = "configs/data_sources.yaml",
-    symbol: str | None = None,
-    period: str | None = None,
-    raw_data_root: str = "data/raw/real_data",
-    **_: Any,
-) -> Dict[str, Any]:
-    config = load_config(data_source_config_path)
-    sogou_cfg = dict(config.get("search", {}).get("sogou", {}))
-    load_env_files(config_path=data_source_config_path)
-
-    api_key = str(resolve_config_value(sogou_cfg, "api_key", "")).strip()
-    if not api_key:
-        raise RuntimeError("missing Sogou API key: set SOGOU_API_KEY in .env")
-
-    max_results = int(sogou_cfg.get("max_results") or topk)
-    max_results = min(max(topk, 1), max_results) if max_results > 0 else topk
-    payload = {
-        "query": query,
-        "count": max_results,
-        "start": 0,
-        "language": str(sogou_cfg.get("language") or "zh-cn"),
-    }
-    parsed = _post_json_search(
-        base_url=str(sogou_cfg.get("base_url") or "https://api.sogou.com/v1/search").rstrip("/"),
-        payload=payload,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-        timeout=float(sogou_cfg.get("timeout", 20)),
-        engine="sogou",
-    )
-    items = _coerce_search_items(parsed, keys=["items", "results", "data"])
-    resolved_symbol = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or _extract_symbol_from_query(query) or "")
-    hits = []
-    for index, item in enumerate(items[:max_results], start=1):
-        url = str(item.get("url") or item.get("link") or "")
-        title = str(item.get("title") or item.get("name") or url or f"sogou_result_{index}")
-        snippet = str(item.get("abstract") or item.get("snippet") or item.get("description") or item.get("content") or "")
-        hits.append(
-            {
-                "evidence_id": _search_evidence_id("sogou", url, title, index),
-                "source_type": "web_search",
-                "title": title,
-                "content": snippet,
-                "source_url": url,
-                "url": url,
-                "symbol": resolved_symbol,
-                "period": str(period or ""),
-                "publish_time": str(item.get("date") or item.get("publishedDate") or ""),
-                "trust_level": "medium",
-                "score": _safe_float(item.get("score", max_results - index + 1)),
-                "metadata": {
-                    "engine": "sogou",
-                    "position": item.get("rank", item.get("position", index)),
-                    "display_url": item.get("displayUrl", item.get("display_url", "")),
-                },
-            }
-        )
-    return {
-        "hits": hits[:topk],
-        "meta": {"mode": "sogou", "result_count": len(hits)},
     }
 
 
@@ -705,6 +709,364 @@ def eastmoney_search(
     return {"hits": [hit][:topk], "meta": {"mode": "eastmoney", "symbol": resolved_symbol or code, "record_count": 1, "failure_reason": ""}}
 
 
+def sina_finance_search(
+    query: str,
+    topk: int = 5,
+    symbol: str | None = None,
+    period: str | None = None,
+    raw_data_root: str = "data/raw/real_data",
+    **_: Any,
+) -> Dict[str, Any]:
+    """新浪财经实时行情查询（替代 eastmoney）。
+
+    API: http://hq.sinajs.cn/list=sh600519,sz000001,hk00700
+    - sh = 上海 A 股, sz = 深圳 A 股, hk = 港股
+    - 返回 JavaScript 变量赋值::
+        var hq_str_sh600519="贵州茅台,1880.00,...";
+
+    返回字段 (A 股):
+        0:名称 1:开盘 2:昨收 3:当前 4:最高 5:最低
+        6:成交量(股) 7:成交额 8:时间 ...
+    """
+    resolved_symbol = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or _extract_symbol_from_query(query) or "")
+    sina_code = _sina_stock_code(resolved_symbol)
+    if not sina_code:
+        return {
+            "hits": [],
+            "meta": {"mode": "sina_finance", "symbol": resolved_symbol or "", "record_count": 0, "failure_reason": "unsupported_symbol"},
+        }
+
+    url = f"http://hq.sinajs.cn/list={sina_code}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 FinSight/0.1",
+        "Accept": "*/*",
+        "Referer": "https://finance.sina.com.cn",
+    }
+    raw = ""
+    last_error = ""
+    for _attempt in range(2):
+        req = request.Request(url, headers=headers, method="GET")
+        try:
+            with request.urlopen(req, timeout=12) as resp:
+                raw = resp.read().decode("gbk", errors="replace")
+            break
+        except (TimeoutError, socket.timeout):
+            last_error = "Sina quote timed out"
+        except error.HTTPError as exc:
+            body = exc.read().decode("gbk", errors="replace")
+            last_error = f"Sina HTTP {exc.code}: {body[:300]}"
+        except error.URLError as exc:
+            last_error = f"Sina URL error: {exc.reason}"
+        except Exception as exc:
+            last_error = f"Sina request error: {exc}"
+    if not raw:
+        return {
+            "hits": [],
+            "meta": {"mode": "sina_finance", "symbol": resolved_symbol or "", "record_count": 0, "failure_reason": "fetch_error", "error": last_error or "Sina quote failed"},
+        }
+
+    hits: list[Dict[str, Any]] = []
+    for line in raw.strip().splitlines():
+        line = line.strip()
+        if not line or "=" not in line:
+            continue
+        # 解析 var hq_str_PREFIX="...";
+        try:
+            var_part = line.split("=", 1)[1].strip()
+            if var_part.endswith(";"):
+                var_part = var_part[:-1]
+            if var_part.startswith('"') and var_part.endswith('"'):
+                var_part = var_part[1:-1]
+        except (IndexError, ValueError):
+            continue
+        fields = var_part.split(",")
+        if len(fields) < 4:
+            continue
+        name = fields[0].strip() if len(fields) > 0 else ""
+        code = resolved_symbol or name
+
+        if sina_code.startswith("hk"):
+            # 港股: 0:名称 1:开盘 2:昨收 3:当前 4:最高 5:最低 6:成交量 7:成交额
+            open_p = _safe_float(fields[1])
+            prev_close = _safe_float(fields[2])
+            current = _safe_float(fields[3])
+            high = _safe_float(fields[4])
+            low = _safe_float(fields[5])
+            volume = _safe_float(fields[6])
+            amount = _safe_float(fields[7])
+        else:
+            # A 股: 0:名称 1:开盘 2:昨收 3:当前 4:最高 5:最低 6:成交量 7:成交额
+            open_p = _safe_float(fields[1])
+            prev_close = _safe_float(fields[2])
+            current = _safe_float(fields[3])
+            high = _safe_float(fields[4])
+            low = _safe_float(fields[5])
+            volume = _safe_float(fields[6])
+            amount = _safe_float(fields[7])
+
+        change_pct = ((current - prev_close) / prev_close * 100) if prev_close and prev_close != 0 else 0.0
+
+        content = (
+            f"Sina quote for {name} ({code}): latest {current}, open {open_p}, "
+            f"prev_close {prev_close}, high {high}, low {low}, "
+            f"change {change_pct:.2f}%, volume {volume}, amount {amount}."
+        )
+        digest = hashlib.sha1(f"{code}|{period}|{content}".encode("utf-8")).hexdigest()[:10]
+        hit: Dict[str, Any] = {
+            "evidence_id": f"{code}_{period or 'latest'}_sina_{digest}",
+            "sample_id": f"{code}_{period or 'latest'}_sina_{digest}",
+            "symbol": resolved_symbol or code,
+            "period": str(period or ""),
+            "source_type": "market_api",
+            "title": f"{name} Sina finance quote",
+            "content": content,
+            "source_url": f"https://finance.sina.com.cn/realstock/company/{sina_code}/nc.shtml",
+            "publish_time": "",
+            "trust_level": "medium",
+            "score": 5.8,
+            "metadata": {
+                "provider": "SinaFinance",
+                "code": code,
+                "company_name": name,
+                "current_price": current,
+                "change_pct": round(change_pct, 2),
+                "volume": volume,
+                "amount": amount,
+            },
+        }
+        hits.append(hit)
+
+    return {"hits": hits[:topk], "meta": {"mode": "sina_finance", "symbol": resolved_symbol, "record_count": len(hits), "failure_reason": ""}}
+
+
+def _sina_stock_code(symbol: str) -> str:
+    """将 symbol 转换为新浪股票代码格式。
+
+    Examples:
+        600519.SS → sh600519
+        000858.SZ → sz000858
+        9988.HK   → hk00988
+        3690.HK   → hk03690
+        MSFT      → (美股不支持)
+    """
+    text = str(symbol or "").strip().upper()
+    if not text:
+        return ""
+    code = text.split(".")[0]
+    if text.endswith(".SS") or text.startswith("SH"):
+        return f"sh{code}"
+    if text.endswith(".SZ") or text.startswith("SZ"):
+        return f"sz{code}"
+    if text.endswith(".HK") or text.startswith("HK"):
+        return f"hk{code.zfill(5)}"
+    return ""
+
+
+def sina_financials_search(
+    query: str,
+    topk: int = 5,
+    symbol: str | None = None,
+    period: str | None = None,
+    raw_data_root: str = "data/raw/real_data",
+    **_: Any,
+) -> Dict[str, Any]:
+    """新浪财经完整财务数据（利润表+资产负债表+现金流量表）。
+
+    从新浪财务概况页抓取 HTML 表格数据：
+    http://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/stockid/{code}.phtml
+
+    返回比 eastmoney_financials 更多的历史对比数据。
+    仅支持 A 股（港股/美股不支持）。
+    """
+    resolved_symbol = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or _extract_symbol_from_query(query) or "")
+    sina_code = _sina_stock_code(resolved_symbol)
+    if not sina_code or not (sina_code.startswith("sh") or sina_code.startswith("sz")):
+        return {
+            "hits": [],
+            "meta": {"mode": "sina_financials", "symbol": resolved_symbol or "", "record_count": 0, "failure_reason": "unsupported_symbol"},
+        }
+
+    code = sina_code[2:]
+    url = f"http://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/stockid/{code}.phtml"
+    headers = {
+        "User-Agent": "Mozilla/5.0 FinSight/0.1",
+        "Accept": "text/html,*/*",
+    }
+    raw = ""
+    last_error = ""
+    for _attempt in range(2):
+        req = request.Request(url, headers=headers, method="GET")
+        try:
+            with request.urlopen(req, timeout=12) as resp:
+                raw = resp.read().decode("gbk", errors="replace")
+            break
+        except (TimeoutError, socket.timeout):
+            last_error = "Sina financials timed out"
+        except error.HTTPError as exc:
+            body = exc.read().decode("gbk", errors="replace")
+            last_error = f"Sina HTTP {exc.code}: {body[:300]}"
+        except error.URLError as exc:
+            last_error = f"Sina URL error: {exc.reason}"
+        except Exception as exc:
+            last_error = f"Sina request error: {exc}"
+    if not raw:
+        return {
+            "hits": [],
+            "meta": {"mode": "sina_financials", "symbol": resolved_symbol or "", "record_count": 0, "failure_reason": "fetch_error", "error": last_error},
+        }
+
+    # 解析 HTML 财务表格
+    hits = _parse_sina_financial_tables(raw, code, resolved_symbol, period)
+    return {
+        "hits": hits[:topk],
+        "meta": {"mode": "sina_financials", "symbol": resolved_symbol, "record_count": len(hits), "failure_reason": ""},
+    }
+
+
+def _parse_sina_financial_tables(
+    html: str,
+    code: str,
+    symbol: str,
+    period: str | None,
+) -> list[Dict[str, Any]]:
+    """解析新浪财务概况页的 HTML 表格。
+
+   识别三类财务表格并结构化输出：
+     1. 利润表（收入、成本、利润等）
+     2. 资产负债表（资产、负债、权益）
+     3. 现金流量表（经营、投资、筹资现金流）
+    """
+    import re
+
+    hits: list[Dict[str, Any]] = []
+
+    # 中文财务指标 → 英文标签映射
+    METRICS_MAP: dict[str, dict[str, str]] = {
+        # 利润表
+        "营业收入": {"field": "revenue", "table": "income"},
+        "营业总收入": {"field": "total_revenue", "table": "income"},
+        "营业利润": {"field": "operating_profit", "table": "income"},
+        "利润总额": {"field": "total_profit", "table": "income"},
+        "净利润": {"field": "net_profit", "table": "income"},
+        "归属于母公司股东的净利润": {"field": "parent_net_profit", "table": "income"},
+        "扣除非经常性损益后的净利润": {"field": "deducted_net_profit", "table": "income"},
+        "营业成本": {"field": "operating_cost", "table": "income"},
+        "销售费用": {"field": "selling_expense", "table": "income"},
+        "管理费用": {"field": "management_expense", "table": "income"},
+        "财务费用": {"field": "finance_expense", "table": "income"},
+        "投资收益": {"field": "investment_income", "table": "income"},
+        "营业税金及附加": {"field": "business_tax", "table": "income"},
+        "经营活动产生的现金流量净额": {"field": "operating_cashflow", "table": "cashflow"},
+        "投资活动产生的现金流量净额": {"field": "investing_cashflow", "table": "cashflow"},
+        "筹资活动产生的现金流量净额": {"field": "financing_cashflow", "table": "cashflow"},
+        "现金及现金等价物净增加额": {"field": "net_cash_change", "table": "cashflow"},
+        "总资产": {"field": "total_assets", "table": "balance"},
+        "总负债": {"field": "total_liabilities", "table": "balance"},
+        "归属于母公司股东权益": {"field": "parent_equity", "table": "balance"},
+        "股东权益合计": {"field": "total_equity", "table": "balance"},
+        "流动资产合计": {"field": "total_current_assets", "table": "balance"},
+        "非流动资产合计": {"field": "total_noncurrent_assets", "table": "balance"},
+        "流动负债合计": {"field": "total_current_liabilities", "table": "balance"},
+        "非流动负债合计": {"field": "total_noncurrent_liabilities", "table": "balance"},
+        "货币资金": {"field": "cash", "table": "balance"},
+        "应收账款": {"field": "accounts_receivable", "table": "balance"},
+        "存货": {"field": "inventory", "table": "balance"},
+        "固定资产": {"field": "fixed_assets", "table": "balance"},
+        "无形资产": {"field": "intangible_assets", "table": "balance"},
+        "毛利率": {"field": "gross_margin", "table": "income"},
+        "净利率": {"field": "net_margin", "table": "income"},
+        "净资产收益率": {"field": "roe", "table": "income"},
+        "总资产报酬率": {"field": "roa", "table": "income"},
+    }
+
+    # 在 HTML 中查找 <table> 并尝试提取财务数据
+    tables = re.findall(r"<table[^>]*>.*?</table>", html, re.DOTALL)
+
+    # 按表格类型分组收集行数据
+    table_data: dict[str, list[dict[str, str]]] = {
+        "income": [],
+        "balance": [],
+        "cashflow": [],
+    }
+
+    for table_html in tables:
+        # 尝试判断表格类型
+        table_text = re.sub(r"<[^>]+>", " ", table_html)
+        table_text = re.sub(r"&nbsp;", " ", table_text)
+        table_text = re.sub(r"\s+", " ", table_text).strip()
+
+        # 提取所有行（<tr>）
+        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", table_html, re.DOTALL)
+        if not rows:
+            continue
+
+        for row_html in rows:
+            cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row_html, re.DOTALL)
+            if len(cells) < 2:
+                continue
+            # 第一个 cell 是指标名称
+            label = re.sub(r"<[^>]+>", "", cells[0]).strip()
+            label = re.sub(r"&nbsp;", "", label).strip()
+            if not label:
+                continue
+
+            metric = METRICS_MAP.get(label)
+            if not metric:
+                continue
+            table_type = metric["table"]
+
+            # 提取后续 cell 中的数值（多个期间）
+            values: list[str] = []
+            for cell in cells[1:]:
+                val = re.sub(r"<[^>]+>", "", cell).strip()
+                val = re.sub(r"&nbsp;", "", val).strip()
+                if val and val != "--":
+                    values.append(val)
+
+            if values:
+                table_data[table_type].append({
+                    "label": label,
+                    "field": metric["field"],
+                    "values": values,
+                })
+
+    # 为每种表格类型生成一条 evidence
+    digest_input = f"{symbol}|{period}|sina_financials|{code}"
+    for table_type, rows_data in table_data.items():
+        if not rows_data:
+            continue
+
+        parts = [f"report_source sina_finance"]
+        for row in rows_data:
+            vals = ", ".join(row["values"][:3])
+            parts.append(f"{row['field']} {vals}")
+
+        content = f"Sina {table_type} financial table: " + "; ".join(parts)
+        digest = hashlib.sha1(f"{digest_input}|{table_type}".encode("utf-8")).hexdigest()[:10]
+        hits.append({
+            "evidence_id": f"{symbol}_{period or 'latest'}_sina_financials_{table_type}_{digest}",
+            "sample_id": f"{symbol}_{period or 'latest'}_sina_financials_{table_type}_{digest}",
+            "symbol": symbol,
+            "period": str(period or ""),
+            "source_type": "eastmoney_financials",
+            "title": f"{symbol} Sina {table_type} financial table",
+            "content": content,
+            "source_url": f"http://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/stockid/{code}.phtml",
+            "publish_time": "",
+            "trust_level": "medium",
+            "score": 8.0,
+            "metadata": {
+                "provider": "SinaFinance",
+                "code": code,
+                "table_type": table_type,
+                "rows": len(rows_data),
+                "fields": [r["field"] for r in rows_data],
+            },
+        })
+
+    return hits
+
+
 def cninfo_announcement_search(
     query: str,
     topk: int = 5,
@@ -712,7 +1074,7 @@ def cninfo_announcement_search(
     period: str | None = None,
     raw_data_root: str = "data/raw/real_data",
     data_source_config_path: str = "configs/data_sources.yaml",
-    enable_remote: bool = False,
+    enable_remote: bool = True,
     **_: Any,
 ) -> Dict[str, Any]:
     if not enable_remote:
@@ -813,7 +1175,7 @@ def exchange_announcement_search(
     period: str | None = None,
     raw_data_root: str = "data/raw/real_data",
     data_source_config_path: str = "configs/data_sources.yaml",
-    enable_remote: bool = False,
+    enable_remote: bool = True,
     **_: Any,
 ) -> Dict[str, Any]:
     if not enable_remote:
@@ -839,7 +1201,7 @@ def eastmoney_financials_search(
     period: str | None = None,
     raw_data_root: str = "data/raw/real_data",
     data_source_config_path: str = "configs/data_sources.yaml",
-    enable_remote: bool = False,
+    enable_remote: bool = True,
     **_: Any,
 ) -> Dict[str, Any]:
     if not enable_remote:
@@ -938,7 +1300,7 @@ def independent_macro_search(
     topk: int = 5,
     period: str | None = None,
     data_source_config_path: str = "configs/data_sources.yaml",
-    enable_remote: bool = False,
+    enable_remote: bool = True,
     **_: Any,
 ) -> Dict[str, Any]:
     if not enable_remote:
@@ -958,7 +1320,7 @@ def sec_edgar_search(
     period: str | None = None,
     data_source_config_path: str = "configs/data_sources.yaml",
     raw_data_root: str = "data/raw/real_data",
-    enable_remote: bool = False,
+    enable_remote: bool = True,
     **_: Any,
 ) -> Dict[str, Any]:
     if not enable_remote:
@@ -1309,17 +1671,37 @@ def _szse_announcement_search(code: str, period: str, topk: int, query: str, con
 
 def _summarize_eastmoney_financial_row(table_type: str, row: Dict[str, Any]) -> str:
     labels = {
-        "OPERATE_INCOME": "operating revenue",
+        # ── Income Statement ──
         "TOTAL_OPERATE_INCOME": "total operating revenue",
-        "NETPROFIT": "net profit",
+        "TOTAL_OPERATE_COST": "total operating cost",
+        "OPERATE_COST": "operating cost",
+        "SALE_EXPENSE": "selling expense",
+        "MANAGE_EXPENSE": "management expense",
+        "FINANCE_EXPENSE": "finance expense",
+        "OPERATE_PROFIT": "operating profit",
+        "TOTAL_PROFIT": "total profit before tax",
+        "INCOME_TAX": "income tax",
         "PARENT_NETPROFIT": "parent net profit",
+        "TOE_RATIO": "revenue growth pct",
+        "OPERATE_EXPENSE_RATIO": "opex ratio pct",
+        "INTEREST_NI": "interest income",
+        # ── Balance Sheet ──
         "TOTAL_ASSETS": "total assets",
         "TOTAL_LIABILITIES": "total liabilities",
         "TOTAL_EQUITY": "total equity",
         "MONETARYFUNDS": "cash and equivalents",
+        "ACCOUNTS_RECE": "accounts receivable",
+        "INVENTORY": "inventory",
+        "FIXED_ASSET": "fixed assets",
+        "ACCOUNTS_PAYABLE": "accounts payable",
+        # ── Cash Flow ──
         "NETCASH_OPERATE": "net operating cash flow",
         "NETCASH_INVEST": "net investing cash flow",
         "NETCASH_FINANCE": "net financing cash flow",
+        "SALES_SERVICES": "cash from sales",
+        "PAY_STAFF_CASH": "staff payments",
+        "CONSTRUCT_LONG_ASSET": "capex",
+        "CCE_ADD": "cash increase",
     }
     parts = [f"report_date {row.get('REPORT_DATE') or row.get('REPORTDATE') or 'unknown'}"]
     for key, label in labels.items():
@@ -1377,6 +1759,67 @@ def _normalize_hits(engine: str, hits: Any) -> List[SearchResult]:
     return normalized
 
 
+def _infer_market_from_kwargs(kwargs: dict) -> str:
+    """从 kwargs 中的 symbol 推断市场类型。
+
+    Returns:
+        "cn_a" | "hk" | "us"（默认 "us"）
+    """
+    symbol = str(kwargs.get("symbol", "") or "").upper().strip()
+    if symbol.endswith(".SS") or symbol.endswith(".SZ"):
+        return "cn_a"
+    if symbol.endswith(".HK"):
+        return "hk"
+    return "us"
+
+
+def _clean_search_results(results: List[SearchResult], market: str) -> List[SearchResult]:
+    """对 SearchResult 列表执行清洗 pipeline。
+
+    调用 cleaning_pipeline.clean_evidence() 清洗每条结果的
+    snippet/content，更新 score（空/垃圾内容归零）。
+    """
+    if not results or market not in ("cn_a", "hk", "us"):
+        return results
+
+    cleaned: List[SearchResult] = []
+    for hit in results:
+        raw = hit.raw if isinstance(hit.raw, dict) else {}
+
+        # 构造成 clean_evidence 需要的 dict
+        ev = {
+            "content": hit.snippet,
+            "score": hit.score,
+            "publish_time": raw.get("publish_time", ""),
+            "retrieved_at": raw.get("retrieved_at", ""),
+            "metadata": raw.get("metadata", {}),
+            "source_type": raw.get("source_type", hit.source_type),
+        }
+        ev_cleaned = clean_evidence(ev, market=market)
+
+        # 回写到 SearchResult
+        new_snippet = ev_cleaned.get("text_clean") or ev_cleaned.get("content") or hit.snippet
+        cleaned_flags = ev_cleaned.get("cleaning_flags", [])
+
+        updated = SearchResult(
+            result_id=hit.result_id,
+            engine=hit.engine,
+            title=hit.title,
+            snippet=str(new_snippet),
+            url=hit.url,
+            score=float(ev_cleaned.get("score", hit.score)),
+            source_type=hit.source_type,
+            source_authority=hit.source_authority,
+            authority_level=hit.authority_level,
+            source_document_type=hit.source_document_type,
+            authority_score=hit.authority_score,
+            raw=dict(raw, cleaning_flags=cleaned_flags, cleaned=True),
+        )
+        cleaned.append(updated)
+
+    return cleaned
+
+
 def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
     deduped: Dict[str, SearchResult] = {}
     for hit in hits:
@@ -1388,7 +1831,7 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
         existing = deduped.get(key)
         if existing is None or hit.score > existing.score:
             deduped[key] = hit
-    ranked = sorted(deduped.values(), key=lambda item: (item.score + item.authority_score * 0.05), reverse=True)
+    ranked = sorted(deduped.values(), key=lambda item: (item.score, item.authority_score), reverse=True)
     selected: List[SearchResult] = []
     source_counts: Dict[str, int] = {}
     default_diversity_cap = 4
@@ -1520,12 +1963,54 @@ def _load_real_data_records(raw_data_root: str, symbol: str | None, period: str 
         if not symbol_dir.exists():
             continue
         periods = [period] if period else [path.name for path in symbol_dir.iterdir() if path.is_dir()]
+        loaded_target_period = False
+        target_has_profile = False
         for current_period in periods:
             period_dir = symbol_dir / str(current_period)
             if not period_dir.exists():
                 continue
-            records.extend(_load_period_records(period_dir=period_dir, symbol=str(current_symbol), period=str(current_period)))
+            period_records = _load_period_records(
+                period_dir=period_dir,
+                symbol=str(current_symbol),
+                period=str(current_period),
+            )
+            records.extend(period_records)
+            loaded_target_period = True
+            target_has_profile = target_has_profile or any(
+                str(item.get("source_type") or "") == "company_profile" for item in period_records
+            )
+        if period and (not loaded_target_period or not target_has_profile):
+            fallback_profile = _load_latest_profile_record(symbol_dir=symbol_dir, symbol=str(current_symbol), target_period=str(period))
+            if fallback_profile:
+                records.append(fallback_profile)
     return records
+
+
+def _load_latest_profile_record(symbol_dir: Path, symbol: str, target_period: str) -> Dict[str, Any] | None:
+    period_dirs = sorted([p for p in symbol_dir.iterdir() if p.is_dir()], key=lambda p: p.name, reverse=True)
+    for period_dir in period_dirs:
+        profile_path = period_dir / "company_profile.json"
+        if not profile_path.exists():
+            continue
+        try:
+            profile = json.loads(profile_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        record = _record(
+            symbol=symbol,
+            period=target_period,
+            source_type="company_profile",
+            title=f"{symbol} company profile",
+            content=str(profile.get("description") or profile.get("business_summary") or profile.get("longBusinessSummary") or ""),
+            source_url=str(profile.get("source_url", "")),
+            publish_time=str(profile.get("as_of_date", "")),
+            trust_level=str(profile.get("trust_level", "medium")),
+            metadata={**profile, "source_period": period_dir.name, "period_fallback": True},
+        )
+        record["source_period"] = period_dir.name
+        record["period_fallback"] = True
+        return record
+    return None
 
 
 def _load_period_records(period_dir: Path, symbol: str, period: str) -> List[Dict[str, Any]]:
@@ -1539,7 +2024,12 @@ def _load_period_records(period_dir: Path, symbol: str, period: str) -> List[Dic
                 period=period,
                 source_type="company_profile",
                 title=f"{symbol} company profile",
-                content=str(profile.get("description", "")),
+                content=str(
+                    profile.get("description")
+                    or profile.get("business_summary")
+                    or profile.get("longBusinessSummary")
+                    or ""
+                ),
                 source_url=str(profile.get("source_url", "")),
                 publish_time=str(profile.get("as_of_date", "")),
                 trust_level=str(profile.get("trust_level", "medium")),

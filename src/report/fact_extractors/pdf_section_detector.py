@@ -49,17 +49,27 @@ CN_A_SECTION_ORDER = [
 # 无"第X节"前缀的独立标题（部分早期报告或非标格式）
 CN_A_FREE_STANDING = [
     (r"释义", "glossary"),
+    # 业务概览 — 覆盖各种非标准格式
     (r"公司简介(?:和|与)?主要财务指标", "business_overview"),
-    (r"(?:主营业务|业务(?:概览|情况|描述)|公司业务)", "business_overview"),
-    (r"经营情况讨论与分析|管理层讨论与分析|管理层讨论", "management_discussion"),
+    (r"(?:主营业务|业务(?:概览|情况|描述|概要)|公司业务|公司概要|经营概览|主要业务|业务发展)", "business_overview"),
+    (r"公司(?:基本)?概况", "business_overview"),
+    (r"(?:公司)?简介", "business_overview"),
+    (r"管理层讨论与分析|管理层讨论|经营情况讨论与分析|经营讨论与分析", "management_discussion"),
     (r"公司治理", "ownership_governance"),
-    (r"(?:环境与社会责任|ESG|可持续发展)", "esg"),
+    (r"(?:环境与社会责任|ESG|可持续发展|环境\s*社会\s*治理)", "esg"),
     (r"重要事项", "important_matters"),
-    (r"股份变动及股东情况|股东情况|前十名股东", "shareholder_structure"),
+    (r"股份变动及股东情况|股东情况|前十名股东|股东变动", "shareholder_structure"),
     (r"(?:优先股|债券)相关情况", "special_securities"),
-    (r"财务报告|审计报告", "financial_statements"),
-    (r"风险提示|可能面对的风险|风险因素", "risk_factors"),
-    (r"核心竞争力分析", "business_overview"),
+    (r"财务报告|审计报告|财务报表", "financial_statements"),
+    (r"风险提示|可能面对的风险|风险因素|风险分析", "risk_factors"),
+    (r"核心竞争力分析|核心竞争能力", "business_overview"),
+    # 中文数字标号前缀（深交所/非标格式使用 "一、公司简介"）
+    (r"[一二三四五六七八九十]+[、.．]\s*公司简介", "business_overview"),
+    (r"[一二三四五六七八九十]+[、.．]\s*(?:业务概要|经营概览|公司业务)", "business_overview"),
+    (r"[一二三四五六七八九十]+[、.．]\s*(?:经营情况|管理层)讨论与分析", "management_discussion"),
+    (r"[一二三四五六七八九十]+[、.．]\s*公司治理", "ownership_governance"),
+    (r"[一二三四五六七八九十]+[、.．]\s*财务报告", "financial_statements"),
+    (r"[一二三四五六七八九十]+[、.．]\s*风险提示", "risk_factors"),
 ]
 
 # 港股年报常见标题

@@ -5,6 +5,7 @@ from src.report.citation_manager import (
     append_references_to_markdown,
     build_citation_artifacts,
     build_citations,
+    build_citations_from_map,
     render_citations_markdown,
 )
 from src.report.chart_generator import generate_report_charts
@@ -34,6 +35,7 @@ __all__ = [
     "inject_chart_references",
     "build_citation_artifacts",
     "build_citations",
+    "build_citations_from_map",
     "export_markdown_to_docx",
     "generate_report_charts",
     "polish_report_html",

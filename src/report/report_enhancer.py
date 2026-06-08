@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from html import escape
+import re
 from typing import Any, Dict, List
 
 
@@ -10,19 +11,21 @@ CHARTS_HEADER = "## 图表"
 
 
 def attach_charts_to_markdown(markdown: str, charts: List[Dict[str, Any]]) -> str:
+    charts = _visible_charts(charts)
     base = _strip_markdown_charts(markdown).rstrip()
-    lines = [CHARTS_HEADER, ""]
     if not charts:
-        lines.append("- 暂无图表。")
-    else:
-        for chart in charts:
-            title = str(chart.get("title") or chart.get("chart_id") or "图表")
-            output_path = str(chart.get("output_path") or "")
-            if output_path:
-                lines.append(f"![{title}]({output_path})")
-                lines.append("")
-            else:
-                lines.append(f"- {title}")
+        return base + ("\n" if base else "")
+
+    lines = [CHARTS_HEADER, ""]
+    for chart in charts:
+        title = str(chart.get("title") or chart.get("chart_id") or "图表")
+        output_path = str(chart.get("output_path") or "")
+        web_path = _chart_path_to_web_url(output_path)
+        if web_path:
+            lines.append(f"![{title}]({web_path})")
+            lines.append("")
+        else:
+            lines.append(f"- {title}")
     return base + "\n\n" + "\n".join(lines).rstrip() + "\n"
 
 
@@ -33,6 +36,7 @@ def inject_chart_references(markdown: str, charts: List[Dict[str, Any]], charts_
     section headers.  If a section already contains a chart reference, it is
     skipped to avoid duplication.
     """
+    charts = _visible_charts(charts)
     if not charts:
         return markdown
 
@@ -109,28 +113,85 @@ def inject_chart_references(markdown: str, charts: List[Dict[str, Any]], charts_
 
 
 def attach_charts_to_html(html: str, charts: List[Dict[str, Any]]) -> str:
+    charts = _visible_charts(charts)
+    if not charts or _has_interactive_charts(html):
+        return html
+
     block = render_chart_html(charts)
+    if not block:
+        return html
     if "</body>" in html:
         return html.replace("</body>", block + "\n</body>")
     return html.rstrip() + "\n" + block + "\n"
 
 
 def render_chart_html(charts: List[Dict[str, Any]]) -> str:
-    parts = ['<section class="report-charts"><h2>图表</h2>']
+    charts = _visible_charts(charts)
     if not charts:
-        parts.append("<p>暂无图表。</p>")
-    else:
-        for chart in charts:
-            title = escape(str(chart.get("title") or chart.get("chart_id") or "图表"))
-            output_path = str(chart.get("output_path") or "")
-            safe_path = escape(output_path, quote=True)
-            parts.append('<figure class="chart-card">')
-            if output_path:
-                parts.append(f'<img src="{safe_path}" alt="{title}">')
-            parts.append(f"<figcaption>{title}</figcaption>")
-            parts.append("</figure>")
+        return ""
+
+    parts = ['<section class="report-charts"><h2>图表</h2>']
+    for chart in charts:
+        title = escape(str(chart.get("title") or chart.get("chart_id") or "图表"))
+        output_path = str(chart.get("output_path") or "")
+        web_path = _chart_path_to_web_url(output_path)
+        safe_path = escape(web_path, quote=True)
+        parts.append('<figure class="chart-card">')
+        if web_path:
+            parts.append(f'<img src="{safe_path}" alt="{title}">')
+        parts.append(f"<figcaption>{title}</figcaption>")
+        parts.append("</figure>")
     parts.append("</section>")
     return "\n".join(parts)
+
+
+def _visible_charts(charts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        chart
+        for chart in charts
+        if isinstance(chart, dict)
+        and chart.get("diagnostic_only") is not True
+        and str(chart.get("chart_id") or "") not in {"claim_confidence_bar", "evidence_source_mix"}
+    ]
+
+
+def _has_interactive_charts(html: str) -> bool:
+    return any(
+        marker in html
+        for marker in (
+            "chartPayloads",
+            "data-chart-tab=",
+            "data-chart-pane=",
+            "交互图表",
+            "Interactive Charts",
+        )
+    )
+
+
+def _chart_path_to_web_url(path: str) -> str:
+    """Convert a filesystem chart path to an absolute web artifact URL.
+
+    The web_ui serves artifacts at ``/artifacts/<relative_path>``.  Charts are
+    stored under ``data/outputs_user/runs/{run_id}/outputs/charts/`` on disk,
+    but the report HTML is served from a different directory tree
+    (``data/reports_user/runs/{run_id}/reports/report.html``).  A bare
+    filesystem-relative path like ``data\\outputs_user\\runs\\{id}\\outputs\\
+    charts\\file.png`` would resolve to the wrong place when the browser
+    fetches it relative to the report URL.
+
+    This function produces an absolute artifact URL:
+    ``/artifacts/runs/{id}/outputs/charts/<file>``
+    so the web_ui's ``_send_artifact`` handler strips ``/artifacts/`` and
+    resolves via ``output_root / "runs/{id}/outputs/charts/file.png"``.
+
+    If the path doesn't match the expected ``runs/…/outputs/charts`` pattern
+    the original value is returned unchanged.
+    """
+    posix = path.replace("\\", "/")
+    match = re.search(r"runs/[^/]+/outputs/charts/[^/]+\.png$", posix)
+    if match:
+        return "/artifacts/" + match.group(0)
+    return path
 
 
 def polish_report_html(html: str) -> str:

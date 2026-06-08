@@ -10,6 +10,7 @@ import re
 from typing import Any, Dict, Iterable, List
 
 from src.agents.research_blackboard import quality_generalization_checks
+from src.report.mojibake_guard import build_mojibake_quality_issue, looks_like_mojibake
 from src.utils.config import load_config
 
 
@@ -101,6 +102,7 @@ def evaluate_report_quality_from_paths(
     }
     _check_delivery_policy(artifacts, issues)
     _check_currency_policy(artifacts, issues)
+    _check_cross_market_regressions(artifacts, issues)
     _check_pdf_rag_policy(artifacts, issues)
     _check_final_html_artifact_policy(artifacts, issues)
     _check_cross_report_symbol_pollution(artifacts, issues)
@@ -108,6 +110,7 @@ def evaluate_report_quality_from_paths(
     _check_html_table_integrity(artifacts, issues)
     _check_developer_placeholder_leakage(artifacts, issues)
     _check_mojibake_policy(artifacts, issues)
+    _check_claim_citation_policy(artifacts, issues)
     _check_official_source_distribution_policy(artifacts, issues)
     _check_business_overview_wrong_section_policy(artifacts, issues)
     _valuation_consistency_check(artifacts, issues)
@@ -221,10 +224,32 @@ def resolve_run_paths(run_dir: str | Path) -> RunPaths:
         return RunPaths(run_dir=root, outputs_dir=outputs, reports_dir=reports)
     if root.name == "outputs":
         reports = root.parent / "reports"
+        if not reports.exists():
+            reports = _mirror_reports_dir(root)
         return RunPaths(run_dir=root.parent, outputs_dir=root, reports_dir=reports)
     if (root / "outputs").exists():
         return RunPaths(run_dir=root, outputs_dir=root / "outputs", reports_dir=root / "reports")
-    return RunPaths(run_dir=root, outputs_dir=root, reports_dir=root.parent / "reports")
+    reports = root.parent / "reports"
+    if not reports.exists():
+        reports = _mirror_reports_dir(root)
+    return RunPaths(run_dir=root, outputs_dir=root, reports_dir=reports)
+
+
+def _mirror_reports_dir(outputs_dir: Path) -> Path:
+    parts = list(outputs_dir.parts)
+    if "outputs_user" in parts:
+        idx = parts.index("outputs_user")
+        parts[idx] = "reports_user"
+        if parts[-1] == "outputs":
+            parts[-1] = "reports"
+        return Path(*parts)
+    if "outputs" in parts:
+        idx = parts.index("outputs")
+        parts[idx] = "reports"
+        if parts[-1] == "outputs":
+            parts[-1] = "reports"
+        return Path(*parts)
+    return outputs_dir.parent / "reports"
 
 
 def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
@@ -655,6 +680,56 @@ def _check_currency_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any
 
     # Check for CNY strings in USD report deliverables
     _check_currency_market_mismatch(artifacts, issues, market, symbol)
+
+
+def _check_cross_market_regressions(
+    artifacts: Dict[str, Any],
+    issues: List[Dict[str, Any]],
+) -> None:
+    search_meta = artifacts.get("search_meta", {}) if isinstance(artifacts.get("search_meta"), dict) else {}
+    engine_meta = search_meta.get("engine_meta", {}) if isinstance(search_meta.get("engine_meta"), dict) else {}
+    local_meta = engine_meta.get("local_evidence", {}) if isinstance(engine_meta.get("local_evidence"), dict) else {}
+    if (
+        str(local_meta.get("mode") or "") in {"vector", "hybrid", "hybrid_rerank"}
+        and int(local_meta.get("source_record_count") or 0) == 0
+        and str(local_meta.get("mode_effective") or "") != "unavailable"
+    ):
+        _issue(
+            issues,
+            "blocker",
+            "retrieval_unavailable_misreported",
+            "local retrieval reports a vector/hybrid mode although no candidate records were loaded",
+        )
+
+    contracts = artifacts.get("report_section_contracts", {})
+    contracts_data = contracts.get("contracts", {}) if isinstance(contracts, dict) else {}
+    peer = contracts_data.get("peer_compare", {}) if isinstance(contracts_data, dict) else {}
+    if isinstance(peer, dict) and str(peer.get("status") or "") == "supported":
+        text = str(peer.get("deterministic_text") or "")
+        rows = [line for line in text.splitlines() if line.startswith("|")][2:]
+        populated = [
+            line for line in rows
+            if any(token.strip() for token in line.split("|")[3:7])
+            and "目标公司" not in line
+        ]
+        if not populated:
+            _issue(issues, "blocker", "peer_supported_without_metrics", "peer comparison is supported without a populated non-target peer row")
+
+    summary = artifacts.get("summary", {}) if isinstance(artifacts.get("summary"), dict) else {}
+    symbol = str(summary.get("symbol") or "").upper()
+    market = str((artifacts.get("currency_audit") or {}).get("market") or "")
+    if not market and symbol and not symbol.endswith((".SS", ".SZ", ".HK")):
+        market = "us"
+    if market == "us":
+        governance = _section_body(_report_text(artifacts), ("股权结构与公司治理", "公司治理", "governance"))
+        if "监事会" in governance:
+            _issue(issues, "blocker", "us_governance_market_mismatch", "US governance section contains A-share supervisory-board terminology")
+
+    sensitivity = artifacts.get("valuation_sensitivity", {}) if isinstance(artifacts.get("valuation_sensitivity"), dict) else {}
+    has_scenarios = isinstance(sensitivity.get("scenario_values"), dict) and len(sensitivity["scenario_values"]) >= 2
+    sensitivity_contract = contracts_data.get("valuation_sensitivity", {}) if isinstance(contracts_data, dict) else {}
+    if has_scenarios and isinstance(sensitivity_contract, dict) and str(sensitivity_contract.get("status") or "") == "gap":
+        _issue(issues, "blocker", "valuation_sensitivity_dropped", "valuation sensitivity scenarios exist but the report contract marks the section as gap")
 
 
 def _check_currency_market_mismatch(
@@ -1348,3 +1423,57 @@ def _as_list(value: Any) -> List[Dict[str, Any]]:
     if isinstance(value, list):
         return [item for item in value if isinstance(item, dict)]
     return []
+
+
+# Clean overrides for broader mojibake enforcement.
+def _check_mojibake_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    checks = {
+        "report_md": artifacts.get("report_md"),
+        "report_html": artifacts.get("report_html"),
+        "charts": artifacts.get("charts"),
+        "citations": artifacts.get("citations"),
+        "summary": artifacts.get("summary"),
+        "pdf_section_summaries": artifacts.get("pdf_section_summaries"),
+        "report_section_contracts": artifacts.get("report_section_contracts"),
+    }
+    for artifact_name, value in checks.items():
+        issue = build_mojibake_quality_issue(artifact_name, value)
+        if issue:
+            issues.append(issue)
+
+
+def _check_claim_citation_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    claims = artifacts.get("claims", []) if isinstance(artifacts.get("claims"), list) else []
+    if not claims:
+        return
+    text = _report_text(artifacts)
+    citations = artifacts.get("citations", []) if isinstance(artifacts.get("citations"), list) else []
+    citation_ids = {
+        str(item.get("evidence_id") or "").strip()
+        for item in citations
+        if isinstance(item, dict) and str(item.get("evidence_id") or "").strip()
+    }
+    missing: List[str] = []
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        for eid in claim.get("evidence_ids") or []:
+            evidence_id = str(eid or "").strip()
+            if not evidence_id:
+                continue
+            if evidence_id in citation_ids or evidence_id in text:
+                continue
+            missing.append(evidence_id)
+    unique_missing = sorted(set(missing))
+    if unique_missing:
+        preview = ", ".join(unique_missing[:5])
+        _issue(
+            issues,
+            "blocker",
+            "claim_citation_policy",
+            f"claim evidence ids are absent from final citations/body: {preview}",
+        )
+
+
+def _contains_mojibake(text: str) -> bool:
+    return looks_like_mojibake(text)

@@ -42,11 +42,44 @@ def build_standard_financial_metrics(records: Iterable[Dict[str, Any]]) -> Dict[
             rows, rejected = _partition_period_rows(_local_financial_metric_rows(record), record)
             metrics.extend(rows)
             rejected_metrics.extend(rejected)
+        elif source_type == "hk_financials":
+            rows, rejected = _partition_period_rows(_hk_financials_metric_rows(record), record)
+            metrics.extend(rows)
+            rejected_metrics.extend(rejected)
 
-    present = {str(item.get("metric_name", "")) for item in metrics}
+    # Deduplicate: for same metric_name, keep the highest-confidence entry,
+    # preferring structured sources (eastmoney, local financials) over
+    # PDF-extracted tables which may have scale/unit errors.
+    deduped: Dict[str, Dict[str, Any]] = {}
+    for item in metrics:
+        name = str(item.get("metric_name", ""))
+        if not name:
+            continue
+        source_id = str(item.get("source_evidence_id") or "")
+        is_pdf = "pdf_" in source_id.lower() or "pdf" in str(item.get("calculation_formula") or "").lower()
+        existing = deduped.get(name)
+        if existing is None:
+            deduped[name] = item
+            continue
+        existing_conf = float(existing.get("confidence", 0) or 0)
+        current_conf = float(item.get("confidence", 0) or 0)
+        existing_pdf = "pdf_" in str(existing.get("source_evidence_id") or "").lower() or "pdf" in str(existing.get("calculation_formula") or "").lower()
+        # If current is PDF and existing is not, skip current (PDF loses to structured)
+        if is_pdf and not existing_pdf:
+            continue
+        # If existing is PDF and current is not, replace with structured
+        if existing_pdf and not is_pdf:
+            deduped[name] = item
+            continue
+        # Both same class: keep the higher-confidence one
+        if current_conf > existing_conf:
+            deduped[name] = item
+    deduped_metrics = list(deduped.values())
+
+    present = {str(item.get("metric_name", "")) for item in deduped_metrics}
     return {
-        "metrics": metrics,
-        "metric_count": len(metrics),
+        "metrics": deduped_metrics,
+        "metric_count": len(deduped_metrics),
         "rejected_metrics": rejected_metrics,
         "rejected_metric_count": len(rejected_metrics),
         "coverage": {
@@ -76,9 +109,21 @@ def build_standard_statement_rows(records: Iterable[Dict[str, Any]]) -> List[Dic
         elif source_type in {"market_api", "market_data"}:
             accepted, _rejected = _partition_period_rows(_market_api_statement_rows(record), record)
             rows.extend(accepted)
-    priority = {"sec_companyfacts": 0, "sec_filing": 1, "pdf_statement_table": 2, "eastmoney_financials": 3, "market_api": 4, "market_data": 4}
+        elif source_type == "hk_financials":
+            accepted, _rejected = _partition_period_rows(_hk_financials_statement_rows(record), record)
+            rows.extend(accepted)
+    priority = {"sec_companyfacts": 0, "sec_filing": 1, "eastmoney_financials": 2, "pdf_statement_table": 3, "hk_financials": 4, "market_api": 5, "market_data": 5}
     rows.sort(key=lambda row: priority.get(str(row.get("source_type") or "").lower(), 99))
-    return rows
+    # Deduplicate: keep first row per line_item (most authoritative source wins)
+    seen: Dict[str, Dict[str, Any]] = {}
+    deduped_rows: List[Dict[str, Any]] = []
+    for row in rows:
+        key = str(row.get("line_item") or "")
+        if not key or key in seen:
+            continue
+        seen[key] = row
+        deduped_rows.append(row)
+    return deduped_rows
 
 
 def build_standard_table_artifacts(records: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -163,21 +208,61 @@ def _sec_companyfacts_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]
     period = str(record.get("period") or "")
     table_id = _table_id(symbol, period, evidence_id, "sec_companyfacts")
     rows: List[Dict[str, Any]] = []
+
+    # ── 30+ GAAP 指标映射 ──────────────────────────
+    # (metric_name, [SEC taxonomy concept names...], formula label)
     mapping = [
-        ("revenue", ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues"], "reported SEC revenue"),
-        ("net_income", ["NetIncomeLoss"], "reported SEC net income"),
-        ("total_assets", ["Assets"], "reported SEC assets"),
-        ("cash_and_equivalents", ["CashAndCashEquivalentsAtCarryingValue"], "reported SEC cash and equivalents"),
-        (
-            "operating_cash_flow",
-            ["NetCashProvidedByUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"],
-            "reported SEC operating cash flow",
-        ),
-        (
-            "capex",
-            ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],
-            "reported SEC cash paid for capital assets",
-        ),
+        # ── 利润表 (Income Statement) ──
+        ("revenue", ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues"], "GAAP revenue"),
+        ("net_income", ["NetIncomeLoss"], "GAAP net income"),
+        ("gross_profit", ["GrossProfit"], "GAAP gross profit"),
+        ("cost_of_revenue", ["CostOfRevenue"], "GAAP cost of revenue"),
+        ("operating_income", ["OperatingIncomeLoss"], "GAAP operating income"),
+        ("operating_expense", ["OperatingExpenses"], "GAAP operating expenses"),
+        ("research_development", ["ResearchAndDevelopmentExpense"], "GAAP R&D expense"),
+        ("selling_general_admin", ["SellingGeneralAndAdministrativeExpense"], "GAAP SG&A expense"),
+        ("interest_expense", ["InterestExpense", "InterestExpenseNonoperating"], "GAAP interest expense"),
+        ("interest_income", ["InterestIncome", "InterestIncomeNonoperating"], "GAAP interest income"),
+        ("other_income_expense", ["OtherNonoperatingIncomeExpense", "OtherNonoperatingIncome"], "GAAP other income/expense"),
+        ("income_tax_expense", ["IncomeTaxExpenseProvisionBenefit"], "GAAP income tax expense"),
+        ("income_from_continuing", ["IncomeLossFromContinuingOperations"], "GAAP income from continuing ops"),
+        ("net_income_attributable", ["NetIncomeLossAttributableToParent"], "GAAP net income attributable to parent"),
+        ("eps_basic", ["EarningsPerShareBasic"], "GAAP EPS basic"),
+        ("eps_diluted", ["EarningsPerShareDiluted"], "GAAP EPS diluted"),
+        ("weighted_avg_shares_basic", ["WeightedAverageNumberOfSharesOutstandingBasic"], "GAAP weighted avg shares basic"),
+        ("weighted_avg_shares_diluted", ["WeightedAverageNumberOfSharesOutstandingDiluted"], "GAAP weighted avg shares diluted"),
+        # ── 资产负债表 (Balance Sheet) ──
+        ("total_assets", ["Assets"], "GAAP total assets"),
+        ("current_assets", ["AssetsCurrent", "CurrentAssets"], "GAAP current assets"),
+        ("cash_and_equivalents", ["CashAndCashEquivalentsAtCarryingValue"], "GAAP cash and equivalents"),
+        ("accounts_receivable", ["AccountsReceivableNetCurrent", "AccountsReceivableNet"], "GAAP accounts receivable"),
+        ("inventory", ["InventoryNet", "Inventory"], "GAAP inventory"),
+        ("property_plant_equipment", ["PropertyPlantAndEquipmentNet"], "GAAP PP&E net"),
+        ("goodwill", ["Goodwill"], "GAAP goodwill"),
+        ("intangible_assets", ["IntangibleAssetsNetExcludingGoodwill", "IntangibleAssetsNet"], "GAAP intangible assets"),
+        ("total_liabilities", ["Liabilities"], "GAAP total liabilities"),
+        ("current_liabilities", ["LiabilitiesCurrent", "CurrentLiabilities"], "GAAP current liabilities"),
+        ("short_term_debt", ["ShortTermBorrowings"], "GAAP short-term borrowings"),
+        ("long_term_debt", ["LongTermDebtNoncurrent", "LongTermDebt"], "GAAP long-term debt"),
+        ("accounts_payable", ["AccountsPayableCurrent", "AccountsPayable"], "GAAP accounts payable"),
+        ("stockholders_equity", ["StockholdersEquity"], "GAAP stockholders equity"),
+        ("retained_earnings", ["RetainedEarningsAccumulatedDeficit"], "GAAP retained earnings"),
+        ("accum_other_comprehensive", ["AccumulatedOtherComprehensiveIncomeLossNetOfTax"], "GAAP AOCI"),
+        # ── 现金流量表 (Cash Flow) ──
+        ("operating_cash_flow",
+         ["NetCashProvidedByUsedInOperatingActivities",
+          "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"],
+         "GAAP operating cash flow"),
+        ("investing_cash_flow", ["NetCashProvidedByUsedInInvestingActivities"], "GAAP investing cash flow"),
+        ("financing_cash_flow", ["NetCashProvidedByUsedInFinancingActivities"], "GAAP financing cash flow"),
+        ("capex",
+         ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],
+         "GAAP capital expenditure"),
+        ("depreciation_amortization",
+         ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization"],
+         "GAAP depreciation & amortization"),
+        ("stock_based_compensation", ["ShareBasedCompensation"], "GAAP stock-based compensation"),
+        ("dividends_paid", ["DividendsPaid", "PaymentsOfDividends"], "GAAP dividends paid"),
     ]
     for metric_name, keys, formula in mapping:
         fact = _first_fact(facts, keys)
@@ -200,7 +285,11 @@ def _sec_companyfacts_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]
                 raw=fact,
             )
         )
-    ocf = _first_fact(facts, ["NetCashProvidedByUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"])
+
+    # ── 派生指标 ──
+    # 自由现金流 = OCF - capex
+    ocf = _first_fact(facts, ["NetCashProvidedByUsedInOperatingActivities",
+                               "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"])
     capex = _first_fact(facts, ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"])
     ocf_value = _safe_float(ocf.get("value")) if ocf else None
     capex_value = _safe_float(capex.get("value")) if capex else None
@@ -223,6 +312,50 @@ def _sec_companyfacts_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]
                 raw=raw,
             )
         )
+
+    # EBIT = operating_income (or net_income + tax + interest)
+    op_inc = _first_fact(facts, ["OperatingIncomeLoss"])
+    op_inc_val = _safe_float(op_inc.get("value")) if op_inc else None
+    if op_inc_val is not None:
+        rows.append(
+            _metric_row(
+                metric_name="ebit",
+                value=op_inc_val,
+                unit=str(op_inc.get("unit") or "USD"),
+                period=period,
+                source_table_id=table_id,
+                source_evidence_id=evidence_id,
+                calculation_formula="OperatingIncomeLoss (GAAP EBIT)",
+                confidence=0.88,
+                symbol=symbol,
+                report_date=str(op_inc.get("end") or ""),
+                notice_date=str(op_inc.get("filed") or record.get("publish_time") or ""),
+                raw=op_inc,
+            )
+        )
+
+    # gross_margin = gross_profit / revenue (计算逻辑在 coverage 层已完成)
+    rev = _first_fact(facts, ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues"])
+    gp = _first_fact(facts, ["GrossProfit"])
+    rev_val = _safe_float(rev.get("value")) if rev else None
+    gp_val = _safe_float(gp.get("value")) if gp else None
+    if rev_val and gp_val:
+        rows.append(
+            _metric_row(
+                metric_name="gross_margin",
+                value=gp_val / rev_val * 100.0,
+                unit="pct",
+                period=period,
+                source_table_id=table_id,
+                source_evidence_id=evidence_id,
+                calculation_formula="gross_profit / revenue * 100",
+                confidence=0.85,
+                symbol=symbol,
+                report_date=str(rev.get("end") or ""),
+                notice_date=str(rev.get("filed") or record.get("publish_time") or ""),
+                raw={"revenue": rev_val, "gross_profit": gp_val},
+            )
+        )
     return rows
 
 
@@ -234,12 +367,42 @@ def _sec_companyfacts_statement_rows(record: Dict[str, Any]) -> List[Dict[str, A
     period = str(record.get("period") or "")
     table_id = _table_id(symbol, period, evidence_id, "sec_companyfacts")
     mapping = [
+        # 利润表
         ("income_statement", "revenue", ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues"]),
         ("income_statement", "net_income", ["NetIncomeLoss"]),
+        ("income_statement", "gross_profit", ["GrossProfit"]),
+        ("income_statement", "cost_of_revenue", ["CostOfRevenue"]),
+        ("income_statement", "operating_income", ["OperatingIncomeLoss"]),
+        ("income_statement", "operating_expense", ["OperatingExpenses"]),
+        ("income_statement", "research_development", ["ResearchAndDevelopmentExpense"]),
+        ("income_statement", "selling_general_admin", ["SellingGeneralAndAdministrativeExpense"]),
+        ("income_statement", "interest_expense", ["InterestExpense", "InterestExpenseNonoperating"]),
+        ("income_statement", "income_tax_expense", ["IncomeTaxExpenseProvisionBenefit"]),
+        ("income_statement", "eps_basic", ["EarningsPerShareBasic"]),
+        ("income_statement", "eps_diluted", ["EarningsPerShareDiluted"]),
+        # 资产负债表
         ("balance_sheet", "total_assets", ["Assets"]),
+        ("balance_sheet", "current_assets", ["AssetsCurrent", "CurrentAssets"]),
         ("balance_sheet", "cash_and_equivalents", ["CashAndCashEquivalentsAtCarryingValue"]),
-        ("cash_flow_statement", "operating_cash_flow", ["NetCashProvidedByUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"]),
+        ("balance_sheet", "accounts_receivable", ["AccountsReceivableNetCurrent", "AccountsReceivableNet"]),
+        ("balance_sheet", "inventory", ["InventoryNet", "Inventory"]),
+        ("balance_sheet", "property_plant_equipment", ["PropertyPlantAndEquipmentNet"]),
+        ("balance_sheet", "goodwill", ["Goodwill"]),
+        ("balance_sheet", "intangible_assets", ["IntangibleAssetsNetExcludingGoodwill", "IntangibleAssetsNet"]),
+        ("balance_sheet", "total_liabilities", ["Liabilities"]),
+        ("balance_sheet", "current_liabilities", ["LiabilitiesCurrent", "CurrentLiabilities"]),
+        ("balance_sheet", "long_term_debt", ["LongTermDebtNoncurrent", "LongTermDebt"]),
+        ("balance_sheet", "stockholders_equity", ["StockholdersEquity"]),
+        ("balance_sheet", "retained_earnings", ["RetainedEarningsAccumulatedDeficit"]),
+        # 现金流量表
+        ("cash_flow_statement", "operating_cash_flow", ["NetCashProvidedByUsedInOperatingActivities",
+                                                          "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"]),
+        ("cash_flow_statement", "investing_cash_flow", ["NetCashProvidedByUsedInInvestingActivities"]),
+        ("cash_flow_statement", "financing_cash_flow", ["NetCashProvidedByUsedInFinancingActivities"]),
         ("cash_flow_statement", "capex", ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"]),
+        ("cash_flow_statement", "depreciation_amortization", ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization"]),
+        ("cash_flow_statement", "stock_based_compensation", ["ShareBasedCompensation"]),
+        ("cash_flow_statement", "dividends_paid", ["DividendsPaid", "PaymentsOfDividends"]),
     ]
     rows: List[Dict[str, Any]] = []
     for statement, line_item, keys in mapping:
@@ -385,6 +548,138 @@ def _local_financial_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]
     return rows
 
 
+def _hk_financials_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """从 hk_financials 引擎的 metadata.rows 中提取 metric rows。"""
+    metadata = _dict(record.get("metadata"))
+    evidence_id = _evidence_id(record)
+    symbol = str(record.get("symbol") or "")
+    period = str(record.get("period") or "")
+    table_type = str(metadata.get("table_type") or "")
+    currency = str(metadata.get("currency") or "HKD")
+    unit = _pdf_unit(currency, "raw")  # reuse: returns base currency code
+    table_id = str(metadata.get("table_id") or _table_id(symbol, period, evidence_id, "hk_financials"))
+    report_date = ""
+    notice_date = ""
+
+    rows_raw = metadata.get("rows") if isinstance(metadata.get("rows"), list) else []
+    if not rows_raw:
+        # Try financials_raw fallback
+        fin_raw = _dict(metadata.get("financials_raw"))
+        fin_rows = fin_raw.get(table_type, []) if isinstance(fin_raw.get(table_type), list) else []
+        rows_raw = fin_rows
+
+    by_item: Dict[str, float] = {}
+    for row in rows_raw:
+        if not isinstance(row, dict):
+            continue
+        item = str(row.get("line_item") or "").strip()
+        val = _safe_float(row.get("value"))
+        if item and val is not None:
+            if item not in by_item:
+                by_item[item] = val
+            if not report_date:
+                report_date = str(row.get("end_date") or "")
+    if not rows_raw:
+        return []
+
+    output: List[Dict[str, Any]] = []
+    # Map common yfinance line_item names to metric names
+    yf_mapping = [
+        ("revenue", "Total Revenue", "yfinance HK revenue"),
+        ("net_income", "Net Income", "yfinance HK net income"),
+        ("gross_profit", "Gross Profit", "yfinance HK gross profit"),
+        ("cost_of_revenue", "Cost Of Revenue", "yfinance HK cost of revenue"),
+        ("operating_income", "Operating Income", "yfinance HK operating income"),
+        ("research_development", "Research And Development", "yfinance HK R&D"),
+        ("selling_general_admin", "Selling General And Administrative", "yfinance HK SG&A"),
+        ("interest_expense", "Interest Expense", "yfinance HK interest expense"),
+        ("income_tax_expense", "Income Tax Expense", "yfinance HK income tax"),
+        ("total_assets", "Total Assets", "yfinance HK total assets"),
+        ("current_assets", "Current Assets", "yfinance HK current assets"),
+        ("cash_and_equivalents", "Cash And Cash Equivalents", "yfinance HK cash"),
+        ("accounts_receivable", "Accounts Receivable", "yfinance HK AR"),
+        ("inventory", "Inventory", "yfinance HK inventory"),
+        ("property_plant_equipment", "Property Plant And Equipment", "yfinance HK PP&E"),
+        ("goodwill", "Goodwill", "yfinance HK goodwill"),
+        ("intangible_assets", "Intangible Assets", "yfinance HK intangible assets"),
+        ("total_liabilities", "Total Liabilities", "yfinance HK total liabilities"),
+        ("current_liabilities", "Current Liabilities", "yfinance HK current liabilities"),
+        ("long_term_debt", "Long Term Debt", "yfinance HK long-term debt"),
+        ("accounts_payable", "Accounts Payable", "yfinance HK AP"),
+        ("stockholders_equity", "Stockholders Equity", "yfinance HK equity"),
+        ("retained_earnings", "Retained Earnings", "yfinance HK retained earnings"),
+        ("operating_cash_flow", "Operating Cash Flow", "yfinance HK OCF"),
+        ("capex", "Capital Expenditure", "yfinance HK capex"),
+        ("free_cash_flow", "Free Cash Flow", "yfinance HK FCF"),
+        ("depreciation_amortization", "Depreciation And Amortization", "yfinance HK D&A"),
+        ("dividends_paid", "Dividends Paid", "yfinance HK dividends"),
+    ]
+    for metric_name, yf_key, formula in yf_mapping:
+        if yf_key in by_item:
+            output.append(
+                _metric_row(
+                    metric_name=metric_name,
+                    value=by_item[yf_key],
+                    unit=unit,
+                    period=period,
+                    source_table_id=table_id,
+                    source_evidence_id=evidence_id,
+                    calculation_formula=formula,
+                    confidence=0.72,
+                    symbol=symbol,
+                    report_date=report_date,
+                    notice_date=notice_date,
+                    raw={"period": period},
+                )
+            )
+    return output
+
+
+def _hk_financials_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """从 hk_financials 引擎的 metadata.rows 中提取 statement rows。"""
+    metadata = _dict(record.get("metadata"))
+    evidence_id = _evidence_id(record)
+    symbol = str(record.get("symbol") or "")
+    period = str(record.get("period") or "")
+    table_type = str(metadata.get("table_type") or "")
+    currency = str(metadata.get("currency") or "HKD")
+    table_id = str(metadata.get("table_id") or _table_id(symbol, period, evidence_id, "hk_financials"))
+
+    rows_raw = metadata.get("rows") if isinstance(metadata.get("rows"), list) else []
+    if not rows_raw:
+        fin_raw = _dict(metadata.get("financials_raw"))
+        fin_rows = fin_raw.get(table_type, []) if isinstance(fin_raw.get(table_type), list) else []
+        rows_raw = fin_rows
+    if not rows_raw:
+        return []
+
+    statement_map = {
+        "income": "income_statement",
+        "balance": "balance_sheet",
+        "cashflow": "cash_flow_statement",
+    }
+    statement = statement_map.get(table_type, "income_statement")
+
+    output: List[Dict[str, Any]] = []
+    for row in rows_raw:
+        if not isinstance(row, dict):
+            continue
+        line_item = str(row.get("line_item") or "").strip()
+        value = _safe_float(row.get("value"))
+        if not line_item or value is None:
+            continue
+        output.append({
+            "symbol": symbol,
+            "period": period,
+            "statement": statement,
+            "line_item": line_item,
+            "value": value,
+            "unit": currency,
+            "source_type": "hk_financials",
+        })
+    return output
+
+
 def _market_api_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     metadata = _dict(record.get("metadata"))
     financials = _dict(metadata.get("financials"))
@@ -411,6 +706,9 @@ def _market_api_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     operating_cash_flow = _first_number(cashflow, ["Operating Cash Flow", "totalCashFromOperatingActivities", "Cash Flow From Continuing Operating Activities"])
     capex = _first_number(cashflow, ["Capital Expenditure", "capitalExpenditures"])
     free_cash_flow = _first_number(cashflow, ["Free Cash Flow", "freeCashFlow"])
+    # 银行/保险等不直接披露 FCF 的行业：用 OCF + capex（capex 为负数）计算
+    if free_cash_flow is None and operating_cash_flow is not None and capex is not None:
+        free_cash_flow = operating_cash_flow + capex
 
     report_date = str(income.get("end_date") or balance.get("end_date") or cashflow.get("end_date") or "")
     raw = {

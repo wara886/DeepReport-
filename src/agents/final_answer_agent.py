@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from html import escape
 import json
+import logging
 import re
 from datetime import datetime
 from typing import Any, Dict, List
 
 from src.agents.base_agent import AgentTask, BaseAgent, TaskResult
+
+logger = logging.getLogger(__name__)
 from src.agents.context_packer import build_revision_brief, pack_claims, pack_evidence_records, pack_markdown_excerpt
 from src.models import ModelAdapter
 from src.schemas.claim import ClaimItem
@@ -332,60 +335,67 @@ class FinalAnswerAgent(BaseAgent):
             top_blockers=top_blockers,
         )
 
-        # For sections with allow_llm_rewrite, pass compact contract brief
+        # For sections with allow_llm_rewrite, rewrite one at a time.
+        # Each section gets its own focused LLM call so a timeout/cutoff on one
+        # section doesn't lose the others (Fix: per-section rewrite, not batch JSON).
         llm_context = render_diagnostic_contract_inputs(contracts)
-        llm_md = ""
-        if self.model and llm_context:
-            try:
-                llm_prompt = (
-                    f"Research topic: {topic}\n"
-                    f"Symbol: {symbol}\n"
-                    f"Period: {period}\n\n"
-                    "Below are the section contracts with allowed facts. "
-                    "Write a concise executive_summary and financial_analysis section "
-                    "in Chinese financial research prose.\n"
-                    "IMPORTANT:\n"
-                    "- Do NOT include citation numbers like [1][2][3] or [ev_xxx]\n"
-                    "- Do NOT write sections that are marked as gap/fallback\n"
-                    "- Use the facts provided — do not invent numbers\n"
-                    f"\n{llm_context}"
-                )
-                payload = self.model.generate_json(
-                    prompt=llm_prompt,
-                    system_prompt=(
-                        "You are FinalAnswerAgent writing the flexible sections of a "
-                        "financial report. Return only JSON: "
-                        '{"executive_summary": "...", "financial_analysis": "..."}'
-                    ),
-                    extra_body={"max_tokens": 2000},
-                )
-                if isinstance(payload, dict):
-                    es = str(payload.get("executive_summary", "") or "").strip()
-                    fa = str(payload.get("financial_analysis", "") or "").strip()
-                    if es:
-                        llm_md += f"## 执行摘要\n\n{es}\n\n"
-                    if fa:
-                        llm_md += f"## 财务分析\n\n{fa}\n\n"
-            except Exception as exc:
-                pass
-
-        # Merge: use contract rendering for deterministic sections, LLM for flexible ones
         final_md = contract_markdown
-        if llm_md:
-            for heading in ["执行摘要", "财务分析"]:
-                pattern = re.compile(rf"(?m)^##\s+{re.escape(heading)}\s*$")
-                if re.search(pattern, llm_md):
-                    llm_match = re.search(pattern, llm_md)
-                    if llm_match:
-                        next_llm = re.search(r"(?m)^##\s+", llm_md[llm_match.end():])
-                        llm_end = llm_match.end() + next_llm.start() if next_llm else len(llm_md)
-                        llm_body = llm_md[llm_match.end():llm_end].strip()
+        llm_used = False
+        if self.model and llm_context:
+            REWRITE_SECTION_KEYS = {
+                "executive_summary",
+                "business_overview",
+                "ownership_governance",
+                "financial_analysis",
+                "risk_factors",
+            }
+            for sk in REWRITE_SECTION_KEYS:
+                contract = contracts.get(sk)
+                if not contract:
+                    continue
+                if not contract.render_policy.get("allow_llm_rewrite", False):
+                    continue
+                if contract.status in {"gap", "fallback"}:
+                    # LLM can't write from nothing — skip sections with no data
+                    continue
 
-                        m2 = re.search(pattern, final_md)
-                        if m2:
-                            next_final = re.search(r"(?m)^##\s+", final_md[m2.end():])
-                            final_end = m2.end() + next_final.start() if next_final else len(final_md)
-                            final_md = final_md[:m2.end()] + "\n\n" + llm_body + "\n\n" + final_md[final_end:]
+                heading = SECTION_TITLES.get(sk, sk)
+                try:
+                    llm_prompt = (
+                        f"Research topic: {topic}\n"
+                        f"Symbol: {symbol}\n"
+                        f"Period: {period}\n\n"
+                        f"Below is the context for section \"{heading}\" ({sk}).\n"
+                        "Rewrite this section in Chinese financial research prose.\n"
+                        "IMPORTANT:\n"
+                        "- Do NOT include citation numbers like [1][2][3] or [ev_xxx]\n"
+                        "- Use the facts provided — do not invent numbers\n"
+                        "- Write 3-5 substantive paragraphs\n"
+                        f"\n{llm_context}"
+                    )
+                    response = self.model.generate(
+                        prompt=llm_prompt,
+                        system_prompt=(
+                            f"You are FinalAnswerAgent writing the \"{heading}\" section of a "
+                            "financial report. Write in Chinese financial research prose. "
+                            "Do not include citations."
+                        ),
+                        extra_body={"max_tokens": 800},
+                    )
+                    body = str(response.content or "").strip() if response.success else ""
+                    if not body or len(body) < 60:
+                        continue
+                    # Find the section heading in compiled markdown and replace
+                    pattern = re.compile(rf"(?m)^##\s+{re.escape(heading)}\s*$")
+                    match = re.search(pattern, final_md)
+                    if match:
+                        next_match = re.search(r"(?m)^##\s+", final_md[match.end():])
+                        end = match.end() + next_match.start() if next_match else len(final_md)
+                        final_md = final_md[:match.end()] + "\n\n" + body + "\n\n" + final_md[end:]
+                        llm_used = True
+                        logger.info("LLM rewrote section %s (%d chars)", sk, len(body))
+                except Exception as exc:
+                    logger.error("LLM rewrite failed for section %s: %s", sk, exc)
 
         # ── Citation binding pipeline ──────────────────────────────────
         # Step 1: Ensure binder has run bind_all (safe to call if already done)
@@ -447,7 +457,7 @@ class FinalAnswerAgent(BaseAgent):
              "summary": "Contract-mode report generated."},
             metadata={
                 "contract_mode": True,
-                "llm_used": bool(llm_md),
+                "llm_used": llm_used,
                 "section_count": len(contracts.contracts) if isinstance(contracts, ReportSectionContracts) else 0,
                 "top_blockers": top_blockers,
                 "citation_map": citation_map,
@@ -571,20 +581,6 @@ def _append_currency_gate_note(markdown: str, currency_audit: Any, valuation_mod
         lines.append("- 估值限制：由于官方来源校验与跨货币汇率换算尚未闭环，本报告不输出确定性 P/E、P/S、DCF 或目标价。")
     elif valuation_status and valuation_status.startswith("blocked"):
         lines.append(f"- 估值限制：估值模型状态为 {valuation_status}，本报告不输出确定性估值倍数。")
-
-    # Filter internal codes from blockers/warnings
-    visible_blockers = [b for b in blockers if isinstance(b, str) and not b.startswith(("official_source", "resolver_", "not_integrated"))]
-    if visible_blockers:
-        # Translate known internal codes
-        translated = []
-        for b in visible_blockers[:3]:
-            if "cross_currency" in b or "missing_fx" in b:
-                translated.append("跨币种估值缺少汇率换算")
-            elif "currency" in b:
-                translated.append("财务数据货币标注需复核")
-            else:
-                translated.append(b)
-        lines.append("- 质量诊断：" + "；".join(translated) + "")
 
     return markdown.rstrip() + "\n" + "\n".join(lines) + "\n"
 
@@ -1543,6 +1539,10 @@ def remove_instructional_report_text(markdown: str) -> str:
     for pattern in INSTRUCTIONAL_REPORT_PATTERNS:
         output = re.sub(pattern, "", output)
     output = re.sub(r"(?m)^\s*关键事实\s*$", "", output)
+    output = re.sub(r"(?m)^\s*关键事实为[:：].*$", "", output)
+    output = re.sub(r"(?m)^\s*鍏抽敭浜嬪疄涓猴細.*$", "", output)
+    output = re.sub(r"(?m)^\s*本节可用事实.*$", "", output)
+    output = re.sub(r"(?m)^\s*鏈妭鍙敤浜嬪疄.*$", "", output)
     output = re.sub(r"\n{3,}", "\n\n", output)
     return output.strip()
 

@@ -444,7 +444,10 @@ def _annual_sections_from_state(state: dict[str, Any]) -> dict[str, list[dict[st
 def sanitize_peer_rows_for_report(analysis: dict[str, Any], blackboard: dict[str, Any] | None = None, target_symbol: str = "") -> list[dict[str, Any]]:
     blackboard = blackboard if isinstance(blackboard, dict) else {}
     peer_data = analysis.get("peer_analysis", {}) if isinstance(analysis.get("peer_analysis"), dict) else {}
-    peer_rows = analysis.get("peer_rows") or peer_data.get("peer_rows") or peer_data.get("rows") or blackboard.get("peer_rows") or []
+    peer_context = analysis.get("peer_context", {}) if isinstance(analysis.get("peer_context"), dict) else {}
+    peer_rows = (analysis.get("peer_rows") or peer_context.get("peer_rows")
+                 or peer_data.get("peer_rows") or peer_data.get("rows")
+                 or blackboard.get("peer_rows") or [])
     peer_rows = peer_rows if isinstance(peer_rows, list) else []
     approved = _approved_peer_symbols_from_analysis(analysis, blackboard)
     clean_rows = _filter_peer_rows(

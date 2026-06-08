@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import json
+import logging
 import re
 from pathlib import Path
 import time
@@ -59,10 +60,17 @@ from src.report import (
     attach_charts_to_markdown,
     audit_chart_consistency,
     build_citation_artifacts,
+    build_citations_from_map,
     generate_report_charts,
     inject_chart_references,
     polish_report_html,
     render_professional_html_report,
+)
+from src.report.citation_manager import render_citations_markdown
+from src.report.mojibake_guard import (
+    build_mojibake_quality_issue,
+    repair_known_mojibake_obj,
+    repair_known_mojibake_text,
 )
 from src.report.contract_builder import build_report_section_contracts
 from src.report.citation_binder import CitationBinder
@@ -73,6 +81,9 @@ from src.utils import MCPManager
 from src.agents.derived_evidence_builder import build_derived_evidence
 from src.agents.claim_evidence_bundle import build_claim_evidence_bundles
 from src.agents.section_dossier_builder import SectionDossierBuilder, sanitize_peer_rows_for_report
+
+
+logger = logging.getLogger(__name__)
 
 
 FAST_PROFILE = {
@@ -241,6 +252,7 @@ class MultiAgentOrchestrator:
         self.agent_name_to_key = {agent.name: key for key, agent in self.agents.items()}
         self.model_usage_by_agent = self._build_model_usage_by_agent(model is not None)
         self.trace: List[Dict[str, Any]] = []
+        self._log_model_routing_summary()
 
     def run(
         self,
@@ -367,6 +379,11 @@ class MultiAgentOrchestrator:
             model = getattr(agent, "model", None)
             usage[role] = {
                 "model_name": str(getattr(model, "model_name", "")),
+                "provider": str(getattr(model, "provider", "")),
+                "base_url": str(getattr(model, "base_url", "")),
+                "endpoint_url": str(getattr(model, "endpoint_url", "")),
+                "api_key_env": str(getattr(model, "api_key_env", "")),
+                "api_key_present": bool(getattr(model, "api_key", "")),
                 "route_profile": str(getattr(model, "route_profile", "injected") if injected_model else getattr(model, "route_profile", "")),
                 "model_fallback_used": bool(getattr(model, "model_fallback_used", False)),
                 "model_enabled": model is not None,
@@ -374,11 +391,32 @@ class MultiAgentOrchestrator:
         for role in ["identity", "statement", "peer", "valuation", "risk", "critic", "gap_resolver"]:
             usage[role] = {
                 "model_name": "",
+                "provider": "",
+                "base_url": "",
+                "endpoint_url": "",
+                "api_key_env": "",
+                "api_key_present": False,
                 "route_profile": "rule_only",
                 "model_fallback_used": False,
                 "model_enabled": False,
             }
         return usage
+
+    def _model_usage_for_agent(self, agent_key: str) -> Dict[str, Any]:
+        usage = self.model_usage_by_agent.get(agent_key)
+        if isinstance(usage, dict):
+            return dict(usage)
+        if agent_key == "analyze":
+            return dict(self.model_usage_by_agent.get("deep_analyze", {}))
+        return {}
+
+    def _log_model_routing_summary(self) -> None:
+        logger.info(
+            "model_route_summary | execution_tier=%s | config_path=%s | roles=%s",
+            self.execution_tier,
+            self.config_path,
+            json.dumps(self.model_usage_by_agent, ensure_ascii=False, sort_keys=True),
+        )
 
     def _runtime_execution_summary(self) -> Dict[str, Any]:
         executed_keys: List[str] = []
@@ -390,7 +428,7 @@ class MultiAgentOrchestrator:
                 key = self.agent_name_to_key.get(str(item.get("agent") or ""), "")
             if key and key not in executed_keys:
                 executed_keys.append(key)
-        model_usage = {key: self.model_usage_by_agent.get(key, {}) for key in executed_keys}
+        model_usage = {key: self._model_usage_for_agent(key) for key in executed_keys}
         fallback_used = any(
             bool((self.model_usage_by_agent.get(key, {}) or {}).get("model_fallback_used", False))
             for key in executed_keys
@@ -520,6 +558,10 @@ class MultiAgentOrchestrator:
             "failure_reason": "",
         }
         try:
+            output_dir = getattr(self, "output_dir", None)
+            if output_dir is not None:
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
+
             # Market isolation: detect market and check feature flag
             symbol = str(state.get("symbol", "") or "").upper()
             market = "cn_a" if (symbol.endswith(".SS") or symbol.endswith(".SZ")) else "hk" if symbol.endswith(".HK") else "us"
@@ -545,11 +587,10 @@ class MultiAgentOrchestrator:
             })
 
             # Write market isolation audit regardless
-            output_dir = getattr(self, "output_dir", None)
             if output_dir is not None:
                 import os
                 out = str(output_dir)
-                audit = {
+                market_audit = {
                     "symbol": symbol,
                     "detected_market": market,
                     "contract_mode_enabled": enabled,
@@ -562,7 +603,7 @@ class MultiAgentOrchestrator:
                 }
                 try:
                     with open(os.path.join(out, "market_isolation_audit.json"), "w", encoding="utf-8") as f:
-                        json.dump(audit, f, ensure_ascii=False, indent=2)
+                        json.dump(market_audit, f, ensure_ascii=False, indent=2)
                 except Exception:
                     pass
 
@@ -754,6 +795,7 @@ class MultiAgentOrchestrator:
             "evidence_records": [],
             "claims": [],
             "analysis_artifacts": {},
+            "enable_remote_data": bool(enable_remote_data),
         }
         self.state = static_state  # P0.5: expose for _execute deadline enforcement
         research_blackboard = update_blackboard_for_task(
@@ -778,6 +820,7 @@ class MultiAgentOrchestrator:
         self._write_json("evidence.json", evidence_records)
         static_state["evidence_records"] = evidence_records
         attach_annual_report_sections_to_state(static_state, raw_data_root=self.raw_data_root)
+        attach_pdf_artifacts_to_state(state=static_state)
         evidence_records = static_state.get("evidence_records", [])
         research_blackboard = update_blackboard_for_task(
             research_blackboard,
@@ -973,34 +1016,32 @@ class MultiAgentOrchestrator:
             evidence_records=evidence_records,
             output_dir=self.output_dir / "charts",
             tables=analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
+            analysis_artifacts=analysis_artifacts if isinstance(analysis_artifacts, dict) else {},
+            currency_context=(analysis_artifacts.get("currency_audit", {}) if isinstance(analysis_artifacts, dict) else {}),
         )
-        markdown = attach_charts_to_markdown(markdown, charts)
-        markdown = inject_chart_references(markdown, charts)
-        html = polish_report_html(attach_charts_to_html(html, charts))
+        final_metadata = getattr(final_result, "metadata", {}) or {}
+        contract_mode_used = bool(final_metadata.get("contract_mode", False))
+        citation_map = final_metadata.get("citation_map", {})
+        charts = repair_known_mojibake_obj(charts)
+        markdown = repair_known_mojibake_text(attach_charts_to_markdown(markdown, charts))
+        markdown = repair_known_mojibake_text(inject_chart_references(markdown, charts))
         citation_artifacts = build_citation_artifacts(
             evidence_records=evidence_records,
             claims=claims,
             markdown=markdown,
             html=html,
         )
-        markdown = citation_artifacts["markdown"]
         citations = citation_artifacts["citations"]
+        citations_markdown = citation_artifacts["citations_markdown"]
 
-        # If contract mode was used, the agent already produced professional HTML
-        # with bound citations. Use its output directly.
-        final_metadata = getattr(final_result, "metadata", {}) or {}
-        contract_mode_used = bool(final_metadata.get("contract_mode", False))
         llm_title = str(report_json.get("title", "")).strip() if isinstance(report_json, dict) else ""
         if contract_mode_used:
-            # Contract mode: use the professional HTML from the agent
-            html = str(final_result.output.get("html", ""))
-            markdown = str(final_result.output.get("markdown", ""))
-            citations = []
             report_title = llm_title or _build_formal_report_title(entity_resolution, symbol, period)
         else:
             if llm_title and any(p in llm_title for p in ("生成", "任务", "生成报告")):
                 llm_title = ""
             report_title = llm_title or _build_formal_report_title(entity_resolution, symbol, period)
+            markdown = citation_artifacts["markdown"]
             html = render_professional_html_report(
                 markdown=markdown,
                 title=report_title,
@@ -1008,6 +1049,32 @@ class MultiAgentOrchestrator:
                 citations=citations,
                 delivery_status=str(report_json.get("delivery_status") or "normal") if isinstance(report_json, dict) else "normal",
             )
+
+        if contract_mode_used and citation_map:
+            markdown = repair_known_mojibake_text(
+                attach_charts_to_markdown(str(final_result.output.get("markdown", "")), charts)
+            )
+            markdown = repair_known_mojibake_text(inject_chart_references(markdown, charts))
+            citations = build_citations_from_map(
+                evidence_records=evidence_records,
+                citation_map=citation_map,
+                claims=claims,
+                markdown=markdown,
+            )
+            citations_markdown = render_citations_markdown(citations)
+            if citations_markdown and citations_markdown not in markdown:
+                markdown = markdown.rstrip() + "\n\n" + citations_markdown
+            report_title = repair_known_mojibake_text(llm_title) or _build_formal_report_title(entity_resolution, symbol, period)
+
+        html = render_professional_html_report(
+            markdown=markdown,
+            title=report_title,
+            charts=charts,
+            citations=citations,
+            delivery_status=str(report_json.get("delivery_status") or "normal") if isinstance(report_json, dict) else "normal",
+            top_blockers=list(final_metadata.get("top_blockers", [])) if isinstance(final_metadata.get("top_blockers", []), list) else [],
+            contract_mode=contract_mode_used,
+        )
 
         markdown = append_compliance_disclosures(markdown, citations=citations)
         html = append_compliance_disclosures_to_html(html, citations=citations)
@@ -1040,13 +1107,16 @@ class MultiAgentOrchestrator:
         self._write_json("multimodal_consistency.json", multimodal_consistency)
         mcp_manifest_path = self.mcp_manager.export_manifest(self.output_dir / "mcp_manifest.json")
         citations_md_path = self.output_dir / "citations.md"
-        citations_md_path.write_text(citation_artifacts["citations_markdown"], encoding="utf-8")
+        citations_md_path.write_text(str(repair_known_mojibake_text(citations_markdown)), encoding="utf-8")
         report_md_path = self.report_dir / "report.md"
         report_html_path = self.report_dir / "report.html"
         report_json_path = self.report_dir / "report.json"
+        markdown = str(repair_known_mojibake_text(markdown))
+        html = str(repair_known_mojibake_text(html))
+        report_json = repair_known_mojibake_obj(report_json)
         report_md_path.write_text(markdown, encoding="utf-8")
         report_html_path.write_text(html, encoding="utf-8")
-        report_json_path.write_text(json.dumps(report_json, ensure_ascii=False, indent=2), encoding="utf-8")
+        report_json_path.write_text(json.dumps(report_json, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
 
         verifier_result = self._execute(
             "verifier",
@@ -1102,7 +1172,7 @@ class MultiAgentOrchestrator:
 
         trace_path = self.output_dir / "task_trace.jsonl"
         trace_path.write_text(
-            "\n".join(json.dumps(item, ensure_ascii=False) for item in self.trace) + "\n",
+            "\n".join(json.dumps(item, ensure_ascii=False, default=str) for item in self.trace) + "\n",
             encoding="utf-8",
         )
         collaboration_trace = build_agent_collaboration_trace(
@@ -1180,7 +1250,8 @@ class MultiAgentOrchestrator:
                 run_summary=summary,
             )
             summary["durable_memory"] = durable_memory_artifacts
-        summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+        summary = repair_known_mojibake_obj(summary)
+        summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
 
         return {
             "task_plan": str(self.output_dir / "task_plan.json"),
@@ -1535,15 +1606,18 @@ class MultiAgentOrchestrator:
         conversation_path = self._write_json("conversation_context.json", state.get("conversation_context", {}))
         mcp_manifest_path = self.mcp_manager.export_manifest(self.output_dir / "mcp_manifest.json")
         citations_md_path = self.output_dir / "citations.md"
-        citations_md_path.write_text(str(state.get("citations_markdown", "")), encoding="utf-8")
+        citations_md_path.write_text(str(repair_known_mojibake_text(state.get("citations_markdown", ""))), encoding="utf-8")
 
         report_md_path = self.report_dir / "report.md"
         report_html_path = self.report_dir / "report.html"
         report_json_path = self.report_dir / "report.json"
+        state["markdown"] = str(repair_known_mojibake_text(state.get("markdown", "")))
+        state["html"] = str(repair_known_mojibake_text(state.get("html", "")))
+        state["report_json"] = repair_known_mojibake_obj(state.get("report_json", {}))
         report_md_path.write_text(str(state.get("markdown", "")), encoding="utf-8")
         report_html_path.write_text(str(state.get("html", "")), encoding="utf-8")
         report_json_path.write_text(
-            json.dumps(state.get("report_json", {}), ensure_ascii=False, indent=2),
+            json.dumps(state.get("report_json", {}), ensure_ascii=False, indent=2, default=str),
             encoding="utf-8",
         )
 
@@ -1555,7 +1629,7 @@ class MultiAgentOrchestrator:
 
         trace_path = self.output_dir / "task_trace.jsonl"
         trace_path.write_text(
-            "\n".join(json.dumps(item, ensure_ascii=False) for item in self.trace) + "\n",
+            "\n".join(json.dumps(item, ensure_ascii=False, default=str) for item in self.trace) + "\n",
             encoding="utf-8",
         )
         collaboration_trace = build_agent_collaboration_trace(trace=self.trace, state=state)
@@ -1624,7 +1698,8 @@ class MultiAgentOrchestrator:
                 run_summary=summary,
             )
             summary["durable_memory"] = durable_memory_artifacts
-        summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+        summary = repair_known_mojibake_obj(summary)
+        summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
 
         return {
             "task_plan": str(self.output_dir / "task_plan.json"),
@@ -1736,6 +1811,22 @@ class MultiAgentOrchestrator:
                 raw_data_root=self.raw_data_root,
                 profile=DEVELOPER_FAST_PROFILE if state.get("developer_fast_mode") else (USER_FAST_DELIVERY_PROFILE if state.get("user_fast_mode") else (FAST_PROFILE if state.get("performance_profile") == "fast" else DEFAULT_PROFILE)),
             )
+            if enriched.task_type == "final_answer" and not state.get("report_section_contracts"):
+                contracts, binder = self._build_contracts_and_bind(state)
+                if contracts is not None and binder is not None:
+                    params = dict(enriched.parameters)
+                    params["report_section_contracts"] = contracts
+                    params["citation_binder"] = binder
+                    params["citation_map"] = binder.get_citation_map() if hasattr(binder, "get_citation_map") else {}
+                    enriched = AgentTask(
+                        task_id=enriched.task_id,
+                        task_type=enriched.task_type,
+                        description=enriched.description,
+                        parameters=params,
+                        dependencies=list(enriched.dependencies),
+                        priority=enriched.priority,
+                        metadata=dict(enriched.metadata),
+                    )
             result = self._execute(agent_key_for_task(enriched.task_type), enriched)
             results[enriched.task_id] = result
             merge_task_result(state=state, task_type=enriched.task_type, result=result)
@@ -1855,6 +1946,20 @@ class MultiAgentOrchestrator:
 
     def _execute(self, agent_key: str, task: AgentTask) -> TaskResult:
         agent = self.agents[agent_key]
+        model_usage = self._model_usage_for_agent(agent_key)
+        logger.info(
+            "agent_trace_start | agent_key=%s | agent=%s | task_id=%s | task_type=%s | route_profile=%s | provider=%s | model=%s | endpoint=%s | api_key_env=%s | api_key_present=%s",
+            agent_key,
+            agent.name,
+            task.task_id,
+            task.task_type,
+            model_usage.get("route_profile", ""),
+            model_usage.get("provider", ""),
+            model_usage.get("model_name", ""),
+            model_usage.get("endpoint_url", ""),
+            model_usage.get("api_key_env", ""),
+            model_usage.get("api_key_present", False),
+        )
         # Enforce remaining deadline per task: if a deadline is set, each task
         # gets at most the remaining time.  A 30s floor prevents killing tasks
         # that could succeed within a single LLM call + retry window.
@@ -1886,17 +1991,30 @@ class MultiAgentOrchestrator:
         else:
             result = agent.execute_task(task)
         duration_sec = round(time.perf_counter() - started_at, 3)
-        self.trace.append(
-            {
-                "agent": agent.name,
-                "agent_key": agent_key,
-                "task": task.to_dict(),
-                "status": result.status.value,
-                "error": result.error,
-                "output_keys": sorted(result.output.keys()),
-                "metadata": result.metadata,
-                "duration_sec": duration_sec,
-            }
+        trace_item = {
+            "agent": agent.name,
+            "agent_key": agent_key,
+            "task": task.to_dict(),
+            "status": result.status.value,
+            "error": result.error,
+            "output_keys": sorted(result.output.keys()),
+            "metadata": result.metadata,
+            "duration_sec": duration_sec,
+            "model_usage": model_usage,
+        }
+        self.trace.append(trace_item)
+        logger.info(
+            "agent_trace_finish | agent_key=%s | agent=%s | task_id=%s | status=%s | duration_sec=%.3f | route_profile=%s | provider=%s | model=%s | fallback=%s | error=%s",
+            agent_key,
+            agent.name,
+            task.task_id,
+            result.status.value,
+            duration_sec,
+            model_usage.get("route_profile", ""),
+            model_usage.get("provider", ""),
+            model_usage.get("model_name", ""),
+            model_usage.get("model_fallback_used", False),
+            result.error,
         )
         if timeout_fired:
             self.state["_timeout_count"] = self.state.get("_timeout_count", 0) + 1
@@ -2078,10 +2196,13 @@ class MultiAgentOrchestrator:
         """Write state-backed artifacts to disk so evaluation functions can read them."""
         report_dir = Path(self.report_dir)
         report_dir.mkdir(parents=True, exist_ok=True)
+        state["markdown"] = str(repair_known_mojibake_text(state.get("markdown", "")))
+        state["html"] = str(repair_known_mojibake_text(state.get("html", "")))
+        state["report_json"] = repair_known_mojibake_obj(state.get("report_json", {}))
         (report_dir / "report.md").write_text(str(state.get("markdown", "")), encoding="utf-8")
         (report_dir / "report.html").write_text(str(state.get("html", "")), encoding="utf-8")
         (report_dir / "report.json").write_text(
-            json.dumps(state.get("report_json", {}), ensure_ascii=False, indent=2),
+            json.dumps(state.get("report_json", {}), ensure_ascii=False, indent=2, default=str),
             encoding="utf-8",
         )
         self._write_json("verification_report.json", state.get("verification_report", {}))
@@ -2462,7 +2583,8 @@ class MultiAgentOrchestrator:
 
     def _write_json(self, file_name: str, payload: Any) -> Path:
         path = self.output_dir / file_name
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        payload = repair_known_mojibake_obj(payload)
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         return path
 
     def _write_jsonl(self, file_name: str, rows: List[Dict[str, Any]]) -> Path:
@@ -3164,15 +3286,18 @@ def merge_task_result(state: Dict[str, Any], task_type: str, result: TaskResult)
             evidence_records=list(state.get("evidence_records", [])),
             output_dir=str(state.get("chart_output_dir") or "data/outputs/multi_agent/charts"),
             tables=dict(state.get("analysis_artifacts", {})).get("tables", []),
+            analysis_artifacts=dict(state.get("analysis_artifacts", {})),
+            currency_context=dict(state.get("analysis_artifacts", {})).get("currency_audit", {}),
         )
-        markdown = attach_charts_to_markdown(markdown, charts)
-        markdown = inject_chart_references(markdown, charts)
+        charts = repair_known_mojibake_obj(charts)
+        markdown = repair_known_mojibake_text(attach_charts_to_markdown(markdown, charts))
+        markdown = repair_known_mojibake_text(inject_chart_references(markdown, charts))
         html = polish_report_html(attach_charts_to_html(html, charts))
 
         if contract_mode_used and citation_map:
             state["markdown"] = markdown
-            state["citations"] = []
-            state["citations_markdown"] = ""
+            state["citations"] = list(state.get("citations", []))
+            state["citations_markdown"] = str(state.get("citations_markdown", ""))
             state["charts"] = charts
             state["html"] = html
             state["report_title"] = str(report_json.get("title", "")) if isinstance(report_json, dict) else ""
@@ -3200,6 +3325,33 @@ def merge_task_result(state: Dict[str, Any], task_type: str, result: TaskResult)
                 delivery_status=str(report_json.get("delivery_status") or "normal") if isinstance(report_json, dict) else "normal",
             )
             state["report_title"] = llm_title or fallback_title
+
+        if contract_mode_used and citation_map:
+            contract_citations = build_citations_from_map(
+                evidence_records=list(state.get("evidence_records", [])),
+                citation_map=citation_map,
+                claims=list(state.get("claims", [])),
+                markdown=state.get("markdown", ""),
+            )
+            state["citations"] = contract_citations
+            state["citations_markdown"] = render_citations_markdown(contract_citations)
+            if state["citations_markdown"] and state["citations_markdown"] not in state.get("markdown", ""):
+                state["markdown"] = str(state.get("markdown", "")).rstrip() + "\n\n" + state["citations_markdown"]
+        entity_res = dict(state.get("entity_resolution", {})) if isinstance(state.get("entity_resolution"), dict) else {}
+        llm_title = str(report_json.get("title", "")).strip() if isinstance(report_json, dict) else ""
+        if llm_title and any(p in llm_title for p in ("鐢熸垚", "浠诲姟", "鐢熸垚鎶ュ憡")):
+            llm_title = ""
+        fallback_title = _build_formal_report_title(entity_res, str(state.get("symbol", "")), str(state.get("period", "")))
+        state["report_title"] = repair_known_mojibake_text(llm_title) or fallback_title
+        state["html"] = render_professional_html_report(
+            markdown=str(state.get("markdown", "")),
+            title=state["report_title"],
+            charts=charts,
+            citations=list(state.get("citations", [])),
+            delivery_status=str(report_json.get("delivery_status") or "normal") if isinstance(report_json, dict) else "normal",
+            top_blockers=list(metadata.get("top_blockers", [])) if isinstance(metadata.get("top_blockers", []), list) else [],
+            contract_mode=contract_mode_used,
+        )
 
         state["markdown"] = append_compliance_disclosures(state["markdown"], citations=state["citations"])
         state["html"] = append_compliance_disclosures_to_html(state["html"], citations=state["citations"])
@@ -3435,7 +3587,11 @@ def _write_facts_extraction_audit_from_state(state: Dict[str, Any], audit: Dict[
 
 
 def _market_engines(symbol: str) -> list[str]:
-    """根据股票代码推断市场，返回该市场默认的搜索引擎列表。"""
+    """根据股票代码推断市场，返回该市场默认的搜索引擎列表。
+
+    NOTE: web_ui.py 中的 A_SHARE_ENGINES / US_ENGINES / HK_ENGINES
+    是官方定义，修改引擎列表时两边需要同步更新。
+    """
     upper = symbol.upper().strip()
     if upper.endswith(".SS") or upper.endswith(".SZ"):
         return [
@@ -3446,7 +3602,7 @@ def _market_engines(symbol: str) -> list[str]:
     if upper.endswith(".HK"):
         return [
             "local_real_data", "sina_finance", "yahoo_finance",
-            "tavily", "hkex_announcements", "local_evidence",
+            "tavily", "hkex_announcements", "hk_financials", "local_evidence",
         ]
     # US / default
     return [

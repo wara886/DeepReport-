@@ -112,3 +112,63 @@ def test_generate_report_charts_no_internal_ids(tmp_path):
             for label in chart_js.get("labels", []):
                 assert "cl_" not in label, f"Found cl_ in label: {label}"
                 assert ":" not in label, f"Found colon in label: {label}"
+
+
+def test_generate_report_charts_excludes_diagnostic_confidence_by_default(tmp_path):
+    claims = [
+        {
+            "claim_id": "cl_0001",
+            "claim": "收入增长",
+            "confidence": 0.9,
+            "numeric_values": {"revenue_billion": 35.4, "net_income_billion": 9.7},
+            "evidence_ids": ["ev_001"],
+        },
+        {"claim_id": "cl_0002", "claim": "风险判断", "confidence": 0.7, "evidence_ids": ["ev_002"]},
+    ]
+
+    charts = generate_report_charts(
+        claims=claims,
+        evidence_records=[{"evidence_id": "ev_001", "source_type": "eastmoney_financials"}],
+        output_dir=str(tmp_path),
+    )
+
+    chart_ids = {chart.get("chart_id") for chart in charts}
+    assert "financial_scale_bar" in chart_ids
+    assert "财务规模" not in chart_ids
+    assert "claim_confidence_bar" not in chart_ids
+    assert "evidence_source_mix" not in chart_ids
+
+
+def test_generate_report_charts_uses_plain_metric_keys_and_peer_artifacts(tmp_path):
+    claims = [
+        {
+            "claim_id": "cl_0001",
+            "numeric_values": {
+                "revenue": 10000000000,
+                "net_income": 2000000000,
+                "operating_cash_flow": 3000000000,
+                "investing_cash_flow": -1000000000,
+            },
+            "evidence_ids": ["ev_income", "ev_cash"],
+        }
+    ]
+    artifacts = {
+        "peer_analysis": {
+            "rows": [
+                {"symbol": "000001.SS", "is_target": True, "net_margin_pct": 20},
+                {"symbol": "000002.SS", "company_name": "Peer A", "net_margin_pct": 12},
+            ]
+        }
+    }
+
+    charts = generate_report_charts(
+        claims=claims,
+        evidence_records=[],
+        output_dir=str(tmp_path),
+        analysis_artifacts=artifacts,
+    )
+
+    chart_ids = {chart.get("chart_id") for chart in charts}
+    assert "financial_scale_bar" in chart_ids
+    assert "cash_flow_bar" in chart_ids
+    assert "peer_compare_bar" in chart_ids

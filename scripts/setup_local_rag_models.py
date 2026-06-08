@@ -28,7 +28,7 @@ def main() -> int:
 
     cfg = load_config(args.config_path)
     rag_cfg = dict(cfg.get("local_rag", {}))
-    local_model_root = PROJECT_ROOT / ".models"
+    local_model_root = PROJECT_ROOT / "models"
     if args.no_proxy:
         _clear_proxy_env()
     if args.source == "hf-mirror":

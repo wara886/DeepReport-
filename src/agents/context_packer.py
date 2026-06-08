@@ -161,19 +161,23 @@ def build_revision_brief(
 
 
 def _normalize_claim(item: Dict[str, Any], text_limit: int) -> Dict[str, Any]:
-    row = dict(item)
-    row["claim_text"] = str(row.get("claim_text", "")).replace("\n", " ").strip()[:text_limit]
-    row["section_name"] = str(row.get("section_name", "")).strip()
-    row["claim_id"] = str(row.get("claim_id", "")).strip()
-    evidence_ids = row.get("evidence_ids", [])
-    row["evidence_ids"] = [str(evidence_id) for evidence_id in evidence_ids[:8]] if isinstance(evidence_ids, list) else []
-    numeric_values = row.get("numeric_values", {})
+    evidence_ids = item.get("evidence_ids", [])
+    numeric_values = item.get("numeric_values", {})
+    row = {
+        "claim_id": str(item.get("claim_id", "")).strip(),
+        "section_name": str(item.get("section_name", "")).strip(),
+        "claim_text": str(item.get("claim_text", "")).replace("\n", " ").strip()[:text_limit],
+        "evidence_ids": [str(evidence_id) for evidence_id in evidence_ids[:8]]
+        if isinstance(evidence_ids, list)
+        else [],
+        "confidence": float(item.get("confidence", 0.0) or 0.0),
+        "risk_level": str(item.get("risk_level", "")).strip(),
+        "notes": str(item.get("notes", "")).replace("\n", " ").strip()[:160],
+    }
     if isinstance(numeric_values, dict):
         row["numeric_values"] = {str(key): float(value) for key, value in list(numeric_values.items())[:8]}
     else:
         row["numeric_values"] = {}
-    row["confidence"] = float(row.get("confidence", 0.0) or 0.0)
-    row["notes"] = str(row.get("notes", "")).replace("\n", " ").strip()[:160]
     return row
 
 
@@ -182,24 +186,44 @@ def _normalize_evidence_record(
     content_limit: int,
     priorities: Dict[str, int],
 ) -> Dict[str, Any]:
-    row = dict(item)
-    evidence_id = str(row.get("evidence_id") or row.get("sample_id") or "").strip()
-    content = str(row.get("content", "")).replace("\n", " ").strip()
-    row["evidence_id"] = evidence_id
-    row["title"] = str(row.get("title", "")).strip()
-    row["source_url"] = str(row.get("source_url", "")).strip()
-    row["source_type"] = str(row.get("source_type", "")).strip()
-    row["trust_level"] = str(row.get("trust_level", "")).strip()
-    row["content"] = content[:content_limit]
-    key_points = row.get("key_points", [])
-    row["key_points"] = [str(point).strip()[:120] for point in key_points[:3]] if isinstance(key_points, list) else []
-    metadata = row.get("metadata", {})
-    row["metadata"] = metadata if isinstance(metadata, dict) else {}
+    evidence_id = str(item.get("evidence_id") or item.get("sample_id") or "").strip()
+    content = str(item.get("content", "")).replace("\n", " ").strip()
+    key_points = item.get("key_points", [])
+    metadata = item.get("metadata", {})
+    metadata = metadata if isinstance(metadata, dict) else {}
+    compact_metadata = {
+        key: metadata[key]
+        for key in (
+            "supported_claim_count",
+            "source_period",
+            "period_fallback",
+            "filing_type",
+            "accession_number",
+            "page",
+            "section",
+        )
+        if key in metadata
+    }
+    row = {
+        "evidence_id": evidence_id,
+        "title": str(item.get("title", "")).strip()[:180],
+        "source_url": str(item.get("source_url", "")).strip(),
+        "source_type": str(item.get("source_type", "")).strip(),
+        "trust_level": str(item.get("trust_level", "")).strip(),
+        "symbol": str(item.get("symbol", "")).strip(),
+        "period": str(item.get("period", "")).strip(),
+        "publish_time": str(item.get("publish_time", "")).strip(),
+        "content": content[:content_limit],
+        "key_points": [str(point).strip()[:120] for point in key_points[:3]]
+        if isinstance(key_points, list)
+        else [],
+        "metadata": compact_metadata,
+    }
     priority_order = priorities.get(evidence_id, 10_000)
     row["_is_prioritized"] = 1 if priority_order != 10_000 else 0
     row["_priority_order"] = priority_order
-    row["_support_score"] = float(row["metadata"].get("supported_claim_count", 0.0) or 0.0)
-    row["score"] = float(row.get("rerank_score", row.get("score", 0.0)) or 0.0)
+    row["_support_score"] = float(metadata.get("supported_claim_count", 0.0) or 0.0)
+    row["score"] = float(item.get("rerank_score", item.get("score", 0.0)) or 0.0)
     return row
 
 

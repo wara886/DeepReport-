@@ -170,7 +170,25 @@ def resolve_company_identifier(
     if scored:
         scored.sort(key=lambda pair: pair[0], reverse=True)
         return dict(scored[0][1])
+    alias_hit = _alias_fallback_resolve(query)
+    if alias_hit:
+        return dict(alias_hit)
     return {}
+
+
+def _alias_fallback_resolve(query: str) -> dict | None:
+    """Try resolve_company_alias from company_aliases.py — comprehensive alias table."""
+    try:
+        from src.app.company_aliases import resolve_company_alias as _rca
+    except Exception:
+        return None
+    try:
+        hit = _rca(query)
+    except Exception:
+        return None
+    if hit and hit.get("symbol"):
+        return hit
+    return None
 
 
 def resolve_company_identifier_with_diagnostics(
@@ -222,6 +240,22 @@ def resolve_company_identifier_with_diagnostics(
                 scored.append((score, "query_contains_alias", item))
 
     if not scored:
+        # Fallback: try company_aliases.py which has a comprehensive alias table
+        alias_hit = _alias_fallback_resolve(query)
+        if alias_hit:
+            sym = str(alias_hit["symbol"]).upper()
+            for item in universe:
+                if str(item.get("symbol", "")).upper() == sym:
+                    return _resolution_payload(item, query, match_type="alias_fallback", confidence=0.85)
+            # Found via alias but not in universe — build synthetic entry
+            diagnostics["resolved"] = True
+            diagnostics["symbol"] = sym
+            diagnostics["company_name"] = str(alias_hit.get("company_name", ""))
+            diagnostics["match_type"] = "alias_fallback"
+            diagnostics["confidence"] = 0.85
+            diagnostics["reason"] = f"matched alias {alias_hit.get('matched_alias', 'unknown')}"
+            diagnostics["candidate_symbols"].append(sym)
+            return diagnostics
         diagnostics["reason"] = "no_match"
         return diagnostics
 
@@ -364,13 +398,14 @@ def build_data_source_plan(symbol: str, market: str, exchange: str = "") -> Dict
             "cninfo_announcements",
             "exchange_announcements",
             "eastmoney_financials",
+            "sina_finance",
             "yahoo_finance",
             "eastmoney",
             "local_evidence",
         ]
         primary = ["cninfo_announcements", "exchange_announcements", "eastmoney_financials"]
     elif market == "hk":
-        engines = ["local_real_data", "hkex_announcements", "yahoo_finance", "tavily", "serper", "local_evidence"]
+        engines = ["local_real_data", "sina_finance", "hkex_announcements", "yahoo_finance", "tavily", "serper", "local_evidence"]
         primary = ["hkex_announcements", "yahoo_finance", "tavily", "serper"]
     elif market == "us":
         engines = ["local_real_data", "sec_edgar", "yahoo_finance", "independent_macro", "tavily", "local_evidence"]

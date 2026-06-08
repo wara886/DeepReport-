@@ -212,7 +212,7 @@ def _select_annual_filing(submissions: dict[str, Any], fiscal_year: int) -> dict
             continue
         rows.append(row)
 
-    def score(row: dict[str, Any]) -> tuple[int, str]:
+    def score(row: dict[str, Any]) -> tuple[int, int, str]:
         report_year = _date_year(row.get("period_of_report"))
         filing_year = _date_year(row.get("filing_date"))
         if report_year == fiscal_year:
@@ -221,7 +221,8 @@ def _select_annual_filing(submissions: dict[str, Any], fiscal_year: int) -> dict
             year_score = 2
         else:
             year_score = 0
-        return (year_score, str(row.get("filing_date") or ""))
+        form_score = 2 if str(row.get("form") or "").upper() == "10-K" else 1
+        return (year_score, form_score, str(row.get("filing_date") or ""))
 
     rows = [row for row in rows if score(row)[0] > 0]
     rows.sort(key=score, reverse=True)

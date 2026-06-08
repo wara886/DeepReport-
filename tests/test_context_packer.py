@@ -61,3 +61,41 @@ def test_pack_claims_reports_context_budget_trace():
     assert meta["dropped_count"] == 2
     assert meta["packed_ids"] == ["cl_0", "cl_1"]
     assert meta["dropped_ids"] == ["cl_2", "cl_3"]
+
+
+def test_packers_drop_large_internal_payloads_before_budgeting():
+    claims = [
+        {
+            "claim_id": f"cl_{idx}",
+            "section_name": section,
+            "claim_text": f"Material claim for {section}.",
+            "evidence_ids": [f"ev_{idx}"],
+            "numeric_values": {},
+            "confidence": 0.8,
+            "internal_trace": "x" * 6000,
+        }
+        for idx, section in enumerate(
+            ["business_overview", "financial_analysis", "peer_compare", "valuation"]
+        )
+    ]
+    evidence = [
+        {
+            "evidence_id": f"ev_{idx}",
+            "content": "Relevant evidence.",
+            "metadata": {"supported_claim_count": 1, "raw_payload": "y" * 6000},
+        }
+        for idx in range(4)
+    ]
+
+    packed_claims, claim_meta = pack_claims(claims, max_items=8, total_chars=2600)
+    packed_evidence, evidence_meta = pack_evidence_records(
+        evidence,
+        prioritized_evidence_ids=[f"ev_{idx}" for idx in range(4)],
+        max_items=8,
+        total_chars=2600,
+    )
+
+    assert claim_meta["packed_count"] == 4
+    assert evidence_meta["packed_count"] == 4
+    assert all("internal_trace" not in row for row in packed_claims)
+    assert all("raw_payload" not in row["metadata"] for row in packed_evidence)

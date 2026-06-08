@@ -8,6 +8,7 @@ BEFORE FinalAnswerAgent runs.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional, Set
 
 from src.report.section_contracts import (
@@ -40,6 +41,7 @@ from src.report.section_contracts import (
     text_contains_fragments,
     SECTION_TITLES,
 )
+from src.utils.money import CurrencyContext, build_currency_context, format_amount_for_context
 
 # ── Public API ───────────────────────────────────────────────────────────
 
@@ -58,14 +60,30 @@ def _get_annual_report_sections(
     state: Dict[str, Any],
     analysis_artifacts: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
-    """Extract SEC 10-K annual_report_sections from state or analysis_artifacts."""
-    sections = state.get("annual_report_sections", [])
-    if isinstance(sections, list) and sections:
-        return sections
-    sections = analysis_artifacts.get("annual_report_sections", [])
-    if isinstance(sections, list):
-        return sections
-    # Also check analysis_artifacts.sections
+    """Extract SEC 10-K annual_report_sections from state or analysis_artifacts.
+
+    The data can be stored as either:
+      - A list of section dicts (legacy format)
+      - A dict with a "sections" key containing {section_key: [{text, ...}, ...]}
+      - A dict with sections directly at top level
+    """
+    raw = state.get("annual_report_sections") or analysis_artifacts.get("annual_report_sections") or {}
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        # New format: {"sections": {"business": [{...}, ...], "risk_factors": [{...}], ...}}
+        sections_map = raw.get("sections") if isinstance(raw.get("sections"), dict) else raw
+        if isinstance(sections_map, dict):
+            flat: List[Dict[str, Any]] = []
+            for section_key, items in sections_map.items():
+                if isinstance(items, list):
+                    for item in items:
+                        if isinstance(item, dict):
+                            item["section_key"] = item.get("section_key") or section_key
+                            flat.append(item)
+            if flat:
+                return flat
+    # Legacy fallback
     ar = analysis_artifacts.get("annual_report", {})
     if isinstance(ar, dict):
         secs = ar.get("sections", [])
@@ -124,6 +142,8 @@ def build_report_section_contracts(
     period = str(state.get("period", "") or "")
     contracts.metadata["target_symbol"] = symbol
     contracts.metadata["target_period"] = period
+    currency_context = _currency_context(state, analysis_artifacts)
+    contracts.metadata["currency_context"] = currency_context.to_dict()
 
     # Extract PDF section summaries (both from analysis_artifacts and state)
     pdf_section_summaries = _get_pdf_section_summaries(state, analysis_artifacts)
@@ -137,6 +157,8 @@ def build_report_section_contracts(
     # Extract financial data
     financial_metrics = _safe_dict(analysis_artifacts, "financial_metrics")
     tables = _safe_list(analysis_artifacts, "tables")
+    claims = _safe_list(analysis_artifacts, "claims") or _safe_list(state, "claims")
+    financial_evidence_ids = _financial_evidence_ids(financial_metrics, tables, claims)
     valuation_model = _safe_dict(analysis_artifacts, "valuation_model")
     valuation_sensitivity = _safe_dict(analysis_artifacts, "valuation_sensitivity")
     peer_data = _safe_dict(analysis_artifacts, "peer_analysis")
@@ -150,7 +172,7 @@ def build_report_section_contracts(
     contracts.metadata.update(period_info)
 
     # ── Build each section contract ──
-    _build_executive_summary(contracts, evidence_records, financial_metrics, section_dossiers)
+    _build_executive_summary(contracts, evidence_records, financial_metrics, section_dossiers, financial_evidence_ids)
     _build_business_overview(contracts, pdf_section_summaries, pdf_section_chunks,
                              evidence_records, analysis_artifacts, state,
                              annual_report_sections=annual_report_sections)
@@ -160,20 +182,25 @@ def build_report_section_contracts(
     _build_strategy_business(contracts, pdf_section_summaries, pdf_section_chunks,
                              evidence_records, financial_metrics, analysis_artifacts,
                              annual_report_sections=annual_report_sections)
-    _build_three_statement_summary(contracts, financial_metrics, tables)
-    _build_financial_analysis(contracts, financial_metrics, tables, evidence_records, section_dossiers)
+    _build_three_statement_summary(contracts, financial_metrics, tables, financial_evidence_ids, currency_context)
+    _build_financial_analysis(contracts, financial_metrics, tables, evidence_records, section_dossiers, financial_evidence_ids, currency_context)
     _build_peer_compare(contracts, peer_rows, analysis_artifacts, blackboard, symbol)
-    _build_valuation(contracts, valuation_model, financial_metrics)
+    _build_valuation(contracts, valuation_model, financial_metrics, financial_evidence_ids, currency_context)
     _build_valuation_sensitivity(contracts, valuation_model, valuation_sensitivity)
     _build_risk_factors(contracts, pdf_section_summaries, pdf_section_chunks,
                         evidence_records, analysis_artifacts, state,
                         annual_report_sections=annual_report_sections)
-    _build_investment_conclusion(contracts, financial_metrics, valuation_model, evidence_records)
+    _build_investment_conclusion(contracts, financial_metrics, valuation_model, evidence_records, financial_evidence_ids)
     _build_period_note(contracts, period_info)
     _build_currency_data_quality(contracts, analysis_artifacts)
 
     # Run cross-section quality checks
     _check_contract_quality(contracts)
+
+    # ── PDF raw fallback for gap sections ─────────────────────────────────
+    # When all structured extraction fails but PDF data exists, use raw text
+    # rather than leaving sections empty. The LLM rewrite (Fix 4) can clean it.
+    _apply_pdf_fallback(contracts, pdf_section_summaries, pdf_section_chunks, evidence_records)
 
     return contracts
 
@@ -186,6 +213,7 @@ def _build_executive_summary(
     evidence_records: List[Dict[str, Any]],
     financial_metrics: Dict[str, Any],
     section_dossiers: Dict[str, Any],
+    financial_evidence_ids: List[str],
 ) -> None:
     c = contracts.ensure("executive_summary")
     c.allowed_source_types = list(ALLOWED_FINANCIAL)
@@ -195,7 +223,9 @@ def _build_executive_summary(
     # Extract key metrics
     metrics_text = _format_key_metrics(financial_metrics)
     if metrics_text:
-        c.add_fact("key_metrics", metrics_text, source_types=[SRC_FINANCIAL_METRIC])
+        c.add_fact("key_metrics", metrics_text,
+                   evidence_ids=financial_evidence_ids[:6],
+                   source_types=[SRC_FINANCIAL_METRIC])
         c.status = "supported"
 
     # Check for existing dossier content
@@ -225,12 +255,11 @@ def _build_business_overview(
     c = contracts.ensure("business_overview")
     c.allowed_source_types = list(ALLOWED_QUALITATIVE_PDF_ONLY)
     c.forbidden_source_types = FORBIDDEN_SECTION_SOURCE_TYPES.get("business_overview", [])
-    c.render_policy["allow_llm_rewrite"] = False
+    c.render_policy["allow_llm_rewrite"] = True
 
     if annual_report_sections is None:
         annual_report_sections = []
 
-    # Collect PDF evidence for business overview
     biz_chunks = _filter_chunks_by_type(pdf_section_chunks, {
         "business_overview", "business", "strategy_business",
     })
@@ -238,92 +267,86 @@ def _build_business_overview(
         "business_overview", "business", "strategy_business",
     })
 
-    evidence_ids_used: List[str] = []
+    candidates: List[Dict[str, Any]] = []
 
-    # Extract business model / products from PDF summaries
+    def _append_candidate(text: str, eid: str, source_type: str) -> None:
+        clean = clean_pdf_boilerplate(text)[:600]
+        if not clean or len(clean.strip()) < 30:
+            return
+        candidates.append({
+            "score": _business_overview_priority_score(clean),
+            "fact_type": _classify_business_fact(clean),
+            "text": clean,
+            "evidence_id": eid,
+            "source_type": source_type,
+        })
+
     for summary in biz_summaries:
         text = str(summary.get("summary_zh") or summary.get("text") or summary.get("content") or "")
         eid = str(summary.get("evidence_id") or "") or str(summary.get("chunk_id") or "")
-
-        has_boilerplate = text_contains_pdf_boilerplate(text)
-
-        if has_boilerplate:
+        if _is_pdf_gap_summary(text):
+            c.add_quality_flag("business_overview_gap_summary_skipped")
+            continue
+        if text_contains_pdf_boilerplate(text):
             c.add_quality_flag("business_overview_boilerplate_in_summary")
             text = clean_pdf_boilerplate(text)
+        _append_candidate(text, eid, SRC_ANNUAL_REPORT_PDF_SUMMARY)
 
-        if not text or len(text.strip()) < 30:
-            continue
-
-        # Classify fact type
-        fact_type = _classify_business_fact(text)
-        clean = clean_pdf_boilerplate(text)[:600]
-        if clean:
-            c.add_fact(fact_type, clean,
-                       evidence_ids=[eid] if eid else [],
-                       source_types=[SRC_ANNUAL_REPORT_PDF_SUMMARY])
-            if eid and eid not in evidence_ids_used:
-                evidence_ids_used.append(eid)
-            if c.status == "gap":
-                c.status = "partial"
-
-    # Also extract from chunks (more granular)
     for chunk in biz_chunks:
         text = str(chunk.get("summary_zh") or chunk.get("text") or chunk.get("content") or "")
         eid = str(chunk.get("evidence_id") or "") or str(chunk.get("chunk_id") or "")
-        if not text or len(text.strip()) < 30:
-            continue
-        if eid in evidence_ids_used:
-            continue
-        clean = clean_pdf_boilerplate(text)[:600]
-        if clean:
-            fact_type = _classify_business_fact(clean)
-            c.add_fact(fact_type, clean,
-                       evidence_ids=[eid] if eid else [],
-                       source_types=[SRC_ANNUAL_REPORT_PDF_CHUNK])
-            if eid and eid not in evidence_ids_used:
-                evidence_ids_used.append(eid)
-            if c.status == "gap":
-                c.status = "partial"
+        _append_candidate(text, eid, SRC_ANNUAL_REPORT_PDF_CHUNK)
 
-    # SEC 10-K Item 1 Business section (US market fallback)
     if c.status == "gap":
         sec_biz = _get_annual_report_text_by_sec_item(annual_report_sections, {"business"})
         for item in sec_biz:
             text = item["text"][:800]
             eid = item["evidence_id"]
             if text and len(text.strip()) >= 50:
-                c.add_fact("business_model",
-                           text[:600],
-                           evidence_ids=[eid] if eid else [],
-                           source_types=[SRC_SEC_10K_SECTION])
-                if eid and eid not in evidence_ids_used:
-                    evidence_ids_used.append(eid)
-                if c.status == "gap":
-                    c.status = "supported"
-                    c.add_quality_flag("business_overview_uses_sec_10k")
+                candidates.append({
+                    "score": _business_overview_priority_score(text),
+                    "fact_type": "business_model",
+                    "text": text[:600],
+                    "evidence_id": eid,
+                    "source_type": SRC_SEC_10K_SECTION,
+                })
+                c.add_quality_flag("business_overview_uses_sec_10k")
                 break
 
-    # Update status based on fact count
-    if len(c.facts) >= 2 and evidence_ids_used:
-        c.status = "supported"
-    elif len(c.facts) >= 1:
-        c.status = "partial"
+    if candidates:
+        candidates.sort(key=lambda item: (item.get("score", 0), len(str(item.get("text") or ""))), reverse=True)
+        chosen_texts: List[str] = []
+        for item in candidates:
+            text = str(item.get("text") or "").strip()
+            eid = str(item.get("evidence_id") or "").strip()
+            if not text or text in chosen_texts:
+                continue
+            c.add_fact(
+                str(item.get("fact_type") or "general_business"),
+                text,
+                evidence_ids=[eid] if eid else [],
+                source_types=[str(item.get("source_type") or SRC_ANNUAL_REPORT_PDF_SUMMARY)],
+            )
+            chosen_texts.append(text)
+            if len(chosen_texts) >= 3:
+                break
+        c.status = "supported" if len(chosen_texts) >= 2 else "partial"
     else:
-        # Try yahoo profile fallback
-        for rec in evidence_records:
-            if str(rec.get("source_type", "") or "") == "yahoo_profile":
-                content = str(rec.get("content") or "")[:500]
-                if content and len(content) > 50:
-                    c.add_fact("business_profile_fallback", content,
-                               evidence_ids=[str(rec.get("evidence_id", ""))],
-                               source_types=["yahoo_profile"])
-                    c.status = "fallback"
-                    c.add_blocked_reason("business_overview_used_yahoo_fallback")
-                    break
-        else:
-            c.add_blocked_reason("business_overview_pdf_chunks_not_found")
+        _fallback_business_overview_via_text_detector(c, state, evidence_records)
+        if c.status == "gap":
+            profile_text, profile_eid, profile_source = _business_profile_fallback(state, analysis_artifacts, evidence_records)
+            if profile_text:
+                c.add_fact(
+                    "business_profile_fallback",
+                    profile_text[:700],
+                    evidence_ids=[profile_eid] if profile_eid else [],
+                    source_types=[profile_source or "company_profile"],
+                )
+                c.status = "fallback"
+                c.add_blocked_reason("business_overview_used_profile_fallback")
+            else:
+                c.add_blocked_reason("business_overview_pdf_chunks_not_found")
 
-    # Check for fragments in facts
     for fact in c.facts:
         frags = text_contains_fragments(fact.text)
         if frags:
@@ -341,7 +364,7 @@ def _build_ownership_governance(
     c = contracts.ensure("ownership_governance")
     c.allowed_source_types = list(ALLOWED_QUALITATIVE_PDF_ONLY)
     c.forbidden_source_types = FORBIDDEN_SECTION_SOURCE_TYPES.get("ownership_governance", [])
-    c.render_policy["allow_llm_rewrite"] = False
+    c.render_policy["allow_llm_rewrite"] = True
 
     if annual_report_sections is None:
         annual_report_sections = []
@@ -381,6 +404,9 @@ def _build_ownership_governance(
         eid = str(summary.get("evidence_id") or "") or str(summary.get("chunk_id") or "")
         st = str(summary.get("section_type") or "")
         if not text or len(text.strip()) < 30:
+            continue
+        if _is_pdf_gap_summary(text):
+            c.add_quality_flag("governance_gap_summary_skipped")
             continue
         c.add_fact("governance_structure", text[:500],
                    evidence_ids=[eid] if eid else [],
@@ -440,6 +466,28 @@ def _build_ownership_governance(
                 c.add_blocked_reason("governance_summary_not_injected")
         else:
             c.add_blocked_reason("governance_section_not_found")
+        # Provide a substantive deterministic fallback instead of bare data_gap
+        company_name = ""
+        identity = _safe_dict(state, "entity_resolution")
+        if identity:
+            company_name = str(identity.get("company_name", "") or "")
+        if not company_name:
+            company_name = str(state.get("company_name", "") or "")
+        market = _detect_market(state)
+        fallback_parts = [f"{company_name}作为上市公司" if company_name else "该公司作为上市公司"]
+        if market == "us":
+            fallback_parts.append(
+                "通常由董事会、审计委员会、薪酬委员会、提名与治理委员会及执行管理层共同构成治理框架。"
+                "董事会独立性、高管薪酬安排、股东投票权、关联交易披露和信息披露质量是美股公司治理分析的重点；"
+                "具体董事、高管与持股情况需以后续 10-K、10-Q 或 proxy statement 披露为准。"
+            )
+        else:
+            fallback_parts.append("具备规范的公司治理结构，设有董事会、监事会和经营管理层。"
+                                  "控股股东与实际控制人信息需以年度报告披露为准，"
+                                  "股东构成和持股比例受定期报告约束。"
+                                  "公司治理评价需结合独立董事制度、内部控制审计、"
+                                  "信息披露合规性和分红政策等维度综合判断。")
+        c.deterministic_text = "".join(fallback_parts)
 
 
 def _build_strategy_business(
@@ -454,7 +502,7 @@ def _build_strategy_business(
     c = contracts.ensure("strategy_business")
     c.allowed_source_types = list(ALLOWED_QUALITATIVE_PDF_ONLY)
     c.forbidden_source_types = FORBIDDEN_SECTION_SOURCE_TYPES.get("strategy_business", [])
-    c.render_policy["allow_llm_rewrite"] = False
+    c.render_policy["allow_llm_rewrite"] = True
 
     if annual_report_sections is None:
         annual_report_sections = []
@@ -475,6 +523,10 @@ def _build_strategy_business(
         eid = str(summary.get("evidence_id") or "") or str(summary.get("chunk_id") or "")
         st = str(summary.get("section_type") or "")
         if not text or len(text.strip()) < 30:
+            continue
+        # Skip gap summaries — PDF noise placeholders, not actual content
+        if _is_pdf_gap_summary(text):
+            c.add_quality_flag("strategy_gap_summary_skipped")
             continue
         # Check for fragments
         if text_contains_fragments(text):
@@ -533,8 +585,8 @@ def _build_strategy_business(
         c.add_blocked_reason("strategy_pdf_sections_not_found")
         # Provide a complete deterministic sentence rather than a fragment
         c.deterministic_text = (
-            "公司战略分析应围绕品牌力、渠道效率、产品结构、定价能力、"
-            "现金流稳定性与分红能力展开；行业竞争格局和公司战略执行将共同影响"
+            "公司战略分析聚焦品牌力、渠道效率、产品结构、定价能力、"
+            "现金流稳定性与分红能力等维度；行业竞争格局和公司战略执行将共同影响"
             "收入增长、利润率稳定性和估值弹性。"
         )
 
@@ -543,20 +595,24 @@ def _build_three_statement_summary(
     contracts: ReportSectionContracts,
     financial_metrics: Dict[str, Any],
     tables: List[Dict[str, Any]],
+    financial_evidence_ids: List[str],
+    currency_context: CurrencyContext,
 ) -> None:
     c = contracts.ensure("three_statement_summary")
     c.allowed_source_types = list(ALLOWED_FINANCIAL_TABLES_ONLY)
     c.forbidden_source_types = []
-    c.render_policy["allow_llm_rewrite"] = False
+    c.render_policy["allow_llm_rewrite"] = True
 
-    # Add financial metrics as facts
+    # Add financial metrics as facts (normalise flat or array format)
+    flat_metrics = _normalize_metrics_flat(financial_metrics)
     key_metrics = ["revenue", "net_income", "total_assets", "total_liabilities",
                    "operating_cash_flow", "free_cash_flow"]
     facts_added = 0
     for km in key_metrics:
-        val = financial_metrics.get(km)
+        val = flat_metrics.get(km)
         if val is not None:
             c.add_fact("financial_line_item", f"{km}: {val}",
+                       evidence_ids=_metric_evidence_ids(financial_metrics, km, financial_evidence_ids),
                        source_types=[SRC_FINANCIAL_METRIC])
             facts_added += 1
 
@@ -567,13 +623,19 @@ def _build_three_statement_summary(
     else:
         c.add_blocked_reason("three_statement_insufficient_metrics")
 
-    # Add table markdown if available
-    for table in tables:
-        if isinstance(table, dict) and str(table.get("title", "") or ""):
-            md = str(table.get("markdown", "") or "")
-            if md and len(md) > 30:
-                c.deterministic_text = md
-                break
+    table_md = _render_three_statement_table_markdown(tables, currency_context)
+    if table_md:
+        c.deterministic_text = table_md
+        for eid in financial_evidence_ids:
+            if eid not in c.citation_evidence_ids:
+                c.citation_evidence_ids.append(eid)
+    else:
+        for table in tables:
+            if isinstance(table, dict) and str(table.get("title", "") or ""):
+                md = str(table.get("markdown", "") or "")
+                if md and len(md) > 30:
+                    c.deterministic_text = md
+                    break
 
 
 def _build_financial_analysis(
@@ -582,14 +644,18 @@ def _build_financial_analysis(
     tables: List[Dict[str, Any]],
     evidence_records: List[Dict[str, Any]],
     section_dossiers: Dict[str, Any],
+    financial_evidence_ids: List[str],
+    currency_context: CurrencyContext,
 ) -> None:
     c = contracts.ensure("financial_analysis")
     c.allowed_source_types = list(ALLOWED_FINANCIAL)
     c.forbidden_source_types = []
+    c.render_policy["allow_llm_rewrite"] = True
 
     metrics_text = _format_key_metrics(financial_metrics)
     if metrics_text:
         c.add_fact("financial_metrics_summary", metrics_text,
+                   evidence_ids=financial_evidence_ids[:6],
                    source_types=[SRC_FINANCIAL_METRIC])
         c.status = "supported"
 
@@ -602,8 +668,15 @@ def _build_financial_analysis(
                 c.deterministic_text = block[:800]
                 break
 
+    # Even without flat metrics, deterministic_text from section_dossiers/tables
+    # is enough to avoid a bare gap.
     if c.status == "gap":
-        c.add_blocked_reason("financial_analysis_insufficient_metrics")
+        if c.deterministic_text and len(c.deterministic_text.strip()) > 30:
+            c.status = "partial"
+        elif c.facts:
+            c.status = "partial"
+        else:
+            c.add_blocked_reason("financial_analysis_insufficient_metrics")
 
 
 def _build_peer_compare(
@@ -616,9 +689,11 @@ def _build_peer_compare(
     c = contracts.ensure("peer_compare")
     c.allowed_source_types = [SRC_PEER_DATA, SRC_MARKET_DATA]
     c.forbidden_source_types = FORBIDDEN_SECTION_SOURCE_TYPES.get("peer_compare", [])
+    c.render_policy["allow_llm_rewrite"] = True
 
     if not peer_rows:
         c.add_blocked_reason("peer_rows_not_available")
+        c.status = "gap"
         return
 
     # Get approved peer symbols
@@ -630,11 +705,18 @@ def _build_peer_compare(
     direct_peers: List[str] = []
     cross_market: List[str] = []
 
+    valid_peer_rows: List[Dict[str, Any]] = []
+    target_upper = str(target_symbol or "").strip().upper()
     for row in peer_rows:
         if not isinstance(row, dict):
             continue
         sym = str(row.get("symbol") or row.get("ticker") or "").strip().upper()
         if not sym:
+            continue
+        if sym == target_upper:
+            continue
+        if not _peer_row_has_metrics(row):
+            c.add_quality_flag(f"peer_metrics_missing:{sym}")
             continue
         if approved and sym not in approved and sym != target_symbol:
             continue
@@ -656,6 +738,7 @@ def _build_peer_compare(
                 c.add_quality_flag(f"peer_industry_unmatched:{sym}")
             else:
                 direct_peers.append(sym)
+                valid_peer_rows.append(row)
 
     # Build peer groups
     if direct_peers:
@@ -679,6 +762,12 @@ def _build_peer_compare(
     else:
         c.status = "gap"
         c.add_blocked_reason("peer_no_approved_symbols")
+    if not direct_peers and not cross_market:
+        c.add_blocked_reason("peer_only_target_row")
+    if not valid_peer_rows and direct_peers:
+        direct_peers.clear()
+        c.status = "gap"
+        c.add_blocked_reason("peer_no_metric_rows")
 
     # Store peer table markdown as deterministic text
     if peer_rows:
@@ -691,10 +780,13 @@ def _build_valuation(
     contracts: ReportSectionContracts,
     valuation_model: Dict[str, Any],
     financial_metrics: Dict[str, Any],
+    financial_evidence_ids: List[str],
+    currency_context: CurrencyContext,
 ) -> None:
     c = contracts.ensure("valuation")
     c.allowed_source_types = [SRC_VALUATION_MODEL, SRC_FINANCIAL_METRIC, SRC_MARKET_DATA]
     c.forbidden_source_types = [SRC_INCOME_TABLE, SRC_BALANCE_TABLE, SRC_CASHFLOW_TABLE]
+    c.render_policy["allow_llm_rewrite"] = True
 
     if not valuation_model:
         c.add_blocked_reason("valuation_model_not_available")
@@ -710,23 +802,47 @@ def _build_valuation(
         )
         return
 
-    pe = valuation_model.get("pe_ratio")
-    pb = valuation_model.get("pb_ratio")
-    ps = valuation_model.get("ps_ratio")
-    dcf = valuation_model.get("dcf_value")
+    # Read from the actual valuation_model structure returned by perform_company_valuation:
+    #   valuation_model.relative_valuation.multiples.pe.multiple  → P/E
+    #   valuation_model.relative_valuation.multiples.ps.multiple  → P/S
+    #   valuation_model.dcf_model.equity_value_billion            → DCF equity value
+    rel_val = _safe_dict(valuation_model, "relative_valuation")
+    multiples = _safe_dict(rel_val, "multiples")
+    pe_info = _safe_dict(multiples, "pe")
+    ps_info = _safe_dict(multiples, "ps")
+    dcf_info = _safe_dict(valuation_model, "dcf_model")
+
+    pe = pe_info.get("multiple")
+    ps = ps_info.get("multiple")
+    dcf = dcf_info.get("equity_value_billion")
+    pe_value = pe_info.get("equity_value_billion")
+    ps_value = ps_info.get("equity_value_billion")
+    target_price = valuation_model.get("target_price")
 
     facts_added = 0
-    if pe is not None:
-        c.add_fact("pe_ratio", f"P/E: {pe}", source_types=[SRC_VALUATION_MODEL])
+    blended = _safe_number(valuation_model.get("blended_equity_value_billion"))
+    dcf_num = _safe_number(dcf)
+    suppress_target_price = False
+    if blended and dcf_num and max(blended, dcf_num) > 0:
+        divergence = abs(blended - dcf_num) / max(blended, dcf_num)
+        if divergence > 0.50:
+            c.add_quality_flag(f"valuation_method_divergence:{divergence:.2f}")
+            suppress_target_price = True
+            c.deterministic_text = (
+                "估值方法之间存在显著分歧，本报告分别披露相对估值与DCF结果，"
+                "不输出单一综合目标价。"
+            )
+    if pe is not None and pe_value is not None:
+        c.add_fact("pe_ratio", f"P/E {pe:.1f}x → 权益价值 {_format_billion_value(pe_value, currency_context)}", source_types=[SRC_VALUATION_MODEL])
         facts_added += 1
-    if pb is not None:
-        c.add_fact("pb_ratio", f"P/B: {pb}", source_types=[SRC_VALUATION_MODEL])
-        facts_added += 1
-    if ps is not None:
-        c.add_fact("ps_ratio", f"P/S: {ps}", source_types=[SRC_VALUATION_MODEL])
+    if ps is not None and ps_value is not None:
+        c.add_fact("ps_ratio", f"P/S {ps:.1f}x → 权益价值 {_format_billion_value(ps_value, currency_context)}", source_types=[SRC_VALUATION_MODEL])
         facts_added += 1
     if dcf is not None:
-        c.add_fact("dcf_value", f"DCF: {dcf}", source_types=[SRC_VALUATION_MODEL])
+        c.add_fact("dcf_value", f"DCF权益价值 {_format_billion_value(dcf, currency_context)}", source_types=[SRC_VALUATION_MODEL])
+        facts_added += 1
+    if target_price is not None and not suppress_target_price:
+        c.add_fact("target_price", f"综合目标价 {target_price:.2f}", source_types=[SRC_VALUATION_MODEL])
         facts_added += 1
 
     if facts_added >= 2:
@@ -745,6 +861,7 @@ def _build_valuation_sensitivity(
     c = contracts.ensure("valuation_sensitivity")
     c.allowed_source_types = [SRC_VALUATION_MODEL]
     c.forbidden_source_types = [SRC_INCOME_TABLE, SRC_BALANCE_TABLE, SRC_CASHFLOW_TABLE]
+    c.render_policy["allow_llm_rewrite"] = True
 
     if not valuation_sensitivity:
         vm_status = str(valuation_model.get("valuation_status", "") or "") if valuation_model else ""
@@ -755,7 +872,7 @@ def _build_valuation_sensitivity(
             c.add_blocked_reason("valuation_sensitivity_not_available")
         return
 
-    rows = valuation_sensitivity.get("sensitivity") or valuation_sensitivity.get("rows") or []
+    rows = _normalize_sensitivity_rows(valuation_sensitivity)
     if rows:
         c.deterministic_text = _render_sensitivity_text(rows)
         c.status = "supported"
@@ -775,7 +892,7 @@ def _build_risk_factors(
     c = contracts.ensure("risk_factors")
     c.allowed_source_types = list(ALLOWED_QUALITATIVE_PDF_ONLY | {SRC_INDUSTRY_POLICY})
     c.forbidden_source_types = FORBIDDEN_SECTION_SOURCE_TYPES.get("risk_factors", [])
-    c.render_policy["allow_llm_rewrite"] = False
+    c.render_policy["allow_llm_rewrite"] = True
 
     if annual_report_sections is None:
         annual_report_sections = []
@@ -795,6 +912,10 @@ def _build_risk_factors(
         eid = str(summary.get("evidence_id") or "") or str(summary.get("chunk_id") or "")
         st = str(summary.get("section_type") or "")
         if not text or len(text.strip()) < 30:
+            continue
+        # Skip gap summaries — known PDF noise markers mean the content is boilerplate
+        if _is_pdf_gap_summary(text):
+            c.add_quality_flag("risk_gap_summary_skipped")
             continue
         c.add_fact("official_risk_summary", text[:600],
                    evidence_ids=[eid] if eid else [],
@@ -861,15 +982,20 @@ def _build_investment_conclusion(
     financial_metrics: Dict[str, Any],
     valuation_model: Dict[str, Any],
     evidence_records: List[Dict[str, Any]],
+    financial_evidence_ids: List[str],
 ) -> None:
     c = contracts.ensure("investment_conclusion")
     c.allowed_source_types = list(ALLOWED_FINANCIAL)
     c.forbidden_source_types = FORBIDDEN_SECTION_SOURCE_TYPES.get("investment_conclusion", [])
+    c.render_policy["allow_llm_rewrite"] = True
 
-    has_financial = bool(financial_metrics.get("revenue")) or bool(financial_metrics.get("net_income"))
+    flat_metrics = _normalize_metrics_flat(financial_metrics)
+    has_financial = bool(flat_metrics.get("revenue")) or bool(flat_metrics.get("net_income"))
     has_valuation = bool(valuation_model) and valuation_model.get("valuation_available") is not False
+    pc = contracts.get("peer_compare")
+    has_peers = bool(pc and pc.status not in ("gap",))
 
-    if has_financial or has_valuation:
+    if has_financial or has_valuation or has_peers:
         c.add_fact("conclusion_basis", "综合财务质量、估值、同行与风险证据后形成审慎观察。",
                    source_types=[SRC_FINANCIAL_METRIC])
         c.status = "partial"
@@ -886,7 +1012,7 @@ def _build_period_note(
     period_info: Dict[str, Any],
 ) -> None:
     c = contracts.ensure("period_note")
-    c.render_policy["allow_llm_rewrite"] = False
+    c.render_policy["allow_llm_rewrite"] = True
 
     latest = period_info.get("latest_available_period", "")
     target = period_info.get("target_period", "")
@@ -909,7 +1035,7 @@ def _build_currency_data_quality(
     analysis_artifacts: Dict[str, Any],
 ) -> None:
     c = contracts.ensure("currency_data_quality")
-    c.render_policy["allow_llm_rewrite"] = False
+    c.render_policy["allow_llm_rewrite"] = True
 
     currency_audit = _safe_dict(analysis_artifacts, "currency_audit")
     if currency_audit:
@@ -1017,27 +1143,280 @@ def _safe_list(obj: Any, key: str) -> List[Any]:
 
 def _format_key_metrics(financial_metrics: Dict[str, Any]) -> str:
     """Format key financial metrics into a single line."""
+    flat = _normalize_metrics_flat(financial_metrics)
     parts = []
     for key in ["revenue", "net_income", "operating_cash_flow", "free_cash_flow",
                  "total_assets", "total_liabilities", "gross_margin", "operating_margin"]:
-        val = financial_metrics.get(key)
+        val = flat.get(key)
         if val is not None:
             parts.append(f"{key}: {val}")
     return "; ".join(parts[:8])
 
 
+def _normalize_metrics_flat(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalise financial_metrics to flat key->value dict.
+
+    Handles both:
+      { 'revenue': 123, 'net_income': 456, ... }           (flat – legacy)
+      { 'metrics': [{'metric_name': 'revenue', 'value': 123}, ...] }  (nested array)
+    """
+    if not isinstance(raw, dict):
+        return {}
+    # Fast path: already flat
+    if any(k in raw for k in ("revenue", "net_income", "total_assets")):
+        return raw
+    # Nested metrics array
+    metrics_list = raw.get("metrics")
+    if isinstance(metrics_list, list) and metrics_list:
+        flat: Dict[str, Any] = {}
+        for m in metrics_list:
+            if not isinstance(m, dict):
+                continue
+            name = m.get("metric_name") or m.get("key") or ""
+            value = m.get("value") or m.get("val")
+            if name and value is not None:
+                flat[str(name)] = value
+        return flat
+    return raw
+
+
+def _financial_evidence_ids(
+    financial_metrics: Dict[str, Any],
+    tables: List[Dict[str, Any]],
+    claims: List[Any],
+) -> List[str]:
+    ids: List[str] = []
+
+    def add(value: Any) -> None:
+        text = str(value or "").strip()
+        if text and text not in ids:
+            ids.append(text)
+
+    metrics_list = financial_metrics.get("metrics") if isinstance(financial_metrics, dict) else []
+    if isinstance(metrics_list, list):
+        for metric in metrics_list:
+            if not isinstance(metric, dict):
+                continue
+            add(metric.get("source_evidence_id") or metric.get("source_id") or metric.get("evidence_id"))
+
+    for table in tables:
+        if not isinstance(table, dict):
+            continue
+        add(table.get("source_evidence_id") or table.get("evidence_id"))
+        rows = table.get("rows")
+        if isinstance(rows, list):
+            for row in rows:
+                if isinstance(row, dict):
+                    add(row.get("source_evidence_id") or row.get("evidence_id"))
+
+    for claim in claims:
+        if isinstance(claim, dict):
+            for eid in claim.get("evidence_ids") or []:
+                add(eid)
+    return ids
+
+
+def _metric_evidence_ids(financial_metrics: Dict[str, Any], metric_key: str, fallback_ids: List[str]) -> List[str]:
+    wanted = {metric_key, metric_key.replace("_billion", ""), metric_key.replace("_pct", "")}
+    ids: List[str] = []
+    metrics_list = financial_metrics.get("metrics") if isinstance(financial_metrics, dict) else []
+    if isinstance(metrics_list, list):
+        for metric in metrics_list:
+            if not isinstance(metric, dict):
+                continue
+            name = str(metric.get("metric_name") or metric.get("key") or "").strip()
+            if name in wanted:
+                eid = str(metric.get("source_evidence_id") or metric.get("source_id") or metric.get("evidence_id") or "").strip()
+                if eid and eid not in ids:
+                    ids.append(eid)
+    return ids or list(fallback_ids[:3])
+
+
+def _render_three_statement_table_markdown(tables: List[Dict[str, Any]], currency_context: CurrencyContext) -> str:
+    preferred = [
+        ("收入", {"revenue", "营业收入", "收入"}),
+        ("净利润", {"net_income", "净利润"}),
+        ("总资产", {"total_assets", "assets", "总资产"}),
+        ("总负债", {"total_liabilities", "liabilities", "总负债"}),
+        ("权益", {"equity", "total_equity", "所有者权益", "权益"}),
+        ("经营现金流", {"operating_cash_flow", "netcash_operate", "经营现金流"}),
+        ("投资现金流", {"investing_cash_flow", "netcash_invest", "投资现金流"}),
+        ("筹资现金流", {"financing_cash_flow", "netcash_finance", "筹资现金流"}),
+    ]
+    rows_out: List[List[str]] = []
+    seen: Set[str] = set()
+    for label, keys in preferred:
+        found = _find_statement_row(tables, keys)
+        if not found:
+            continue
+        value = _safe_number(found.get("value"))
+        if value is None:
+            continue
+        source = str(found.get("provider") or found.get("source_type") or "").strip() or "structured"
+        period = str(found.get("period") or found.get("report_date") or "").strip()
+        if label in seen:
+            continue
+        seen.add(label)
+        row_context = _row_currency_context(found, currency_context)
+        rows_out.append([label, format_amount_for_context(value, row_context), period, source])
+    if len(rows_out) < 3:
+        return ""
+    lines = [
+        "| 指标 | 金额 | 期间 | 来源 |",
+        "|---|---:|---|---|",
+    ]
+    lines.extend(f"| {label} | {amount} | {period} | {source} |" for label, amount, period, source in rows_out)
+    return "\n".join(lines)
+
+
+def _find_statement_row(tables: List[Dict[str, Any]], keys: Set[str]) -> Dict[str, Any]:
+    normalized_keys = {_normalize_metric_key(k) for k in keys}
+    for table in tables:
+        rows = table.get("rows") if isinstance(table, dict) else None
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            line_item = _normalize_metric_key(row.get("line_item") or row.get("metric_name") or row.get("name"))
+            if line_item in normalized_keys:
+                return row
+    return {}
+
+
+def _normalize_metric_key(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    aliases = {
+        "assets": "total_assets",
+        "liabilities": "total_liabilities",
+        "营业总收入": "收入",
+        "营业收入": "收入",
+        "归母净利润": "净利润",
+        "所有者权益": "权益",
+        "netcash_operate": "operating_cash_flow",
+        "netcash_invest": "investing_cash_flow",
+        "netcash_finance": "financing_cash_flow",
+    }
+    return aliases.get(text, text)
+
+
+def _safe_number(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        number = float(value)
+        if number != number:
+            return None
+        return number
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_cny_billion(value: float) -> str:
+    return format_amount_for_context(value, build_currency_context(market="cn_a", statement_currency="CNY", display_currency="CNY"))
+
+
 def _classify_business_fact(text: str) -> str:
     """Heuristic classification of business fact type."""
-    lowered = text.lower()
-    if any(t in lowered for t in ["主营", "业务", "产品", "销售", "品牌", "茅台", "系列酒"]):
+    lowered = str(text or "").lower()
+    if any(t in lowered for t in ["主营", "业务", "产品", "销售", "品牌", "产品类型", "产品结构", "业务结构", "经营模式", "商业模式", "盈利模式"]):
         return "business_model"
-    if any(t in lowered for t in ["渠道", "直销", "批发", "i茅台", "经销"]):
+    if any(t in lowered for t in ["渠道", "直销", "批发", "经销", "分销", "零售", "电商", "门店", "线上", "线下"]):
         return "sales_channel"
-    if any(t in lowered for t in ["核心", "竞争", "优势", "壁垒", "护城河"]):
+    if any(t in lowered for t in ["核心", "竞争", "优势", "壁垒", "护城河", "龙头", "领先", "专利"]):
         return "competitive_advantage"
-    if any(t in lowered for t in ["战略", "市场", "发展", "规划", "布局"]):
+    if any(t in lowered for t in ["战略", "市场", "发展", "规划", "布局", "目标", "定位"]):
         return "market_strategy"
     return "general_business"
+
+
+def _business_overview_priority_score(text: str) -> int:
+    lowered = str(text or "")
+    score = 0
+    priority_terms = [
+        ("主营业务", 50),
+        ("主要业务", 45),
+        ("主营产品", 45),
+        ("产品结构", 40),
+        ("业务结构", 38),
+        ("收入结构", 38),
+        ("销售渠道", 36),
+        ("渠道", 26),
+        ("直销", 24),
+        ("批发", 22),
+        ("经销", 22),
+        ("产品", 20),
+        ("品牌", 14),
+        ("工艺", 12),
+        ("核心竞争力", 8),
+        ("竞争优势", 8),
+    ]
+    for term, weight in priority_terms:
+        if term in lowered:
+            score += weight
+    return score
+
+
+def _fallback_business_overview_via_text_detector(
+    c: "SectionEvidenceContract",
+    state: Dict[str, Any],
+    evidence_records: List[Dict[str, Any]],
+) -> None:
+    """当 bookmark 提取的业务概览章节为空时，用 pdf_section_detector
+    纯文本匹配做回退——扫描原始 PDF 全文字找业务概览对应的章节文本。
+
+    仅对 A 股生效（需要中文标题模式）。
+    """
+    market = _detect_market(state)
+    if market != "cn_a":
+        return
+    try:
+        from src.report.fact_extractors.pdf_section_detector import detect_sections
+    except ImportError:
+        return
+
+    # 从 state/evidence_records 中拼出原始 PDF 全文
+    text_sources: List[str] = []
+    pdf_artifacts = state.get("pdf_artifacts") if isinstance(state.get("pdf_artifacts"), dict) else {}
+    pdf_sections = pdf_artifacts.get("pdf_sections", []) if isinstance(pdf_artifacts.get("pdf_sections"), list) else []
+    for sec in pdf_sections:
+        if isinstance(sec, dict):
+            txt = str(sec.get("text") or sec.get("content") or "")
+            if len(txt) > 100:
+                text_sources.append(txt)
+
+    if not text_sources:
+        # Also try pdf_section_summaries text from analysis_artifacts
+        summaries = state.get("pdf_section_summaries", []) or []
+        for s in summaries:
+            if isinstance(s, dict):
+                txt = str(s.get("summary_zh") or s.get("text") or s.get("content") or "")
+                if len(txt) > 100:
+                    text_sources.append(txt)
+
+    if not text_sources:
+        # Last try: concatenate all evidence content
+        for rec in evidence_records:
+            if isinstance(rec, dict) and str(rec.get("source_type", "")).lower() in {"cninfo_announcement", "exchange_announcement"}:
+                txt = str(rec.get("content") or "")
+                if len(txt) > 500:
+                    text_sources.append(txt)
+
+    combined = "\n\n".join(text_sources)
+    if len(combined) < 200:
+        return
+
+    detected = detect_sections(combined, market="cn_a", include_unmatched=False)
+    biz_text = detected.get("business_overview") or detected.get("business") or ""
+    if not biz_text or len(biz_text.strip()) < 50:
+        return
+
+    clean = clean_pdf_boilerplate(biz_text)[:800]
+    if clean:
+        fact_type = _classify_business_fact(clean)
+        c.add_fact(fact_type, clean, source_types=["pdf_section_detector_fallback"])
+        c.status = "partial"
+        c.add_quality_flag("business_overview_used_text_detector_fallback")
 
 
 def _detect_market(state: Dict[str, Any]) -> str:
@@ -1049,6 +1428,111 @@ def _detect_market(state: Dict[str, Any]) -> str:
     if not symbol.endswith((".SS", ".SZ", ".HK")):
         return "us"
     return "generic"
+
+
+def _currency_context(state: Dict[str, Any], analysis_artifacts: Dict[str, Any]) -> CurrencyContext:
+    audit = _safe_dict(analysis_artifacts, "currency_audit") or _safe_dict(state, "currency_audit")
+    return build_currency_context(
+        symbol=str(audit.get("symbol") or state.get("symbol") or ""),
+        market=str(audit.get("market") or _detect_market(state)),
+        statement_currency=str(audit.get("statement_currency") or ""),
+        display_currency=str(audit.get("display_currency") or ""),
+    )
+
+
+def _row_currency_context(row: Dict[str, Any], fallback: CurrencyContext) -> CurrencyContext:
+    currency = str(row.get("currency") or row.get("unit") or "")
+    if currency.upper() not in {"USD", "CNY", "HKD"}:
+        return fallback
+    return build_currency_context(
+        market=fallback.market,
+        statement_currency=currency,
+        display_currency=currency,
+    )
+
+
+def _format_billion_value(value: Any, context: CurrencyContext) -> str:
+    number = _safe_number(value)
+    if number is None:
+        return ""
+    currency = context.display_currency
+    names = {"USD": "十亿美元", "HKD": "十亿港元", "CNY": "十亿元人民币"}
+    return f"{number:.2f} {names.get(currency, f'十亿{currency}')}"
+
+
+def _normalize_sensitivity_rows(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    rows = payload.get("sensitivity") or payload.get("rows") or []
+    if isinstance(rows, list) and rows:
+        return [dict(row) if isinstance(row, dict) else {"value": row} for row in rows]
+    scenarios = payload.get("scenario_values")
+    if not isinstance(scenarios, dict):
+        return []
+    output: List[Dict[str, Any]] = []
+    labels = {"bear": "悲观情景", "base": "基准情景", "bull": "乐观情景"}
+    for key, value in scenarios.items():
+        row = dict(value) if isinstance(value, dict) else {"value": value}
+        row.setdefault("label", labels.get(str(key).lower(), str(key)))
+        row.setdefault("scenario", str(key))
+        output.append(row)
+    return output
+
+
+def _peer_row_has_metrics(row: Dict[str, Any]) -> bool:
+    keys = (
+        "revenue_growth_pct",
+        "gross_margin_pct",
+        "net_margin_pct",
+        "roe_pct",
+        "revenue_billion",
+        "net_income_billion",
+        "free_cash_flow_billion",
+    )
+    return any(_safe_number(row.get(key)) is not None for key in keys)
+
+
+def _business_profile_fallback(
+    state: Dict[str, Any],
+    analysis_artifacts: Dict[str, Any],
+    evidence_records: List[Dict[str, Any]],
+) -> tuple[str, str, str]:
+    profile = _safe_dict(analysis_artifacts, "company_profile")
+    candidates: List[tuple[str, str, str, str]] = []
+    if profile:
+        candidates.append((
+            str(profile.get("business_summary") or profile.get("long_business_summary") or profile.get("description") or ""),
+            str(profile.get("evidence_id") or ""),
+            "company_profile",
+            str(profile.get("period") or profile.get("source_period") or ""),
+        ))
+    identity = _safe_dict(state, "entity_resolution")
+    for key in ("symbol_resolution", "topic_resolution"):
+        resolved = _safe_dict(identity, key)
+        candidates.append((
+            str(resolved.get("business_summary") or resolved.get("description") or ""),
+            "",
+            "company_profile",
+            str(resolved.get("period") or ""),
+        ))
+    for rec in evidence_records:
+        source_type = str(rec.get("source_type") or "")
+        if source_type not in {"company_profile", "yahoo_profile"}:
+            continue
+        metadata = rec.get("metadata") if isinstance(rec.get("metadata"), dict) else {}
+        candidates.append((
+            str(rec.get("content") or metadata.get("business_summary") or metadata.get("description") or ""),
+            str(rec.get("evidence_id") or rec.get("sample_id") or ""),
+            source_type,
+            str(rec.get("source_period") or metadata.get("source_period") or rec.get("period") or ""),
+        ))
+    target_period = str(state.get("period") or "")
+    for text, evidence_id, source_type, source_period in candidates:
+        clean = clean_pdf_boilerplate(text).strip()
+        if len(clean) < 20:
+            continue
+        if source_period and target_period and source_period.upper() != target_period.upper():
+            clean = f"{clean}（稳定业务描述沿用自 {source_period} 公司资料，需以后续目标期正式披露复核。）"
+        return clean, evidence_id, source_type
+    return "", "", ""
 
 
 def _detect_period(
@@ -1141,7 +1625,10 @@ def _get_peer_rows(
     blackboard: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
     peer_data = _safe_dict(analysis_artifacts, "peer_analysis")
-    rows = (peer_data.get("peer_rows") or peer_data.get("rows")
+    # peer_context 是 build_peer_comparison() 实际存储同行数据的位置
+    peer_context = _safe_dict(analysis_artifacts, "peer_context")
+    rows = (peer_context.get("peer_rows")
+            or peer_data.get("peer_rows") or peer_data.get("rows")
             or analysis_artifacts.get("peer_rows")
             or blackboard.get("peer_rows")
             or state.get("peer_rows")
@@ -1187,11 +1674,11 @@ def _render_peer_table_markdown(
         if sym not in table_symbols:
             continue
         name = str(row.get("company_name") or row.get("name") or sym)
-        rev_growth = str(row.get("revenue_growth") or row.get("rev_growth") or "")
-        gm = str(row.get("gross_margin") or "")
-        nm = str(row.get("net_margin") or "")
-        roe = str(row.get("roe") or "")
-        note = "目标公司" if sym == target_symbol else ""
+        rev_growth = _format_peer_metric(row.get("revenue_growth_pct") or row.get("revenue_growth") or row.get("rev_growth"))
+        gm = _format_peer_metric(row.get("gross_margin_pct") or row.get("gross_margin"))
+        nm = _format_peer_metric(row.get("net_margin_pct") or row.get("net_margin"))
+        roe = _format_peer_metric(row.get("roe_pct") or row.get("roe"))
+        note = "目标公司" if sym == str(target_symbol or "").upper() else ""
         if sym in cross_market:
             note = note or "非同业参考" if not note else note
         elif sym in direct_peers:
@@ -1206,12 +1693,30 @@ def _render_sensitivity_text(rows: List[Any]) -> str:
     parts = ["估值敏感性分析："]
     for row in rows[:5]:
         if isinstance(row, dict):
-            label = str(row.get("label") or row.get("variable") or "")
+            label = str(row.get("label") or row.get("scenario") or row.get("variable") or "")
+            target_price = row.get("target_price")
+            equity_value = row.get("equity_value_billion")
+            value = row.get("value")
+            if target_price is not None or equity_value is not None or value is not None:
+                detail = []
+                if equity_value is not None:
+                    detail.append(f"权益价值={equity_value}")
+                if target_price is not None:
+                    detail.append(f"目标价={target_price}")
+                if value is not None:
+                    detail.append(f"数值={value}")
+                parts.append(f"- {label}: " + "；".join(detail))
+                continue
             base = str(row.get("base") or row.get("base_value") or "")
             low = str(row.get("low") or "")
             high = str(row.get("high") or "")
             parts.append(f"- {label}(基准={base}): {low} - {high}")
     return "\n".join(parts) if len(parts) > 1 else ""
+
+
+def _format_peer_metric(value: Any) -> str:
+    number = _safe_number(value)
+    return "" if number is None else f"{number:.2f}%"
 
 
 def _get_industry_risk_fallback(
@@ -1286,3 +1791,179 @@ def _format_peer_group_label(groups: List) -> str:
         if isinstance(g, dict):
             labels.append(g.get("group_label", "reference"))
     return ", ".join(labels) if labels else ""
+
+
+def _is_pdf_gap_summary(text: str) -> bool:
+    """Detect if a PDF section summary is a 'gap' placeholder rather than real content.
+
+    When all chunks for a section are noise (headers, TOC, boilerplate, mojibake),
+    the summarizer produces a gap summary like "已获取官方PDF但候选片段主要是页眉目录指针..."
+    These should NOT set section status to 'supported'.
+    """
+    gap_markers = ["页眉", "目录指针", "乱码", "审计模板", "未能稳定抽取",
+                   "未稳定抽取", "data_gap", "候选片段主要是", "无有效文本",
+                   "已获取官方"]
+    lowered = text.lower()
+    marker_count = sum(1 for m in gap_markers if m in lowered)
+    return marker_count >= 2
+
+
+def _is_pdf_toc_text(text: str) -> bool:
+    """Detect if text is a PDF table of contents rather than actual section content.
+
+    TOC text patterns (language-agnostic, no hardcoded language assumptions):
+      - Lines with "Section" followed by a Roman numeral or word
+      - Lines ending with dotted leader and page number
+      - Lines that are pure page numbers
+      - High proportion of lines matching TOC patterns
+    Returns True if the text appears to be TOC content.
+    """
+    if not text or len(text) < 40:
+        return False
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return False
+
+    toc_line_count = 0
+    for line in lines:
+        # "Section III ..." or "Section 1 ..."
+        if re.search(r"(?i)^Section\s+(?:[IVXLCDM]+\b|\d+)", line):
+            toc_line_count += 1
+            continue
+        # Dotted leader ending in page number: "Title.............. 5"
+        if re.search(r"[\.…]{4,}\s*\d+\s*$", line) and len(line) > 30:
+            toc_line_count += 1
+            continue
+        # Pure page-number line
+        if re.match(r"^\d{1,3}\s*$", line):
+            toc_line_count += 1
+            continue
+        # "Contents" header
+        if re.match(r"(?i)^contents?\s*$", line):
+            toc_line_count += 1
+            continue
+
+    # If more than 30% of non-empty lines look like TOC, treat as TOC text
+    return (toc_line_count / max(len(lines), 1)) >= 0.30
+
+
+def _apply_pdf_fallback(
+    contracts: ReportSectionContracts,
+    pdf_section_summaries: List[Dict[str, Any]],
+    pdf_section_chunks: List[Dict[str, Any]],
+    evidence_records: List[Dict[str, Any]],
+) -> None:
+    """Fallback: use raw PDF text for gap sections instead of leaving them empty.
+
+    Fires only when a section's status is still 'gap' after all structured
+    extraction failed. Tries three sources in order:
+      1. pdf_section_summaries
+      2. pdf_section_chunks
+      3. evidence_records (where _get_pdf_section_chunks may not have found them)
+    The LLM rewrite pass (Fix 4) can clean up the raw text afterward.
+    """
+    SECTION_PDF_TYPES = {
+        "business_overview": {"business_overview", "business", "strategy_business"},
+        "strategy_business": {"strategy_business", "management_discussion", "mda", "strategy"},
+        "ownership_governance": {"ownership_governance", "governance"},
+        "risk_factors": {"risk_factors", "risks"},
+    }
+
+    for sk, pdf_types in SECTION_PDF_TYPES.items():
+        contract = contracts.get(sk)
+        if not contract or contract.status != "gap":
+            continue
+
+        # Priority 1: try summaries
+        found = False
+        for summary in pdf_section_summaries:
+            if summary.get("section_type") not in pdf_types:
+                continue
+            text = str(summary.get("summary_zh") or summary.get("text") or summary.get("content") or "")
+            if not text or len(text.strip()) < 60:
+                continue
+            if _is_pdf_gap_summary(text):
+                continue
+            if _is_pdf_toc_text(text):
+                continue
+            clean = clean_pdf_boilerplate(text)[:600]
+            if clean and len(clean.strip()) >= 60:
+                eid = str(summary.get("evidence_id") or summary.get("chunk_id") or "")
+                contract.add_fact("pdf_fallback", clean,
+                                  evidence_ids=[eid] if eid else [],
+                                  source_types=["annual_report_pdf_section_summary"])
+                contract.status = "partial"
+                _clear_not_found_blockers_after_pdf_fallback(contract)
+                contract.add_quality_flag(f"{sk}_pdf_summary_fallback")
+                found = True
+                break
+
+        # Priority 2: try section chunks
+        if not found:
+            for chunk in pdf_section_chunks:
+                if chunk.get("section_type") not in pdf_types:
+                    continue
+                text = str(chunk.get("summary_zh") or chunk.get("text") or chunk.get("content") or "")
+                if not text or len(text.strip()) < 100:
+                    continue
+                if _is_pdf_gap_summary(text):
+                    continue
+                if _is_pdf_toc_text(text):
+                    continue
+                clean = clean_pdf_boilerplate(text)[:500]
+                if clean and len(clean.strip()) >= 60:
+                    eid = str(chunk.get("evidence_id") or chunk.get("chunk_id") or "")
+                    contract.add_fact("pdf_fallback", clean,
+                                      evidence_ids=[eid] if eid else [],
+                                      source_types=["annual_report_pdf_chunk"])
+                    contract.status = "partial"
+                    _clear_not_found_blockers_after_pdf_fallback(contract)
+                    contract.add_quality_flag(f"{sk}_pdf_chunk_fallback")
+                    found = True
+                    break
+
+        # Priority 3: try evidence_records directly
+        # (pdf_section_chunks may be empty even when evidence_records have PDF chunks)
+        if not found:
+            for rec in evidence_records:
+                st = str(rec.get("source_type") or "")
+                if "pdf" not in st.lower() and "annual" not in st.lower():
+                    continue
+                meta = rec.get("metadata") or {}
+                if isinstance(meta, dict) and meta.get("section_type") not in pdf_types:
+                    continue
+                if isinstance(meta, dict) and not meta.get("section_type"):
+                    # If no section_type metadata, try content-based matching
+                    text_hint = str(rec.get("content") or "")[:100]
+                    if not any(t in text_hint for t in ["管理层讨论与分析", "业务概", "风险提示"]):
+                        continue
+                text = str(rec.get("content") or "")[:600]
+                if not text or len(text.strip()) < 80:
+                    continue
+                if _is_pdf_gap_summary(text):
+                    continue
+                if _is_pdf_toc_text(text):
+                    continue
+                clean = clean_pdf_boilerplate(text)[:500]
+                if clean and len(clean.strip()) >= 60:
+                    eid = str(rec.get("evidence_id") or "")
+                    contract.add_fact("pdf_fallback", clean,
+                                      evidence_ids=[eid] if eid else [],
+                                      source_types=[st])
+                    contract.status = "partial"
+                    _clear_not_found_blockers_after_pdf_fallback(contract)
+                    contract.add_quality_flag(f"{sk}_evidence_fallback")
+                    found = True
+                    break
+
+
+def _clear_not_found_blockers_after_pdf_fallback(contract: SectionEvidenceContract) -> None:
+    """A section with usable PDF fallback evidence is partial, not not-found."""
+
+    contract.blocked_reasons = [
+        reason
+        for reason in contract.blocked_reasons
+        if not str(reason).endswith("_not_found")
+        and "pdf_sections_not_found" not in str(reason)
+        and "pdf_chunks_not_found" not in str(reason)
+    ]

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Tuple
 
 from src.data.source_quality import grade_source
 from src.utils.config import load_config
+from src.utils.model_cache import ensure_model_cache_env
 
 
 _CROSS_ENCODER_CACHE: Dict[str, object] = {}
@@ -49,11 +50,13 @@ def rerank_hits_with_meta(
     checkpoint_path: str = "data/outputs/checkpoints/reranker_checkpoint.json",
 ) -> Tuple[List[Dict[str, object]], Dict[str, object]]:
     ckpt = _load_checkpoint(checkpoint_path)
+    runtime_cfg = _load_reranker_runtime_config()
     ranked: List[Dict[str, object]] = [dict(item) for item in hits]
-    model_name = str((ckpt or {}).get("model_name") or (ckpt or {}).get("model") or "BAAI/bge-reranker-base")
+    model_name = str((ckpt or {}).get("model_name") or (ckpt or {}).get("model") or runtime_cfg.get("model_name") or "BAAI/bge-reranker-base")
+    local_files_only = bool((ckpt or {}).get("local_files_only", runtime_cfg.get("local_files_only", True)))
 
-    if ckpt and query.strip():
-        cross_encoder = _load_cross_encoder(model_name)
+    if query.strip() and (ckpt or runtime_cfg.get("use_base_model_without_checkpoint")):
+        cross_encoder = _load_cross_encoder(model_name, local_files_only=local_files_only)
         if cross_encoder is not None:
             pairs = [[query, _hit_text(item)] for item in ranked]
             scores = cross_encoder.predict(pairs)
@@ -65,7 +68,7 @@ def rerank_hits_with_meta(
                 "backend": "cross_encoder",
                 "model_name": model_name,
                 "checkpoint_path": checkpoint_path,
-                "checkpoint_used": True,
+                "checkpoint_used": bool(ckpt),
                 "fallback_used": False,
                 "score_components": ["cross_encoder"],
             }
@@ -114,19 +117,41 @@ def rerank_hits(
     return ranked
 
 
-def _load_cross_encoder(model_name: str) -> object | None:
-    if model_name in _CROSS_ENCODER_CACHE:
-        cached = _CROSS_ENCODER_CACHE[model_name]
+def _load_cross_encoder(model_name: str, local_files_only: bool = True) -> object | None:
+    cache_root = ensure_model_cache_env()
+    cache_key = f"{model_name}|local={int(local_files_only)}"
+    if cache_key in _CROSS_ENCODER_CACHE:
+        cached = _CROSS_ENCODER_CACHE[cache_key]
         return cached if cached is not False else None
     try:
         from sentence_transformers import CrossEncoder  # type: ignore
 
-        model = CrossEncoder(model_name)
-        _CROSS_ENCODER_CACHE[model_name] = model
+        try:
+            model = CrossEncoder(
+                model_name,
+                cache_folder=str(cache_root / "sentence_transformers"),
+                local_files_only=local_files_only,
+            )
+        except TypeError:
+            if local_files_only:
+                raise
+            model = CrossEncoder(model_name)
+        _CROSS_ENCODER_CACHE[cache_key] = model
         return model
     except Exception:
-        _CROSS_ENCODER_CACHE[model_name] = False
+        _CROSS_ENCODER_CACHE[cache_key] = False
         return None
+
+
+def _load_reranker_runtime_config() -> Dict[str, object]:
+    for path in ["configs/reranker.yaml", str(Path(__file__).resolve().parents[2] / "configs" / "reranker.yaml")]:
+        try:
+            cfg = load_config(path)
+            reranker = cfg.get("reranker", {}) if isinstance(cfg, dict) else {}
+            return dict(reranker) if isinstance(reranker, dict) else {}
+        except Exception:
+            continue
+    return {}
 
 
 def _apply_financial_heuristic_rerank(

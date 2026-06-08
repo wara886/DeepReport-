@@ -1,6 +1,7 @@
 from src.agents.section_dossier_builder import sanitize_peer_rows_for_report
 from src.agents.deep_analyze_agent import build_role_outputs
 from src.evaluation.report_quality import evaluate_report_quality
+from src.features.company_valuation import build_peer_comparison
 
 
 def test_peer_row_sanitizer_removes_unapproved_row_metrics():
@@ -137,6 +138,18 @@ def test_role_outputs_sanitize_a_share_peer_and_risk_contamination():
     assert "收入 1720.54亿元" in statement
     assert "净利润 823.20亿元" in statement
     assert "经营现金流 615.22亿元" in statement
+
+
+def test_a_share_peer_builder_does_not_fallback_to_us_yahoo_when_local_missing(tmp_path):
+    result = build_peer_comparison("600519.SS", "FY2025", raw_data_root=tmp_path / "missing")
+    payload = str(result)
+
+    assert result["target_market"] == "cn_a"
+    assert result["peer_count"] == 0
+    assert result["peer_rows"] == []
+    assert result["source"] == "local_only_market_isolated"
+    for token in ["PG", "KO", "PEP", "WMT", "COST"]:
+        assert token not in payload
 
 
 def _write_run(tmp_path, report_md):

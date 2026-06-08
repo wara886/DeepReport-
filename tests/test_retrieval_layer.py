@@ -111,6 +111,46 @@ def test_retrieve_evidence_skips_corrupt_parquet_file(tmp_path: Path):
     assert len(meta["skipped_files"]) == 1
     assert "broken.parquet" in meta["skipped_files"][0]
     assert meta["load_errors"]
+    assert "bm25_score" in hits[0]
+    assert meta["score_min"] is not None
+
+
+def test_retrieve_evidence_uses_json_when_all_parquet_files_are_corrupt(tmp_path: Path):
+    curated = tmp_path / "curated"
+    curated.mkdir()
+    (curated / "broken.parquet").write_text("not a parquet file", encoding="utf-8")
+    (curated / "fallback.json").write_text(
+        """
+[
+  {
+    "sample_id": "fallback-1",
+    "source_type": "company_profile",
+    "symbol": "TSLA",
+    "period": "2026Q1",
+    "title": "Tesla profile",
+    "publish_time": "2026-04-01",
+    "content": "Tesla designs electric vehicles and energy products.",
+    "source_url": "https://example.com/tsla",
+    "trust_level": "medium"
+  }
+]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    hits, meta = retrieve_evidence_with_mode(
+        query="electric vehicles",
+        topk=3,
+        curated_dir=str(curated),
+        ranking_mode="hybrid_rerank",
+        log=False,
+    )
+
+    assert hits
+    assert hits[0]["sample_id"] == "fallback-1"
+    assert meta["retrieval_available"] is True
+    assert meta["fallback_json_file_count"] == 1
+    assert meta["load_errors"][0]["error_type"] == "parquet_corrupt_or_incompatible"
 
 
 def test_retrieve_evidence_vector_mode_from_curated_dir(tmp_path: Path):

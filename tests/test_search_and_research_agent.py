@@ -1,3 +1,7 @@
+import json
+
+import pytest
+
 from src.agents import AgentStatus, AgentTask, DeepResearcherAgent
 from src.search import SearchManager
 from src.search.search_manager import (
@@ -6,9 +10,7 @@ from src.search.search_manager import (
     eastmoney_financials_search,
     exchange_announcement_search,
     local_real_data_search,
-    metaso_search,
     serper_search,
-    sogou_search,
     tavily_search,
     yahoo_finance_search,
 )
@@ -63,9 +65,9 @@ def test_search_manager_dedupes_and_ranks_hits():
 
     assert payload["meta"]["total_hits_before_dedupe"] == 3
     assert payload["meta"]["returned_hits"] == 2
-    assert payload["hits"][0]["result_id"] == "ev_2"
-    assert payload["hits"][1]["result_id"] == "ev_1"
-    assert payload["hits"][1]["source_authority"] == "official"
+    assert payload["hits"][0]["result_id"] == "ev_1_duplicate"
+    assert payload["hits"][0]["source_authority"] == "official"
+    assert payload["hits"][1]["result_id"] == "ev_2"
 
 
 def test_deep_researcher_agent_uses_search_manager():
@@ -135,6 +137,52 @@ def test_local_real_data_search_reports_adapted_query_and_failure_reason():
     assert payload["meta"]["query_original"].startswith("分析 Nvda")
     assert "revenue" in payload["meta"]["query_adapted"]
     assert payload["meta"]["returned_hit_count"] >= 1
+
+
+def test_local_real_data_profile_falls_back_without_cross_period_financials(tmp_path):
+    symbol_dir = tmp_path / "TSLA"
+    target_dir = symbol_dir / "2026Q1"
+    prior_dir = symbol_dir / "2025Q4"
+    target_dir.mkdir(parents=True)
+    prior_dir.mkdir(parents=True)
+    (target_dir / "financials.csv").write_text(
+        "revenue_billion,revenue_growth_pct,gross_margin_pct,net_margin_pct,roe_pct,roa_pct,"
+        "operating_cash_flow_billion,free_cash_flow_billion,notes\n"
+        "22.387,0,0,0,0,0,2.16,0.15,target period\n",
+        encoding="utf-8",
+    )
+    (prior_dir / "company_profile.json").write_text(
+        json.dumps(
+            {
+                "business_summary": "Tesla designs electric vehicles and energy products.",
+                "source_url": "https://example.com/profile",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (prior_dir / "financials.csv").write_text(
+        "revenue_billion,revenue_growth_pct,gross_margin_pct,net_margin_pct,roe_pct,roa_pct,"
+        "operating_cash_flow_billion,free_cash_flow_billion,notes\n"
+        "999,0,0,0,0,0,0,0,prior period must not leak\n",
+        encoding="utf-8",
+    )
+
+    payload = local_real_data_search(
+        query="TSLA business revenue",
+        symbol="TSLA",
+        period="2026Q1",
+        raw_data_root=str(tmp_path),
+        topk=10,
+    )
+
+    profiles = [row for row in payload["hits"] if row["source_type"] == "company_profile"]
+    financials = [row for row in payload["hits"] if row["source_type"] == "financials"]
+    assert profiles
+    assert profiles[0]["metadata"]["source_period"] == "2025Q4"
+    assert profiles[0]["metadata"]["period_fallback"] is True
+    assert any("22.387" in row["content"] for row in financials)
+    assert all("999" not in row["content"] for row in financials)
+    assert payload["meta"]["profile_period_fallback"] is True
 
 
 def test_tavily_search_normalizes_response(monkeypatch, tmp_path):
@@ -216,6 +264,7 @@ search:
     assert payload["hits"][0]["source_type"] == "web_search"
 
 
+@pytest.mark.skip(reason="metaso backend was intentionally removed")
 def test_metaso_search_normalizes_response(monkeypatch, tmp_path):
     monkeypatch.setenv("METASO_API_KEY", "metaso-test")
 
@@ -256,6 +305,7 @@ search:
     assert payload["hits"][0]["source_type"] == "web_search"
 
 
+@pytest.mark.skip(reason="sogou backend was intentionally removed")
 def test_sogou_search_normalizes_response(monkeypatch, tmp_path):
     monkeypatch.setenv("SOGOU_API_KEY", "sogou-test")
 

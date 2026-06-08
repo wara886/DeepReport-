@@ -320,18 +320,14 @@ class QueryUnderstanding:
             return base
 
         local = self._resolve_target_local(text, current_period=current_period, today=today)
-        llm = self._resolve_target_llm(text, current_symbol=current_symbol, current_period=current_period, today=today)
 
         if local.get("ambiguous"):
             return local
 
         if local.get("symbol"):
-            if llm.get("symbol") and llm["symbol"] != local["symbol"] and float(llm.get("confidence") or 0) >= 0.65:
-                local["needs_confirmation"] = True
-                local["conflict"] = True
-                local["reason"] = f"local symbol {local['symbol']} conflicts with LLM symbol {llm['symbol']}"
-                local["alternatives"] = [local, llm]
             return local
+
+        llm = self._resolve_target_llm(text, current_symbol=current_symbol, current_period=current_period, today=today)
 
         if llm.get("symbol"):
             return llm

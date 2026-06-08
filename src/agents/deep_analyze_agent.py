@@ -7,7 +7,6 @@ import re
 from typing import Any, Dict, List
 
 from src.agents.base_agent import AgentTask, BaseAgent, TaskResult
-from src.agents.react_loop import run_react_tool_loop
 from src.features.financial_metric_lineage import build_financial_metric_lineage, build_financial_metric_tables
 from src.evaluation.financial_currency_audit import build_currency_audit
 from src.models import ModelAdapter
@@ -93,32 +92,15 @@ class DeepAnalyzeAgent(BaseAgent):
         symbol = str(task.parameters.get("symbol") or _first_symbol(records))
         period = str(task.parameters.get("period") or _first_period(records))
         raw_data_root = str(task.parameters.get("raw_data_root") or "data/raw/real_data")
-        react_attempted = bool(task.parameters.get("use_react", False))
         skill_brief = str(task.parameters.get("skill_brief", "")).strip()
-        react_payload: Dict[str, Any] = {}
-        if react_attempted and self.model and hasattr(self.model, "chat"):
-            react_payload = self._run_react_analysis(
-                task=task,
-                records=records,
-                symbol=symbol,
-                period=period,
-                raw_data_root=raw_data_root,
-                skill_brief=skill_brief,
-            )
 
-        ratio_rows = _react_tool_result(react_payload, "calculate_financial_ratios", "rows")
+        ratio_rows = self.call_tool("calculate_financial_ratios", records=records)["rows"]
         if ratio_rows is None:
             ratio_rows = self.call_tool("calculate_financial_ratios", records=records)["rows"]
         trend_rows = self.call_tool("build_trend_features", records=records)["rows"]
-        statement_view = _react_tool_result(react_payload, "build_three_statement_view")
-        if statement_view is None:
-            statement_view = self.call_tool("build_three_statement_view", records=records)
-        peer_context = _react_tool_result(react_payload, "build_peer_comparison")
-        if peer_context is None:
-            peer_context = self.call_tool("build_peer_comparison", symbol=symbol, period=period, raw_data_root=raw_data_root)
-        valuation = _react_tool_result(react_payload, "perform_company_valuation")
-        if valuation is None:
-            valuation = self.call_tool(
+        statement_view = self.call_tool("build_three_statement_view", records=records)
+        peer_context = self.call_tool("build_peer_comparison", symbol=symbol, period=period, raw_data_root=raw_data_root)
+        valuation = self.call_tool(
                 "perform_company_valuation",
                 symbol=symbol,
                 period=period,
@@ -173,9 +155,6 @@ class DeepAnalyzeAgent(BaseAgent):
             "peer_count": int(peer_context.get("peer_count", 0) or 0),
             "valuation_available": bool(valuation.get("valuation_available", False)),
             "llm_used": False,
-            "react_attempted": react_attempted,
-            "react_used": bool(react_payload.get("tool_results")),
-            "react_trace": react_payload.get("react_trace", []),
             "skill_brief_chars": len(skill_brief),
         }
 
@@ -255,75 +234,6 @@ class DeepAnalyzeAgent(BaseAgent):
             },
             metadata=metadata,
         )
-
-    def _run_react_analysis(
-        self,
-        task: AgentTask,
-        records: List[Dict[str, Any]],
-        symbol: str,
-        period: str,
-        raw_data_root: str,
-        skill_brief: str = "",
-    ) -> Dict[str, Any]:
-        allowed_tools = [
-            "calculate_financial_ratios",
-            "build_three_statement_view",
-            "build_peer_comparison",
-            "perform_company_valuation",
-        ]
-        schemas = [self.tool_registry.get(name).to_tool_schema() for name in allowed_tools]
-        handlers = dict(self.tool_registry.handlers())
-        handlers["calculate_financial_ratios"] = lambda **kwargs: self.call_tool(
-            "calculate_financial_ratios",
-            records=kwargs.pop("records", records),
-        )
-        handlers["build_three_statement_view"] = lambda **kwargs: self.call_tool(
-            "build_three_statement_view",
-            records=kwargs.pop("records", records),
-        )
-        handlers["build_peer_comparison"] = lambda **kwargs: self.call_tool(
-            "build_peer_comparison",
-            symbol=kwargs.pop("symbol", symbol),
-            period=kwargs.pop("period", period),
-            raw_data_root=kwargs.pop("raw_data_root", raw_data_root),
-        )
-        handlers["perform_company_valuation"] = lambda **kwargs: self.call_tool(
-            "perform_company_valuation",
-            symbol=kwargs.pop("symbol", symbol),
-            period=kwargs.pop("period", period),
-            records=kwargs.pop("records", records),
-            raw_data_root=kwargs.pop("raw_data_root", raw_data_root),
-        )
-        result = run_react_tool_loop(
-            model=self.model,
-            system_prompt=(
-                "You are DeepAnalyzeAgent. Choose financial tools to compute ratios, "
-                "three-statement views, peer comparison, and valuation before claims are written."
-            ),
-            user_prompt=(
-                f"Analyze symbol={symbol}, period={period}. "
-                f"Evidence records available: {len(records)}. "
-                f"{'Relevant skills: ' + skill_brief + ' ' if skill_brief else ''}"
-                "Call the tools needed for a company stock research report."
-            ),
-            tool_schemas=schemas,
-            handlers=handlers,
-            max_steps=int(task.parameters.get("react_max_steps", 3) or 3),
-        )
-        tool_results: Dict[str, Any] = {}
-        for observation in result.get("observations", []):
-            if not isinstance(observation, dict):
-                continue
-            tool_name = str(observation.get("tool_name", ""))
-            if tool_name:
-                tool_results[tool_name] = observation.get("result", {})
-        return {
-            "tool_results": tool_results,
-            "react_trace": result.get("trace", []),
-            "final_content": result.get("final_content", ""),
-            "error": result.get("error", ""),
-        }
-
 
 def build_rule_claims(
     records: List[Dict[str, Any]],
@@ -667,7 +577,17 @@ def build_rule_claims(
 
     ranking = peer_context.get("ranking", {}) if isinstance(peer_context, dict) else {}
     target_symbol = str(peer_context.get("target_symbol") or "Target company")
-    peer_count = int(peer_context.get("peer_count", 0) or 0)
+    peer_rows = peer_context.get("peer_rows", []) if isinstance(peer_context.get("peer_rows"), list) else []
+    valid_peer_rows = [
+        row for row in peer_rows
+        if isinstance(row, dict)
+        and str(row.get("symbol") or row.get("ticker") or "").upper() != str(symbol or "").upper()
+        and any(
+            _safe_role_number(row.get(key)) is not None
+            for key in ("revenue_growth_pct", "gross_margin_pct", "net_margin_pct", "roe_pct", "revenue_billion")
+        )
+    ]
+    peer_count = len(valid_peer_rows)
     margin_rank = ranking.get("gross_margin_pct", {}) if isinstance(ranking.get("gross_margin_pct"), dict) else {}
     growth_rank = ranking.get("revenue_growth_pct", {}) if isinstance(ranking.get("revenue_growth_pct"), dict) else {}
     if peer_count and (margin_rank or growth_rank) and financial_evidence_ids:
@@ -956,7 +876,7 @@ def build_role_outputs(
     if statement_view.get("coverage"):
         statement_findings.append(f"Statement view coverage: {statement_view.get('coverage')}.")
 
-    peer_findings = [f"已识别 {peer_count} 家可比公司数据。"]
+    peer_findings = [f"已识别 {peer_count} 家具有有效指标的可比公司数据。"]
     peer_findings.extend(_peer_context_findings(peer_context, symbol))
     if peer_context.get("peer_symbols"):
         peer_findings.append(f"Peer symbols: {', '.join(_as_text_list(peer_context.get('peer_symbols'))[:8])}.")
@@ -1353,18 +1273,6 @@ def _dedupe_strings(items: Any) -> List[str]:
     return output
 
 
-def _react_tool_result(payload: Dict[str, Any], tool_name: str, field: str | None = None) -> Any:
-    results = payload.get("tool_results", {}) if isinstance(payload, dict) else {}
-    if not isinstance(results, dict) or tool_name not in results:
-        return None
-    result = results.get(tool_name)
-    if field is None:
-        return result if isinstance(result, dict) else None
-    if isinstance(result, dict) and field in result:
-        return result[field]
-    return None
-
-
 def _minimum_valuation_claims(
     records: List[Dict[str, Any]],
     statement_rows: Any,
@@ -1461,7 +1369,7 @@ def _minimum_valuation_claims(
                 claim_text=(
                     f"{symbol} {period} 敏感性分析显示，当前净利率约为 {net_margin:.1%}；"
                     f"若净利率变动 1pct，净利润方向性影响约为 {_format_statement_number(delta)}。"
-                    "对科技公司应重点跟踪收入增速、毛利率和研发费用率；对消费品公司应重点跟踪收入增速、净利率和渠道价格。"
+                    "对消费品公司，后续敏感性观察重点在收入增速、净利率、渠道价格和消费需求变化。"
                 ),
                 evidence_ids=financial_evidence_ids,
                 numeric_values={"net_margin": net_margin, "net_income_delta_1pct": delta},

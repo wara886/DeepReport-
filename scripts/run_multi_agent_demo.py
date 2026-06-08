@@ -12,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
+from src.utils.logging import configure_logging, get_task_logger
 
 
 def main() -> int:
@@ -25,6 +26,12 @@ def main() -> int:
     parser.add_argument("--output-dir", default="data/outputs/multi_agent")
     parser.add_argument("--report-dir", default="data/reports/multi_agent")
     parser.add_argument("--execution-mode", default="dynamic", choices=["dynamic", "static"])
+    parser.add_argument(
+        "--execution-tier",
+        default="delivery",
+        choices=["delivery", "preview", "user_fast", "developer_fast"],
+        help="Model routing tier for agent roles.",
+    )
     parser.add_argument("--fast", action="store_true", help="Reduce search/context size and skip optional LLM extraction.")
     parser.add_argument("--memory-enabled", action="store_true", help="Inject durable memory context and persist run memory artifacts.")
     parser.add_argument("--memory-root", default="", help="Override durable memory root. Defaults to configs/app.yaml.")
@@ -39,7 +46,21 @@ def main() -> int:
         default="",
         help="Comma-separated search engines, e.g. local_real_data,yahoo_finance,tavily,local_evidence.",
     )
+    parser.add_argument(
+        "--log-dir",
+        default="logs",
+        help="Log output directory.",
+    )
     args = parser.parse_args()
+
+    # 初始化日志
+    run_name = "report_{}_{}_{}".format(args.symbol, args.period, args.execution_mode)
+    configure_logging(log_dir=args.log_dir, run_name=run_name)
+    log = get_task_logger(__name__, task_id="{}_{}".format(args.symbol, args.period))
+    log.info("启动报告生成: symbol=%s period=%s mode=%s fast=%s",
+             args.symbol, args.period, args.execution_mode, args.fast)
+
+    log.info("model routing tier: %s", args.execution_tier)
 
     orchestrator = MultiAgentOrchestrator(
         output_dir=args.output_dir,
@@ -49,6 +70,7 @@ def main() -> int:
         app_config_path=args.app_config_path,
         memory_enabled=True if args.memory_enabled else None,
         memory_root=args.memory_root or None,
+        execution_tier=args.execution_tier,
     )
     result = orchestrator.run(
         research_topic=args.topic,

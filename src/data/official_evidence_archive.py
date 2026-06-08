@@ -42,14 +42,28 @@ def build_official_evidence_artifacts(
     mismatched_official = [entry for entry in entries if entry["period_match"] is False]
     unverified_official = [entry for entry in entries if entry["period_match"] is None]
     matching_official_ids = {str(entry.get("evidence_id") or "") for entry in matching_official}
+    matching_official_pdf_ids = {
+        str(entry.get("evidence_id") or "")
+        for entry in matching_official
+        if entry.get("page") not in (None, "")
+        and str(entry.get("source_type") or "").lower()
+        in {"pdf_section", "pdf_statement_table", "hkex_annual_report", "sec_filing"}
+    }
     candidate_statement_types = _statement_types(tables or [])
-    statement_types = _statement_types(tables or [], allowed_evidence_ids=matching_official_ids)
+    statement_types = _official_pdf_statement_types(tables or [], allowed_evidence_ids=matching_official_pdf_ids)
+    structured_statement_types = _structured_statement_types(tables or [])
+    has_official_pdf_three_statements = STATEMENT_TYPES.issubset(statement_types)
+    has_structured_three_statements = STATEMENT_TYPES.issubset(structured_statement_types)
+    has_formal_delivery_lineage = bool(matching_official) and (
+        has_official_pdf_three_statements or has_structured_three_statements
+    )
     missing: List[str] = []
 
     if market in {"cn_a", "hk"}:
         if not matching_official:
             missing.append("period_matched_official_filing")
-        for statement in sorted(STATEMENT_TYPES - statement_types):
+        delivery_statement_types = statement_types | structured_statement_types
+        for statement in sorted(STATEMENT_TYPES - delivery_statement_types):
             missing.append(statement)
         if entries and not page_anchor_count:
             missing.append("official_pdf_page_citations")
@@ -71,11 +85,15 @@ def build_official_evidence_artifacts(
         "pdf_page_anchor_count": page_anchor_count,
         "candidate_statement_types": sorted(candidate_statement_types),
         "statement_types": sorted(statement_types),
-        "has_three_statements": STATEMENT_TYPES.issubset(statement_types),
+        "structured_statement_types": sorted(structured_statement_types),
+        "has_three_statements": has_official_pdf_three_statements or has_structured_three_statements,
+        "has_official_pdf_three_statements": has_official_pdf_three_statements,
+        "has_structured_three_statements": has_structured_three_statements,
+        "has_formal_delivery_lineage": has_formal_delivery_lineage,
         "missing_requirements": missing,
         "coverage_status": coverage_status,
         "degrade_required": bool(required_market and missing),
-        "policy": "A/H delivery claims require period-matched official evidence and three-statement lineage.",
+        "policy": "A/H delivery claims require period-matched official evidence plus official-PDF or accepted structured three-statement lineage.",
     }
     return {
         "official_evidence_manifest": {
@@ -194,6 +212,63 @@ def _table_has_allowed_source(table: Dict[str, Any], rows: List[Any], allowed_ev
         },
     }
     return bool({item for item in source_ids if item} & allowed_evidence_ids)
+
+
+def _structured_statement_types(tables: Iterable[Dict[str, Any]]) -> set[str]:
+    accepted_source_types = {
+        "eastmoney_financials",
+        "hk_financials",
+        "sec_companyfacts",
+        "third_party_structured",
+        "financial_statement_metrics",
+    }
+    found: set[str] = set()
+    for table in tables:
+        if not isinstance(table, dict):
+            continue
+        rows = table.get("rows", []) if isinstance(table.get("rows"), list) else []
+        table_source = str(table.get("source_type") or "").lower()
+        row_source_types = {
+            str(row.get("source_type") or "").lower()
+            for row in rows
+            if isinstance(row, dict)
+        }
+        if table_source not in accepted_source_types and not (row_source_types & accepted_source_types):
+            continue
+        found |= _statement_types([table])
+    return found
+
+
+def _official_pdf_statement_types(
+    tables: Iterable[Dict[str, Any]],
+    allowed_evidence_ids: set[str] | None = None,
+) -> set[str]:
+    pdf_source_types = {"pdf_statement_table", "annual_report_pdf_table", "filing_pdf_table"}
+    found: set[str] = set()
+    for table in tables:
+        if not isinstance(table, dict):
+            continue
+        rows = table.get("rows", []) if isinstance(table.get("rows"), list) else []
+        if allowed_evidence_ids is not None and not _table_has_allowed_source(table, rows, allowed_evidence_ids):
+            continue
+        source_types = {str(table.get("source_type") or "").lower()}
+        source_types.update(
+            str(row.get("source_type") or "").lower()
+            for row in rows
+            if isinstance(row, dict)
+        )
+        has_page_anchor = bool(table.get("page") or table.get("page_number")) or any(
+            bool(row.get("page") or row.get("page_number"))
+            for row in rows
+            if isinstance(row, dict)
+        )
+        has_linked_pdf_anchor = allowed_evidence_ids is not None and _table_has_allowed_source(
+            table, rows, allowed_evidence_ids
+        )
+        if not has_page_anchor and not has_linked_pdf_anchor and not (source_types & pdf_source_types):
+            continue
+        found |= _statement_types([table])
+    return found
 
 
 def _matches_period(source_period: str, target_period: str) -> bool | None:

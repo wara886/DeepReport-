@@ -3,6 +3,142 @@ import json
 from src.evaluation.report_quality import _check_delivery_policy, evaluate_report_quality, write_quality_outputs
 
 
+def test_quality_evaluator_blocks_cross_report_symbol_pollution(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# GOOGL FY2025 公司研报
+
+## 执行摘要
+Alphabet 保持搜索与云业务增长，但这里错误混入了 0700.HK。
+
+## 业务概览
+Alphabet Inc. (GOOGL) 的核心业务覆盖搜索、广告、云和 Other Bets。
+
+## 风险评估
+风险提示完整。
+
+## 投资结论
+基于估值与风险约束，维持中性。
+""",
+    )
+    reports = run_dir / "company" / "reports"
+    (reports / "report.html").write_text("<html><body><h1>Alphabet Inc. (GOOGL)</h1><p>Unexpected ticker 0700.HK leaked.</p></body></html>", encoding="utf-8")
+
+    report = evaluate_report_quality(run_dir)
+
+    assert any(issue["category"] == "cross_report_symbol_pollution" for issue in report["issues"])
+
+
+def test_quality_evaluator_blocks_html_table_markdown_residue(tmp_path):
+    run_dir = _write_run(tmp_path, report_md="# Test\n\n## 执行摘要\n完整。\n## 风险评估\n完整。\n## 投资结论\n完整。")
+    reports = run_dir / "company" / "reports"
+    (reports / "report.html").write_text("<html><body>| 公司 | 收入增速 |\n| --- | --- |\n| AMD | 10% |</body></html>", encoding="utf-8")
+
+    report = evaluate_report_quality(run_dir)
+
+    assert any(issue["category"] == "html_table_integrity" for issue in report["issues"])
+
+
+def test_quality_evaluator_blocks_escaped_html_table_markup(tmp_path):
+    run_dir = _write_run(tmp_path, report_md="# Test\n\n## 执行摘要\n完整。\n## 风险评估\n完整。\n## 投资结论\n完整。")
+    reports = run_dir / "company" / "reports"
+    (reports / "report.html").write_text(
+        "<html><body>&lt;table class='report-table'&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;指标&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;/table&gt;</body></html>",
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert any(
+        issue["category"] == "html_table_integrity" and "escaped table markup" in issue["message"]
+        for issue in report["issues"]
+    )
+
+
+def test_quality_evaluator_blocks_placeholder_and_mojibake_leakage(tmp_path):
+    run_dir = _write_run(tmp_path, report_md="# Test\n\n## 执行摘要\n完整。\n## 风险评估\n完整。\n## 投资结论\n完整。")
+    reports = run_dir / "company" / "reports"
+    (reports / "report.html").write_text("<html><body><p>TODO: 正文应使用中文归纳</p><style>.x{content:'璇佹嵁';}</style></body></html>", encoding="utf-8")
+
+    report = evaluate_report_quality(run_dir)
+    categories = {issue["category"] for issue in report["issues"]}
+
+    assert "developer_placeholder" in categories
+    assert "mojibake_policy" in categories
+
+
+def test_quality_evaluator_reads_mirrored_reports_user_path_and_sidecars(tmp_path):
+    run_id = "20260604_134641_600519.ss_2026q1_collaborative"
+    outputs = tmp_path / "data" / "outputs_user" / "runs" / run_id / "outputs"
+    reports = tmp_path / "data" / "reports_user" / "runs" / run_id / "reports"
+    outputs.mkdir(parents=True)
+    reports.mkdir(parents=True)
+    (outputs / "run_summary.json").write_text(
+        json.dumps({"symbol": "600519.SS", "period": "2026Q1", "title": "璐㈠姟鐮旂┒"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (outputs / "charts.json").write_text(
+        json.dumps([{"chart_id": "c1", "title": "璐㈠姟瑙勬ā"}], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (outputs / "citations.json").write_text(
+        json.dumps([{"evidence_id": "ev1", "title": "璇佹嵁"}], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (reports / "report.md").write_text("# 璐㈠姟鐮旂┒\n\n## 鎵ц鎽樿\n正文", encoding="utf-8")
+    (reports / "report.html").write_text("<html><body>璐㈠姟鐮旂┒</body></html>", encoding="utf-8")
+
+    report = evaluate_report_quality(outputs)
+    categories = {issue["category"] for issue in report["issues"]}
+
+    assert report["reports_dir"].endswith("reports")
+    assert "mojibake_policy" in categories
+
+
+def test_quality_evaluator_blocks_business_overview_wrong_section_and_official_contradiction(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# 600519 FY2025 公司研报
+
+## 业务概览
+财务费用变动原因说明主要来自利息收入变动。尚未获得可直接支持分析的官方章节摘要。
+
+## 风险评估
+风险提示完整。
+
+## 投资结论
+基于估值与风险约束，维持中性。
+""",
+    )
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "pdf_extraction_audit.json").write_text(json.dumps({"page_count": 120, "extracted_page_count": 40}, ensure_ascii=False), encoding="utf-8")
+    (outputs / "pdf_section_summaries.json").write_text(
+        json.dumps([{"section_type": "business_overview", "summary_zh": "主营业务包括高端白酒产品。", "usable_for_generation": True}], ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+    messages = "\n".join(issue["message"] for issue in report["issues"])
+
+    assert "business_overview appears to contain financial-note variance text" in messages
+    assert "official PDF summary exists" in messages
+
+
+def test_quality_evaluator_blocks_eastmoney_as_official_source(tmp_path):
+    run_dir = _write_run(tmp_path, report_md="# Test\n\n## 执行摘要\n完整。\n## 风险评估\n完整。\n## 投资结论\n完整。")
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "official_evidence_manifest.json").write_text(
+        json.dumps({"sources": [{"name": "Eastmoney", "role": "official primary"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert any(issue["category"] == "official_source_distribution" for issue in report["issues"])
+
+
 def test_quality_evaluator_passes_complete_company_report(tmp_path):
     run_dir = _write_run(
         tmp_path,
@@ -438,7 +574,10 @@ def _write_run(
         {"chart_id": "c1", "title": "关键财务指标对比", "output_path": "charts/key_metrics_bar.png"},
         {"chart_id": "c2", "title": "收入利润趋势", "output_path": "charts/revenue_income.png"},
     ]
-    citations = citations if citations is not None else [{"evidence_id": "ev_1", "claim_ids": ["cl_1"], "title": "SEC filing"}]
+    citations = citations if citations is not None else [
+        {"evidence_id": "ev_1", "claim_ids": ["cl_1"], "title": "SEC filing"},
+        {"evidence_id": "ev_2", "claim_ids": ["cl_2"], "title": "Market snapshot"},
+    ]
     files = {
         "run_summary.json": {"symbol": "AMD", "period": "2025Q4", "verification_passed": True},
         "claims.json": claims,

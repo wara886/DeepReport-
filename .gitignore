@@ -6,6 +6,7 @@
 # Local Python/dev state
 .venv/
 .models/
+models/
 .pytest_cache/
 __pycache__/
 *.py[cod]

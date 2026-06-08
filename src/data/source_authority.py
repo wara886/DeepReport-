@@ -16,7 +16,6 @@ PRIMARY_SOURCE_TYPES = {
     "sec_companyfacts",
     "cninfo_announcement",
     "exchange_announcement",
-    "eastmoney_financials",
 }
 MARKET_SOURCE_TYPES = {"market", "market_api", "market_data"}
 NEWS_SOURCE_TYPES = {"news", "web_search"}
@@ -126,6 +125,18 @@ class SourceAuthorityPolicy:
         title = str(record.get("title") or "")
         domain = domain_from_url(url)
         doc_type = infer_document_type(source_type=source_type, url=url, title=title)
+        joined = f"{source_type} {url} {title}".lower()
+
+        if "eastmoney" in joined or "东方财富" in joined:
+            return SourceAuthorityGrade(
+                source_authority="third_party_structured",
+                authority_level="market_data",
+                authority_score=0.72,
+                trust_level="medium",
+                source_document_type=doc_type,
+                allowed_claim_types=tuple(sorted(CORE_FINANCIAL_CLAIMS | MARKET_CLAIMS)),
+                reason="Eastmoney is third-party structured data, not an official disclosure source",
+            )
 
         if source_type in PRIMARY_SOURCE_TYPES or matches_domain(domain, PRIMARY_DOMAINS):
             return SourceAuthorityGrade(

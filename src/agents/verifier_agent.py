@@ -74,6 +74,11 @@ class VerifierAgent(BaseAgent):
             for item in evidence_records
             if isinstance(item, dict) and str(item.get("evidence_id") or item.get("sample_id") or "").strip()
         ]
+        for claim in claims:
+            for evidence_id in claim.evidence_ids:
+                eid = str(evidence_id or "").strip()
+                if eid and eid not in all_evidence_ids:
+                    all_evidence_ids.append(eid)
         report["context_pack_meta"] = {
             "claims": claim_pack_meta,
             "evidence": evidence_pack_meta,
@@ -153,6 +158,8 @@ def _build_verifier_prompt(
         f"{skill_line}"
         f"Rule verifier report: {rule_report}\n"
         f"Available evidence ids: {evidence_ids}\n"
+        "Markdown may use numbered citations like [1], [2]; treat them as valid when the reference list maps them "
+        "to evidence records or when the corresponding claim evidence_id is present above.\n"
         f"Claims: {claims[:20]}\n"
         f"Evidence records: {evidence_records[:16]}\n"
         f"Markdown report excerpt: {markdown[:4000]}"

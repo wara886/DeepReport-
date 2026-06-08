@@ -1,6 +1,8 @@
 reranker:
   enabled: true
   model_name: BAAI/bge-reranker-base
+  local_files_only: true
+  use_base_model_without_checkpoint: true
   topk: 10
   batch_size: 8
   checkpoint_path: data/outputs/checkpoints/reranker_checkpoint.json
