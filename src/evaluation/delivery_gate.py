@@ -76,9 +76,10 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
         and len(other_blockers) == 0
         and not llm_blocking_issue
     )
-    # Delivery gate is diagnostic-only: quality findings are preserved in the
-    # artifact, but they no longer block formal report delivery.
-    delivery_pass = True
+    # Delivery gate: use actual computed value.
+    # diagnostic_delivery_pass excludes content_depth blockers (内容长度不足不阻断).
+    # This was previously hardcoded True during development; now it reflects the real gate.
+    delivery_pass = bool(diagnostic_delivery_pass)
     status = "completed"
     return {
         "schema_version": "delivery_gate.v1",

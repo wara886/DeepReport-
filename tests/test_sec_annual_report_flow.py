@@ -54,6 +54,29 @@ def test_sec_resolver_selects_nvda_fy2025_10k(monkeypatch):
     assert "000104581025000023" in data["meta"]["filing_url"]
 
 
+def test_sec_resolver_prefers_original_10k_over_later_amendment(monkeypatch):
+    def fake_get_json(url, headers=None, timeout=20):
+        return {
+            "filings": {
+                "recent": {
+                    "form": ["10-K/A", "10-K"],
+                    "accessionNumber": ["0000000000-26-000002", "0000000000-26-000001"],
+                    "filingDate": ["2026-04-30", "2026-02-15"],
+                    "reportDate": ["2025-12-31", "2025-12-31"],
+                    "primaryDocument": ["amendment.htm", "original10k.htm"],
+                }
+            }
+        }
+
+    monkeypatch.setattr("src.data.sec_filing_resolver._get_json", fake_get_json)
+    monkeypatch.setattr("src.data.sec_filing_resolver._get_text", lambda *args, **kwargs: MINIMAL_10K)
+
+    payload = resolve_sec_annual_filing("TSLA", "FY2025", fetch_document=True)
+
+    assert payload.meta["filing"]["form"] == "10-K"
+    assert payload.meta["filing"]["primary_document"] == "original10k.htm"
+
+
 def test_annual_report_extractor_emits_sections_and_evidence_records():
     payload = AnnualReportSectionExtractor(html_text=MINIMAL_10K).extract(
         symbol="NVDA",

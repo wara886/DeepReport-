@@ -73,7 +73,7 @@ def test_load_run_payload_reads_latest_artifacts(tmp_path):
     assert payload["company_profile_extracted"]["has_profile_hints"] is True
     assert payload["quality_report"]["objective_pass"] is True
     assert payload["llm_quality_review"]["llm_review_pass"] is False
-    assert payload["delivery_gate"]["delivery_pass"] is True
+    assert payload["delivery_gate"]["delivery_pass"] is False
     assert payload["delivery_gate"]["diagnostic_delivery_pass"] is False
     assert payload["quality_remediation_plan"]["quality_feedback_used"] is True
     assert payload["agent_collaboration_trace"]["step_count"] == 1
@@ -100,7 +100,7 @@ def test_load_run_payload_treats_quality_diagnostic_as_completed(tmp_path):
     user_payload = sanitize_payload_for_user(payload)
 
     assert payload["status"] == "completed"
-    assert payload["delivery_gate"]["delivery_pass"] is True
+    assert payload["delivery_gate"]["delivery_pass"] is False
     assert payload["delivery_gate"]["diagnostic_delivery_pass"] is False
     assert user_payload["status"] == "completed"
     assert "error" not in user_payload
@@ -305,7 +305,7 @@ def test_chat_api_quality_review_reads_artifacts_without_new_run(tmp_path):
     run_count_after = len(list((output_root / "runs").iterdir()))
     assert body["mode"] == "quality_review"
     assert run_count_after == run_count_before
-    assert body["result"]["delivery_gate"]["delivery_pass"] is True
+    assert body["result"]["delivery_gate"]["delivery_pass"] is False
     assert body["result"]["delivery_gate"]["diagnostic_delivery_pass"] is False
     assert "blocker" in body["answer"] or "阻塞" in body["answer"]
 
@@ -455,9 +455,9 @@ def test_delivery_rework_loop_reruns_when_gate_fails(tmp_path, monkeypatch):
 
     assert orchestrator.calls == 0
     assert result["reworked"] is False
-    assert result["quality_result"]["delivery_gate"]["delivery_pass"] is True
+    assert result["quality_result"]["delivery_gate"]["delivery_pass"] is False
     history = json.loads((output_root / "delivery_rework_history.json").read_text(encoding="utf-8"))
-    assert history[0]["delivery_pass_after_round"] is True
+    assert history[0]["delivery_pass_after_round"] is False
 
 
 def test_delivery_rework_loop_prefers_owner_routed_repair(tmp_path, monkeypatch):
@@ -510,7 +510,7 @@ def test_delivery_rework_loop_prefers_owner_routed_repair(tmp_path, monkeypatch)
     history = json.loads((output_root / "delivery_rework_history.json").read_text(encoding="utf-8"))
     assert history[0]["trigger"] == "quality_diagnostic"
     assert history[0]["status"] == "skipped"
-    assert history[0]["delivery_pass_after_round"] is True
+    assert history[0]["delivery_pass_after_round"] is False
 
 
 def test_delivery_rework_loop_escalates_data_failures_after_owner_repair(tmp_path, monkeypatch):
@@ -566,11 +566,11 @@ def test_delivery_rework_loop_escalates_data_failures_after_owner_repair(tmp_pat
     )
 
     assert fake_orchestrator.run_count == 0
-    assert result["quality_result"]["delivery_gate"]["delivery_pass"] is True
+    assert result["quality_result"]["delivery_gate"]["delivery_pass"] is False
     history = json.loads((output_root / "delivery_rework_history.json").read_text(encoding="utf-8"))
     assert history[0]["trigger"] == "quality_diagnostic"
     assert history[0]["status"] == "skipped"
-    assert history[0]["delivery_pass_after_round"] is True
+    assert history[0]["delivery_pass_after_round"] is False
 
 
 def test_delivery_rework_loop_records_skipped_when_orchestrator_missing(tmp_path):
@@ -1191,11 +1191,11 @@ def test_confirmation_prompt_developer_mode_contains_raw_keys():
 
 
 def test_sanitize_payload_for_user_strips_debug_fields():
-    """sanitize_payload_for_user must strip debug/quality data."""
+    """sanitize_payload_for_user must strip debug data while keeping safe gate status."""
     from src.app.web_ui import sanitize_payload_for_user
     raw = {
         "summary": {"symbol": "AMD", "period": "2026Q1"},
-        "delivery_gate": {"delivery_pass": False},
+        "delivery_gate": {"delivery_pass": False, "objective_pass": False, "internal_trace": "hidden"},
         "quality_report": {"total_score": 0.5},
         "llm_quality_review": {"llm_review_pass": True},
         "tool_trace": [{"stage": "think"}],
@@ -1206,10 +1206,24 @@ def test_sanitize_payload_for_user_strips_debug_fields():
     safe = sanitize_payload_for_user(raw)
     assert "summary" in safe
     assert "report_links" in safe
-    assert "delivery_gate" not in safe
+    assert safe["delivery_gate"]["delivery_pass"] is False
+    assert safe["delivery_gate"]["objective_pass"] is False
+    assert "internal_trace" not in safe["delivery_gate"]
     assert "quality_report" not in safe
     assert "llm_quality_review" not in safe
     assert "tool_trace" not in safe
+
+
+def test_user_html_keeps_completed_report_open_and_download_actions():
+    from src.app.web_ui import _render_user_html
+
+    html = _render_user_html()
+
+    assert "function normalizeReportLinks(data)" in html
+    assert "function attachConfirmReportActions(card, data)" in html
+    assert "打开 HTML 研报" in html
+    assert "下载 HTML" in html
+    assert "window.finSightJobs[cardJobId].rendered) return" not in html
 
 
 def test_human_readable_data_sources_maps_known_engines():
@@ -1607,7 +1621,7 @@ def test_run_delivery_quality_pipeline_returns_error_dict_on_exception(tmp_path,
         output_root=str(tmp_path),
         report_root=str(tmp_path),
     )
-    assert result["delivery_gate"]["delivery_pass"] is True
+    assert result["delivery_gate"]["delivery_pass"] is False
     assert result["delivery_gate"]["diagnostic_delivery_pass"] is False
     assert "_quality_pipeline_exception" in result
     assert "pipeline failure" in str(result["_quality_pipeline_exception"])
@@ -1827,7 +1841,7 @@ def test_job_status_returns_completed_when_report_html_exists(tmp_path):
 
 
 def test_job_status_missing_delivery_gate_still_completes(tmp_path):
-    """A report without delivery_gate.json is still deliverable when report.html exists."""
+    """A report without delivery_gate.json is exposed only as a diagnostic preview."""
     import time
     from src.app.web_ui import active_report_runs as arm
 
@@ -1872,6 +1886,9 @@ def test_job_status_missing_delivery_gate_still_completes(tmp_path):
     assert body["found"] is True
     assert body["status"] == "completed"
     assert body.get("report_links", {}).get("html_web_url", "")
+    assert body["delivery_gate"]["delivery_pass"] is False
+    assert body["delivery_gate"]["diagnostic_only"] is True
+    assert body["delivery_gate"]["note"].startswith("missing_delivery_gate")
     assert job_id not in arm
 
 

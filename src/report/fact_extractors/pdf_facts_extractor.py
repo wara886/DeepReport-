@@ -43,18 +43,20 @@ def _filter_generic(items: set[str]) -> list[str]:
 
 # ── Section-specific extraction patterns ───────────
 
-# 业务概览 facts
+# 业务概览 facts — 行业无关模式（不硬编码白酒/茅台）
 _BUSINESS_PRODUCT_RE = re.compile(
-    r"(茅台酒|系列酒|茅台|王子酒|迎宾酒|酱香白酒|酱香|白酒|葡萄酒|啤酒|饮料)"
+    r"(主要产品|主营产品|核心产品|产品线|产品系列|产品类型|产品组合|新能源|动力电池|储能|"
+    r"保险|银行|证券|金融|科技|云计算|AI|人工智能|电商|零售|制造|装备|医药|汽车|消费电子)"
 )
 _BUSINESS_CHANNEL_RE = re.compile(
-    r"(直销|批发代理|i茅台|经销商|专卖店|电商平台|超市|终端门店|渠道)"
+    r"(直销|批发|代理|经销商|专卖店|电商|平台|门店|渠道|分销|零售|线上|线下)"
 )
 _BUSINESS_COMPETITIVENESS_RE = re.compile(
-    r"(品质|品牌|工艺|环境|文化|五大核心竞争力|核心竞争力|技术领先|创新驱动)"
+    r"(核心竞争力|技术领先|创新驱动|品牌优势|规模优势|成本优势|客户资源|"
+    r"研发能力|专利|市场地位|行业龙头|护城河|壁垒)"
 )
 _BUSINESS_MODEL_RE = re.compile(
-    r"(生产|销售|经营模式|主营业务|业务结构|产品结构)"
+    r"(生产|销售|经营模式|主营业务|业务结构|产品结构|商业模式|盈利模式)"
 )
 _BUSINESS_REVENUE_RE = re.compile(
     r"(?:收入|营收|营业额|销售)(?:总额|合计)?[：:\s]*(\d[\d,.]*\s*[万亿千百元美元]*)"
@@ -178,7 +180,7 @@ def _extract_business_facts(text: str, market: str = "") -> dict[str, Any]:
     if model_match:
         sentences = text.split("。")
         for s in sentences:
-            if model_match.search(s):
+            if _BUSINESS_MODEL_RE.search(s):
                 cleaned = s.strip().replace("经营模式", "").replace("主营业务", "").replace("业务结构", "").strip()
                 if cleaned:
                     facts["business_model"] = cleaned[:120]
@@ -484,11 +486,12 @@ def _facts_to_paragraphs(
             parts.append(f"报告期内披露的收入指标为{facts['revenue']}")
         if facts.get("core_competitiveness"):
             parts.append(f"竞争优势主要来自{'、'.join(facts['core_competitiveness'][:5])}")
+        if facts.get("business_model"):
+            parts.append(f"业务模式：{facts['business_model']}")
         if parts:
-            paragraphs.append("；".join(parts) + "。这些信息来自官方年报章节摘要，正文只保留归纳后的业务事实。")
+            paragraphs.append("；".join(parts) + "。这些信息来自官方年报章节摘要，已归纳为业务事实。")
             paragraphs.append(
-                "业务概览应围绕产品结构、销售渠道、品牌或工艺壁垒以及收入贡献展开，"
-                "避免直接复述年报中的长段经营情况。"
+                "从业务结构看，产品组合、销售渠道、品牌资源和工艺壁垒共同构成公司经营稳定性的核心观察维度。"
             )
 
     elif section_type == "ownership_governance":
@@ -505,7 +508,7 @@ def _facts_to_paragraphs(
             risks = "、".join(facts["industry_risks"][:6])
             paragraphs.append(f"风险评估以官方披露和行业变量为基础，当前识别的主要风险包括：{risks}。")
         if facts.get("has_official_risk_section"):
-            paragraphs.append("以上风险基于官方风险提示章节，后续正文应说明风险如何影响收入、毛利率、现金流或估值假设。")
+            paragraphs.append("以上风险基于官方风险提示章节，风险影响主要体现在收入、毛利率、现金流或估值假设的变化上。")
         else:
             paragraphs.append("以上风险基于公开财务数据与行业研究，待官方年报风险提示章节进一步校验。")
 
@@ -540,10 +543,10 @@ def _facts_to_paragraphs(
                 + "。"
             )
             paragraphs.append(
-                "正文应进一步解释收入规模、利润质量、资产负债结构与现金流之间的关系，"
+                "财务分析进一步解释收入规模、利润质量、资产负债结构与现金流之间的关系，"
                 "不把三表数字孤立罗列为结论。"
             )
         elif facts.get("has_financial_data"):
-            paragraphs.append("已识别官方财务报表章节，正文应结合结构化三表指标展开收入、利润、资产负债和现金流分析。")
+            paragraphs.append("已识别官方财务报表章节，后续分析结合结构化三表指标展开收入、利润、资产负债和现金流分析。")
 
     return paragraphs

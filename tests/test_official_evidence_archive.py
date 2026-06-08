@@ -141,6 +141,36 @@ def test_hk_statements_from_non_official_source_do_not_satisfy_delivery_gate():
     assert coverage["degrade_required"] is True
 
 
+def test_cn_eastmoney_structured_three_statements_satisfy_structured_lineage():
+    payload = build_official_evidence_artifacts(
+        [
+            {
+                "evidence_id": "cninfo_q1",
+                "symbol": "600519.SS",
+                "period": "2026Q1",
+                "source_type": "cninfo_announcement",
+                "source_url": "http://static.cninfo.com.cn/finalpage/report.pdf",
+                "content": "Official quarterly report",
+                "metadata": {"page": 1, "provider": "CNINFO"},
+            }
+        ],
+        symbol="600519.SS",
+        period="2026Q1",
+        tables=[
+            {"table_type": "income_statement", "rows": [{"statement": "income_statement", "source_type": "eastmoney_financials"}]},
+            {"table_type": "balance_sheet", "rows": [{"statement": "balance_sheet", "source_type": "eastmoney_financials"}]},
+            {"table_type": "cash_flow_statement", "rows": [{"statement": "cash_flow_statement", "source_type": "eastmoney_financials"}]},
+        ],
+    )
+
+    coverage = payload["evidence_coverage"]
+    assert coverage["has_three_statements"] is True
+    assert coverage["has_official_pdf_three_statements"] is False
+    assert coverage["has_structured_three_statements"] is True
+    assert coverage["has_formal_delivery_lineage"] is True
+    assert coverage["degrade_required"] is False
+
+
 def test_archive_persists_official_source_text_snapshot(tmp_path):
     source_record = {
         "evidence_id": "hkex_report",

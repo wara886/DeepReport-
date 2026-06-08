@@ -1,4 +1,4 @@
-from src.report import build_citation_artifacts, build_citations
+from src.report import build_citation_artifacts, build_citations, build_citations_from_map
 
 
 def test_build_citations_links_claims_and_report_usage():
@@ -95,3 +95,27 @@ def test_build_citations_accepts_pdf_page_number_locator():
     )
 
     assert citations[0]["page"] == 18
+
+
+def test_build_citations_from_contract_map_preserves_real_sources():
+    citations = build_citations_from_map(
+        evidence_records=[
+            {
+                "evidence_id": "ev_annual",
+                "title": "2026Q1 official filing",
+                "source_url": "https://example.com/filing.pdf",
+                "source_type": "annual_report_pdf",
+                "trust_level": "high",
+                "content": "Revenue and net profit are disclosed in the official filing.",
+            }
+        ],
+        citation_map={"ev_annual": 1},
+        claims=[{"claim_id": "cl_001", "evidence_ids": ["ev_annual"]}],
+        markdown="Revenue improved [1].",
+    )
+
+    assert len(citations) == 1
+    assert citations[0]["citation_number"] == 1
+    assert citations[0]["evidence_id"] == "ev_annual"
+    assert citations[0]["source_url"] == "https://example.com/filing.pdf"
+    assert citations[0]["claim_ids"] == ["cl_001"]

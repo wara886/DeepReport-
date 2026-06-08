@@ -1,5 +1,7 @@
 from src.agents.section_dossier_builder import sanitize_peer_rows_for_report
+from src.agents.deep_analyze_agent import build_role_outputs
 from src.evaluation.report_quality import evaluate_report_quality
+from src.features.company_valuation import build_peer_comparison
 
 
 def test_peer_row_sanitizer_removes_unapproved_row_metrics():
@@ -85,6 +87,69 @@ def test_orphan_peer_metric_residue_blocks_quality(tmp_path):
     report = evaluate_report_quality(run_dir)
 
     assert any(issue["category"] == "peer_metric_contamination" for issue in report["issues"])
+
+
+def test_role_outputs_sanitize_a_share_peer_and_risk_contamination():
+    records = [
+        {
+            "evidence_id": "ev1",
+            "sample_id": "ev1",
+            "source_type": "eastmoney_financials",
+            "symbol": "600519.SS",
+            "period": "FY2025",
+            "trust_level": "high",
+        }
+    ]
+    claims = [
+        {
+            "section_name": "risks",
+            "claim_text": "宏观利率、资本开支周期和云厂商采购节奏会放大收入波动。",
+            "evidence_ids": ["ev1"],
+        }
+    ]
+    metrics = {
+        "metric_count": 3,
+        "metrics": [
+            {"metric_name": "revenue", "value": 172054171890.91, "unit": "CNY", "evidence_id": "ev1"},
+            {"metric_name": "net_income", "value": 82320067101.68, "unit": "CNY", "evidence_id": "ev1"},
+            {"metric_name": "operating_cash_flow", "value": 61522204989.35, "unit": "CNY", "evidence_id": "ev1"},
+        ],
+    }
+    peer_context = {
+        "peer_count": 5,
+        "peer_symbols": ["PG", "KO", "PEP", "WMT", "COST"],
+        "peer_rows": [{"symbol": "PG"}, {"symbol": "KO"}],
+    }
+
+    outputs = build_role_outputs(
+        records=records,
+        claims=claims,
+        symbol="600519.SS",
+        period="FY2025",
+        financial_metric_lineage=metrics,
+        peer_context=peer_context,
+    )
+    payload = str(outputs)
+    statement = "\n".join(outputs["three_statement_analysis"]["findings"])
+
+    assert "PG" not in payload
+    assert "KO" not in payload
+    assert "云厂商" not in payload
+    assert "收入 1720.54亿元" in statement
+    assert "净利润 823.20亿元" in statement
+    assert "经营现金流 615.22亿元" in statement
+
+
+def test_a_share_peer_builder_does_not_fallback_to_us_yahoo_when_local_missing(tmp_path):
+    result = build_peer_comparison("600519.SS", "FY2025", raw_data_root=tmp_path / "missing")
+    payload = str(result)
+
+    assert result["target_market"] == "cn_a"
+    assert result["peer_count"] == 0
+    assert result["peer_rows"] == []
+    assert result["source"] == "local_only_market_isolated"
+    for token in ["PG", "KO", "PEP", "WMT", "COST"]:
+        assert token not in payload
 
 
 def _write_run(tmp_path, report_md):

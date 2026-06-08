@@ -113,7 +113,13 @@ class CitationBinder:
         evidence_records_index = getattr(self, 'evidence_records', [])
         evidence_by_id = getattr(self, 'evidence_by_id', {})
 
-        for eid in contract.citation_evidence_ids:
+        candidate_eids = list(contract.citation_evidence_ids or [])
+        for fact in getattr(contract, "facts", []) or []:
+            for eid in getattr(fact, "evidence_ids", []) or []:
+                if eid and eid not in candidate_eids:
+                    candidate_eids.append(eid)
+
+        for eid in candidate_eids:
             if not eid:
                 continue
 
@@ -203,7 +209,12 @@ class CitationBinder:
         """
         output = markdown
         for sk, contract in contracts.contracts.items():
-            if not contract.citation_evidence_ids:
+            candidate_eids = list(contract.citation_evidence_ids or [])
+            for fact in getattr(contract, "facts", []) or []:
+                for eid in getattr(fact, "evidence_ids", []) or []:
+                    if eid and eid not in candidate_eids:
+                        candidate_eids.append(eid)
+            if not candidate_eids:
                 continue
             # Find the section in markdown by heading
             heading = contract.title
@@ -218,7 +229,7 @@ class CitationBinder:
 
             # Get bound citation numbers
             bound_nums = []
-            for eid in contract.citation_evidence_ids:
+            for eid in candidate_eids:
                 if eid in self._id_to_number:
                     bound_nums.append(str(self._id_to_number[eid]))
 

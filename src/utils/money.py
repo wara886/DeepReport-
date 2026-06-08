@@ -46,6 +46,51 @@ class CurrencyMetadata:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class CurrencyContext:
+    market: str = ""
+    statement_currency: str = UNKNOWN_CURRENCY
+    display_currency: str = UNKNOWN_CURRENCY
+    display_scale: float = 1.0
+    unit_label: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def build_currency_context(
+    symbol: str = "",
+    market: str = "",
+    statement_currency: str = "",
+    display_currency: str = "",
+) -> CurrencyContext:
+    market_key = str(market or "").lower()
+    if not market_key:
+        upper = str(symbol or "").upper()
+        market_key = "cn_a" if upper.endswith((".SS", ".SZ")) else "hk" if upper.endswith(".HK") else "us"
+    statement = normalize_currency_code(statement_currency)
+    display = normalize_currency_code(display_currency)
+    if statement == UNKNOWN_CURRENCY:
+        statement = {"cn_a": "CNY", "hk": "HKD", "us": "USD"}.get(market_key, UNKNOWN_CURRENCY)
+    if display == UNKNOWN_CURRENCY:
+        display = statement
+    if display == "CNY":
+        return CurrencyContext(market_key, statement, display, 100_000_000.0, "亿元人民币")
+    if display == "HKD":
+        return CurrencyContext(market_key, statement, display, 100_000_000.0, "亿港元")
+    if display == "USD":
+        return CurrencyContext(market_key, statement, display, 1_000_000_000.0, "十亿美元")
+    return CurrencyContext(market_key, statement, display, 1.0, display)
+
+
+def format_amount_for_context(amount: float, context: CurrencyContext) -> str:
+    value = float(amount)
+    scale = float(context.display_scale or 1.0)
+    if context.display_currency == "USD" and abs(value) < 100_000_000:
+        return f"{value / 1_000_000:.2f} 百万美元"
+    return f"{value / scale:.2f} {context.unit_label}".strip()
+
+
 def normalize_currency_code(value: Any) -> str:
     text = str(value or "").strip().upper()
     if not text:

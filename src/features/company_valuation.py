@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from statistics import median
 from typing import Any, Dict, List
+from urllib import request as __req_lib
+from urllib.parse import urlencode as _urlencode
 
 import pandas as pd
 import yfinance as yf
@@ -37,16 +39,29 @@ def build_peer_comparison(
     """Build a local peer table from companies in the same sector when possible."""
 
     symbol = str(symbol or "").upper()
+    market_info = infer_market_from_symbol(symbol)
+    market = str(market_info.get("market", "") if isinstance(market_info, dict) else market_info)
     rows = _load_company_financial_rows(raw_data_root=raw_data_root, period=period)
     target = next((row for row in rows if row.get("symbol") == symbol), None)
     if not target:
-        # No local data — try Yahoo/web discovery before giving up
+        # No local data — try Yahoo/web discovery
         try:
             discovered = _discover_peers_via_search(symbol=symbol, period=period)
-            if discovered.get("peer_count", 0) > 0:
+            if discovered.get("peer_count", 0) > 0 or discovered.get("target_row"):
                 return discovered
         except Exception as exc:
             logger.warning("Peer discovery via search failed for %s: %s", symbol, exc)
+        # Per-market fallback messages
+        if market in {"cn_a", "hk"}:
+            return {
+                "target_symbol": symbol,
+                "target_market": market,
+                "peer_rows": [],
+                "peer_count": 0,
+                "ranking": {},
+                "source": "local_only_market_isolated",
+                "failure_reason": "no_local_same_market_peer_data",
+            }
         return {"target_symbol": symbol, "peer_rows": [], "peer_count": 0, "ranking": {}}
 
     target_sector = str(target.get("sector") or "")
@@ -85,6 +100,7 @@ def build_peer_comparison(
 
     return {
         "target_symbol": symbol,
+        "target_market": market,
         "target_sector": target_sector,
         "target_industry": target_industry,
         "peer_rows": peer_rows,
@@ -98,6 +114,19 @@ def _discover_peers_via_search(
     period: str,
 ) -> Dict[str, Any]:
     """Fall back to Yahoo Finance + web search when local peer data is missing."""
+
+    market_info = infer_market_from_symbol(str(symbol or "").upper())
+    market = str(market_info.get("market", "") if isinstance(market_info, dict) else market_info)
+    if market in {"hk"}:
+        return {
+            "target_symbol": str(symbol or "").upper(),
+            "target_market": market,
+            "peer_rows": [],
+            "peer_count": 0,
+            "ranking": {},
+            "source": "disabled_for_market_isolation",
+            "failure_reason": "yahoo_us_peer_discovery_disabled_for_hk",
+        }
 
     peer_rows: List[Dict[str, Any]] = []
     peer_symbols: List[str] = []
@@ -115,6 +144,16 @@ def _discover_peers_via_search(
     except Exception:
         logger.warning("Yahoo Finance info unavailable for %s, falling back to symbol name", symbol)
         target_company = symbol
+        # For A-shares, try to get Chinese company name from alias table
+        if market == "cn_a":
+            try:
+                from src.app.company_aliases import resolve_company_alias as _rca
+                alias_hit = _rca(symbol)
+                if alias_hit:
+                    target_company = str(alias_hit.get("company_name", symbol))
+                    logger.info("Resolved A-share company name via alias table: %s", target_company)
+            except Exception:
+                pass
 
     # --- Phase 2: discover peer symbols via Serper web search ---
     try:
@@ -170,28 +209,135 @@ def _discover_peers_via_search(
         logger.warning("Serper peer search failed for %s: %s", symbol, exc)
         peer_symbols = []
 
-    # --- Phase 3: if web search found no peers, try Yahoo Finance sector peers ---
-    if not peer_symbols and sector:
+    us_industry_peer_map = {
+        "auto manufacturers": ["F", "GM", "RIVN", "LCID"],
+        "semiconductors": ["NVDA", "AMD", "INTC", "QCOM", "AVGO", "TXN"],
+        "software": ["MSFT", "ORCL", "CRM", "ADBE"],
+        "internet retail": ["AMZN", "EBAY"],
+    }
+    industry_key = str(industry or "").lower()
+    matched_industry_peers: List[str] = []
+    for name, candidates in us_industry_peer_map.items():
+        if name in industry_key or industry_key in name:
+            matched_industry_peers = [item for item in candidates if item != symbol]
+            break
+    if matched_industry_peers:
+        allowed = set(matched_industry_peers)
+        peer_symbols = [item for item in peer_symbols if item in allowed]
+        if not peer_symbols:
+            peer_symbols = matched_industry_peers[:6]
+
+    # --- Phase 3: if web search found no peers, try sector/industry peer lists ---
+    if not peer_symbols and (sector or industry or market == "cn_a"):
         try:
-            # Use yfinance to discover similar companies
-            # Yahoo Finance doesn't directly expose peers, so we try known sector mappings
-            sector_peer_map = {
-                "Technology": ["AAPL", "MSFT", "GOOGL", "META", "NVDA", "AMD", "INTC", "CRM", "ADBE", "ORCL"],
-                "Healthcare": ["JNJ", "UNH", "PFE", "MRK", "ABBV", "LLY", "TMO", "ABT"],
-                "Financial Services": ["JPM", "BAC", "V", "MA", "GS", "MS", "C", "WFC"],
-                "Consumer Cyclical": ["AMZN", "TSLA", "HD", "NKE", "MCD", "SBUX", "NFLX", "DIS"],
-                "Communication Services": ["GOOGL", "META", "NFLX", "DIS", "CMCSA", "T"],
-                "Energy": ["XOM", "CVX", "COP", "SLB", "EOG"],
-                "Industrials": ["BA", "CAT", "GE", "RTX", "UPS", "FDX", "HON", "MMM"],
-                "Consumer Defensive": ["PG", "KO", "PEP", "WMT", "COST"],
-                "Basic Materials": ["BHP", "RIO", "LIN", "SHW", "APD"],
-            }
-            for sec_name, candidates in sector_peer_map.items():
-                if sec_name.lower() in sector.lower() or sector.lower() in sec_name.lower():
-                    peer_symbols = [s for s in candidates if s != symbol][:6]
-                    break
+            # For A-shares, use Chinese industry peer groups
+            if market == "cn_a" or any(cn_keyword in (target_company + sector + industry) for cn_keyword in ["中国", "贵州", "保险", "银行", "白酒", "证券"]):
+                # A-share industry peer groups (hardcoded from 2025 年报覆盖标的)
+                cn_industry_peers = {
+                    "白酒": ["600519.SS", "000858.SZ", "600809.SS", "000568.SZ", "002304.SZ", "603369.SS", "600779.SS", "000799.SZ", "600702.SS", "603589.SS"],
+                    "保险": ["601318.SS", "601628.SS", "601601.SS", "601336.SS", "601319.SS"],
+                    "银行": ["600036.SS", "601398.SS", "601939.SS", "601288.SS", "601988.SS", "600016.SS", "000001.SZ", "002142.SZ"],
+                    "证券": ["600030.SS", "601211.SS", "600837.SS", "601688.SS", "601066.SS"],
+                    "动力电池": ["300750.SZ", "002074.SZ", "300014.SZ", "300124.SZ"],
+                    "新能源汽车": ["300750.SZ", "002594.SZ", "601238.SS", "000625.SZ"],
+                    "半导体": ["688981.SS", "603501.SS", "600703.SS", "002049.SZ", "688012.SS"],
+                    "医药": ["600276.SS", "300760.SZ", "000538.SZ", "600196.SS", "002422.SZ", "300015.SZ"],
+                    "消费电子": ["002475.SZ", "000725.SZ", "601138.SS", "603160.SS"],
+                    "互联网": ["300059.SZ", "002230.SZ", "300033.SZ"],
+                    "房地产": ["000002.SZ", "600048.SS", "001979.SZ"],
+                    "家电": ["000333.SZ", "600690.SS", "000651.SZ", "002242.SZ"],
+                }
+                # Match target_company or sector/industry keywords
+                combined_haystack = (target_company + " " + sector + " " + industry).lower()
+                for cn_industry, candidates in cn_industry_peers.items():
+                    if cn_industry in combined_haystack:
+                        peer_symbols = [s for s in candidates if s != symbol][:5]
+                        break
+                # If still no match via keyword, use the first two characters of the stock code
+                # to find same-exchange peers with similar industry
+                if not peer_symbols and symbol.endswith((".SS", ".SZ")):
+                    cn_code = symbol.split(".")[0]
+                    exchange = ".SS" if ".SS" in symbol else ".SZ"
+                    # Try broader keyword match on company name
+                    cn_name_keywords = {
+                        "贵州茅台": ["000858.SZ", "600809.SS", "000568.SZ"],
+                        "宁德时代": ["002074.SZ", "300014.SZ", "300124.SZ"],
+                        "中国平安": ["601628.SS", "601601.SS", "601336.SS"],
+                        "招商银行": ["601398.SS", "601939.SS", "601288.SS"],
+                        "中芯国际": ["603501.SS", "600703.SS", "002049.SZ"],
+                        "比亚迪": ["300750.SZ", "601238.SS", "000625.SZ"],
+                    }
+                    for name, candidates in cn_name_keywords.items():
+                        if name in target_company:
+                            peer_symbols = [s for s in candidates if s != symbol][:5]
+                            break
+                # If hardcoded mapping didn't match, try eastmoney API by INDUSTRY_CODE
+                if not peer_symbols and market == "cn_a":
+                    ind_code = _get_industry_code_via_eastmoney_api(symbol)
+                    if not ind_code:
+                        # Direct fallback: call eastmoney income API for INDUSTRY_CODE
+                        try:
+                            from src.search.search_manager import _cn_stock_code
+                            em_code = _cn_stock_code(symbol)
+                            if em_code:
+                                em_params = {
+                                    "reportName": "RPT_DMSK_FN_INCOME",
+                                    "columns": "SECURITY_CODE,INDUSTRY_CODE",
+                                    "filter": f'(SECURITY_CODE="{em_code}")',
+                                    "pageSize": "1", "pageNumber": "1",
+                                    "sortColumns": "REPORT_DATE", "sortTypes": "-1",
+                                }
+                                em_headers = {
+                                    "User-Agent": "Mozilla/5.0 FinSight/0.1",
+                                    "Accept": "application/json,text/plain,*/*",
+                                    "Referer": "https://data.eastmoney.com/",
+                                }
+                                em_url = f"{_EM_DATACENTER_URL}?{_urlencode(em_params)}"
+                                em_req = _req_lib.Request(em_url, headers=em_headers, method="GET")
+                                with _req_lib.urlopen(em_req, timeout=15) as em_resp:
+                                    em_raw = em_resp.read().decode("utf-8", errors="replace")
+                                em_parsed = json.loads(em_raw)
+                                em_result = em_parsed.get("result") if isinstance(em_parsed.get("result"), dict) else None
+                                em_rows = em_result.get("data") if em_result and isinstance(em_result.get("data"), list) else None
+                                if em_rows:
+                                    ind_code = str(em_rows[0].get("INDUSTRY_CODE") or "")
+                                    if ind_code == "None" or not ind_code:
+                                        ind_code = None
+                        except Exception as exc:
+                            logger.warning("Direct eastmoney industry code fetch failed: %s", exc)
+                    if ind_code:
+                        em_stocks = _fetch_eastmoney_stocks_by_industry(ind_code, topk=10)
+                        if em_stocks:
+                            peer_symbols = []
+                            for st in em_stocks[:8]:
+                                sc = str(st.get("SECURITY_CODE") or "")
+                                if not sc:
+                                    continue
+                                exchange = ".SS" if sc.startswith(("6", "9")) else ".SZ"
+                                psym = f"{sc}{exchange}"
+                                if psym != symbol:
+                                    peer_symbols.append(psym)
+                            if peer_symbols:
+                                logger.info("Discovered %d A-share peers via eastmoney industry=%s", len(peer_symbols), ind_code)
+            # For US/HK markets, use Yahoo sector mappings
+            if not peer_symbols and market != "cn_a":
+                sector_peer_map = {
+                    "Technology": ["AAPL", "MSFT", "GOOGL", "META", "NVDA", "AMD", "INTC", "CRM", "ADBE", "ORCL"],
+                    "Healthcare": ["JNJ", "UNH", "PFE", "MRK", "ABBV", "LLY", "TMO", "ABT"],
+                    "Financial Services": ["JPM", "BAC", "V", "MA", "GS", "MS", "C", "WFC"],
+                    "Consumer Cyclical": ["AMZN", "TSLA", "HD", "NKE", "MCD", "SBUX", "NFLX", "DIS"],
+                    "Communication Services": ["GOOGL", "META", "NFLX", "DIS", "CMCSA", "T"],
+                    "Energy": ["XOM", "CVX", "COP", "SLB", "EOG"],
+                    "Industrials": ["BA", "CAT", "GE", "RTX", "UPS", "FDX", "HON", "MMM"],
+                    "Consumer Defensive": ["PG", "KO", "PEP", "WMT", "COST"],
+                    "Basic Materials": ["BHP", "RIO", "LIN", "SHW", "APD"],
+                }
+                for sec_name, candidates in sector_peer_map.items():
+                    if sec_name.lower() in sector.lower() or sector.lower() in sec_name.lower():
+                        peer_symbols = [s for s in candidates if s != symbol][:6]
+                        break
         except Exception as exc:
-            logger.warning("Yahoo sector peer lookup failed for %s: %s", symbol, exc)
+            logger.warning("Sector peer lookup failed for %s: %s", symbol, exc)
 
     # --- Phase 4: fetch actual financial data for each peer ---
     for ps in peer_symbols[:5]:
@@ -289,6 +435,7 @@ def _discover_peers_via_search(
         "target_symbol": symbol,
         "target_sector": sector,
         "target_industry": industry,
+        "target_row": target_row,
         "peer_rows": all_rows,
         "peer_count": max(len(peer_rows), 0),
         "ranking": ranking,
@@ -433,6 +580,38 @@ def perform_company_valuation(
     revenue_growth = _safe_float(target.get("revenue_growth_pct")) or 0.0
     net_margin = _safe_float(target.get("adjusted_net_margin_pct")) or _safe_float(target.get("net_margin_pct")) or 0.0
     roe = _safe_float(target.get("roe_pct")) or 0.0
+    missing_completeness = _valuation_completeness_gaps(
+        target=target,
+        revenue=revenue,
+        net_income=net_income,
+        free_cash_flow=free_cash_flow,
+        market_context=market_context,
+        shares_outstanding=shares_outstanding,
+        statement_currency=statement_currency,
+        trading_currency=trading_currency,
+        valuation_currency=valuation_currency,
+        fx_note=fx_note,
+    )
+    if missing_completeness:
+        return _valuation_unavailable(
+            symbol=symbol,
+            period=period,
+            error="blocked_due_to_incomplete_inputs",
+            peer_payload=peer_payload,
+            input_summary={
+                "revenue_billion": revenue,
+                "net_income_billion": net_income,
+                "free_cash_flow_billion": free_cash_flow,
+                "revenue_growth_pct": target.get("revenue_growth_pct"),
+                "market_cap_billion": market_context.get("market_cap_billion"),
+                "shares_outstanding_billion": shares_outstanding,
+                "statement_currency": statement_currency,
+                "trading_currency": trading_currency,
+                "valuation_currency": valuation_currency,
+            },
+            missing_inputs=missing_completeness,
+            valuation_status="rough_observation_only",
+        )
 
     peer_rows = [row for row in peer_payload.get("peer_rows", []) if row.get("symbol") != symbol]
     peer_growth = _median_numeric(peer_rows, "revenue_growth_pct", fallback=revenue_growth)
@@ -678,7 +857,14 @@ def _market_context_from_records(records: List[Dict[str, Any]], symbol: str, per
     for record in records:
         if str(record.get("symbol", "")).upper() != symbol:
             continue
-        if str(record.get("source_type", "")).lower() not in {"market", "market_api"}:
+        if str(record.get("source_type", "")).lower() not in {
+            "market",
+            "market_api",
+            "market_data",
+            "sina_finance",
+            "yahoo_finance",
+            "eastmoney",
+        }:
             continue
         metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
         snapshot = metadata.get("snapshot") if isinstance(metadata.get("snapshot"), dict) else metadata
@@ -755,6 +941,16 @@ def _normalize_record_financials(record: Dict[str, Any]) -> Dict[str, Any]:
     free_cash_flow = _first_number(raw, ["freeCashflow", "free_cash_flow_billion"])
     if free_cash_flow is None:
         free_cash_flow = _first_number(latest_cashflow, ["Free Cash Flow"])
+    # 银行/保险等不直接披露 FCF 的行业：用 OCF + capex 计算
+    if free_cash_flow is None:
+        ocf = _first_number(raw, ["operatingCashflow", "operating_cash_flow_billion"])
+        if ocf is None:
+            ocf = _first_number(latest_cashflow, ["Operating Cash Flow", "totalCashFromOperatingActivities"])
+        capex_raw = _first_number(raw, ["capitalExpenditures", "capex"])
+        if capex_raw is None:
+            capex_raw = _first_number(latest_cashflow, ["Capital Expenditure"])
+        if ocf is not None and capex_raw is not None:
+            free_cash_flow = ocf + capex_raw  # capex_raw is negative in yfinance
     adjusted_net_income = quality.get("adjusted_net_income")
     adjusted_net_margin = quality.get("adjusted_net_margin_pct")
     return {
@@ -798,6 +994,40 @@ def _valuation_unavailable(
         "valuation_input_rejection_reason": error,
         "valuation_status": valuation_status or error,
     }
+
+
+def _valuation_completeness_gaps(
+    target: Dict[str, Any],
+    revenue: float,
+    net_income: float,
+    free_cash_flow: float,
+    market_context: Dict[str, Any],
+    shares_outstanding: float | None,
+    statement_currency: str,
+    trading_currency: str,
+    valuation_currency: str,
+    fx_note: Dict[str, Any],
+) -> List[str]:
+    missing: List[str] = []
+    if revenue <= 0:
+        missing.append("positive_revenue")
+    if net_income <= 0:
+        missing.append("positive_net_income")
+    if free_cash_flow <= 0:
+        missing.append("positive_free_cash_flow")
+    if target.get("revenue_growth_pct") in (None, ""):
+        missing.append("revenue_growth_pct")
+    if _safe_float(market_context.get("market_cap_billion")) is None:
+        missing.append("market_cap_billion")
+    if shares_outstanding is None or shares_outstanding <= 0:
+        missing.append("shares_outstanding_billion")
+    if not statement_currency or statement_currency == UNKNOWN_CURRENCY:
+        missing.append("statement_currency")
+    if not trading_currency or trading_currency == UNKNOWN_CURRENCY:
+        missing.append("trading_currency")
+    if statement_currency and valuation_currency and statement_currency != valuation_currency and not fx_note.get("rate"):
+        missing.append("fx_rate")
+    return missing
 
 
 def _fcf_basis_is_usable(target: Dict[str, Any], period: str) -> bool:
@@ -1174,3 +1404,211 @@ def _get_yahoo_market_multiples(symbol: str) -> Dict[str, float | None]:
     except Exception as exc:
         logger.debug("Yahoo multiples fetch failed for %s: %s", symbol, exc)
         return {"pe": None, "ps": None, "pb": None}
+
+
+# ── 东财行业同行发现 ──────────────────────────────────
+
+_EM_DATACENTER_URL = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+
+
+def _get_industry_code_from_records(records: List[Dict[str, Any]], symbol: str) -> str | None:
+    """从已有 evidence records 中提取东财行业代码 (INDUSTRY_CODE)。"""
+    for rec in records or []:
+        if str(rec.get("symbol", "")).upper() != symbol.upper():
+            continue
+        if str(rec.get("source_type", "")).lower() != "eastmoney_financials":
+            continue
+        meta = rec.get("metadata", {})
+        if isinstance(meta, dict):
+            raw = meta.get("raw", {})
+            if isinstance(raw, dict):
+                code = raw.get("INDUSTRY_CODE")
+                if code is not None:
+                    return str(code).strip()
+    return None
+
+
+def _fetch_eastmoney_stocks_by_industry(industry_code: str, topk: int = 10) -> List[Dict[str, Any]]:
+    """通过东财财报 API 查询同行业全部股票代码。
+
+    使用 RPT_DMSK_FN_INCOME 按 INDUSTRY_CODE 过滤返回收入数据，
+    从中提取唯一 SECURITY_CODE 作为同行列表。
+    """
+    params = {
+        "reportName": "RPT_DMSK_FN_INCOME",
+        "columns": "SECURITY_CODE,SECURITY_NAME_ABBR,INDUSTRY_CODE,REPORT_DATE,TOTAL_OPERATE_INCOME",
+        "filter": f'(INDUSTRY_CODE="{industry_code}")',
+        "pageSize": str(max(topk, 50)),
+        "pageNumber": "1",
+        "sortColumns": "REPORT_DATE",
+        "sortTypes": "-1",
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 FinSight/0.1",
+        "Accept": "application/json,text/plain,*/*",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    url = f"{_EM_DATACENTER_URL}?{_urlencode(params)}"
+    try:
+        req = _req_lib.Request(url, headers=headers, method="GET")
+        with _req_lib.urlopen(req, timeout=15) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        parsed = json.loads(raw)
+    except Exception as exc:
+        logger.warning("eastmoney industry stock list failed for code %s: %s", industry_code, exc)
+        return []
+    # Collect unique stock codes from income rows
+    rows = _coerce_search_items(parsed, ["data", "result", "items", "records"])
+    if not rows:
+        result = parsed.get("result") if isinstance(parsed.get("result"), dict) else None
+        if result and isinstance(result.get("data"), list):
+            rows = result["data"]
+    seen = set()
+    unique: List[Dict[str, Any]] = []
+    for r in (rows or []):
+        if not isinstance(r, dict):
+            continue
+        sc = r.get("SECURITY_CODE")
+        if sc and str(sc) not in seen:
+            seen.add(str(sc))
+            unique.append(r)
+    return unique[:max(topk, 50)]
+
+
+def _fetch_eastmoney_peer_financials(code: str, period: str) -> Dict[str, Any] | None:
+    """用东财 API 获取一只同行股票的财务数据，拼成 peer_row 格式。"""
+    from src.search.search_manager import _cn_stock_code
+
+    stock_code = _cn_stock_code(code)
+    if not stock_code:
+        return None
+    params = {
+        "reportName": "RPT_DMSK_FN_INCOME",
+        "columns": "ALL",
+        "filter": f'(SECURITY_CODE="{stock_code}")',
+        "pageSize": "5",
+        "pageNumber": "1",
+        "sortColumns": "REPORT_DATE",
+        "sortTypes": "-1",
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 FinSight/0.1",
+        "Accept": "application/json,text/plain,*/*",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    url = f"{_EM_DATACENTER_URL}?{_urlencode(params)}"
+    try:
+        req = _req_lib.Request(url, headers=headers, method="GET")
+        with _req_lib.urlopen(req, timeout=15) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        parsed = json.loads(raw)
+    except Exception as exc:
+        logger.debug("eastmoney peer financials fetch failed for %s: %s", code, exc)
+        return None
+    rows = _coerce_search_items(parsed, ["data", "result", "items", "records"])
+    if not rows:
+        return None
+    # Find the row that best matches the target period
+    row = _select_financial_row_for_period(rows, period) if rows else rows[0]
+    if not row:
+        row = rows[0]
+    exchange_suffix = ".SS" if str(stock_code).startswith(("6", "9")) else ".SZ"
+    symbol = f"{stock_code}{exchange_suffix}"
+    rev = _safe_float(row.get("TOTAL_OPERATE_INCOME"))
+    ni = _safe_float(row.get("PARENT_NETPROFIT"))
+    op_cf = _safe_float(row.get("NETCASH_OPERATE"))
+    op_cost = _safe_float(row.get("OPERATE_COST"))
+    gross_margin = ((rev - op_cost) / rev * 100) if rev and op_cost else None
+    return {
+        "symbol": symbol,
+        "company_name": str(row.get("SECURITY_NAME_ABBR") or symbol),
+        "sector": "",
+        "industry": str(row.get("INDUSTRY_NAME") or ""),
+        "is_target": False,
+        "revenue_billion": _to_billion(rev) if rev else None,
+        "revenue_growth_pct": None,
+        "gross_margin_pct": gross_margin,
+        "net_margin_pct": (ni / rev * 100) if rev and ni else None,
+        "roe_pct": None,
+        "free_cash_flow_billion": None,
+        "net_income_billion": _to_billion(ni) if ni else None,
+        "adjusted_net_income_billion": _to_billion(ni) if ni else None,
+        "non_recurring_gain_billion": None,
+        "non_recurring_gain_ratio": None,
+        "net_income_quality_flag": "eastmoney",
+        "valuation_input_usable": True,
+        "valuation_input_rejection_reason": "",
+        "free_cash_flow_period_basis": "annual",
+    }
+
+
+def _select_financial_row_for_period(rows: List[Dict[str, Any]], period: str) -> Dict[str, Any] | None:
+    """从东财返回的多期财务行中，选出最匹配目标 period 的那一行。"""
+    period = (period or "").upper().strip()
+    if not period or not period.startswith("FY"):
+        return rows[0] if rows else None
+    try:
+        target_year = int(period.replace("FY", ""))
+    except ValueError:
+        return rows[0] if rows else None
+    for row in rows:
+        rd = str(row.get("REPORT_DATE") or "")
+        if rd.startswith(str(target_year)):
+            return row
+    return rows[0] if rows else None
+
+
+def _get_industry_code_via_eastmoney_api(symbol: str) -> str | None:
+    """调用东财财报 API 获取目标股票的行业代码 (INDUSTRY_CODE)。"""
+    from src.search.search_manager import _cn_stock_code
+
+    code = _cn_stock_code(symbol)
+    if not code:
+        return None
+    params = {
+        "reportName": "RPT_DMSK_FN_INCOME",
+        "columns": "SECURITY_CODE,INDUSTRY_CODE,INDUSTRY_NAME,REPORT_DATE",
+        "filter": f'(SECURITY_CODE="{code}")',
+        "pageSize": "1",
+        "pageNumber": "1",
+        "sortColumns": "REPORT_DATE",
+        "sortTypes": "-1",
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 FinSight/0.1",
+        "Accept": "application/json,text/plain,*/*",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    url = f"{_EM_DATACENTER_URL}?{_urlencode(params)}"
+    try:
+        req = _req_lib.Request(url, headers=headers, method="GET")
+        with _req_lib.urlopen(req, timeout=12) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        parsed = json.loads(raw)
+    except Exception as exc:
+        logger.debug("eastmoney industry code fetch failed for %s: %s", symbol, exc)
+        return None
+    # Try both _coerce_search_items and direct path
+    rows = _coerce_search_items(parsed, ["data", "result", "items", "records"])
+    if not rows:
+        result = parsed.get("result") if isinstance(parsed.get("result"), dict) else None
+        if result and isinstance(result.get("data"), list):
+            rows = result["data"]
+    if not rows:
+        return None
+    row = rows[0]
+    ind_code = row.get("INDUSTRY_CODE")
+    return str(ind_code).strip() if ind_code is not None else None
+
+
+def _coerce_search_items(payload: Dict[str, Any], keys: List[str]) -> List[Dict[str, Any]]:
+    """从 API 返回的嵌套 dict 中提取列表数据（兼容不同格式）。"""
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        if isinstance(value, dict):
+            nested = _coerce_search_items(value, ["data", "items", "results", "records", "list"])
+            if nested:
+                return nested
+    return []

@@ -23,6 +23,7 @@ OFFICIAL_SOURCE_TYPES = {
     "cninfo_announcement",
     "eastmoney_financials",
     "pdf_statement_table",
+    "hk_financials",
 }
 
 

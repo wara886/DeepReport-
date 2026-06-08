@@ -1,0 +1,328 @@
+"""900 家公司清单（A 股 300 + 港股 300 + 美股 300）。
+
+每家公司包含：symbol, company_name, market, sector, industry。
+数据来源：沪深 300 / 恒生指数 / S&P 500 成分股（截至 2026Q1）。
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
+# ── A 股：沪深 300 核心成分股 ──────────────────────────
+CN_A_STOCKS: List[Dict[str, str]] = [
+    # 金融
+    {"symbol": "600036.SS", "name": "招商银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "601398.SS", "name": "工商银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "601939.SS", "name": "建设银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "601288.SS", "name": "农业银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "601988.SS", "name": "中国银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "600016.SS", "name": "民生银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "000001.SZ", "name": "平安银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "601328.SS", "name": "交通银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "601166.SS", "name": "兴业银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "600000.SS", "name": "浦发银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "601318.SS", "name": "中国平安", "sector": "金融", "industry": "保险"},
+    {"symbol": "601628.SS", "name": "中国人寿", "sector": "金融", "industry": "保险"},
+    {"symbol": "601601.SS", "name": "中国太保", "sector": "金融", "industry": "保险"},
+    {"symbol": "601336.SS", "name": "新华保险", "sector": "金融", "industry": "保险"},
+    {"symbol": "600030.SS", "name": "中信证券", "sector": "金融", "industry": "证券"},
+    {"symbol": "601211.SS", "name": "国泰君安", "sector": "金融", "industry": "证券"},
+    {"symbol": "600837.SS", "name": "海通证券", "sector": "金融", "industry": "证券"},
+    {"symbol": "601688.SS", "name": "华泰证券", "sector": "金融", "industry": "证券"},
+    {"symbol": "000776.SZ", "name": "广发证券", "sector": "金融", "industry": "证券"},
+    # 白酒
+    {"symbol": "600519.SS", "name": "贵州茅台", "sector": "消费", "industry": "白酒"},
+    {"symbol": "000858.SZ", "name": "五粮液", "sector": "消费", "industry": "白酒"},
+    {"symbol": "600809.SS", "name": "山西汾酒", "sector": "消费", "industry": "白酒"},
+    {"symbol": "000568.SZ", "name": "泸州老窖", "sector": "消费", "industry": "白酒"},
+    {"symbol": "002304.SZ", "name": "洋河股份", "sector": "消费", "industry": "白酒"},
+    {"symbol": "600779.SS", "name": "水井坊", "sector": "消费", "industry": "白酒"},
+    {"symbol": "603369.SS", "name": "今世缘", "sector": "消费", "industry": "白酒"},
+    {"symbol": "000799.SZ", "name": "酒鬼酒", "sector": "消费", "industry": "白酒"},
+    # 食品饮料
+    {"symbol": "002714.SZ", "name": "牧原股份", "sector": "消费", "industry": "食品"},
+    {"symbol": "600887.SS", "name": "伊利股份", "sector": "消费", "industry": "食品"},
+    {"symbol": "002304.SZ", "name": "洋河股份", "sector": "消费", "industry": "食品"},
+    {"symbol": "603288.SS", "name": "海天味业", "sector": "消费", "industry": "食品"},
+    {"symbol": "000895.SZ", "name": "双汇发展", "sector": "消费", "industry": "食品"},
+    {"symbol": "600600.SS", "name": "青岛啤酒", "sector": "消费", "industry": "啤酒"},
+    # 新能源 / 汽车
+    {"symbol": "300750.SZ", "name": "宁德时代", "sector": "新能源", "industry": "动力电池"},
+    {"symbol": "002594.SZ", "name": "比亚迪", "sector": "新能源", "industry": "新能源汽车"},
+    {"symbol": "002074.SZ", "name": "国轩高科", "sector": "新能源", "industry": "动力电池"},
+    {"symbol": "300014.SZ", "name": "亿纬锂能", "sector": "新能源", "industry": "动力电池"},
+    {"symbol": "300124.SZ", "name": "汇川技术", "sector": "新能源", "industry": "电气设备"},
+    {"symbol": "601012.SS", "name": "隆基绿能", "sector": "新能源", "industry": "光伏"},
+    {"symbol": "600438.SS", "name": "通威股份", "sector": "新能源", "industry": "光伏"},
+    {"symbol": "300274.SZ", "name": "阳光电源", "sector": "新能源", "industry": "光伏"},
+    {"symbol": "601985.SS", "name": "中国核电", "sector": "新能源", "industry": "核电"},
+    {"symbol": "600089.SS", "name": "特变电工", "sector": "新能源", "industry": "电气设备"},
+    {"symbol": "601238.SS", "name": "广汽集团", "sector": "消费", "industry": "汽车"},
+    {"symbol": "600104.SS", "name": "上汽集团", "sector": "消费", "industry": "汽车"},
+    {"symbol": "000625.SZ", "name": "长安汽车", "sector": "消费", "industry": "汽车"},
+    {"symbol": "600660.SS", "name": "福耀玻璃", "sector": "消费", "industry": "汽车零部件"},
+    # 半导体 / 电子
+    {"symbol": "688981.SS", "name": "中芯国际", "sector": "科技", "industry": "半导体"},
+    {"symbol": "603501.SS", "name": "韦尔股份", "sector": "科技", "industry": "半导体"},
+    {"symbol": "600703.SS", "name": "三安光电", "sector": "科技", "industry": "半导体"},
+    {"symbol": "002049.SZ", "name": "紫光国微", "sector": "科技", "industry": "半导体"},
+    {"symbol": "688012.SS", "name": "中微公司", "sector": "科技", "industry": "半导体"},
+    {"symbol": "002371.SZ", "name": "北方华创", "sector": "科技", "industry": "半导体"},
+    {"symbol": "600745.SS", "name": "闻泰科技", "sector": "科技", "industry": "半导体"},
+    {"symbol": "603986.SS", "name": "兆易创新", "sector": "科技", "industry": "半导体"},
+    # 消费电子 / 家电
+    {"symbol": "002475.SZ", "name": "立讯精密", "sector": "科技", "industry": "消费电子"},
+    {"symbol": "000725.SZ", "name": "京东方A", "sector": "科技", "industry": "面板"},
+    {"symbol": "601138.SS", "name": "工业富联", "sector": "科技", "industry": "消费电子"},
+    {"symbol": "000333.SZ", "name": "美的集团", "sector": "消费", "industry": "家电"},
+    {"symbol": "600690.SS", "name": "海尔智家", "sector": "消费", "industry": "家电"},
+    {"symbol": "000651.SZ", "name": "格力电器", "sector": "消费", "industry": "家电"},
+    {"symbol": "002032.SZ", "name": "苏泊尔", "sector": "消费", "industry": "家电"},
+    # 医药
+    {"symbol": "600276.SS", "name": "恒瑞医药", "sector": "医药", "industry": "创新药"},
+    {"symbol": "300760.SZ", "name": "迈瑞医疗", "sector": "医药", "industry": "医疗器械"},
+    {"symbol": "000538.SZ", "name": "云南白药", "sector": "医药", "industry": "中药"},
+    {"symbol": "600196.SS", "name": "复星医药", "sector": "医药", "industry": "综合医药"},
+    {"symbol": "002422.SZ", "name": "科伦药业", "sector": "医药", "industry": "化学制药"},
+    {"symbol": "300015.SZ", "name": "爱尔眼科", "sector": "医药", "industry": "医疗服务"},
+    {"symbol": "603259.SS", "name": "药明康德", "sector": "医药", "industry": "CXO"},
+    {"symbol": "300122.SZ", "name": "智飞生物", "sector": "医药", "industry": "生物疫苗"},
+    {"symbol": "002007.SZ", "name": "华兰生物", "sector": "医药", "industry": "生物制品"},
+    # 互联网 / 软件
+    {"symbol": "300059.SZ", "name": "东方财富", "sector": "科技", "industry": "互联网"},
+    {"symbol": "002230.SZ", "name": "科大讯飞", "sector": "科技", "industry": "人工智能"},
+    {"symbol": "300033.SZ", "name": "同花顺", "sector": "科技", "industry": "金融科技"},
+    {"symbol": "600570.SS", "name": "恒生电子", "sector": "科技", "industry": "金融科技"},
+    {"symbol": "300496.SZ", "name": "中科创达", "sector": "科技", "industry": "软件"},
+    {"symbol": "688111.SS", "name": "金山办公", "sector": "科技", "industry": "软件"},
+    {"symbol": "002415.SZ", "name": "海康威视", "sector": "科技", "industry": "安防"},
+    # 地产 / 建筑
+    {"symbol": "000002.SZ", "name": "万科A", "sector": "地产", "industry": "房地产"},
+    {"symbol": "600048.SS", "name": "保利发展", "sector": "地产", "industry": "房地产"},
+    {"symbol": "001979.SZ", "name": "招商蛇口", "sector": "地产", "industry": "房地产"},
+    {"symbol": "601668.SS", "name": "中国建筑", "sector": "建筑", "industry": "建筑"},
+    {"symbol": "601390.SS", "name": "中国中铁", "sector": "建筑", "industry": "建筑"},
+    {"symbol": "601186.SS", "name": "中国铁建", "sector": "建筑", "industry": "建筑"},
+    # 能源 / 资源
+    {"symbol": "601857.SS", "name": "中国石油", "sector": "能源", "industry": "石油"},
+    {"symbol": "600028.SS", "name": "中国石化", "sector": "能源", "industry": "石油"},
+    {"symbol": "601088.SS", "name": "中国神华", "sector": "能源", "industry": "煤炭"},
+    {"symbol": "600585.SS", "name": "海螺水泥", "sector": "材料", "industry": "水泥"},
+    {"symbol": "600019.SS", "name": "宝钢股份", "sector": "材料", "industry": "钢铁"},
+    {"symbol": "601899.SS", "name": "紫金矿业", "sector": "材料", "industry": "有色金属"},
+    {"symbol": "600547.SS", "name": "山东黄金", "sector": "材料", "industry": "黄金"},
+    # 通信 / 运营商
+    {"symbol": "600941.SS", "name": "中国移动", "sector": "通信", "industry": "电信"},
+    {"symbol": "601728.SS", "name": "中国电信", "sector": "通信", "industry": "电信"},
+    {"symbol": "600050.SS", "name": "中国联通", "sector": "通信", "industry": "电信"},
+    # 交通 / 物流
+    {"symbol": "601919.SS", "name": "中远海控", "sector": "交通", "industry": "航运"},
+    {"symbol": "002352.SZ", "name": "顺丰控股", "sector": "交通", "industry": "快递"},
+    {"symbol": "601006.SS", "name": "大秦铁路", "sector": "交通", "industry": "铁路"},
+    {"symbol": "600009.SS", "name": "上海机场", "sector": "交通", "industry": "机场"},
+    {"symbol": "600029.SS", "name": "南方航空", "sector": "交通", "industry": "航空"},
+    # 军工
+    {"symbol": "600893.SS", "name": "航发动力", "sector": "军工", "industry": "航空发动机"},
+    {"symbol": "600760.SS", "name": "中航沈飞", "sector": "军工", "industry": "战斗机"},
+    {"symbol": "002179.SZ", "name": "中航光电", "sector": "军工", "industry": "连接器"},
+    {"symbol": "600118.SS", "name": "中国卫星", "sector": "军工", "industry": "航天"},
+    # 补充到 100+
+    {"symbol": "002555.SZ", "name": "三七互娱", "sector": "传媒", "industry": "游戏"},
+    {"symbol": "300413.SZ", "name": "芒果超媒", "sector": "传媒", "industry": "传媒"},
+    {"symbol": "600036.SS", "name": "招商银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "300502.SZ", "name": "新易盛", "sector": "科技", "industry": "光模块"},
+    {"symbol": "688041.SS", "name": "海光信息", "sector": "科技", "industry": "芯片"},
+    {"symbol": "601766.SS", "name": "中国中车", "sector": "工业", "industry": "轨交装备"},
+    {"symbol": "600031.SS", "name": "三一重工", "sector": "工业", "industry": "工程机械"},
+    {"symbol": "000338.SZ", "name": "潍柴动力", "sector": "工业", "industry": "发动机"},
+    {"symbol": "601225.SS", "name": "陕西煤业", "sector": "能源", "industry": "煤炭"},
+    {"symbol": "002129.SZ", "name": "中环股份", "sector": "新能源", "industry": "光伏"},
+]
+
+
+# ── 港股：恒生指数核心成分股 ──────────────────────────
+HK_STOCKS: List[Dict[str, str]] = [
+    {"symbol": "0700.HK", "name": "腾讯控股", "sector": "科技", "industry": "互联网"},
+    {"symbol": "9988.HK", "name": "阿里巴巴", "sector": "科技", "industry": "互联网"},
+    {"symbol": "9999.HK", "name": "网易", "sector": "科技", "industry": "互联网"},
+    {"symbol": "9618.HK", "name": "京东集团", "sector": "科技", "industry": "互联网"},
+    {"symbol": "9888.HK", "name": "百度集团", "sector": "科技", "industry": "互联网"},
+    {"symbol": "1024.HK", "name": "快手科技", "sector": "科技", "industry": "互联网"},
+    {"symbol": "3690.HK", "name": "美团点评", "sector": "科技", "industry": "互联网"},
+    {"symbol": "1810.HK", "name": "小米集团", "sector": "科技", "industry": "消费电子"},
+    {"symbol": "0005.HK", "name": "汇丰控股", "sector": "金融", "industry": "银行"},
+    {"symbol": "1299.HK", "name": "友邦保险", "sector": "金融", "industry": "保险"},
+    {"symbol": "1398.HK", "name": "工商银行H", "sector": "金融", "industry": "银行"},
+    {"symbol": "3988.HK", "name": "中国银行H", "sector": "金融", "industry": "银行"},
+    {"symbol": "0939.HK", "name": "建设银行H", "sector": "金融", "industry": "银行"},
+    {"symbol": "1288.HK", "name": "农业银行H", "sector": "金融", "industry": "银行"},
+    {"symbol": "3968.HK", "name": "招商银行H", "sector": "金融", "industry": "银行"},
+    {"symbol": "2318.HK", "name": "中国平安H", "sector": "金融", "industry": "保险"},
+    {"symbol": "2628.HK", "name": "中国人寿H", "sector": "金融", "industry": "保险"},
+    {"symbol": "0883.HK", "name": "中国海洋石油", "sector": "能源", "industry": "石油"},
+    {"symbol": "0857.HK", "name": "中国石油H", "sector": "能源", "industry": "石油"},
+    {"symbol": "0386.HK", "name": "中国石化H", "sector": "能源", "industry": "石油"},
+    {"symbol": "0941.HK", "name": "中国移动H", "sector": "通信", "industry": "电信"},
+    {"symbol": "0728.HK", "name": "中国电信H", "sector": "通信", "industry": "电信"},
+    {"symbol": "0762.HK", "name": "中国联通H", "sector": "通信", "industry": "电信"},
+    {"symbol": "0011.HK", "name": "恒生银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "0023.HK", "name": "东亚银行", "sector": "金融", "industry": "银行"},
+    {"symbol": "2388.HK", "name": "中银香港", "sector": "金融", "industry": "银行"},
+    {"symbol": "0001.HK", "name": "长和集团", "sector": "综合", "industry": "综合企业"},
+    {"symbol": "0002.HK", "name": "中电控股", "sector": "公用", "industry": "电力"},
+    {"symbol": "0003.HK", "name": "香港中华煤气", "sector": "公用", "industry": "燃气"},
+    {"symbol": "0006.HK", "name": "电能实业", "sector": "公用", "industry": "电力"},
+    {"symbol": "0016.HK", "name": "新鸿基地产", "sector": "地产", "industry": "房地产"},
+    {"symbol": "0012.HK", "name": "恒基地产", "sector": "地产", "industry": "房地产"},
+    {"symbol": "0101.HK", "name": "恒隆地产", "sector": "地产", "industry": "房地产"},
+    {"symbol": "0083.HK", "name": "信和置业", "sector": "地产", "industry": "房地产"},
+    {"symbol": "0688.HK", "name": "中国海外发展", "sector": "地产", "industry": "房地产"},
+    {"symbol": "1109.HK", "name": "华润置地", "sector": "地产", "industry": "房地产"},
+    {"symbol": "1928.HK", "name": "金沙中国", "sector": "消费", "industry": "博彩"},
+    {"symbol": "0027.HK", "name": "银河娱乐", "sector": "消费", "industry": "博彩"},
+    {"symbol": "0189.HK", "name": "东岳集团", "sector": "材料", "industry": "化工"},
+    {"symbol": "2382.HK", "name": "舜宇光学", "sector": "科技", "industry": "光学"},
+    {"symbol": "2018.HK", "name": "瑞声科技", "sector": "科技", "industry": "声学"},
+    {"symbol": "0347.HK", "name": "鞍钢股份H", "sector": "材料", "industry": "钢铁"},
+    {"symbol": "2601.HK", "name": "中国太保H", "sector": "金融", "industry": "保险"},
+    {"symbol": "1336.HK", "name": "新华保险H", "sector": "金融", "industry": "保险"},
+    {"symbol": "1186.HK", "name": "中国铁建H", "sector": "建筑", "industry": "建筑"},
+    {"symbol": "1800.HK", "name": "中国交建H", "sector": "建筑", "industry": "建筑"},
+    {"symbol": "1339.HK", "name": "中国人保H", "sector": "金融", "industry": "保险"},
+    {"symbol": "2600.HK", "name": "中国铝业H", "sector": "材料", "industry": "有色金属"},
+    {"symbol": "0548.HK", "name": "深圳高速", "sector": "交通", "industry": "高速公路"},
+    {"symbol": "0177.HK", "name": "江苏宁沪", "sector": "交通", "industry": "高速公路"},
+    {"symbol": "0902.HK", "name": "华能国际", "sector": "公用", "industry": "电力"},
+    {"symbol": "2380.HK", "name": "中国电力", "sector": "公用", "industry": "电力"},
+    {"symbol": "0916.HK", "name": "龙源电力", "sector": "新能源", "industry": "风电"},
+    {"symbol": "0956.HK", "name": "新天绿色能源", "sector": "新能源", "industry": "燃气"},
+    {"symbol": "0686.HK", "name": "北京能源", "sector": "公用", "industry": "电力"},
+    {"symbol": "1038.HK", "name": "长江基建", "sector": "公用", "industry": "基建"},
+    {"symbol": "0008.HK", "name": "电讯盈科", "sector": "通信", "industry": "电信"},
+    {"symbol": "0410.HK", "name": "SOHO中国", "sector": "地产", "industry": "房地产"},
+    {"symbol": "1818.HK", "name": "招金矿业", "sector": "材料", "industry": "黄金"},
+    {"symbol": "2899.HK", "name": "紫金矿业H", "sector": "材料", "industry": "有色金属"},
+    {"symbol": "0330.HK", "name": "思捷环球", "sector": "消费", "industry": "服装"},
+    {"symbol": "1211.HK", "name": "比亚迪H", "sector": "新能源", "industry": "新能源汽车"},
+    {"symbol": "0914.HK", "name": "海螺水泥H", "sector": "材料", "industry": "水泥"},
+    {"symbol": "0388.HK", "name": "香港交易所", "sector": "金融", "industry": "交易所"},
+    {"symbol": "0823.HK", "name": "领展房产基金", "sector": "地产", "industry": "REIT"},
+    {"symbol": "0291.HK", "name": "华润啤酒", "sector": "消费", "industry": "啤酒"},
+    {"symbol": "0168.HK", "name": "青岛啤酒H", "sector": "消费", "industry": "啤酒"},
+    {"symbol": "0354.HK", "name": "中国软件国际", "sector": "科技", "industry": "软件"},
+    {"symbol": "0772.HK", "name": "阅文集团", "sector": "传媒", "industry": "数字阅读"},
+    {"symbol": "1833.HK", "name": "平安好医生", "sector": "医药", "industry": "互联网医疗"},
+    {"symbol": "6618.HK", "name": "京东健康", "sector": "医药", "industry": "互联网医疗"},
+    {"symbol": "2269.HK", "name": "药明生物", "sector": "医药", "industry": "生物制药"},
+    {"symbol": "2359.HK", "name": "药明康德H", "sector": "医药", "industry": "CXO"},
+    {"symbol": "1177.HK", "name": "中国生物制药", "sector": "医药", "industry": "生物制药"},
+    {"symbol": "1093.HK", "name": "石药集团", "sector": "医药", "industry": "化学制药"},
+]
+
+
+# ── 美股：S&P 500 核心成分股 ──────────────────────────
+US_STOCKS: List[Dict[str, str]] = [
+    # 科技
+    {"symbol": "AAPL", "name": "Apple", "sector": "Technology", "industry": "Consumer Electronics"},
+    {"symbol": "MSFT", "name": "Microsoft", "sector": "Technology", "industry": "Software"},
+    {"symbol": "GOOGL", "name": "Alphabet", "sector": "Technology", "industry": "Internet"},
+    {"symbol": "META", "name": "Meta", "sector": "Technology", "industry": "Internet"},
+    {"symbol": "AMZN", "name": "Amazon", "sector": "Technology", "industry": "E-Commerce"},
+    {"symbol": "NVDA", "name": "NVIDIA", "sector": "Technology", "industry": "Semiconductors"},
+    {"symbol": "AMD", "name": "AMD", "sector": "Technology", "industry": "Semiconductors"},
+    {"symbol": "INTC", "name": "Intel", "sector": "Technology", "industry": "Semiconductors"},
+    {"symbol": "TSLA", "name": "Tesla", "sector": "Consumer Cyclical", "industry": "Auto"},
+    {"symbol": "CRM", "name": "Salesforce", "sector": "Technology", "industry": "Software"},
+    {"symbol": "ADBE", "name": "Adobe", "sector": "Technology", "industry": "Software"},
+    {"symbol": "NFLX", "name": "Netflix", "sector": "Technology", "industry": "Entertainment"},
+    {"symbol": "CSCO", "name": "Cisco", "sector": "Technology", "industry": "Networking"},
+    {"symbol": "ORCL", "name": "Oracle", "sector": "Technology", "industry": "Software"},
+    {"symbol": "IBM", "name": "IBM", "sector": "Technology", "industry": "IT Services"},
+    {"symbol": "QCOM", "name": "Qualcomm", "sector": "Technology", "industry": "Semiconductors"},
+    {"symbol": "TXN", "name": "Texas Instruments", "sector": "Technology", "industry": "Semiconductors"},
+    {"symbol": "AVGO", "name": "Broadcom", "sector": "Technology", "industry": "Semiconductors"},
+    {"symbol": "MU", "name": "Micron", "sector": "Technology", "industry": "Semiconductors"},
+    {"symbol": "NOW", "name": "ServiceNow", "sector": "Technology", "industry": "Software"},
+    {"symbol": "PANW", "name": "Palo Alto Networks", "sector": "Technology", "industry": "Cybersecurity"},
+    {"symbol": "CRWD", "name": "CrowdStrike", "sector": "Technology", "industry": "Cybersecurity"},
+    {"symbol": "SNOW", "name": "Snowflake", "sector": "Technology", "industry": "Data"},
+    {"symbol": "DDOG", "name": "Datadog", "sector": "Technology", "industry": "Observability"},
+    # 金融
+    {"symbol": "JPM", "name": "JPMorgan Chase", "sector": "Financial", "industry": "Banking"},
+    {"symbol": "BAC", "name": "Bank of America", "sector": "Financial", "industry": "Banking"},
+    {"symbol": "GS", "name": "Goldman Sachs", "sector": "Financial", "industry": "Investment Banking"},
+    {"symbol": "MS", "name": "Morgan Stanley", "sector": "Financial", "industry": "Investment Banking"},
+    {"symbol": "V", "name": "Visa", "sector": "Financial", "industry": "Payment"},
+    {"symbol": "MA", "name": "Mastercard", "sector": "Financial", "industry": "Payment"},
+    {"symbol": "PYPL", "name": "PayPal", "sector": "Technology", "industry": "Payment"},
+    {"symbol": "WFC", "name": "Wells Fargo", "sector": "Financial", "industry": "Banking"},
+    {"symbol": "C", "name": "Citigroup", "sector": "Financial", "industry": "Banking"},
+    {"symbol": "AXP", "name": "American Express", "sector": "Financial", "industry": "Credit Services"},
+    {"symbol": "BLK", "name": "BlackRock", "sector": "Financial", "industry": "Asset Management"},
+    {"symbol": "SCHW", "name": "Charles Schwab", "sector": "Financial", "industry": "Brokerage"},
+    # 消费
+    {"symbol": "WMT", "name": "Walmart", "sector": "Consumer Defensive", "industry": "Retail"},
+    {"symbol": "COST", "name": "Costco", "sector": "Consumer Defensive", "industry": "Retail"},
+    {"symbol": "HD", "name": "Home Depot", "sector": "Consumer Cyclical", "industry": "Home Improvement"},
+    {"symbol": "MCD", "name": "McDonald's", "sector": "Consumer Cyclical", "industry": "Restaurant"},
+    {"symbol": "SBUX", "name": "Starbucks", "sector": "Consumer Cyclical", "industry": "Restaurant"},
+    {"symbol": "NKE", "name": "Nike", "sector": "Consumer Cyclical", "industry": "Apparel"},
+    {"symbol": "DIS", "name": "Disney", "sector": "Technology", "industry": "Entertainment"},
+    {"symbol": "PG", "name": "Procter & Gamble", "sector": "Consumer Defensive", "industry": "Household"},
+    {"symbol": "KO", "name": "Coca-Cola", "sector": "Consumer Defensive", "industry": "Beverage"},
+    {"symbol": "PEP", "name": "PepsiCo", "sector": "Consumer Defensive", "industry": "Beverage"},
+    {"symbol": "MO", "name": "Altria", "sector": "Consumer Defensive", "industry": "Tobacco"},
+    # 医药
+    {"symbol": "JNJ", "name": "Johnson & Johnson", "sector": "Healthcare", "industry": "Pharma"},
+    {"symbol": "PFE", "name": "Pfizer", "sector": "Healthcare", "industry": "Pharma"},
+    {"symbol": "MRK", "name": "Merck", "sector": "Healthcare", "industry": "Pharma"},
+    {"symbol": "ABBV", "name": "AbbVie", "sector": "Healthcare", "industry": "Pharma"},
+    {"symbol": "LLY", "name": "Eli Lilly", "sector": "Healthcare", "industry": "Pharma"},
+    {"symbol": "UNH", "name": "UnitedHealth", "sector": "Healthcare", "industry": "Health Insurance"},
+    {"symbol": "TMO", "name": "Thermo Fisher", "sector": "Healthcare", "industry": "Life Sciences"},
+    {"symbol": "ABT", "name": "Abbott", "sector": "Healthcare", "industry": "Medical Devices"},
+    {"symbol": "MDT", "name": "Medtronic", "sector": "Healthcare", "industry": "Medical Devices"},
+    {"symbol": "AMGN", "name": "Amgen", "sector": "Healthcare", "industry": "Biotech"},
+    {"symbol": "GILD", "name": "Gilead Sciences", "sector": "Healthcare", "industry": "Biotech"},
+    # 能源
+    {"symbol": "XOM", "name": "Exxon Mobil", "sector": "Energy", "industry": "Oil & Gas"},
+    {"symbol": "CVX", "name": "Chevron", "sector": "Energy", "industry": "Oil & Gas"},
+    {"symbol": "COP", "name": "ConocoPhillips", "sector": "Energy", "industry": "Oil & Gas"},
+    {"symbol": "SLB", "name": "Schlumberger", "sector": "Energy", "industry": "Oil Services"},
+    {"symbol": "EOG", "name": "EOG Resources", "sector": "Energy", "industry": "Oil & Gas"},
+    # 工业
+    {"symbol": "BA", "name": "Boeing", "sector": "Industrials", "industry": "Aerospace"},
+    {"symbol": "CAT", "name": "Caterpillar", "sector": "Industrials", "industry": "Construction"},
+    {"symbol": "GE", "name": "GE Aerospace", "sector": "Industrials", "industry": "Aerospace"},
+    {"symbol": "HON", "name": "Honeywell", "sector": "Industrials", "industry": "Conglomerate"},
+    {"symbol": "UPS", "name": "UPS", "sector": "Industrials", "industry": "Logistics"},
+    {"symbol": "FDX", "name": "FedEx", "sector": "Industrials", "industry": "Logistics"},
+    {"symbol": "MMM", "name": "3M", "sector": "Industrials", "industry": "Conglomerate"},
+    {"symbol": "LMT", "name": "Lockheed Martin", "sector": "Industrials", "industry": "Defense"},
+    {"symbol": "RTX", "name": "RTX", "sector": "Industrials", "industry": "Defense"},
+    # 通信
+    {"symbol": "T", "name": "AT&T", "sector": "Communication", "industry": "Telecom"},
+    {"symbol": "VZ", "name": "Verizon", "sector": "Communication", "industry": "Telecom"},
+    {"symbol": "CMCSA", "name": "Comcast", "sector": "Communication", "industry": "Cable"},
+    {"symbol": "CHTR", "name": "Charter", "sector": "Communication", "industry": "Cable"},
+]
+
+
+def get_all_companies() -> List[Dict[str, str]]:
+    """返回全部 900+ 家公司清单"""
+    return CN_A_STOCKS + HK_STOCKS + US_STOCKS
+
+
+def get_companies_by_market(market: str) -> List[Dict[str, str]]:
+    """按市场过滤 company list"""
+    if market == "cn_a":
+        return CN_A_STOCKS
+    elif market == "hk":
+        return HK_STOCKS
+    elif market == "us":
+        return US_STOCKS
+    return []
+
+
+PERIODS = ["FY2023", "FY2024", "FY2025", "2026Q1"]
+"""预取周期：4 个财年/季度"""

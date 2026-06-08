@@ -12,10 +12,32 @@ from src.retrieval.evidence_store import EvidenceRecord
 
 
 TOKEN_RE = re.compile(r"[a-zA-Z0-9_]+")
+CHINESE_RE = re.compile(r"[\u4e00-\u9fff]+")
 
 
 def tokenize(text: str) -> List[str]:
-    return [m.group(0).lower() for m in TOKEN_RE.finditer(text or "")]
+    text = text or ""
+    tokens = [m.group(0).lower() for m in TOKEN_RE.finditer(text)]
+    cjk_blocks = [m.group(0) for m in CHINESE_RE.finditer(text)]
+    if not cjk_blocks:
+        return tokens
+    try:
+        import jieba  # type: ignore
+
+        for block in cjk_blocks:
+            tokens.extend(token.strip() for token in jieba.lcut(block) if token.strip())
+    except Exception:
+        for block in cjk_blocks:
+            tokens.extend(_char_ngrams(block, n=2))
+            tokens.extend(_char_ngrams(block, n=3))
+    return tokens
+
+
+def _char_ngrams(text: str, n: int) -> List[str]:
+    cleaned = re.sub(r"\s+", "", text or "")
+    if len(cleaned) <= n:
+        return [cleaned] if cleaned else []
+    return [cleaned[index : index + n] for index in range(0, len(cleaned) - n + 1)]
 
 
 @dataclass

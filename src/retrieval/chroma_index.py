@@ -7,6 +7,11 @@ import math
 from typing import Dict, List, Sequence
 
 from src.retrieval.evidence_store import EvidenceRecord
+from src.retrieval.bm25_index import tokenize
+from src.utils.logging import get_task_logger, log_vector_search
+from src.utils.model_cache import embedding_local_files_only, ensure_model_cache_env
+
+logger = get_task_logger(__name__, task_id="-")
 
 
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
@@ -14,20 +19,34 @@ _EMBEDDER_CACHE: Dict[str, object] = {}
 
 
 class ChromaIndex:
-    """A small vector index that prefers Chroma, then falls back to in-memory search."""
+    """A small vector index that prefers Chroma, then falls back to in-memory search.
 
-    def __init__(self, model_name: str = DEFAULT_EMBEDDING_MODEL):
+    Args:
+        model_name: SentenceTransformer 模型名
+        persistent_path: 若提供，使用 PersistentClient 持久化到磁盘；
+                         否则使用 EphemeralClient（原有行为，进程退出后数据丢失）。
+                         例如: "data/vector_db"
+    """
+
+    def __init__(self, model_name: str = DEFAULT_EMBEDDING_MODEL, persistent_path: str | None = "data/vector_db"):
+        ensure_model_cache_env()
         self.model_name = model_name
+        self.persistent_path = persistent_path
         self._records: List[EvidenceRecord] = []
         self._vectors: List[List[float]] = []
         self._backend = "memory"
+        self._embedding_backend = "unknown"
 
         try:
             import chromadb  # type: ignore
 
-            self._client = chromadb.EphemeralClient()
+            if persistent_path:
+                self._client = chromadb.PersistentClient(path=persistent_path)
+                self._backend = f"chromadb_persistent({persistent_path})"
+            else:
+                self._client = chromadb.EphemeralClient()
+                self._backend = "chromadb"
             self._collection = self._client.get_or_create_collection(name="finsight_local_evidence")
-            self._backend = "chromadb"
         except Exception:
             self._client = None
             self._collection = None
@@ -36,10 +55,15 @@ class ChromaIndex:
     def backend(self) -> str:
         return self._backend
 
+    @property
+    def embedding_backend(self) -> str:
+        return self._embedding_backend
+
     def add_records(self, records: Sequence[EvidenceRecord]) -> None:
         self._records = list(records)
         docs = [record.searchable_text for record in self._records]
         embeddings = embed_texts(docs, model_name=self.model_name)
+        self._embedding_backend = embedding_backend_for_model(self.model_name)
         self._vectors = embeddings
 
         if self._collection is not None:
@@ -68,6 +92,8 @@ class ChromaIndex:
                 row = dict(metadata or {})
                 row["vector_score"] = max(0.0, 1.0 - float(distance or 0.0))
                 output.append(row)
+            scores = [float(row.get("vector_score", 0.0)) for row in output]
+            log_vector_search(logger, query, topk, len(output), scores, backend=self.backend)
             return output
 
         scored = []
@@ -79,16 +105,23 @@ class ChromaIndex:
                 }
             )
         scored.sort(key=lambda item: float(item.get("vector_score", 0.0)), reverse=True)
+        scores = [float(item.get("vector_score", 0.0)) for item in scored[:topk]]
+        log_vector_search(logger, query, topk, len(scored[:topk]), scores, backend=self.backend)
         return scored[:topk]
 
 
 def embed_texts(texts: Sequence[str], model_name: str = DEFAULT_EMBEDDING_MODEL) -> List[List[float]]:
+    cache_root = ensure_model_cache_env()
     embedder = _EMBEDDER_CACHE.get(model_name)
     if embedder is None:
         try:
             from sentence_transformers import SentenceTransformer  # type: ignore
 
-            embedder = SentenceTransformer(model_name)
+            embedder = SentenceTransformer(
+                model_name,
+                cache_folder=str(cache_root / "sentence_transformers"),
+                local_files_only=embedding_local_files_only(),
+            )
             _EMBEDDER_CACHE[model_name] = embedder
         except Exception:
             embedder = False
@@ -98,6 +131,15 @@ def embed_texts(texts: Sequence[str], model_name: str = DEFAULT_EMBEDDING_MODEL)
         vectors = embedder.encode(list(texts), normalize_embeddings=True)
         return [[float(value) for value in vector] for vector in vectors]
     return [_hash_embed(text) for text in texts]
+
+
+def embedding_backend_for_model(model_name: str = DEFAULT_EMBEDDING_MODEL) -> str:
+    embedder = _EMBEDDER_CACHE.get(model_name)
+    if embedder is False:
+        return "hash_fallback"
+    if embedder is not None:
+        return "sentence_transformers"
+    return "not_loaded"
 
 
 def cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
@@ -111,7 +153,7 @@ def cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
 
 def _hash_embed(text: str, dims: int = 96) -> List[float]:
     vector = [0.0] * dims
-    for token in str(text).lower().split():
+    for token in tokenize(str(text)):
         digest = hashlib.sha1(token.encode("utf-8")).digest()
         bucket = int.from_bytes(digest[:2], "big") % dims
         sign = 1.0 if digest[2] % 2 == 0 else -1.0

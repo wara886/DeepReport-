@@ -37,6 +37,7 @@ GENERATION_TERMS = (
 )
 LATEST_TERMS = ("最新", "最近", "latest", "most recent")
 KNOWN_COMPANY_ALIASES = {
+    # ── US ──
     "苹果公司": "AAPL",
     "苹果": "AAPL",
     "微软": "MSFT",
@@ -59,6 +60,7 @@ KNOWN_COMPANY_ALIASES = {
     "pinduoduo": "PDD",
     "超微半导体": "AMD",
     "特斯拉": "TSLA",
+    # ── HK ──
     "商汤科技": "0020.HK",
     "商汤": "0020.HK",
     "第四范式": "6682.HK",
@@ -69,13 +71,24 @@ KNOWN_COMPANY_ALIASES = {
     "美团": "3690.HK",
     "百度集团": "9888.HK",
     "百度": "9888.HK",
+    # ── A-Share ──
     "贵州茅台": "600519.SS",
     "茅台": "600519.SS",
     "宁德时代": "300750.SZ",
+    "宁德": "300750.SZ",
     "比亚迪": "002594.SZ",
     "中国平安": "601318.SS",
     "招商银行": "600036.SS",
+    "招行": "600036.SS",
     "中芯国际": "688981.SS",
+    "五粮液": "000858.SZ",
+    "泸州老窖": "000568.SZ",
+    "洋河股份": "002304.SZ",
+    "洋河": "002304.SZ",
+    "山西汾酒": "600809.SS",
+    "汾酒": "600809.SS",
+    "古井贡酒": "000596.SZ",
+    "古井": "000596.SZ",
 }
 
 
@@ -391,6 +404,8 @@ def llm_parse_chat_task(
     rule_task = parse_chat_task(message, current_symbol, current_period, today)
     has_report_terms = _has_report_intent(text)
     has_gen_terms = _has_generation_intent(text)
+    if rule_task.symbol and rule_task.period and has_report_terms and has_gen_terms and rule_task.confidence >= 0.8:
+        return rule_task
     if not has_report_terms and not has_gen_terms:
         return rule_task
 

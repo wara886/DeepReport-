@@ -58,6 +58,80 @@ def build_citations(
     return citations
 
 
+def build_citations_from_map(
+    evidence_records: List[Dict[str, Any]],
+    citation_map: Dict[str, Any] | List[Dict[str, Any]],
+    claims: List[Dict[str, Any]] | None = None,
+    markdown: str = "",
+) -> List[Dict[str, Any]]:
+    """Build normalized citations from a contract-mode citation map."""
+
+    claims = claims or []
+    evidence_by_id: Dict[str, Dict[str, Any]] = {}
+    for item in evidence_records:
+        if not isinstance(item, dict):
+            continue
+        evidence_id = str(item.get("evidence_id") or item.get("sample_id") or "").strip()
+        if evidence_id and evidence_id not in evidence_by_id:
+            evidence_by_id[evidence_id] = item
+
+    entries: List[Dict[str, Any]] = []
+    if isinstance(citation_map, dict) and isinstance(citation_map.get("citation_map"), list):
+        entries = [item for item in citation_map.get("citation_map", []) if isinstance(item, dict)]
+    elif isinstance(citation_map, dict):
+        for evidence_id, number in citation_map.items():
+            if not evidence_id:
+                continue
+            try:
+                citation_number = int(number)
+            except (TypeError, ValueError):
+                continue
+            record = evidence_by_id.get(str(evidence_id), {})
+            entries.append(
+                {
+                    "citation_number": citation_number,
+                    "evidence_id": str(evidence_id),
+                    "title": str(record.get("title") or evidence_id),
+                    "source_url": str(record.get("source_url") or record.get("url") or ""),
+                    "source_type": str(record.get("source_type") or "unknown"),
+                    "trust_level": str(record.get("trust_level") or ""),
+                }
+            )
+    elif isinstance(citation_map, list):
+        entries = [item for item in citation_map if isinstance(item, dict)]
+
+    claim_ids_by_evidence = _claim_ids_by_evidence(claims)
+    citations: List[Dict[str, Any]] = []
+    for index, entry in enumerate(sorted(entries, key=lambda item: int(item.get("citation_number") or 999999)), start=1):
+        evidence_id = str(entry.get("evidence_id") or "").strip()
+        if not evidence_id:
+            continue
+        record = evidence_by_id.get(evidence_id, {})
+        metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+        source_url = str(entry.get("source_url") or record.get("source_url") or record.get("url") or "")
+        source_type = str(entry.get("source_type") or record.get("source_type") or "unknown")
+        citation = {
+            "citation_id": f"ref_{index:03d}",
+            "citation_number": int(entry.get("citation_number") or index),
+            "evidence_id": evidence_id,
+            "title": str(entry.get("title") or record.get("title") or evidence_id),
+            "source_url": source_url,
+            "source_type": source_type,
+            "source_authority": str(record.get("source_authority") or ""),
+            "authority_score": float(record.get("authority_score", 0.0) or 0.0),
+            "publish_time": str(record.get("publish_time") or ""),
+            "trust_level": str(entry.get("trust_level") or record.get("trust_level") or ""),
+            "claim_ids": claim_ids_by_evidence.get(evidence_id, []),
+            "used_in_report": f"[{entry.get('citation_number') or index}]" in markdown or evidence_id in markdown,
+            "content_preview": str(record.get("content") or record.get("snippet") or "")[:240],
+        }
+        page = metadata.get("page") or metadata.get("page_number") or record.get("page") or record.get("page_number")
+        if page not in (None, ""):
+            citation["page"] = page
+        citations.append(citation)
+    return citations
+
+
 def build_citation_artifacts(
     evidence_records: List[Dict[str, Any]],
     claims: List[Dict[str, Any]],

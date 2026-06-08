@@ -44,6 +44,7 @@ class ModelAdapter:
         model_name: str,
         base_url: str,
         api_key: str,
+        api_key_env: str = "",
         timeout: float = 30.0,
         retry: int = 1,
         max_tokens: int = 4096,
@@ -54,6 +55,7 @@ class ModelAdapter:
         self.model_name = model_name
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
+        self.api_key_env = api_key_env
         self.timeout = float(timeout)
         self.retry = int(max(0, retry))
         self.max_tokens = int(max_tokens)
@@ -116,6 +118,7 @@ class ModelAdapter:
             model_name=str(resolve_config_value(section_config, "model_name", "deepseek-v4-flash")),
             base_url=str(resolve_config_value(section_config, "base_url", "https://api.deepseek.com")),
             api_key=str(resolve_config_value(section_config, "api_key", "")),
+            api_key_env=str(section_config.get("api_key_env", "") or ""),
             timeout=float(section_config.get("timeout", 30)),
             retry=int(section_config.get("retry", 1)),
             max_tokens=int(resolve_config_value(section_config, "max_tokens", 4096)),
@@ -181,10 +184,11 @@ class ModelAdapter:
         """Call an OpenAI-compatible chat completion endpoint."""
 
         if not self.api_key:
+            key_hint = self.api_key_env or f"{self.provider.upper()}_API_KEY"
             return ModelResponse(
                 success=False,
                 model=self.model_name,
-                error="missing API key: set DEEPSEEK_API_KEY in .env",
+                error=f"missing API key: set {key_hint} in .env",
             )
 
         payload: Dict[str, Any] = {

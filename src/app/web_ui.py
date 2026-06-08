@@ -105,7 +105,7 @@ A_SHARE_ENGINES = (
     "eastmoney_financials,sina_finance,yahoo_finance,eastmoney,local_evidence"
 )
 US_ENGINES = "local_real_data,sec_edgar,yahoo_finance,independent_macro,local_evidence"
-HK_ENGINES = "local_real_data,sina_finance,yahoo_finance,tavily,hkex_announcements,local_evidence"
+HK_ENGINES = "local_real_data,sina_finance,yahoo_finance,tavily,hkex_announcements,hk_financials,local_evidence"
 
 ENGINE_USER_LABELS: dict[str, str] = {
     "local_real_data": "本地已缓存财务数据",
@@ -121,6 +121,7 @@ ENGINE_USER_LABELS: dict[str, str] = {
     "sina_finance": "新浪行情数据",
     "serper": "网络搜索结果",
     "hkex_announcements": "港交所公告",
+    "hk_financials": "港股结构化财报（yfinance）",
 }
 
 
@@ -820,6 +821,16 @@ def create_ui_handler(
                     "source": "report_html_on_disk",
                     "report_links": build_report_links(report_dir),
                 })
+                gate = _read_json(output_dir / "delivery_gate.json", default={}) if output_dir is not None else {}
+                if not isinstance(gate, dict) or not gate:
+                    gate = {
+                        "status": "quality_diagnostic",
+                        "delivery_pass": False,
+                        "diagnostic_delivery_pass": False,
+                        "diagnostic_only": True,
+                        "note": "missing_delivery_gate; report is diagnostic preview only",
+                    }
+                result["delivery_gate"] = gate
                 if output_dir is not None and (output_dir / "run_error.json").exists():
                     result["status"] = "completed_with_warnings"
                     try:
@@ -1538,7 +1549,7 @@ def create_ui_handler(
                             # can reflect timeout without needing the full pipeline.
                             try:
                                 _fallback_gate = {
-                                    "delivery_pass": True,
+                                    "delivery_pass": False,
                                     "status": "completed",
                                     "error": f"timeout_in_phase:{tje.phase}",
                                     "schema_version": "delivery_gate.v1",
@@ -1943,6 +1954,7 @@ def resolve_report_artifact(
 USER_SAFE_KEYS = {
     "summary", "report_html_url", "report_markdown", "report_artifact_version",
     "report_links", "run_id", "active_runs", "output_dir", "report_dir", "citations", "charts",
+    "delivery_gate", "top_quality_issues",
     "queue_position", "queue_length", "active_job_id",
     "is_global_latest", "is_current_request",
     "found", "status", "error", "job_id",
@@ -1961,6 +1973,18 @@ def sanitize_payload_for_user(payload: dict) -> dict:
             {"evidence_id": c.get("evidence_id"), "title": c.get("title"), "source_url": c.get("source_url")}
             for c in allowed["citations"]
         ]
+    if "delivery_gate" in allowed and isinstance(allowed["delivery_gate"], dict):
+        gate = allowed["delivery_gate"]
+        allowed["delivery_gate"] = {
+            "status": gate.get("status"),
+            "delivery_pass": gate.get("delivery_pass"),
+            "diagnostic_delivery_pass": gate.get("diagnostic_delivery_pass"),
+            "objective_pass": gate.get("objective_pass"),
+            "verifier_passed": gate.get("verifier_passed"),
+            "llm_review_pass": gate.get("llm_review_pass"),
+            "diagnostic_only": gate.get("diagnostic_only"),
+            "note": gate.get("note"),
+        }
     # Attach report_links if not present but report_dir exists
     if "report_links" not in allowed and payload.get("report_dir"):
         allowed["report_links"] = build_report_links(Path(payload["report_dir"]))
@@ -2034,7 +2058,7 @@ def run_delivery_quality_pipeline(
         _write_run_error(output_path, exc, str(output_path.parent.name), "")
         failed_gate = {
             "status": "completed",
-            "delivery_pass": True,
+            "delivery_pass": False,
             "diagnostic_delivery_pass": False,
             "diagnostic_only": True,
             "quality_pipeline_error": str(exc),
@@ -2060,7 +2084,7 @@ def _empty_quality_pipeline_result(output_root: str | Path, report_root: str | P
         "llm_quality_review": {"llm_review_pass": None, "total_score": None, "model_status": "skipped_deadline"},
         "delivery_gate": {
             "status": "completed",
-            "delivery_pass": True,
+            "delivery_pass": False,
             "diagnostic_delivery_pass": False,
             "diagnostic_only": True,
             "verifier_passed": False,
@@ -2131,10 +2155,11 @@ def load_run_payload(
     summary = payload.get("summary", {}) if isinstance(payload.get("summary"), dict) else {}
     if not gate and report_html.exists():
         gate = {
-            "status": "completed",
-            "delivery_pass": True,
+            "status": "quality_diagnostic",
+            "delivery_pass": False,
+            "diagnostic_delivery_pass": False,
             "diagnostic_only": True,
-            "note": "missing_delivery_gate",
+            "note": "missing_delivery_gate; report is diagnostic preview only",
         }
         payload["delivery_gate"] = gate
     elif isinstance(gate, dict) and (str(gate.get("status") or "") == "quality_diagnostic" or gate.get("delivery_pass") is False):
@@ -2142,7 +2167,6 @@ def load_run_payload(
         gate.setdefault("diagnostic_only", True)
         gate.setdefault("diagnostic_delivery_pass", False)
         gate["status"] = "completed"
-        gate["delivery_pass"] = True
         payload["delivery_gate"] = gate
     if report_html.exists() and not payload.get("status"):
         payload["status"] = "completed"
@@ -2167,7 +2191,7 @@ def _normalize_delivery_gate(output_dir: Path, quality_result: Dict[str, Any]) -
         gate.setdefault("diagnostic_delivery_pass", False)
     elif raw_delivery_pass is True:
         gate.setdefault("diagnostic_delivery_pass", True)
-    gate["delivery_pass"] = True
+    gate["delivery_pass"] = bool(raw_delivery_pass) if isinstance(raw_delivery_pass, bool) else bool(gate.get("diagnostic_delivery_pass", False))
     gate["status"] = "completed"
     gate["diagnostic_only"] = True
     gate.setdefault("schema_version", "delivery_gate.v1")
@@ -2250,7 +2274,7 @@ def run_delivery_rework_loop(
         "status": "skipped",
         "handled": False,
         "unfixable_reasons": ["delivery gate is diagnostic-only"],
-        "delivery_pass_after_round": True,
+        "delivery_pass_after_round": current_quality.get("delivery_gate", {}).get("delivery_pass", False) if isinstance(current_quality.get("delivery_gate"), dict) else False,
     })
     _write_delivery_rework_history(Path(output_path), history)
     return {"rounds": history, "quality_result": current_quality, "reworked": False}
@@ -3492,6 +3516,33 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       return !!url && rl.is_run_scoped !== false && !/^\/artifacts\/report\.html(?:\?|$)/.test(url);
     }
 
+    function normalizeReportLinks(data) {
+      data = asObj(data);
+      const latest = asObj(data.latest);
+      const links = { ...asObj(data.report_links || latest.report_links) };
+      const fallbackUrl = String(data.report_html_url || latest.report_html_url || "");
+      if (!links.html_web_url && fallbackUrl) links.html_web_url = fallbackUrl;
+      if (links.html_web_url && links.is_run_scoped == null) {
+        links.is_run_scoped = /\/artifacts\/runs\//.test(String(links.html_web_url));
+      }
+      return links;
+    }
+
+    function attachConfirmReportActions(card, data) {
+      if (!card) return;
+      const rl = normalizeReportLinks(data);
+      if (!isRunScopedReportLink(rl)) return;
+      let actions = card.querySelector(".completed-report-actions");
+      if (!actions) {
+        actions = document.createElement("div");
+        actions.className = "actions completed-report-actions";
+        card.appendChild(actions);
+      }
+      actions.innerHTML =
+        `<a href="${esc(rl.html_web_url)}" target="_blank" class="btn btn-primary">打开 HTML 研报</a>` +
+        `<a href="${esc(rl.html_web_url)}" download class="btn">下载 HTML</a>`;
+    }
+
     function updateBanner(data) {
       const jobIdEl = document.getElementById('bannerJobId');
       if (data && data.active_job_id) {
@@ -3535,6 +3586,15 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       if (job) job.pollTimer = null;
     }
 
+    function clearTransientJobCards(jobId) {
+      document.querySelectorAll(".progress-card,.queue-card").forEach((el) => {
+        const cardJobId = el.dataset ? (el.dataset.jobId || "") : "";
+        if (jobId && cardJobId && cardJobId !== jobId) return;
+        const parent = el.closest(".msg");
+        if (parent) parent.remove();
+      });
+    }
+
     async function pollJob(jobId) {
       const job = window.finSightJobs && window.finSightJobs[jobId];
       if (!job) return;
@@ -3558,6 +3618,7 @@ def _render_user_html(frontend_port: int | None = None) -> str:
           stopJobPolling(jobId);
           job.status = "completed";
           setConfirmCardStatus(card, "completed", "报告已生成");
+          attachConfirmReportActions(card, data);
           renderReportCard({ ...data, job_id: jobId });
           return;
         }
@@ -3583,7 +3644,9 @@ def _render_user_html(frontend_port: int | None = None) -> str:
             stopJobPolling(jobId);
             job.status = "completed";
             setConfirmCardStatus(card, "completed", "报告已生成");
-            renderReportCard({ ...data, report_links: jsLinks, status: js.status, job_id: jobId });
+            const completedData = { ...data, report_links: jsLinks, delivery_gate: js.delivery_gate, status: js.status, job_id: jobId };
+            attachConfirmReportActions(card, completedData);
+            renderReportCard(completedData);
             return;
           }
           if (js.status === "running" || js.status === "queued") {
@@ -3743,20 +3806,29 @@ def _render_user_html(frontend_port: int | None = None) -> str:
 
     /* Report card */
     function renderReportCard(data) {
-      const rl = data.report_links || (data.latest && data.latest.report_links);
+      const rl = normalizeReportLinks(data);
       const linkOk = isRunScopedReportLink(rl);
       const summary = asObj(data.summary || (data.latest && data.latest.summary));
 
       /* P0.7: dedup by job_id or report html_url to avoid rendering same report twice */
       const cardJobId = data.job_id || (data.latest && data.latest.job_id) || summary.run_id || "";
-      if (cardJobId && window.finSightJobs[cardJobId] && window.finSightJobs[cardJobId].rendered) return;
-      if (linkOk && rl.html_web_url && document.querySelector('.r-card[data-report-url="' + esc(rl.html_web_url) + '"]')) return;
-      if (cardJobId && window.finSightJobs[cardJobId]) window.finSightJobs[cardJobId].rendered = true;
+      clearTransientJobCards(cardJobId);
+      const existingCard = Array.from(document.querySelectorAll(".r-card")).find((el) => {
+        const sameJob = cardJobId && el.dataset && el.dataset.jobId === String(cardJobId);
+        const sameUrl = linkOk && el.dataset && el.dataset.reportUrl === String(rl.html_web_url);
+        return sameJob || sameUrl;
+      });
+      if (existingCard) {
+        populateTabs({ ...data, report_links: rl });
+        $("reportArea").classList.add("visible");
+        initTabs();
+        return;
+      }
 
       const coverage = summary.data_quality_score || {};
       const reviewHints = asList(summary.review_hints || []);
       const gateObj = asObj(data.delivery_gate || (data.latest && data.latest.delivery_gate));
-      const isFailedGate = false;
+      const isFailedGate = gateObj.delivery_pass !== true;
       const isDegraded = summary.degraded || isFailedGate;
 
       const coverageLevel = v => v >= 0.8 ? "高" : v >= 0.5 ? "中" : "低";
@@ -3793,16 +3865,13 @@ def _render_user_html(frontend_port: int | None = None) -> str:
       }
       html += `</div>`;
 
-      /* Remove progress card, add report card */
-      const progressEl = $("progressCard");
-      if (progressEl) {
-        const parent = progressEl.closest(".msg");
-        if (parent) parent.remove();
-      }
+      /* Add report card after terminal job cleanup */
+      clearTransientJobCards(cardJobId);
       appendBubbleHtml("assistant", html);
+      if (cardJobId && window.finSightJobs[cardJobId]) window.finSightJobs[cardJobId].rendered = true;
 
       /* Populate tab panels */
-      populateTabs(data);
+      populateTabs({ ...data, report_links: rl });
       $("reportArea").classList.add("visible");
       initTabs();
     }

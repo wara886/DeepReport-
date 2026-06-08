@@ -1,4 +1,66 @@
+import json
+
 from src.models.model_adapter import ModelAdapter, extract_json_object
+
+
+def test_model_adapter_sends_bearer_auth_for_openai_compatible(monkeypatch):
+    captured = {}
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {"model": "mimo-v2.5", "choices": [{"message": {"content": "ok"}}]},
+                ensure_ascii=False,
+            ).encode("utf-8")
+
+    def _fake_urlopen(req, timeout):
+        captured["url"] = req.full_url
+        captured["auth"] = req.get_header("Authorization")
+        captured["content_type"] = req.get_header("Content-type")
+        captured["timeout"] = timeout
+        return _Response()
+
+    monkeypatch.setattr("src.models.model_adapter.request.urlopen", _fake_urlopen)
+    adapter = ModelAdapter(
+        provider="openai_compatible",
+        model_name="mimo-v2.5",
+        base_url="https://api.xiaomimimo.com/v1",
+        api_key="sk-test",
+        api_key_env="MIMO_API_KEY",
+        timeout=7,
+        retry=0,
+    )
+
+    response = adapter.generate("hello")
+
+    assert response.success is True
+    assert captured["url"] == "https://api.xiaomimimo.com/v1/chat/completions"
+    assert captured["auth"] == "Bearer sk-test"
+    assert captured["content_type"] == "application/json"
+    assert captured["timeout"] == 7
+
+
+def test_model_adapter_loads_mimo_profile_and_key_hint(monkeypatch):
+    monkeypatch.delenv("MIMO_API_KEY", raising=False)
+
+    adapter = ModelAdapter.from_profile("mimo_flash", config_path="configs/model_backends.yaml")
+
+    assert adapter.provider == "openai_compatible"
+    assert adapter.model_name == "mimo-v2.5"
+    assert adapter.base_url == "https://api.xiaomimimo.com/v1"
+    assert adapter.endpoint_url == "https://api.xiaomimimo.com/v1/chat/completions"
+    assert adapter.api_key_env == "MIMO_API_KEY"
+
+    adapter.api_key = ""
+    response = adapter.generate("hello")
+    assert response.success is False
+    assert "MIMO_API_KEY" in response.error
 
 
 def test_model_adapter_loads_deepseek_config_from_env_file(tmp_path, monkeypatch):

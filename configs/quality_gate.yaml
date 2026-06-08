@@ -1,0 +1,20 @@
+# 质量诊断阈值配置 (Quality Gate Thresholds)
+#
+# 各市场的客观门禁阈值不同，因为数据源覆盖度差异大。
+# 港股缺乏 structured filings（无 SEC 10-K 或 CNINFO PDF），
+# 使用 web snippet (Tavily/Serper) 作为 primary source，阈值适当降低。
+#
+# 配置说明:
+#   default:     全局默认阈值（适用于未在 market_overrides 中列出的市场）
+#   market_overrides: 按 market key 覆盖
+#     key 值: cn_a / hk / us
+
+thresholds:
+  default: 0.82
+  market_overrides:
+    hk: 0.60
+
+# 日志级别 control
+logging:
+  gate_pass: true
+  gate_fail: true

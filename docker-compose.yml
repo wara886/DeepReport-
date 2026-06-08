@@ -10,6 +10,10 @@ services:
     environment:
       APP_MODE: user
       PORT: "7860"
+      HF_HOME: /app/models/huggingface
+      SENTENCE_TRANSFORMERS_HOME: /app/models/sentence_transformers
+      TRANSFORMERS_CACHE: /app/models/huggingface/transformers
+      HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
     ports:
       - "7860:7860"
     volumes:
@@ -17,6 +21,7 @@ services:
       - ./data/reports_user:/app/data/reports_user
       - ./data/evidence_archive:/app/data/evidence_archive
       - ./memory:/app/memory
+      - ./models:/app/models
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:7860/health"]
       interval: 30s

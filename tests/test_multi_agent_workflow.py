@@ -487,6 +487,7 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
 
     summary = json.loads((tmp_path / "outputs" / "run_summary.json").read_text(encoding="utf-8"))
     trace_lines = (tmp_path / "outputs" / "task_trace.jsonl").read_text(encoding="utf-8").splitlines()
+    first_trace = json.loads(trace_lines[0])
 
     assert summary["execution_mode"] == "dynamic"
     assert summary["entity_resolution"]["resolved_symbol"] == "AAPL"
@@ -497,6 +498,8 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert summary["skill_registry_enabled"] is True
     assert summary["skill_count"] >= 1
     assert len(trace_lines) >= 7
+    assert first_trace["model_usage"]["model_name"] == "fake-json-model"
+    assert first_trace["model_usage"]["model_enabled"] is True
     assert result["report_md"].endswith("report.md")
     assert result["task_route_context"].endswith("task_route_context.json")
     assert result["citations"].endswith("citations.json")

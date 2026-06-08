@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -97,15 +98,18 @@ class EvidenceStore:
     def from_curated_parquet(cls, curated_dir: str | Path = "data/curated") -> "EvidenceStore":
         curated_path = Path(curated_dir)
         paths = sorted(curated_path.glob("*.parquet"))
+        fallback_paths = sorted(list(curated_path.glob("*.json")) + list(curated_path.glob("*.jsonl")))
         if not paths:
+            records, fallback_meta = _load_json_records(fallback_paths)
             return cls(
-                records=[],
+                records=[EvidenceRecord.from_dict(item) for item in records],
                 load_meta={
                     "curated_dir": str(curated_path),
-                    "file_count": 0,
-                    "loaded_file_count": 0,
-                    "skipped_files": [],
-                    "load_errors": [],
+                    "file_count": len(fallback_paths),
+                    "loaded_file_count": fallback_meta["loaded_file_count"],
+                    "skipped_files": fallback_meta["skipped_files"],
+                    "load_errors": fallback_meta["load_errors"],
+                    "fallback_json_file_count": fallback_meta["loaded_file_count"],
                 },
             )
 
@@ -117,28 +121,33 @@ class EvidenceStore:
                 frames.append(pd.read_parquet(path))
             except Exception as exc:
                 skipped_files.append(str(path))
-                load_errors.append({"path": str(path), "error": str(exc)})
-        if not frames:
+                load_errors.append({"path": str(path), "error": str(exc), "error_type": _classify_load_error(exc)})
+        fallback_records, fallback_meta = _load_json_records(fallback_paths)
+        if not frames and not fallback_records:
             return cls(
                 records=[],
                 load_meta={
                     "curated_dir": str(curated_path),
-                    "file_count": len(paths),
+                    "file_count": len(paths) + len(fallback_paths),
                     "loaded_file_count": 0,
-                    "skipped_files": skipped_files,
-                    "load_errors": load_errors,
+                    "skipped_files": skipped_files + fallback_meta["skipped_files"],
+                    "load_errors": load_errors + fallback_meta["load_errors"],
                 },
             )
-        merged = pd.concat(frames, ignore_index=True)
-        records = [EvidenceRecord.from_dict(dict(row)) for _, row in merged.iterrows()]
+        records: List[EvidenceRecord] = []
+        if frames:
+            merged = pd.concat(frames, ignore_index=True)
+            records.extend(EvidenceRecord.from_dict(dict(row)) for _, row in merged.iterrows())
+        records.extend(EvidenceRecord.from_dict(item) for item in fallback_records)
         return cls(
             records=records,
             load_meta={
                 "curated_dir": str(curated_path),
-                "file_count": len(paths),
-                "loaded_file_count": len(frames),
-                "skipped_files": skipped_files,
-                "load_errors": load_errors,
+                "file_count": len(paths) + len(fallback_paths),
+                "loaded_file_count": len(frames) + fallback_meta["loaded_file_count"],
+                "skipped_files": skipped_files + fallback_meta["skipped_files"],
+                "load_errors": load_errors + fallback_meta["load_errors"],
+                "fallback_json_file_count": fallback_meta["loaded_file_count"],
             },
         )
 
@@ -149,3 +158,36 @@ class EvidenceStore:
         if period:
             output = [r for r in output if r.period == period]
         return output
+
+
+def _load_json_records(paths: List[Path]) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    records: List[Dict[str, Any]] = []
+    skipped_files: List[str] = []
+    load_errors: List[Dict[str, str]] = []
+    loaded = 0
+    for path in paths:
+        try:
+            if path.suffix.lower() == ".jsonl":
+                rows = []
+                for line in path.read_text(encoding="utf-8").splitlines():
+                    if line.strip():
+                        item = json.loads(line)
+                        if isinstance(item, dict):
+                            rows.append(item)
+            else:
+                parsed = json.loads(path.read_text(encoding="utf-8"))
+                rows = parsed if isinstance(parsed, list) else parsed.get("records", []) if isinstance(parsed, dict) else []
+                rows = [item for item in rows if isinstance(item, dict)]
+            records.extend(rows)
+            loaded += 1
+        except Exception as exc:
+            skipped_files.append(str(path))
+            load_errors.append({"path": str(path), "error": str(exc)})
+    return records, {"loaded_file_count": loaded, "skipped_files": skipped_files, "load_errors": load_errors}
+
+
+def _classify_load_error(exc: Exception) -> str:
+    text = str(exc).lower()
+    if "repetition level histogram" in text or "parquet" in text:
+        return "parquet_corrupt_or_incompatible"
+    return exc.__class__.__name__

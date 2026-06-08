@@ -358,7 +358,7 @@ def _summarize_annual_section(chunks: list[dict[str, Any]], company_name: str = 
         if "competition" in lowered:
             pieces.append("竞争格局是影响增长、定价和利润率的重要变量。")
         return " ".join(pieces[:4])
-    return f"{subject} 年度报告章节已抽取，正文应使用中文归纳关键业务事实并保留章节引用。"
+    return f"{subject} 年度报告章节已抽取，后续分析以中文归纳关键业务事实并保留章节引用。"
 
 
 def _risk_items_from_annual(chunks: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -444,7 +444,10 @@ def _annual_sections_from_state(state: dict[str, Any]) -> dict[str, list[dict[st
 def sanitize_peer_rows_for_report(analysis: dict[str, Any], blackboard: dict[str, Any] | None = None, target_symbol: str = "") -> list[dict[str, Any]]:
     blackboard = blackboard if isinstance(blackboard, dict) else {}
     peer_data = analysis.get("peer_analysis", {}) if isinstance(analysis.get("peer_analysis"), dict) else {}
-    peer_rows = analysis.get("peer_rows") or peer_data.get("peer_rows") or peer_data.get("rows") or blackboard.get("peer_rows") or []
+    peer_context = analysis.get("peer_context", {}) if isinstance(analysis.get("peer_context"), dict) else {}
+    peer_rows = (analysis.get("peer_rows") or peer_context.get("peer_rows")
+                 or peer_data.get("peer_rows") or peer_data.get("rows")
+                 or blackboard.get("peer_rows") or [])
     peer_rows = peer_rows if isinstance(peer_rows, list) else []
     approved = _approved_peer_symbols_from_analysis(analysis, blackboard)
     clean_rows = _filter_peer_rows(

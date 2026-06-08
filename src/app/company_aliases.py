@@ -164,6 +164,60 @@ RAW_COMPANY_ENTRIES: list[dict[str, Any]] = [
         "market": "CN",
         "aliases": ["五粮液", "000858", "000858.sz"],
     },
+    {
+        "symbol": "000568.SZ",
+        "company_name": "泸州老窖股份有限公司",
+        "market": "CN",
+        "aliases": ["泸州老窖", "000568", "000568.sz"],
+    },
+    {
+        "symbol": "002304.SZ",
+        "company_name": "江苏洋河酒厂股份有限公司",
+        "market": "CN",
+        "aliases": ["洋河股份", "洋河", "002304", "002304.sz"],
+    },
+    {
+        "symbol": "600809.SS",
+        "company_name": "山西杏花村汾酒厂股份有限公司",
+        "market": "CN",
+        "aliases": ["山西汾酒", "汾酒", "600809", "600809.ss"],
+    },
+    {
+        "symbol": "000596.SZ",
+        "company_name": "安徽古井贡酒股份有限公司",
+        "market": "CN",
+        "aliases": ["古井贡酒", "古井", "000596", "000596.sz"],
+    },
+    {
+        "symbol": "601318.SS",
+        "company_name": "中国平安保险（集团）股份有限公司",
+        "market": "CN",
+        "aliases": ["中国平安", "平安", "601318", "601318.ss"],
+    },
+    {
+        "symbol": "688981.SS",
+        "company_name": "中芯国际集成电路制造有限公司",
+        "market": "CN",
+        "aliases": ["中芯国际", "中芯", "688981", "688981.ss"],
+    },
+    {
+        "symbol": "0020.HK",
+        "company_name": "商汤集团股份有限公司",
+        "market": "HK",
+        "aliases": ["商汤", "商汤科技", "0020", "0020.hk"],
+    },
+    {
+        "symbol": "6682.HK",
+        "company_name": "北京第四范式智能技术股份有限公司",
+        "market": "HK",
+        "aliases": ["第四范式", "6682", "6682.hk"],
+    },
+    {
+        "symbol": "9888.HK",
+        "company_name": "百度集团股份有限公司",
+        "market": "HK",
+        "aliases": ["百度", "百度集团", "9888", "9888.hk"],
+    },
 ]
 
 # ── Noise tokens that should NEVER be resolved as company tickers ────────

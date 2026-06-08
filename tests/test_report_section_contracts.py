@@ -30,6 +30,7 @@ from src.report.contract_builder import (
     _build_business_overview,
     _build_ownership_governance,
     _build_risk_factors,
+    _build_strategy_business,
 )
 from src.report.citation_binder import CitationBinder
 
@@ -224,6 +225,54 @@ class TestContractBuilder:
                 has_frag = text_contains_fragments(fact.text)
                 if has_frag:
                     assert c.quality_flags  # fragments should be flagged
+
+    def test_strategy_pdf_fallback_clears_not_found_blocker(self):
+        """A usable MD&A PDF summary should support strategy, not remain not-found."""
+        contracts = ReportSectionContracts()
+        pdf_summaries = [
+            _make_pdf_summary(
+                "management_discussion",
+                (
+                    "公司坚持以消费者为中心、市场需求为驱动，稳步推进全面向C战略，"
+                    "通过场景、客群、服务转型以及产品端、渠道端、终端变革提升市场韧性。"
+                ),
+                "ev_mda_001",
+            )
+        ]
+        _build_strategy_business(contracts, pdf_summaries, [], [], {}, {})
+
+        c = contracts.get("strategy_business")
+        assert c is not None
+        assert c.status in {"partial", "supported"}
+        assert "strategy_pdf_sections_not_found" not in c.blocked_reasons
+        assert c.citation_evidence_ids == ["ev_mda_001"]
+
+    def test_strategy_pdf_fallback_in_full_builder_clears_not_found_blocker(self):
+        """Full builder fallback must not leave contradictory not-found blockers."""
+        contracts = build_report_section_contracts(
+            state={"symbol": "600519.SS", "period": "FY2025"},
+            evidence_records=[],
+            analysis_artifacts={
+                "pdf_section_summaries": [
+                    _make_pdf_summary(
+                        "management_discussion",
+                        (
+                            "公司坚持以消费者为中心、市场需求为驱动，稳步推进全面向C战略，"
+                            "通过场景、客群、服务转型以及产品端、渠道端、终端变革提升市场韧性。"
+                        ),
+                        "ev_mda_001",
+                    )
+                ]
+            },
+            section_dossiers={},
+            citations=[],
+        )
+
+        c = contracts.get("strategy_business")
+        assert c is not None
+        assert c.status == "partial"
+        assert "strategy_pdf_sections_not_found" not in c.blocked_reasons
+        assert "ev_mda_001" in c.citation_evidence_ids
 
     def test_boilerplate_detection(self):
         """PDF boilerplate should be detected and cleaned."""
