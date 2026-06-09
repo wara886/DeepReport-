@@ -294,15 +294,26 @@ def normalize_financial_scale(
     scaled = list(data) if already_scaled else [
         v / context.display_scale if isinstance(v, (int, float)) else v for v in data
     ]
-    chart["chart_js"] = {
-        **chart_js,
-        "data": scaled,
-        "raw_data": raw_data,
-        "raw_currency": context.statement_currency,
-        "display_currency": context.display_currency,
-        "display_scale": context.display_scale,
-        "unit_label": context.unit_label,
-    }
+    # Idempotent guard: if the chart already has currency metadata, do NOT
+    # overwrite it — a second call (e.g. from html_report_generator's
+    # _visible_user_charts with a default USD context) would corrupt the
+    # unit label originally set with the correct market currency.
+    if not already_scaled or not chart_js.get("raw_currency"):
+        chart["chart_js"] = {
+            **chart_js,
+            "data": scaled,
+            "raw_data": raw_data,
+            "raw_currency": context.statement_currency,
+            "display_currency": context.display_currency,
+            "display_scale": context.display_scale,
+            "unit_label": context.unit_label,
+        }
+    else:
+        chart["chart_js"] = {
+            **chart_js,
+            "data": scaled,
+            "raw_data": raw_data,
+        }
     if chart_id == "cash_flow_bar":
         chart["title"] = "现金流"
     return chart

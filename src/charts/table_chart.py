@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
+
+from .fonts import get_chinese_font
 
 
 def render_table_chart(
@@ -24,7 +26,7 @@ def render_table_chart(
 
     img = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default()
+    font = get_chinese_font(14)
 
     margin_left = 40
     margin_top = 50

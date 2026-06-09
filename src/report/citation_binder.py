@@ -24,6 +24,8 @@ from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional, Set
 
 from src.report.section_contracts import (
+    ALL_SECTION_KEYS,
+    SECTION_TITLES,
     ReportSectionContracts,
     SectionEvidenceContract,
     SRC_INCOME_TABLE,
@@ -222,9 +224,21 @@ class CitationBinder:
             match = pattern.search(output)
             if not match:
                 continue
-            # Find end of section
-            next_header = re.search(r"(?m)^##\s+", output[match.end():])
-            end = match.end() + next_header.start() if next_header else len(output)
+            # Find end of section using KNOWN next heading from SECTION_TITLES order
+            # instead of any ^## pattern (prevents LLM body false matches)
+            end = len(output)
+            try:
+                sk_idx = ALL_SECTION_KEYS.index(sk)
+                for nsk in ALL_SECTION_KEYS[sk_idx + 1:]:
+                    ntitle = SECTION_TITLES.get(nsk, nsk)
+                    nm = re.search(rf"(?m)^##\s+{re.escape(ntitle)}\s*$", output[match.end():])
+                    if nm:
+                        end = match.end() + nm.start()
+                        break
+            except ValueError:
+                nm = re.search(r"(?m)^##\s+", output[match.end():])
+                if nm:
+                    end = match.end() + nm.start()
             body = output[match.end():end].strip()
 
             # Get bound citation numbers

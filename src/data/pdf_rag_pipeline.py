@@ -736,7 +736,7 @@ def summarize_pdf_section(
     # from Chinese companies that publish English annual reports), check whether
     # the text is TOC/navigation boilerplate or disclaimer boilerplate —
     # those are useless regardless of language.
-    if _is_toc_text(combined) or _is_boilerplate_text(combined):
+    if _is_toc_text(combined) or (_is_boilerplate_text(combined) and section_type != "ownership_governance"):
         return _gap_summary(section_type, "noise_only", symbol, period)
 
     if section_type == "business_overview" and not _is_business_overview_text(combined):
@@ -1257,6 +1257,12 @@ def _classify_chunk_noise(text: str, section_type: str, schema: dict[str, dict[s
             return ["mojibake"], "mojibake"
     for pattern, reason in GENERIC_NOISE_PATTERNS:
         if re.search(pattern, lowered, re.I):
+            # Governance sections in Chinese annual reports routinely contain
+            # "重要提示", "审计报告", "适用☑不适用" as part of their standard
+            # disclosure boilerplate — these are NOT noise in this context.
+            if section_type == "ownership_governance" and reason in {"important_notice", "checkbox_boilerplate", "audit_boilerplate"}:
+                flags.append(f"governance_matched_{reason}")
+                continue
             return [reason], reason
     if len(re.sub(r"\s+", "", lowered)) < 24:
         return ["too_short"], "too_short"
