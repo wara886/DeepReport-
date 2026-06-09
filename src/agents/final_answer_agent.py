@@ -290,7 +290,7 @@ class FinalAnswerAgent(BaseAgent):
             render_diagnostic_contract_inputs,
             render_full_report_from_contracts,
         )
-        from src.report.section_contracts import SECTION_TITLES, ReportSectionContracts
+        from src.report.section_contracts import ALL_SECTION_KEYS, SECTION_TITLES, ReportSectionContracts
         from src.report.html_report_generator import render_professional_html_report
 
         # Ensure contracts are proper object
@@ -346,6 +346,7 @@ class FinalAnswerAgent(BaseAgent):
                 "executive_summary",
                 "business_overview",
                 "ownership_governance",
+                "strategy_business",
                 "financial_analysis",
                 "risk_factors",
             }
@@ -370,7 +371,8 @@ class FinalAnswerAgent(BaseAgent):
                         "IMPORTANT:\n"
                         "- Do NOT include citation numbers like [1][2][3] or [ev_xxx]\n"
                         "- Use the facts provided — do not invent numbers\n"
-                        "- Write 3-5 substantive paragraphs\n"
+                        "- Write 3-5 substantive paragraphs in Chinese\n"
+                        "- Start DIRECTLY with the content, no explanations, no headings\n"
                         f"\n{llm_context}"
                     )
                     response = self.model.generate(
@@ -380,7 +382,7 @@ class FinalAnswerAgent(BaseAgent):
                             "financial report. Write in Chinese financial research prose. "
                             "Do not include citations."
                         ),
-                        extra_body={"max_tokens": 800},
+                        extra_body={"max_tokens": 2048},
                     )
                     body = str(response.content or "").strip() if response.success else ""
                     if not body or len(body) < 60:
@@ -389,8 +391,21 @@ class FinalAnswerAgent(BaseAgent):
                     pattern = re.compile(rf"(?m)^##\s+{re.escape(heading)}\s*$")
                     match = re.search(pattern, final_md)
                     if match:
-                        next_match = re.search(r"(?m)^##\s+", final_md[match.end():])
-                        end = match.end() + next_match.start() if next_match else len(final_md)
+                        # Find the KNOWN next section heading from SECTION_TITLES order
+                        # instead of any ^## pattern (prevents LLM body false matches)
+                        end = len(final_md)
+                        try:
+                            sk_idx = ALL_SECTION_KEYS.index(sk)
+                            for nsk in ALL_SECTION_KEYS[sk_idx + 1:]:
+                                ntitle = SECTION_TITLES.get(nsk, nsk)
+                                nm = re.search(rf"(?m)^##\s+{re.escape(ntitle)}\s*$", final_md[match.end():])
+                                if nm:
+                                    end = match.end() + nm.start()
+                                    break
+                        except ValueError:
+                            nm = re.search(r"(?m)^##\s+", final_md[match.end():])
+                            if nm:
+                                end = match.end() + nm.start()
                         final_md = final_md[:match.end()] + "\n\n" + body + "\n\n" + final_md[end:]
                         llm_used = True
                         logger.info("LLM rewrote section %s (%d chars)", sk, len(body))

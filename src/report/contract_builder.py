@@ -474,7 +474,13 @@ def _build_ownership_governance(
         if not company_name:
             company_name = str(state.get("company_name", "") or "")
         market = _detect_market(state)
-        fallback_parts = [f"{company_name}作为上市公司" if company_name else "该公司作为上市公司"]
+        # For non-US markets (cn_a, hk) use generic Chinese reference to avoid
+        # exposing English legal names like "Kweichow Moutai Co., Ltd." in a
+        # Chinese-language report.
+        if market == "us" and company_name:
+            fallback_parts = [f"{company_name}作为上市公司"]
+        else:
+            fallback_parts = ["该公司作为上市公司"]
         if market == "us":
             fallback_parts.append(
                 "通常由董事会、审计委员会、薪酬委员会、提名与治理委员会及执行管理层共同构成治理框架。"
