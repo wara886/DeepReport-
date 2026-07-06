@@ -11,7 +11,7 @@ import threading
 from typing import Any
 import uuid
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
@@ -20,21 +20,7 @@ from src.app.chat_task_parser import latest_completed_period
 from src.db.init_db import init_db
 from src.db.models import ReportArtifact, ReportTask, ReportTaskEvent
 from src.db.session import create_engine_for_url
-
-
-REPORT_ARTIFACTS = {
-    "report.md": "markdown",
-    "report.html": "html",
-    "report.json": "json",
-}
-
-OUTPUT_ARTIFACTS = {
-    "run_summary.json": "run_summary",
-    "delivery_gate.json": "delivery_gate",
-    "quality_report.json": "quality_report",
-    "verification_report.json": "verification_report",
-    "performance_trace.json": "performance_trace",
-}
+from src.services.artifact_importer import ArtifactImporter
 
 
 class ReportTaskNotFound(LookupError):
@@ -192,64 +178,13 @@ class ReportTaskService:
         return self.get_task(task_id)
 
     def import_artifacts(self, task_id: str) -> list[dict[str, Any]]:
-        task = self.get_task(task_id)
-        metadata = dict(task.get("metadata") or {})
-        output_dir = Path(str(metadata.get("output_dir") or ""))
-        report_dir = Path(str(metadata.get("report_dir") or ""))
-        rows: list[dict[str, Any]] = []
-
-        for filename, artifact_type in REPORT_ARTIFACTS.items():
-            path = report_dir / filename
-            if path.exists() and path.is_file():
-                rows.append(
-                    {
-                        "task_id": task_id,
-                        "artifact_type": artifact_type,
-                        "path": str(path),
-                        "url": _artifact_url(
-                            path=path,
-                            root=self.report_root,
-                            task_id=task_id,
-                            filename=filename,
-                            artifact_root="reports",
-                        ),
-                    }
-                )
-
-        for filename, artifact_type in OUTPUT_ARTIFACTS.items():
-            path = output_dir / filename
-            if path.exists() and path.is_file():
-                rows.append(
-                    {
-                        "task_id": task_id,
-                        "artifact_type": artifact_type,
-                        "path": str(path),
-                        "url": _artifact_url(
-                            path=path,
-                            root=self.output_root,
-                            task_id=task_id,
-                            filename=filename,
-                            artifact_root="outputs",
-                        ),
-                    }
-                )
-
-        with self.session() as session:
-            session.execute(delete(ReportArtifact).where(ReportArtifact.task_id == task_id))
-            for row in rows:
-                session.add(ReportArtifact(**row))
-            session.add(
-                ReportTaskEvent(
-                    task_id=task_id,
-                    stage="artifact_import",
-                    status="success",
-                    message="Report artifacts imported",
-                    metadata_json={"artifact_count": len(rows)},
-                )
-            )
-            session.commit()
-
-        return rows
+        importer = ArtifactImporter(
+            session_factory=self.session,
+            output_root=self.output_root,
+            report_root=self.report_root,
+        )
+        importer.import_for_task(task_id)
+        return self.get_task(task_id).get("artifacts", [])
 
     def list_tasks(self, *, status: str | None = None, symbol: str | None = None, limit: int = 50) -> dict[str, Any]:
         limit = max(1, min(int(limit or 50), 200))
@@ -471,14 +406,6 @@ def _normalize_search_engines(value: Any) -> list[str]:
     if value:
         return [part.strip() for part in str(value).split(",") if part.strip()]
     return []
-
-
-def _artifact_url(*, path: Path, root: Path, task_id: str, filename: str, artifact_root: str) -> str:
-    try:
-        relative = path.resolve().relative_to(root.resolve())
-        return f"/artifacts/{relative.as_posix()}"
-    except (OSError, ValueError):
-        return f"/artifacts/runs/{task_id}/{artifact_root}/{filename}"
 
 
 def _report_links(artifacts: list[dict[str, Any]]) -> dict[str, Any]:
