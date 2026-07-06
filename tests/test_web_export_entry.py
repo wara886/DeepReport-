@@ -29,9 +29,9 @@ def test_workbench_exposes_export_center_entry_contract(temp_db_engine, tmp_path
 
     assert page.status_code == 200
     html = page.text
-    assert "Export Center" in html
+    assert "导出中心" in html
     assert 'getJson("/api/exports" + suffix)' in html
     assert 'getJson(`/api/exports/${encodeURIComponent(taskId)}`)' in html
-    assert "Official Export" in html
+    assert "正式导出" in html
     assert exports.status_code == 200
     assert exports.json()["items"][0]["task_id"] == "task-web-export"

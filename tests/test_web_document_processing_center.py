@@ -31,9 +31,9 @@ def test_workbench_exposes_document_processing_center_contract(temp_db_engine, t
 
     assert page.status_code == 200
     html = page.text
-    assert "Document Processing Center" in html
+    assert "文档处理中心" in html
     assert 'getJson("/api/documents" + suffix)' in html
     assert 'getJson(`/api/documents/${encodeURIComponent(documentId)}`)' in html
-    assert "Processing Path" in html
+    assert "处理路径" in html
     assert documents.status_code == 200
     assert documents.json()["items"][0]["title"] == "Document web contract"

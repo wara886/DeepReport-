@@ -29,11 +29,11 @@ def test_workbench_exposes_claim_review_contract(temp_db_engine, tmp_path):
 
     assert page.status_code == 200
     html = page.text
-    assert "Claim Review" in html
+    assert "主张复核" in html
     assert 'getJson("/api/claims" + suffix)' in html
     assert 'postJson(`/api/claims/${encodeURIComponent(claimId)}/${encodeURIComponent(action)}`' in html
-    assert "Approve" in html
-    assert "Reject" in html
-    assert "Regenerate" in html
+    assert "通过" in html
+    assert "驳回" in html
+    assert "重生成" in html
     assert claims.status_code == 200
     assert claims.json()["items"][0]["claim_text"] == "A claim for review."

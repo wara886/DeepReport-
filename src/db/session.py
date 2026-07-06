@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Generator
 import os
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
-DEFAULT_DATABASE_URL = "postgresql+psycopg://finsight:finsight@localhost:5432/finsight"
+DEFAULT_DATABASE_URL = "sqlite:///data/finsight_workbench.db"
 DATABASE_URL_ENV_VARS = ("FINSIGHT_DATABASE_URL", "DATABASE_URL")
 
 SessionLocal = sessionmaker(autoflush=False, expire_on_commit=False, class_=Session)
@@ -38,6 +39,8 @@ def create_engine_for_url(database_url: str | None = None, *, echo: bool = False
 
     if url.get_backend_name() == "sqlite":
         kwargs["connect_args"] = {"check_same_thread": False}
+        if url.database and url.database != ":memory:":
+            Path(url.database).expanduser().parent.mkdir(parents=True, exist_ok=True)
 
     return create_engine(resolved_url, **kwargs)
 

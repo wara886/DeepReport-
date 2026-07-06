@@ -35,10 +35,10 @@ def test_workbench_exposes_evidence_center_contract(temp_db_engine, tmp_path):
 
     assert page.status_code == 200
     html = page.text
-    assert "Evidence Center" in html
+    assert "证据库" in html
     assert 'getJson("/api/evidence" + suffix)' in html
     assert 'getJson(`/api/evidence/${encodeURIComponent(evidenceId)}`)' in html
-    assert "Claim 复核" in html
+    assert "主张复核" in html
     assert "文档处理中心" in html
     assert "导出中心" in html
     assert evidence.status_code == 200

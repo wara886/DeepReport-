@@ -35,7 +35,8 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
 
     assert page.status_code == 200
     html = page.text
-    assert "FinSight Research Workbench" in html
+    assert "慧研投研工作台" in html
+    assert "投研首页" in html
     assert 'getJson("/api/dashboard/summary")' in html
     assert 'getJson("/api/dashboard/funnel")' in html
     assert "/api/report-tasks" in html
