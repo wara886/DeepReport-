@@ -37,8 +37,18 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     html = page.text
     assert "慧研投研工作台" in html
     assert "投研首页" in html
+    assert "创建研报任务" in html
+    assert "最近任务" in html
+    assert "数据源健康" in html
+    assert "复核异常" in html
+    assert "最近研报任务" in html
+    assert "funnelVisual" in html
+    assert "dataSourceHealth" in html
+    assert "reviewExceptions" in html
+    assert "recentTaskRows" in html
     assert 'getJson("/api/dashboard/summary")' in html
     assert 'getJson("/api/dashboard/funnel")' in html
+    assert 'getJson("/api/report-tasks?limit=6")' in html
     assert "/api/report-tasks" in html
     assert "/api/latest" not in html
 

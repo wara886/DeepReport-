@@ -67,7 +67,11 @@ def render_workbench_html() -> str:
       gap: 8px;
     }
     .nav button.active { background: var(--nav-2); color: #fff; }
-    .nav .tag { color: #88a2b6; font-size: 11px; }
+    .nav .tag { border-radius: 999px; color: #9fb3c7; font-size: 11px; padding: 2px 7px; background: rgba(255,255,255,.06); }
+    .nav .tag.available { color: #bcebd1; background: rgba(22,128,60,.18); }
+    .nav .tag.preview { color: #cce0ff; background: rgba(22,119,255,.18); }
+    .nav .tag.planned { color: #d3dee8; background: rgba(146,164,183,.16); }
+    .nav .tag.enhancing { color: #ffe0a8; background: rgba(181,106,0,.18); }
     .main { min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); }
     .topbar {
       min-height: 64px;
@@ -113,6 +117,7 @@ def render_workbench_html() -> str:
       min-height: 36px;
     }
     .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+    .btn.ghost { background: #f7f9fb; }
     .btn.danger { color: var(--bad); }
     .content { padding: 18px 22px 28px; min-width: 0; }
     .view { display: none; }
@@ -121,6 +126,11 @@ def render_workbench_html() -> str:
     .cards { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 14px; }
     .card, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
     .card { padding: 14px; min-height: 92px; }
+    button.card { cursor: pointer; font: inherit; text-align: left; color: inherit; }
+    button.card:hover { border-color: var(--accent); box-shadow: 0 8px 22px rgba(16,24,32,.08); }
+    .metric-card { display: grid; align-content: space-between; width: 100%; }
+    .metric-card .label { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+    .metric-card .hint { color: var(--accent); font-size: 12px; }
     .label { color: var(--muted); font-size: 12px; }
     .value { font-size: 26px; font-weight: 700; margin-top: 8px; }
     .panel { padding: 16px; }
@@ -128,13 +138,38 @@ def render_workbench_html() -> str:
     .panel h2 { margin: 0; font-size: 16px; }
     .panel h3 { margin: 0 0 8px; font-size: 14px; }
     .dashboard-layout { grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); align-items: start; }
+    .dashboard-bottom { margin-top: 14px; }
     .work-layout { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; }
+    .funnel-visual { display: grid; gap: 8px; margin-bottom: 14px; }
+    .funnel-stage {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 92px;
+      align-items: center;
+      gap: 12px;
+      min-height: 42px;
+      margin: 0 auto;
+      padding: 9px 12px;
+      border: 1px solid #cfe2f3;
+      background: linear-gradient(90deg, #eef8ff 0%, #f8fbfd 100%);
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .funnel-stage strong { text-align: right; font-size: 15px; }
+    .funnel-arrow { color: var(--muted); text-align: center; font-size: 12px; margin-top: -2px; }
     .funnel { display: grid; gap: 8px; }
     .funnel-row { display: grid; grid-template-columns: 150px 1fr 56px; align-items: center; gap: 10px; font-size: 13px; }
     .bar { height: 10px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
     .bar span { display: block; height: 100%; background: var(--accent-2); min-width: 2px; }
     .dist { display: grid; gap: 8px; }
     .dist-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 7px; }
+    .mini-list { display: grid; gap: 8px; }
+    .mini-item { border-bottom: 1px solid var(--line); padding-bottom: 8px; font-size: 13px; }
+    .mini-item:last-child, .dist-row:last-child { border-bottom: 0; padding-bottom: 0; }
+    .mini-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .mini-meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .health-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+    .health-row:last-child { border-bottom: 0; padding-bottom: 0; }
+    .empty-actions { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
     .toolbar { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
     .filters { display: flex; gap: 8px; flex-wrap: wrap; }
     .filters input { width: 210px; }
@@ -185,24 +220,24 @@ def render_workbench_html() -> str:
         <div class="brand-sub">证据驱动的投研控制台</div>
       </div>
       <nav class="nav" aria-label="工作台导航">
-        <button class="active" data-view="dashboard"><span>投研首页</span><span class="tag">阶段0</span></button>
-        <button data-view="workspace"><span>投研空间</span><span class="tag">阶段1</span></button>
-        <button data-view="stockpool"><span>股票池管理</span><span class="tag">阶段1</span></button>
-        <button data-view="datasources"><span>数据源管理</span><span class="tag">阶段1</span></button>
-        <button data-view="ingestion"><span>采集任务</span><span class="tag">阶段1</span></button>
-        <button data-view="manual"><span>手动导入</span><span class="tag">阶段1</span></button>
-        <button data-view="documents"><span>文档处理中心</span><span class="tag">阶段0.8</span></button>
-        <button data-view="evidence"><span>证据库</span><span class="tag">阶段0.6</span></button>
-        <button data-view="facts"><span>财务事实中心</span><span class="tag">阶段1</span></button>
-        <button data-view="signals"><span>投资线索</span><span class="tag">阶段2</span></button>
-        <button data-view="tasks"><span>研报任务</span><span class="tag">阶段0</span></button>
-        <button data-view="claims"><span>主张复核</span><span class="tag">阶段0.7</span></button>
-        <button data-view="dictionary"><span>金融词典</span><span class="tag">阶段1</span></button>
-        <button data-view="promptops"><span>提示词运营</span><span class="tag">阶段1</span></button>
-        <button data-view="entities"><span>实体库</span><span class="tag">阶段2</span></button>
-        <button data-view="graph"><span>关系图谱</span><span class="tag">阶段2</span></button>
-        <button data-view="evaluation"><span>评测中心</span><span class="tag">阶段3</span></button>
-        <button data-view="export"><span>导出中心</span><span class="tag">阶段0.9</span></button>
+        <button class="active" data-view="dashboard"><span>投研首页</span><span class="tag available">可用</span></button>
+        <button data-view="workspace"><span>投研空间</span><span class="tag planned">规划中</span></button>
+        <button data-view="stockpool"><span>股票池管理</span><span class="tag planned">规划中</span></button>
+        <button data-view="datasources"><span>数据源管理</span><span class="tag planned">规划中</span></button>
+        <button data-view="ingestion"><span>采集任务</span><span class="tag planned">规划中</span></button>
+        <button data-view="manual"><span>手动导入</span><span class="tag planned">规划中</span></button>
+        <button data-view="documents"><span>文档处理中心</span><span class="tag preview">预览</span></button>
+        <button data-view="evidence"><span>证据库</span><span class="tag available">可用</span></button>
+        <button data-view="facts"><span>财务事实中心</span><span class="tag planned">规划中</span></button>
+        <button data-view="signals"><span>投资线索</span><span class="tag enhancing">增强中</span></button>
+        <button data-view="tasks"><span>研报任务</span><span class="tag available">可用</span></button>
+        <button data-view="claims"><span>主张复核</span><span class="tag available">可用</span></button>
+        <button data-view="dictionary"><span>金融词典</span><span class="tag planned">规划中</span></button>
+        <button data-view="promptops"><span>提示词运营</span><span class="tag planned">规划中</span></button>
+        <button data-view="entities"><span>实体库</span><span class="tag enhancing">增强中</span></button>
+        <button data-view="graph"><span>关系图谱</span><span class="tag enhancing">增强中</span></button>
+        <button data-view="evaluation"><span>评测中心</span><span class="tag planned">规划中</span></button>
+        <button data-view="export"><span>导出中心</span><span class="tag preview">预览</span></button>
       </nav>
     </aside>
 
@@ -216,6 +251,9 @@ def render_workbench_html() -> str:
           <select class="select" aria-label="投研空间">
             <option>默认投研空间</option>
           </select>
+          <button class="btn primary" data-jump="tasks">创建研报任务</button>
+          <button class="btn ghost" data-jump="manual">导入文档</button>
+          <button class="btn ghost" data-jump="export">查看最新报告</button>
           <button class="btn" id="refreshView">刷新</button>
         </div>
       </header>
@@ -229,30 +267,45 @@ def render_workbench_html() -> str:
                 <h2>处理漏斗</h2>
                 <button class="btn" data-jump="documents">失败步骤</button>
               </div>
+              <div class="funnel-visual" id="funnelVisual"></div>
               <div class="funnel" id="funnel"></div>
             </div>
             <div class="grid">
               <div class="panel">
                 <div class="panel-head">
-                  <h2>任务状态</h2>
+                  <h2>最近任务</h2>
                   <button class="btn" data-jump="tasks">查看任务</button>
                 </div>
-                <div class="dist" id="taskStatus"></div>
+                <div class="mini-list" id="recentTasks"></div>
               </div>
               <div class="panel">
                 <div class="panel-head">
-                  <h2>数据来源</h2>
+                  <h2>数据源健康</h2>
                   <button class="btn" data-jump="datasources">来源配置</button>
                 </div>
-                <div class="dist" id="dataSources"></div>
+                <div class="dist" id="dataSourceHealth"></div>
               </div>
               <div class="panel">
                 <div class="panel-head">
-                  <h2>复核队列</h2>
+                  <h2>复核异常</h2>
                   <button class="btn" data-jump="claims">查看主张</button>
                 </div>
-                <div class="dist" id="reviewQueue"></div>
+                <div class="dist" id="reviewExceptions"></div>
               </div>
+            </div>
+          </section>
+          <section class="panel dashboard-bottom">
+            <div class="panel-head">
+              <h2>最近研报任务</h2>
+              <button class="btn primary" data-jump="tasks">创建研报任务</button>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr><th>公司</th><th>期间</th><th>类型</th><th>状态</th><th>质量分</th><th>更新时间</th><th>操作</th></tr>
+                </thead>
+                <tbody id="recentTaskRows"></tbody>
+              </table>
             </div>
           </section>
         </section>
@@ -512,9 +565,24 @@ def render_workbench_html() -> str:
     document.querySelectorAll(".nav button").forEach((btn) => {
       btn.addEventListener("click", () => activateView(btn.dataset.view));
     });
-    document.querySelectorAll("[data-jump]").forEach((btn) => {
-      btn.addEventListener("click", () => activateView(btn.dataset.jump));
-    });
+    bindJumpHandlers();
+
+    function bindJumpHandlers(root = document) {
+      root.querySelectorAll("[data-jump]").forEach((btn) => {
+        if (btn.dataset.boundJump === "true") return;
+        btn.dataset.boundJump = "true";
+        btn.addEventListener("click", () => jumpTo(btn.dataset.jump, btn.dataset));
+      });
+    }
+
+    function jumpTo(view, options = {}) {
+      if (view === "claims") {
+        if (options.claimStatus && $("claimStatus")) $("claimStatus").value = options.claimStatus;
+        if (options.claimVerification && $("claimVerification")) $("claimVerification").value = options.claimVerification;
+      }
+      if (view === "documents" && options.documentStep && $("documentStep")) $("documentStep").value = options.documentStep;
+      activateView(view);
+    }
 
     function activateView(view) {
       activeState.view = view;
@@ -556,18 +624,29 @@ def render_workbench_html() -> str:
       else $(targetId).innerHTML = `<div class="error">${text}</div>`;
     }
 
+    function emptyBox(text, actions = []) {
+      const buttons = actions.length
+        ? `<div class="empty-actions">${actions.map((item) => `<button class="btn ${esc(item.className || "")}" data-jump="${esc(item.view)}"${item.claimStatus ? ` data-claim-status="${esc(item.claimStatus)}"` : ""}${item.claimVerification ? ` data-claim-verification="${esc(item.claimVerification)}"` : ""}${item.documentStep ? ` data-document-step="${esc(item.documentStep)}"` : ""}>${esc(item.label)}</button>`).join("")}</div>`
+        : "";
+      return `<div class="empty"><div>${esc(text)}</div>${buttons}</div>`;
+    }
+
     function renderCards(summary) {
       const cards = [
-        ["公司数", summary.company_count],
-        ["文档数", summary.document_count],
-        ["证据数", summary.evidence_count],
-        ["主张数", summary.claim_count],
-        ["待复核", summary.review_pending_claim_count],
-        ["已校验主张", summary.verified_claim_count],
-        ["质量通过率", pct(summary.quality_pass_rate)],
-        ["平均质量分", summary.average_quality_score ?? "-"],
+        { label: "公司数", value: summary.company_count, view: "stockpool" },
+        { label: "文档数", value: summary.document_count, view: "documents" },
+        { label: "证据数", value: summary.evidence_count, view: "evidence" },
+        { label: "主张数", value: summary.claim_count, view: "claims" },
+        { label: "待复核", value: summary.review_pending_claim_count, view: "claims", claimStatus: "pending" },
+        { label: "已校验主张", value: summary.verified_claim_count, view: "claims", claimVerification: "supported" },
+        { label: "质量通过率", value: pct(summary.quality_pass_rate), view: "evaluation" },
+        { label: "平均质量分", value: summary.average_quality_score ?? "-", view: "evaluation" },
       ];
-      $("metricCards").innerHTML = cards.map(([label, value]) => `<div class="card"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div></div>`).join("");
+      $("metricCards").innerHTML = cards.map((card) => `<button class="card metric-card" data-jump="${esc(card.view)}"${card.claimStatus ? ` data-claim-status="${esc(card.claimStatus)}"` : ""}${card.claimVerification ? ` data-claim-verification="${esc(card.claimVerification)}"` : ""}>
+        <div class="label"><span>${esc(card.label)}</span><span class="hint">查看</span></div>
+        <div class="value">${esc(card.value)}</div>
+      </button>`).join("");
+      bindJumpHandlers($("metricCards"));
     }
 
     function renderDistribution(id, values, mapper) {
@@ -580,20 +659,109 @@ def render_workbench_html() -> str:
     function renderFunnel(payload) {
       const steps = payload.steps || [];
       const max = Math.max(1, ...steps.map((step) => Number(step.count || 0)));
-      $("funnel").innerHTML = steps.length
-        ? steps.map((step) => {
+      if (!steps.length) {
+        $("funnelVisual").innerHTML = emptyBox("暂无漏斗数据", [
+          { label: "查看文档处理", view: "documents", className: "primary" },
+          { label: "创建研报任务", view: "tasks" },
+        ]);
+        $("funnel").innerHTML = "";
+        bindJumpHandlers($("funnelVisual"));
+        return;
+      }
+      $("funnelVisual").innerHTML = steps.map((step, index) => {
+        const width = Math.max(52, Math.round((Number(step.count || 0) / max) * 100));
+        return `<div>
+          <div class="funnel-stage" style="width:${width}%"><span>${esc(step.label)}</span><strong>${esc(number(step.count))}</strong></div>
+          ${index < steps.length - 1 ? `<div class="funnel-arrow">↓</div>` : ""}
+        </div>`;
+      }).join("");
+      $("funnel").innerHTML = steps.map((step) => {
             const width = Math.max(2, Math.round((Number(step.count || 0) / max) * 100));
             return `<div class="funnel-row"><span>${esc(step.label)}</span><div class="bar"><span style="width:${width}%"></span></div><strong>${esc(number(step.count))}</strong></div>`;
-          }).join("")
-        : `<div class="empty">暂无漏斗数据</div>`;
+          }).join("");
     }
 
-    function renderReviewQueue(summary) {
-      $("reviewQueue").innerHTML = [
+    function renderRecentTaskPanel(payload) {
+      const tasks = (payload.items || []).slice(0, 5);
+      $("recentTasks").innerHTML = tasks.length
+        ? tasks.map((task) => `<div class="mini-item">
+            <div class="mini-title">
+              <button class="btn" data-task-detail-jump="${esc(task.task_id)}">${esc(task.symbol || task.task_id)}</button>
+              <span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span>
+            </div>
+            <div class="mini-meta">${esc(task.period || "-")} · ${esc(stepText(task.current_stage))} · ${esc(fmt(task.created_at))}</div>
+          </div>`).join("")
+        : emptyBox("暂无任务", [{ label: "创建研报任务", view: "tasks", className: "primary" }]);
+      bindJumpHandlers($("recentTasks"));
+      bindRecentTaskButtons($("recentTasks"));
+    }
+
+    function renderDataSourceHealth(summary) {
+      const values = summary.data_source_distribution || {};
+      const sources = [
+        ["sec_edgar", "美国证监会年报"],
+        ["cninfo", "巨潮资讯"],
+        ["hkex", "港交所公告"],
+        ["yahoo_finance", "雅虎财经"],
+        ["local_pdf", "本地文档"],
+      ];
+      const hasAny = Object.values(values).some((value) => Number(value || 0) > 0);
+      $("dataSourceHealth").innerHTML = sources.map(([key, label]) => {
+        const count = Number(values[key] || 0);
+        const state = count > 0 ? "已入库" : "待配置";
+        const cls = count > 0 ? "completed" : "pending";
+        return `<div class="health-row"><span>${esc(label)}</span><strong>${esc(number(count))}</strong><span class="status ${cls}">${state}</span></div>`;
+      }).join("") + (hasAny ? "" : `<div class="empty-actions"><button class="btn primary" data-jump="datasources">配置数据源</button></div>`);
+      bindJumpHandlers($("dataSourceHealth"));
+    }
+
+    function renderReviewExceptions(summary) {
+      const pending = Number(summary.review_pending_claim_count || 0);
+      const verified = Number(summary.verified_claim_count || 0);
+      const total = Number(summary.claim_count || 0);
+      const unchecked = Math.max(0, total - verified);
+      $("reviewExceptions").innerHTML = [
         ["待复核主张", summary.review_pending_claim_count],
-        ["已校验主张", summary.verified_claim_count],
-        ["全部主张", summary.claim_count],
-      ].map(([key, value]) => `<div class="dist-row"><span>${esc(key)}</span><strong>${esc(number(value))}</strong></div>`).join("");
+        ["待校验证据", unchecked],
+        ["数字冲突", "待接入"],
+        ["引用缺失", "待接入"],
+        ["过度推断", "待接入"],
+      ].map(([key, value]) => `<div class="dist-row"><span>${esc(key)}</span><strong>${Number.isFinite(Number(value)) ? esc(number(value)) : esc(value)}</strong></div>`).join("")
+        + (pending || total ? "" : `<div class="empty-actions"><button class="btn primary" data-jump="tasks">生成新研报</button><button class="btn" data-jump="manual">导入报告产物</button></div>`);
+      bindJumpHandlers($("reviewExceptions"));
+    }
+
+    function reportTypeText(value) {
+      const map = { equity_research: "股票研报", annual_review: "年报深度", earnings_review: "财报点评" };
+      return textOf(map, value);
+    }
+
+    function renderRecentTaskTable(payload) {
+      const tasks = (payload.items || []).slice(0, 6);
+      $("recentTaskRows").innerHTML = tasks.length
+        ? tasks.map((task) => `<tr>
+            <td>${esc(task.symbol || "-")}</td>
+            <td>${esc(task.period || "-")}</td>
+            <td>${esc(reportTypeText(task.report_type))}</td>
+            <td><span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span></td>
+            <td>${esc(fmt(task.quality_score))}</td>
+            <td>${esc(fmt(task.finished_at || task.started_at || task.created_at))}</td>
+            <td><button class="btn" data-task-detail-jump="${esc(task.task_id)}">查看</button></td>
+          </tr>`).join("")
+        : `<tr><td colspan="7">${emptyBox("暂无研报任务", [{ label: "创建研报任务", view: "tasks", className: "primary" }])}</td></tr>`;
+      bindJumpHandlers($("recentTaskRows"));
+      bindRecentTaskButtons($("recentTaskRows"));
+    }
+
+    function bindRecentTaskButtons(root = document) {
+      root.querySelectorAll("[data-task-detail-jump]").forEach((btn) => {
+        if (btn.dataset.boundTaskJump === "true") return;
+        btn.dataset.boundTaskJump = "true";
+        btn.addEventListener("click", () => {
+          activateView("tasks");
+          loadTaskDetail(btn.dataset.taskDetailJump);
+        });
+      });
     }
 
     function artifactButtons(task) {
@@ -608,14 +776,16 @@ def render_workbench_html() -> str:
 
     async function loadDashboard() {
       try {
-        const [summary, funnel] = await Promise.all([
+        const [summary, funnel, recentTasksPayload] = await Promise.all([
           getJson("/api/dashboard/summary"),
           getJson("/api/dashboard/funnel"),
+          getJson("/api/report-tasks?limit=6"),
         ]);
         renderCards(summary);
-        renderDistribution("taskStatus", summary.report_task_status_distribution, statusText);
-        renderDistribution("dataSources", summary.data_source_distribution, sourceText);
-        renderReviewQueue(summary);
+        renderRecentTaskPanel(recentTasksPayload);
+        renderDataSourceHealth(summary);
+        renderReviewExceptions(summary);
+        renderRecentTaskTable(recentTasksPayload);
         renderFunnel(funnel);
       } catch (error) {
         showLoadError("metricCards");
