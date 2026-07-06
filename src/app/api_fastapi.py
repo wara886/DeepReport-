@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, Response
 from src.app.web_ui import DEFAULT_OUTPUT_DIR, DEFAULT_REPORT_DIR, run_ui_server
 from src.app.workbench_frontend import render_workbench_html
 from src.services.dashboard_service import DashboardService
+from src.services.evidence_service import EvidenceNotFound, EvidenceService
 from src.services.report_task_service import (
     ReportTaskConflict,
     ReportTaskNotFound,
@@ -85,6 +86,7 @@ def create_fastapi_app(
         orchestrator_factory=orchestrator_factory,
     )
     app.state.dashboard_service = DashboardService(session_factory=app.state.report_task_service.session)
+    app.state.evidence_service = EvidenceService(session_factory=app.state.report_task_service.session)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -170,6 +172,40 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/evidence")
+    def list_evidence(
+        company: str | None = None,
+        period: str | None = None,
+        source_type: str | None = None,
+        trust_level: str | None = None,
+        task_id: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> Response:
+        try:
+            return JSONResponse(
+                content=_evidence_service(app).list_evidence(
+                    company=company,
+                    period=period,
+                    source_type=source_type,
+                    trust_level=trust_level,
+                    task_id=task_id,
+                    q=q,
+                    limit=limit,
+                )
+            )
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/evidence/{evidence_ref}")
+    def get_evidence(evidence_ref: str) -> Response:
+        try:
+            return JSONResponse(content=_evidence_service(app).get_evidence(evidence_ref))
+        except EvidenceNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Evidence not found: {evidence_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.post("/api/report-tasks/{task_id}/retry")
     async def retry_report_task(task_id: str, incoming: Request, background_tasks: BackgroundTasks) -> Response:
         payload = await _json_payload(incoming)
@@ -216,6 +252,10 @@ def _report_task_service(app: FastAPI) -> ReportTaskService:
 
 def _dashboard_service(app: FastAPI) -> DashboardService:
     return app.state.dashboard_service
+
+
+def _evidence_service(app: FastAPI) -> EvidenceService:
+    return app.state.evidence_service
 
 
 def _forward(app: FastAPI, path: str, *, method: str, body: bytes | None = None) -> Response:
