@@ -15,6 +15,7 @@ from src.app.web_ui import DEFAULT_OUTPUT_DIR, DEFAULT_REPORT_DIR, run_ui_server
 from src.app.workbench_frontend import render_workbench_html
 from src.services.claim_review_service import ClaimNotFound, ClaimReviewService
 from src.services.dashboard_service import DashboardService
+from src.services.document_service import DocumentNotFound, DocumentService
 from src.services.evidence_service import EvidenceNotFound, EvidenceService
 from src.services.report_task_service import (
     ReportTaskConflict,
@@ -89,6 +90,7 @@ def create_fastapi_app(
     app.state.dashboard_service = DashboardService(session_factory=app.state.report_task_service.session)
     app.state.evidence_service = EvidenceService(session_factory=app.state.report_task_service.session)
     app.state.claim_review_service = ClaimReviewService(session_factory=app.state.report_task_service.session)
+    app.state.document_service = DocumentService(session_factory=app.state.report_task_service.session)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -238,6 +240,38 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/documents")
+    def list_documents(
+        company: str | None = None,
+        batch_id: str | None = None,
+        status: str | None = None,
+        step: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> Response:
+        try:
+            return JSONResponse(
+                content=_document_service(app).list_documents(
+                    company=company,
+                    batch_id=batch_id,
+                    status=status,
+                    step=step,
+                    q=q,
+                    limit=limit,
+                )
+            )
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/documents/{document_id}")
+    def get_document(document_id: int) -> Response:
+        try:
+            return JSONResponse(content=_document_service(app).get_document(document_id))
+        except DocumentNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Document not found: {document_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.post("/api/claims/{claim_id}/approve")
     async def approve_claim(claim_id: int, incoming: Request) -> Response:
         payload = await _json_payload(incoming)
@@ -358,6 +392,10 @@ def _evidence_service(app: FastAPI) -> EvidenceService:
 
 def _claim_review_service(app: FastAPI) -> ClaimReviewService:
     return app.state.claim_review_service
+
+
+def _document_service(app: FastAPI) -> DocumentService:
+    return app.state.document_service
 
 
 def _optional_string(value: Any) -> str | None:

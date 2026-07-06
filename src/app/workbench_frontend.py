@@ -422,6 +422,50 @@ def render_workbench_html() -> str:
           </div>
         </section>
 
+        <section id="documents" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">Document Processing Center</h2>
+                <div class="filters">
+                  <input id="documentQuery" placeholder="Search documents" />
+                  <input id="documentBatch" placeholder="batch_id" />
+                  <select id="documentStep">
+                    <option value="">All steps</option>
+                    <option value="ingest">Ingest</option>
+                    <option value="parse">Parse</option>
+                    <option value="table_extract">Table extract</option>
+                    <option value="chunk">Chunk</option>
+                    <option value="evidence">Evidence</option>
+                    <option value="claim_bind">Claim bind</option>
+                    <option value="verify">Verify</option>
+                  </select>
+                  <button class="btn" id="refreshDocuments">Refresh</button>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Document</th>
+                      <th>Batch</th>
+                      <th>Status</th>
+                      <th>Latest Step</th>
+                      <th>Evidence</th>
+                      <th>Claims</th>
+                    </tr>
+                  </thead>
+                  <tbody id="documentRows"></tbody>
+                </table>
+              </div>
+            </section>
+            <aside class="panel detail" id="documentDetail">
+              <h2>Processing Path</h2>
+              <div class="empty">Select a document to inspect processing steps and linked evidence.</div>
+            </aside>
+          </div>
+        </section>
+
         <section id="claims" class="view">
           <div class="grid work-layout">
             <section class="panel">
@@ -473,7 +517,6 @@ def render_workbench_html() -> str:
         <section id="datasources" class="view"></section>
         <section id="ingestion" class="view"></section>
         <section id="manual" class="view"></section>
-        <section id="documents" class="view"></section>
         <section id="facts" class="view"></section>
         <section id="signals" class="view"></section>
         <section id="dictionary" class="view"></section>
@@ -533,6 +576,7 @@ def render_workbench_html() -> str:
       if (view === "dashboard") loadDashboard();
       else if (view === "tasks") loadTasks();
       else if (view === "evidence") loadEvidence();
+      else if (view === "documents") loadDocuments();
       else if (view === "claims") loadClaims();
       else renderPlaceholder(view);
     }
@@ -736,6 +780,62 @@ def render_workbench_html() -> str:
       }
     }
 
+    async function loadDocuments() {
+      const params = new URLSearchParams();
+      const q = $("documentQuery").value.trim();
+      const batch = $("documentBatch").value.trim();
+      const step = $("documentStep").value;
+      if (q) params.set("q", q);
+      if (batch) params.set("batch_id", batch);
+      if (step) params.set("step", step);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      try {
+        const payload = await getJson("/api/documents" + suffix);
+        const rows = payload.items || [];
+        $("documentRows").innerHTML = rows.length
+          ? rows.map((doc) => `<tr data-selectable="true">
+              <td><button class="btn" data-document-detail="${esc(doc.id)}">${esc(doc.title)}</button><br><span class="label">${esc(doc.doc_type || "-")} · ${esc(doc.report_period || "-")}</span></td>
+              <td><span class="mono">${esc(fmt(doc.batch_id))}</span></td>
+              <td><span class="status ${esc(doc.parse_status)}">${esc(doc.parse_status)}</span><br><span class="label">${esc(number(doc.failed_step_count))} failed</span></td>
+              <td>${esc(doc.latest_step?.step_name || "-")}<br><span class="status ${esc(doc.latest_step?.status || "")}">${esc(doc.latest_step?.status || "-")}</span></td>
+              <td>${esc(number(doc.evidence_count))}</td>
+              <td>${esc(number(doc.claim_count))}</td>
+            </tr>`).join("")
+          : `<tr><td colspan="6"><div class="empty">No documents</div></td></tr>`;
+        document.querySelectorAll("[data-document-detail]").forEach((btn) => {
+          btn.addEventListener("click", () => loadDocumentDetail(btn.dataset.documentDetail));
+        });
+      } catch (error) {
+        $("documentRows").innerHTML = `<tr><td colspan="6"><div class="error">${esc(error.message)}</div></td></tr>`;
+      }
+    }
+
+    async function loadDocumentDetail(documentId) {
+      try {
+        const doc = await getJson(`/api/documents/${encodeURIComponent(documentId)}`);
+        const steps = doc.processing_steps || [];
+        const evidence = doc.evidence || [];
+        const claims = doc.claims || [];
+        $("documentDetail").innerHTML = `<h2>Processing Path</h2>
+          <div class="kv"><span class="label">Document</span><span>${esc(doc.title)}</span></div>
+          <div class="kv"><span class="label">Batch</span><span class="mono">${esc(fmt(doc.batch_id))}</span></div>
+          <div class="kv"><span class="label">Status</span><span><span class="status ${esc(doc.parse_status)}">${esc(doc.parse_status)}</span></span></div>
+          ${doc.source_url ? `<div class="kv"><span class="label">URL</span><a href="${esc(doc.source_url)}" target="_blank">${esc(doc.source_url)}</a></div>` : ""}
+          ${doc.file_path ? `<div class="kv"><span class="label">File</span><span class="mono">${esc(doc.file_path)}</span></div>` : ""}
+          <div class="detail-section"><h3>Steps</h3><div class="timeline">${
+            steps.length ? steps.map((step) => `<div class="event"><strong>${esc(step.step_name)}</strong> <span class="status ${esc(step.status)}">${esc(step.status)}</span><br><span class="label">${esc(fmt(step.started_at))} - ${esc(fmt(step.finished_at))}</span>${step.error_message ? `<div class="text-block">${esc(step.error_message)}</div>` : ""}<br><span class="label mono">${esc(JSON.stringify(step.metadata || {}))}</span></div>`).join("") : `<div class="empty">No processing steps</div>`
+          }</div></div>
+          <div class="detail-section"><h3>Evidence</h3>${
+            evidence.length ? evidence.map((item) => `<div class="event"><strong>${esc(item.title || item.evidence_id)}</strong> <span class="status ${esc(item.trust_level)}">${esc(fmt(item.trust_level))}</span><br>${esc(item.snippet || "")}</div>`).join("") : `<div class="empty">No evidence</div>`
+          }</div>
+          <div class="detail-section"><h3>Claims</h3>${
+            claims.length ? claims.map((claim) => `<div class="event"><strong>#${esc(claim.id)}</strong> <span class="status ${esc(claim.review_status)}">${esc(claim.review_status)}</span><br>${esc(claim.claim_text)}<br><span class="label mono">${esc(claim.task_id)}</span></div>`).join("") : `<div class="empty">No claims</div>`
+          }</div>`;
+      } catch (error) {
+        $("documentDetail").innerHTML = `<h2>Processing Path</h2><div class="error">${esc(error.message)}</div>`;
+      }
+    }
+
     async function loadClaimDetail(claimId) {
       try {
         const claim = await getJson(`/api/claims/${encodeURIComponent(claimId)}`);
@@ -833,6 +933,13 @@ def render_workbench_html() -> str:
     });
     $("evidenceSource").addEventListener("change", loadEvidence);
     $("evidenceTrust").addEventListener("change", loadEvidence);
+    $("refreshDocuments").addEventListener("click", loadDocuments);
+    ["documentQuery", "documentBatch"].forEach((id) => {
+      $(id).addEventListener("keydown", (event) => {
+        if (event.key === "Enter") loadDocuments();
+      });
+    });
+    $("documentStep").addEventListener("change", loadDocuments);
     $("refreshClaims").addEventListener("click", loadClaims);
     ["claimQuery", "claimTask"].forEach((id) => {
       $(id).addEventListener("keydown", (event) => {
