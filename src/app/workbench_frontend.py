@@ -422,6 +422,52 @@ def render_workbench_html() -> str:
           </div>
         </section>
 
+        <section id="claims" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">Claim Review</h2>
+                <div class="filters">
+                  <input id="claimQuery" placeholder="Search claims" />
+                  <input id="claimTask" placeholder="task_id" />
+                  <select id="claimStatus">
+                    <option value="">All review status</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="regenerate_requested">Regenerate requested</option>
+                  </select>
+                  <select id="claimVerification">
+                    <option value="">All verification</option>
+                    <option value="supported">Supported</option>
+                    <option value="failed">Failed</option>
+                    <option value="pending">Pending</option>
+                  </select>
+                  <button class="btn" id="refreshClaims">Refresh</button>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Claim</th>
+                      <th>Task</th>
+                      <th>Review</th>
+                      <th>Verification</th>
+                      <th>Evidence</th>
+                    </tr>
+                  </thead>
+                  <tbody id="claimRows"></tbody>
+                </table>
+              </div>
+            </section>
+            <aside class="panel detail" id="claimDetail">
+              <h2>Claim Detail</h2>
+              <div class="empty">Select a claim to review evidence, checks, and audit trail.</div>
+            </aside>
+          </div>
+        </section>
+
         <section id="workspace" class="view"></section>
         <section id="stockpool" class="view"></section>
         <section id="datasources" class="view"></section>
@@ -430,7 +476,6 @@ def render_workbench_html() -> str:
         <section id="documents" class="view"></section>
         <section id="facts" class="view"></section>
         <section id="signals" class="view"></section>
-        <section id="claims" class="view"></section>
         <section id="dictionary" class="view"></section>
         <section id="promptops" class="view"></section>
         <section id="entities" class="view"></section>
@@ -488,6 +533,7 @@ def render_workbench_html() -> str:
       if (view === "dashboard") loadDashboard();
       else if (view === "tasks") loadTasks();
       else if (view === "evidence") loadEvidence();
+      else if (view === "claims") loadClaims();
       else renderPlaceholder(view);
     }
 
@@ -659,6 +705,100 @@ def render_workbench_html() -> str:
       }
     }
 
+    async function loadClaims() {
+      const params = new URLSearchParams();
+      const q = $("claimQuery").value.trim();
+      const taskId = $("claimTask").value.trim();
+      const status = $("claimStatus").value;
+      const verification = $("claimVerification").value;
+      if (q) params.set("q", q);
+      if (taskId) params.set("task_id", taskId);
+      if (status) params.set("status", status);
+      if (verification) params.set("verification_status", verification);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      try {
+        const payload = await getJson("/api/claims" + suffix);
+        const rows = payload.items || [];
+        $("claimRows").innerHTML = rows.length
+          ? rows.map((claim) => `<tr data-selectable="true">
+              <td><button class="btn" data-claim-detail="${esc(claim.id)}">#${esc(claim.id)}</button> ${esc(claim.section_name || claim.claim_type || "Claim")}<br>${esc(claim.claim_text)}</td>
+              <td><span class="mono">${esc(claim.task_id)}</span></td>
+              <td><span class="status ${esc(claim.review_status)}">${esc(claim.review_status)}</span></td>
+              <td><span class="status ${esc(claim.verification_status)}">${esc(claim.verification_status)}</span><br><span class="label">num ${esc(fmt(claim.numeric_check_status))} / cite ${esc(fmt(claim.citation_check_status))}</span></td>
+              <td>${esc(number(claim.evidence_count))}</td>
+            </tr>`).join("")
+          : `<tr><td colspan="5"><div class="empty">No claims</div></td></tr>`;
+        document.querySelectorAll("[data-claim-detail]").forEach((btn) => {
+          btn.addEventListener("click", () => loadClaimDetail(btn.dataset.claimDetail));
+        });
+      } catch (error) {
+        $("claimRows").innerHTML = `<tr><td colspan="5"><div class="error">${esc(error.message)}</div></td></tr>`;
+      }
+    }
+
+    async function loadClaimDetail(claimId) {
+      try {
+        const claim = await getJson(`/api/claims/${encodeURIComponent(claimId)}`);
+        renderClaimDetail(claim);
+      } catch (error) {
+        $("claimDetail").innerHTML = `<h2>Claim Detail</h2><div class="error">${esc(error.message)}</div>`;
+      }
+    }
+
+    function renderClaimDetail(claim) {
+      const evidence = claim.evidence || [];
+      const records = claim.review_records || [];
+      $("claimDetail").innerHTML = `<h2>Claim Detail</h2>
+        <div class="kv"><span class="label">Claim</span><span class="mono">#${esc(claim.id)}</span></div>
+        <div class="kv"><span class="label">Task</span><span class="mono">${esc(claim.task_id)}</span></div>
+        <div class="kv"><span class="label">Review</span><span><span class="status ${esc(claim.review_status)}">${esc(claim.review_status)}</span></span></div>
+        <div class="kv"><span class="label">Verify</span><span><span class="status ${esc(claim.verification_status)}">${esc(claim.verification_status)}</span></span></div>
+        <div class="detail-section"><h3>Claim Text</h3><textarea id="claimEditText" style="width:100%;min-height:96px">${esc(claim.claim_text)}</textarea></div>
+        <div class="links" style="margin-top:10px">
+          <button class="btn primary" data-claim-action="approve" data-claim-id="${esc(claim.id)}">Approve</button>
+          <button class="btn danger" data-claim-action="reject" data-claim-id="${esc(claim.id)}">Reject</button>
+          <button class="btn" data-claim-action="edit" data-claim-id="${esc(claim.id)}">Save Edit</button>
+          <button class="btn" data-claim-action="regenerate" data-claim-id="${esc(claim.id)}">Regenerate</button>
+        </div>
+        <div class="detail-section"><h3>Evidence</h3>${
+          evidence.length ? evidence.map((item) => `<div class="event"><strong>${esc(item.title || item.evidence_id)}</strong> <span class="status ${esc(item.trust_level)}">${esc(fmt(item.trust_level))}</span><br>${esc(item.snippet || "")}<br><span class="label">${esc(fmt(item.source_type))} · page ${esc(fmt(item.page_no))}</span></div>`).join("") : `<div class="empty">No linked evidence</div>`
+        }</div>
+        <div class="detail-section"><h3>Audit Trail</h3>${
+          records.length ? records.map((record) => `<div class="event"><strong>${esc(record.decision)}</strong> <span class="label">${esc(fmt(record.created_at))}</span><br>${esc(fmt(record.comment))}<br><span class="label">${esc(fmt(record.reviewer))}</span></div>`).join("") : `<div class="empty">No review records</div>`
+        }</div>`;
+      document.querySelectorAll("[data-claim-action]").forEach((btn) => {
+        btn.addEventListener("click", () => claimAction(btn.dataset.claimId, btn.dataset.claimAction));
+      });
+    }
+
+    async function claimAction(claimId, action) {
+      const payload = { reviewer: "workbench" };
+      if (action === "edit") {
+        payload.claim_text = $("claimEditText").value;
+        payload.comment = "Edited from workbench";
+      } else {
+        payload.comment = action + " from workbench";
+      }
+      try {
+        const updated = await postJson(`/api/claims/${encodeURIComponent(claimId)}/${encodeURIComponent(action)}`, payload);
+        renderClaimDetail(updated);
+        loadClaims();
+      } catch (error) {
+        $("claimDetail").insertAdjacentHTML("afterbegin", `<div class="error">${esc(error.message)}</div>`);
+      }
+    }
+
+    async function postJson(url, payload) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {}),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || JSON.stringify(data));
+      return data;
+    }
+
     function renderPlaceholder(view) {
       const meta = viewMeta[view] || [view, "待接入"];
       const target = $(view);
@@ -693,6 +833,14 @@ def render_workbench_html() -> str:
     });
     $("evidenceSource").addEventListener("change", loadEvidence);
     $("evidenceTrust").addEventListener("change", loadEvidence);
+    $("refreshClaims").addEventListener("click", loadClaims);
+    ["claimQuery", "claimTask"].forEach((id) => {
+      $(id).addEventListener("keydown", (event) => {
+        if (event.key === "Enter") loadClaims();
+      });
+    });
+    $("claimStatus").addEventListener("change", loadClaims);
+    $("claimVerification").addEventListener("change", loadClaims);
 
     loadDashboard();
     loadTasks();

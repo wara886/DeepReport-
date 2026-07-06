@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, Response
 
 from src.app.web_ui import DEFAULT_OUTPUT_DIR, DEFAULT_REPORT_DIR, run_ui_server
 from src.app.workbench_frontend import render_workbench_html
+from src.services.claim_review_service import ClaimNotFound, ClaimReviewService
 from src.services.dashboard_service import DashboardService
 from src.services.evidence_service import EvidenceNotFound, EvidenceService
 from src.services.report_task_service import (
@@ -87,6 +88,7 @@ def create_fastapi_app(
     )
     app.state.dashboard_service = DashboardService(session_factory=app.state.report_task_service.session)
     app.state.evidence_service = EvidenceService(session_factory=app.state.report_task_service.session)
+    app.state.claim_review_service = ClaimReviewService(session_factory=app.state.report_task_service.session)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -206,6 +208,102 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/claims")
+    def list_claims(
+        task_id: str | None = None,
+        status: str | None = None,
+        verification_status: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> Response:
+        try:
+            return JSONResponse(
+                content=_claim_review_service(app).list_claims(
+                    task_id=task_id,
+                    status=status,
+                    verification_status=verification_status,
+                    q=q,
+                    limit=limit,
+                )
+            )
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/claims/{claim_id}")
+    def get_claim(claim_id: int) -> Response:
+        try:
+            return JSONResponse(content=_claim_review_service(app).get_claim(claim_id))
+        except ClaimNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Claim not found: {claim_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/claims/{claim_id}/approve")
+    async def approve_claim(claim_id: int, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(
+                content=_claim_review_service(app).approve(
+                    claim_id,
+                    reviewer=_optional_string(payload.get("reviewer")),
+                    comment=_optional_string(payload.get("comment")),
+                )
+            )
+        except ClaimNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Claim not found: {claim_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/claims/{claim_id}/reject")
+    async def reject_claim(claim_id: int, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(
+                content=_claim_review_service(app).reject(
+                    claim_id,
+                    reviewer=_optional_string(payload.get("reviewer")),
+                    comment=_optional_string(payload.get("comment")),
+                )
+            )
+        except ClaimNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Claim not found: {claim_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/claims/{claim_id}/edit")
+    async def edit_claim(claim_id: int, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(
+                content=_claim_review_service(app).edit(
+                    claim_id,
+                    claim_text=_optional_string(payload.get("claim_text")),
+                    review_status=_optional_string(payload.get("review_status")),
+                    reviewer=_optional_string(payload.get("reviewer")),
+                    comment=_optional_string(payload.get("comment")),
+                )
+            )
+        except ClaimNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Claim not found: {claim_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/claims/{claim_id}/regenerate")
+    async def regenerate_claim(claim_id: int, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(
+                content=_claim_review_service(app).regenerate(
+                    claim_id,
+                    reviewer=_optional_string(payload.get("reviewer")),
+                    comment=_optional_string(payload.get("comment")),
+                )
+            )
+        except ClaimNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Claim not found: {claim_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.post("/api/report-tasks/{task_id}/retry")
     async def retry_report_task(task_id: str, incoming: Request, background_tasks: BackgroundTasks) -> Response:
         payload = await _json_payload(incoming)
@@ -256,6 +354,16 @@ def _dashboard_service(app: FastAPI) -> DashboardService:
 
 def _evidence_service(app: FastAPI) -> EvidenceService:
     return app.state.evidence_service
+
+
+def _claim_review_service(app: FastAPI) -> ClaimReviewService:
+    return app.state.claim_review_service
+
+
+def _optional_string(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value)
 
 
 def _forward(app: FastAPI, path: str, *, method: str, body: bytes | None = None) -> Response:
