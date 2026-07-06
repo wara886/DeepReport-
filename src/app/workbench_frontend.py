@@ -512,6 +512,45 @@ def render_workbench_html() -> str:
           </div>
         </section>
 
+        <section id="export" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">Export Center</h2>
+                <div class="filters">
+                  <input id="exportSymbol" placeholder="Filter symbol" />
+                  <select id="exportStatus">
+                    <option value="">All task status</option>
+                    <option value="completed">Completed</option>
+                    <option value="failed">Failed</option>
+                    <option value="running">Running</option>
+                    <option value="queued">Queued</option>
+                  </select>
+                  <button class="btn" id="refreshExports">Refresh</button>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Task</th>
+                      <th>Status</th>
+                      <th>Artifacts</th>
+                      <th>Review</th>
+                      <th>Official Export</th>
+                    </tr>
+                  </thead>
+                  <tbody id="exportRows"></tbody>
+                </table>
+              </div>
+            </section>
+            <aside class="panel detail" id="exportDetail">
+              <h2>Artifact Review</h2>
+              <div class="empty">Select a task to inspect artifacts and export readiness.</div>
+            </aside>
+          </div>
+        </section>
+
         <section id="workspace" class="view"></section>
         <section id="stockpool" class="view"></section>
         <section id="datasources" class="view"></section>
@@ -524,7 +563,6 @@ def render_workbench_html() -> str:
         <section id="entities" class="view"></section>
         <section id="graph" class="view"></section>
         <section id="evaluation" class="view"></section>
-        <section id="export" class="view"></section>
       </main>
     </section>
   </div>
@@ -578,6 +616,7 @@ def render_workbench_html() -> str:
       else if (view === "evidence") loadEvidence();
       else if (view === "documents") loadDocuments();
       else if (view === "claims") loadClaims();
+      else if (view === "export") loadExports();
       else renderPlaceholder(view);
     }
 
@@ -845,6 +884,58 @@ def render_workbench_html() -> str:
       }
     }
 
+    async function loadExports() {
+      const params = new URLSearchParams();
+      const symbol = $("exportSymbol").value.trim();
+      const status = $("exportStatus").value;
+      if (symbol) params.set("symbol", symbol);
+      if (status) params.set("status", status);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      try {
+        const payload = await getJson("/api/exports" + suffix);
+        const rows = payload.items || [];
+        $("exportRows").innerHTML = rows.length
+          ? rows.map((item) => `<tr data-selectable="true">
+              <td><button class="btn" data-export-detail="${esc(item.task_id)}">${esc(item.task_id)}</button><br><span class="label">${esc(item.symbol)} · ${esc(item.period)}</span></td>
+              <td><span class="status ${esc(item.status)}">${esc(item.status)}</span></td>
+              <td>${esc(number(item.artifact_count))}</td>
+              <td><span class="status approved">${esc(number(item.approved_claim_count))} approved</span><br><span class="status pending">${esc(number(item.pending_claim_count))} pending</span><br><span class="status rejected">${esc(number(item.rejected_claim_count))} rejected</span></td>
+              <td>${item.official_export_ready ? `<span class="status completed">Ready</span>` : `<span class="status failed">Blocked</span>`}</td>
+            </tr>`).join("")
+          : `<tr><td colspan="5"><div class="empty">No export entries</div></td></tr>`;
+        document.querySelectorAll("[data-export-detail]").forEach((btn) => {
+          btn.addEventListener("click", () => loadExportDetail(btn.dataset.exportDetail));
+        });
+      } catch (error) {
+        $("exportRows").innerHTML = `<tr><td colspan="5"><div class="error">${esc(error.message)}</div></td></tr>`;
+      }
+    }
+
+    async function loadExportDetail(taskId) {
+      try {
+        const item = await getJson(`/api/exports/${encodeURIComponent(taskId)}`);
+        const artifacts = item.artifacts || [];
+        const claims = item.claims || [];
+        $("exportDetail").innerHTML = `<h2>Artifact Review</h2>
+          <div class="kv"><span class="label">Task</span><span class="mono">${esc(item.task_id)}</span></div>
+          <div class="kv"><span class="label">Symbol</span><span>${esc(item.symbol)} / ${esc(item.period)}</span></div>
+          <div class="kv"><span class="label">Official Export</span><span>${item.official_export_ready ? `<span class="status completed">Ready</span>` : `<span class="status failed">Blocked</span>`}</span></div>
+          <div class="kv"><span class="label">Review</span><span>${esc(number(item.approved_claim_count))} approved · ${esc(number(item.pending_claim_count))} pending · ${esc(number(item.rejected_claim_count))} rejected</span></div>
+          <div class="detail-section"><h3>Blocked Reasons</h3>${
+            (item.blocked_reasons || []).length ? `<div class="text-block">${esc((item.blocked_reasons || []).join("\\n"))}</div>` : `<div class="empty">No blockers</div>`
+          }</div>
+          <div class="detail-section"><h3>Artifacts</h3>${
+            artifacts.length ? artifacts.map((artifact) => `<div class="event"><strong>${esc(artifact.artifact_type)}</strong><br>${artifact.url ? `<a href="${esc(artifact.url)}" target="_blank">${esc(artifact.url)}</a>` : `<span class="mono">${esc(fmt(artifact.path))}</span>`}</div>`).join("") : `<div class="empty">No artifacts</div>`
+          }</div>
+          <div class="detail-section"><h3>Claims</h3>${
+            claims.length ? claims.map((claim) => `<div class="event"><strong>#${esc(claim.id)}</strong> <span class="status ${esc(claim.review_status)}">${esc(claim.review_status)}</span><br>${esc(claim.claim_text)}</div>`).join("") : `<div class="empty">No claims</div>`
+          }</div>
+          <div class="detail-section"><h3>Note</h3><div class="empty">${esc(item.formal_export_note || "")}</div></div>`;
+      } catch (error) {
+        $("exportDetail").innerHTML = `<h2>Artifact Review</h2><div class="error">${esc(error.message)}</div>`;
+      }
+    }
+
     function renderClaimDetail(claim) {
       const evidence = claim.evidence || [];
       const records = claim.review_records || [];
@@ -948,6 +1039,11 @@ def render_workbench_html() -> str:
     });
     $("claimStatus").addEventListener("change", loadClaims);
     $("claimVerification").addEventListener("change", loadClaims);
+    $("refreshExports").addEventListener("click", loadExports);
+    $("exportSymbol").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") loadExports();
+    });
+    $("exportStatus").addEventListener("change", loadExports);
 
     loadDashboard();
     loadTasks();

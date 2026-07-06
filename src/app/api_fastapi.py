@@ -17,6 +17,7 @@ from src.services.claim_review_service import ClaimNotFound, ClaimReviewService
 from src.services.dashboard_service import DashboardService
 from src.services.document_service import DocumentNotFound, DocumentService
 from src.services.evidence_service import EvidenceNotFound, EvidenceService
+from src.services.export_service import ExportService, ExportTaskNotFound
 from src.services.report_task_service import (
     ReportTaskConflict,
     ReportTaskNotFound,
@@ -91,6 +92,7 @@ def create_fastapi_app(
     app.state.evidence_service = EvidenceService(session_factory=app.state.report_task_service.session)
     app.state.claim_review_service = ClaimReviewService(session_factory=app.state.report_task_service.session)
     app.state.document_service = DocumentService(session_factory=app.state.report_task_service.session)
+    app.state.export_service = ExportService(session_factory=app.state.report_task_service.session)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -272,6 +274,22 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/exports")
+    def list_export_entries(status: str | None = None, symbol: str | None = None, limit: int = 50) -> Response:
+        try:
+            return JSONResponse(content=_export_service(app).list_export_entries(status=status, symbol=symbol, limit=limit))
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/exports/{task_id}")
+    def get_export_entry(task_id: str) -> Response:
+        try:
+            return JSONResponse(content=_export_service(app).get_export_entry(task_id))
+        except ExportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Export entry not found: {task_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.post("/api/claims/{claim_id}/approve")
     async def approve_claim(claim_id: int, incoming: Request) -> Response:
         payload = await _json_payload(incoming)
@@ -396,6 +414,10 @@ def _claim_review_service(app: FastAPI) -> ClaimReviewService:
 
 def _document_service(app: FastAPI) -> DocumentService:
     return app.state.document_service
+
+
+def _export_service(app: FastAPI) -> ExportService:
+    return app.state.export_service
 
 
 def _optional_string(value: Any) -> str | None:
