@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from src.app.web_ui import DEFAULT_OUTPUT_DIR, DEFAULT_REPORT_DIR, run_ui_server
+from src.services.dashboard_service import DashboardService
 from src.services.report_task_service import (
     ReportTaskConflict,
     ReportTaskNotFound,
@@ -82,6 +83,7 @@ def create_fastapi_app(
         mode=mode,
         orchestrator_factory=orchestrator_factory,
     )
+    app.state.dashboard_service = DashboardService(session_factory=app.state.report_task_service.session)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -149,6 +151,20 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/dashboard/summary")
+    def dashboard_summary() -> Response:
+        try:
+            return JSONResponse(content=_dashboard_service(app).summary())
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/dashboard/funnel")
+    def dashboard_funnel() -> Response:
+        try:
+            return JSONResponse(content=_dashboard_service(app).funnel())
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.post("/api/report-tasks/{task_id}/retry")
     async def retry_report_task(task_id: str, incoming: Request, background_tasks: BackgroundTasks) -> Response:
         payload = await _json_payload(incoming)
@@ -191,6 +207,10 @@ async def _json_payload(incoming: Request) -> dict[str, Any]:
 
 def _report_task_service(app: FastAPI) -> ReportTaskService:
     return app.state.report_task_service
+
+
+def _dashboard_service(app: FastAPI) -> DashboardService:
+    return app.state.dashboard_service
 
 
 def _forward(app: FastAPI, path: str, *, method: str, body: bytes | None = None) -> Response:
