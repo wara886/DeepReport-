@@ -7,10 +7,16 @@ import threading
 from typing import Any, Optional
 from urllib import error, request as urlrequest
 
+from fastapi import BackgroundTasks
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from src.app.web_ui import DEFAULT_OUTPUT_DIR, DEFAULT_REPORT_DIR, run_ui_server
+from src.services.report_task_service import (
+    ReportTaskConflict,
+    ReportTaskNotFound,
+    ReportTaskService,
+)
 
 # Mode-aware default roots
 USER_OUTPUT_DIR = "data/outputs_user"
@@ -27,6 +33,9 @@ def create_fastapi_app(
     memory_root: str = "memory/chat",
     mode: str = "user",
     frontend_port: Optional[int] = None,
+    database_url: Optional[str] = None,
+    report_task_service: Optional[ReportTaskService] = None,
+    orchestrator_factory: Any = None,
 ) -> FastAPI:
     """Expose the legacy-stable UI contract behind a deployable ASGI server."""
 
@@ -64,6 +73,15 @@ def create_fastapi_app(
         description="Evidence-driven financial research report workbench.",
         lifespan=lifespan,
     )
+    app.state.report_task_service = report_task_service or ReportTaskService(
+        database_url=database_url,
+        output_root=output_dir,
+        report_root=report_dir,
+        config_path=config_path,
+        memory_root=memory_root,
+        mode=mode,
+        orchestrator_factory=orchestrator_factory,
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -86,6 +104,70 @@ def create_fastapi_app(
     async def run(incoming: Request) -> Response:
         return _forward(app, "/api/run", method="POST", body=await incoming.body())
 
+    @app.post("/api/report-tasks")
+    async def create_report_task(incoming: Request, background_tasks: BackgroundTasks) -> Response:
+        payload = await _json_payload(incoming)
+        run_async = bool(payload.pop("run_async", payload.pop("async_report_run", False)))
+        run_immediately = bool(payload.pop("run_immediately", True))
+        try:
+            task = _report_task_service(app).create_task(payload)
+            if run_immediately:
+                if run_async:
+                    background_tasks.add_task(_report_task_service(app).run_task, task["task_id"])
+                    task = _report_task_service(app).get_task(task["task_id"])
+                else:
+                    task = _report_task_service(app).run_task(task["task_id"])
+            status_code = 202 if run_immediately and run_async else 201
+            return JSONResponse(status_code=status_code, content=task)
+        except ReportTaskConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/report-tasks")
+    def list_report_tasks(status: str | None = None, symbol: str | None = None, limit: int = 50) -> Response:
+        try:
+            return JSONResponse(content=_report_task_service(app).list_tasks(status=status, symbol=symbol, limit=limit))
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/report-tasks/{task_id}")
+    def get_report_task(task_id: str) -> Response:
+        try:
+            return JSONResponse(content=_report_task_service(app).get_task(task_id))
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/report-tasks/{task_id}/artifacts")
+    def get_report_task_artifacts(task_id: str) -> Response:
+        try:
+            return JSONResponse(content=_report_task_service(app).get_artifacts(task_id))
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/report-tasks/{task_id}/retry")
+    async def retry_report_task(task_id: str, incoming: Request, background_tasks: BackgroundTasks) -> Response:
+        payload = await _json_payload(incoming)
+        run_async = bool(payload.get("run_async", payload.get("async_report_run", False)))
+        run_immediately = bool(payload.get("run_immediately", True))
+        try:
+            if run_immediately and run_async:
+                task = _report_task_service(app).retry_task(task_id, run_immediately=False)
+                background_tasks.add_task(_report_task_service(app).run_task, task_id)
+                return JSONResponse(status_code=202, content=task)
+            task = _report_task_service(app).retry_task(task_id, run_immediately=run_immediately)
+            return JSONResponse(content=task)
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except ReportTaskConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.get("/artifacts/{artifact_path:path}")
     def artifacts(artifact_path: str, incoming: Request) -> Response:
         suffix = f"?{incoming.url.query}" if incoming.url.query else ""
@@ -97,6 +179,18 @@ def create_fastapi_app(
         return _forward(app, f"/api/job_status{suffix}", method="GET")
 
     return app
+
+
+async def _json_payload(incoming: Request) -> dict[str, Any]:
+    try:
+        payload = await incoming.json()
+    except Exception:
+        payload = {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _report_task_service(app: FastAPI) -> ReportTaskService:
+    return app.state.report_task_service
 
 
 def _forward(app: FastAPI, path: str, *, method: str, body: bytes | None = None) -> Response:
