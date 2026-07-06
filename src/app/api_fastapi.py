@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from src.app.web_ui import DEFAULT_OUTPUT_DIR, DEFAULT_REPORT_DIR, run_ui_server
+from src.app.workbench_frontend import render_workbench_html
 from src.services.dashboard_service import DashboardService
 from src.services.report_task_service import (
     ReportTaskConflict,
@@ -92,6 +93,10 @@ def create_fastapi_app(
     @app.get("/")
     def index() -> Response:
         return _forward(app, "/", method="GET")
+
+    @app.get("/workbench")
+    def workbench() -> Response:
+        return Response(content=render_workbench_html(), media_type="text/html")
 
     @app.get("/api/latest")
     def latest(incoming: Request) -> Response:
