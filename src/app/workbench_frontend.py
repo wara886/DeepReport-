@@ -138,9 +138,40 @@ def render_workbench_html() -> str:
     .panel h2 { margin: 0; font-size: 16px; }
     .panel h3 { margin: 0 0 8px; font-size: 14px; }
     .dashboard-layout { grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); align-items: start; }
+    .dashboard-charts { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; }
     .dashboard-bottom { margin-top: 14px; }
     .work-layout { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; }
+    .tab-switch { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: #f7f9fb; }
+    .tab-switch button { border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; padding: 6px 10px; }
+    .tab-switch button.active { background: #fff; color: var(--text); box-shadow: 0 1px 4px rgba(16,24,32,.08); }
+    .funnel-view { display: none; }
+    .funnel-view.active { display: block; }
+    .funnel-demo-note { border: 1px solid #f4d39b; background: #fff8ea; color: #8a5300; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
     .funnel-visual { display: grid; gap: 8px; margin-bottom: 14px; }
+    .funnel-layer {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 14px;
+      min-height: 48px;
+      margin: 0 auto;
+      padding: 0 18px;
+      border: 1px solid #b8d5ee;
+      background: linear-gradient(90deg, #e9f6ff 0%, #f7fbff 100%);
+      border-radius: 10px;
+      clip-path: polygon(4% 0, 96% 0, 100% 100%, 0% 100%);
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+      text-align: left;
+      width: 100%;
+    }
+    .funnel-layer:hover { border-color: var(--accent); background: #eef8ff; }
+    .funnel-layer strong { font-size: 16px; }
+    .funnel-layer .rate { color: var(--muted); min-width: 72px; text-align: right; }
+    .funnel-loss-card { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 12px; margin-top: 12px; display: grid; gap: 7px; font-size: 13px; }
+    .funnel-loss-card h3 { margin: 0; font-size: 14px; }
     .funnel-stage {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 92px;
@@ -162,6 +193,30 @@ def render_workbench_html() -> str:
     .bar span { display: block; height: 100%; background: var(--accent-2); min-width: 2px; }
     .dist { display: grid; gap: 8px; }
     .dist-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 7px; }
+    .chart-card { display: grid; grid-template-columns: 168px minmax(0, 1fr); align-items: center; gap: 16px; }
+    .donut {
+      width: 148px;
+      height: 148px;
+      border-radius: 50%;
+      background: conic-gradient(var(--line) 0deg 360deg);
+      position: relative;
+      margin: 0 auto;
+      box-shadow: inset 0 0 0 1px rgba(16,24,32,.05);
+    }
+    .donut::after {
+      content: "";
+      position: absolute;
+      inset: 28px;
+      border-radius: 50%;
+      background: #fff;
+      border: 1px solid var(--line);
+    }
+    .donut-center { position: absolute; inset: 42px; display: grid; place-items: center; text-align: center; z-index: 1; font-size: 12px; color: var(--muted); }
+    .donut-center strong { display: block; color: var(--text); font-size: 20px; line-height: 1.1; }
+    .legend { display: grid; gap: 8px; }
+    .legend-row { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 13px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .chart-note { color: var(--muted); font-size: 12px; margin-top: 10px; }
     .mini-list { display: grid; gap: 8px; }
     .mini-item { border-bottom: 1px solid var(--line); padding-bottom: 8px; font-size: 13px; }
     .mini-item:last-child, .dist-row:last-child { border-bottom: 0; padding-bottom: 0; }
@@ -193,19 +248,35 @@ def render_workbench_html() -> str:
     .event { border-left: 3px solid var(--line); padding-left: 10px; font-size: 13px; }
     .empty, .error { color: var(--muted); font-size: 13px; padding: 18px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; background: #fbfcfd; }
     .error { color: var(--bad); }
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(16,24,32,.48); display: none; place-items: center; padding: 18px; z-index: 20; }
+    .modal-backdrop.active { display: grid; }
+    .modal { width: min(720px, 100%); max-height: calc(100vh - 36px); overflow-y: auto; background: #fff; border-radius: 8px; border: 1px solid var(--line); box-shadow: 0 24px 70px rgba(16,24,32,.22); }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+    .modal-head h2 { margin: 0; font-size: 16px; }
+    .modal-body { padding: 18px; display: grid; gap: 14px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .field { display: grid; gap: 6px; }
+    .field label { color: var(--muted); font-size: 12px; }
+    .field.full { grid-column: 1 / -1; }
+    .choice-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .choice { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 10px; cursor: pointer; font: inherit; font-size: 12px; }
+    .choice:hover { border-color: var(--accent); color: var(--accent); }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--line); background: #fbfcfd; }
+    .form-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
     .placeholder-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .placeholder { min-height: 136px; display: grid; align-content: center; gap: 8px; }
     @media (max-width: 1100px) {
       .app { grid-template-columns: 1fr; }
       .sidebar { position: static; height: auto; display: block; }
       .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-      .work-layout, .dashboard-layout, .cards, .placeholder-grid { grid-template-columns: 1fr; }
+      .work-layout, .dashboard-layout, .dashboard-charts, .cards, .placeholder-grid { grid-template-columns: 1fr; }
       .detail { position: static; max-height: none; }
     }
     @media (max-width: 760px) {
       .topbar { align-items: flex-start; flex-direction: column; padding: 14px 16px; }
       .content { padding: 14px 16px 22px; }
       .nav { grid-template-columns: 1fr; }
+      .form-grid { grid-template-columns: 1fr; }
       .filters input, .filters select { width: 100%; }
       table { min-width: 820px; }
       .table-scroll { overflow-x: auto; }
@@ -251,7 +322,7 @@ def render_workbench_html() -> str:
           <select class="select" aria-label="投研空间">
             <option>默认投研空间</option>
           </select>
-          <button class="btn primary" data-jump="tasks">创建研报任务</button>
+          <button class="btn primary" data-open-create-task>创建研报任务</button>
           <button class="btn ghost" data-jump="manual">导入文档</button>
           <button class="btn ghost" data-jump="export">查看最新报告</button>
           <button class="btn" id="refreshView">刷新</button>
@@ -267,8 +338,18 @@ def render_workbench_html() -> str:
                 <h2>处理漏斗</h2>
                 <button class="btn" data-jump="documents">失败步骤</button>
               </div>
-              <div class="funnel-visual" id="funnelVisual"></div>
-              <div class="funnel" id="funnel"></div>
+              <div class="tab-switch" role="tablist" aria-label="处理漏斗视图">
+                <button class="active" data-funnel-tab="funnel">处理漏斗</button>
+                <button data-funnel-tab="chain">处理链路</button>
+              </div>
+              <div class="funnel-view active" id="funnelTab">
+                <div id="funnelDemoNote"></div>
+                <div class="funnel-visual" id="funnelVisual"></div>
+                <div id="funnelLoss"></div>
+              </div>
+              <div class="funnel-view" id="chainTab">
+                <div class="funnel" id="funnel"></div>
+              </div>
             </div>
             <div class="grid">
               <div class="panel">
@@ -294,10 +375,26 @@ def render_workbench_html() -> str:
               </div>
             </div>
           </section>
+          <section class="grid dashboard-charts">
+            <div class="panel">
+              <div class="panel-head">
+                <h2>数据源分布</h2>
+                <button class="btn" data-jump="datasources">配置数据源</button>
+              </div>
+              <div id="dataSourceChart"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head">
+                <h2>主张状态分布</h2>
+                <button class="btn" data-jump="claims">查看主张</button>
+              </div>
+              <div id="claimStatusChart"></div>
+            </div>
+          </section>
           <section class="panel dashboard-bottom">
             <div class="panel-head">
               <h2>最近研报任务</h2>
-              <button class="btn primary" data-jump="tasks">创建研报任务</button>
+              <button class="btn primary" data-open-create-task>创建研报任务</button>
             </div>
             <div class="table-scroll">
               <table>
@@ -504,6 +601,71 @@ def render_workbench_html() -> str:
     </section>
   </div>
 
+  <div class="modal-backdrop" id="createTaskModal" role="dialog" aria-modal="true" aria-labelledby="createTaskTitle">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="createTaskTitle">创建研报任务</h2>
+        <button class="btn" data-close-create-task>关闭</button>
+      </div>
+      <form id="createTaskForm">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="field full">
+              <label for="taskCompanyInput">公司或股票代码</label>
+              <input id="taskCompanyInput" list="companyCandidates" placeholder="输入苹果、腾讯、贵州茅台、AAPL、0700.HK、600519" required />
+              <datalist id="companyCandidates"></datalist>
+              <div class="form-note" id="companyResolveNote">支持公司中文名、英文名或股票代码。当前使用内置候选解析，后续接入股票池和实体库。</div>
+            </div>
+            <div class="field">
+              <label for="taskPeriodInput">查询期间</label>
+              <select id="taskPeriodInput">
+                <option value="FY2024">FY2024</option>
+                <option value="FY2023">FY2023</option>
+                <option value="2025Q1">2025Q1</option>
+                <option value="2024Q4">2024Q4</option>
+                <option value="2024Q3">2024Q3</option>
+                <option value="最近一年">最近一年</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="taskReportTypeInput">报告类型</label>
+              <select id="taskReportTypeInput">
+                <option value="equity_research">股票研报</option>
+                <option value="annual_review">年报深度</option>
+                <option value="earnings_review">财报点评</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="taskDataSourceInput">数据源范围</label>
+              <select id="taskDataSourceInput">
+                <option value="official_first">官方公告优先</option>
+                <option value="all_available">全部可用来源</option>
+                <option value="local_only">仅本地文档</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="taskRunModeInput">运行方式</label>
+              <select id="taskRunModeInput">
+                <option value="queue">只创建任务</option>
+                <option value="async">后台异步运行</option>
+              </select>
+            </div>
+            <div class="field full">
+              <label for="taskTopicInput">研究问题</label>
+              <textarea id="taskTopicInput" placeholder="例如：分析收入增长、利润率变化、主要风险和估值线索。" rows="3"></textarea>
+            </div>
+          </div>
+          <div class="choice-row" id="companyQuickChoices"></div>
+          <div id="createTaskMessage"></div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" type="button" data-close-create-task>取消</button>
+          <button class="btn primary" type="submit">创建并进入任务</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     "use strict";
     const $ = (id) => document.getElementById(id);
@@ -556,6 +718,44 @@ def render_workbench_html() -> str:
       html: "网页报告", markdown: "文稿", json: "结构化数据",
       claims: "主张数据", evidence: "证据数据", verification_report: "校验报告",
     };
+    const chartColors = ["#1677ff", "#0f8f7a", "#b56a00", "#7c3aed", "#d92d20", "#475467"];
+    const funnelDemoSteps = [
+      { key: "raw_document_ingested", label: "原始资料入库", count: 1280 },
+      { key: "parsed_success", label: "解析成功", count: 1146 },
+      { key: "table_extracted", label: "表格抽取成功", count: 823 },
+      { key: "chunk_vectorized", label: "切分向量化", count: 790 },
+      { key: "financial_fact_extracted", label: "财务事实提取", count: 356 },
+      { key: "investment_signal_generated", label: "投资线索生成", count: 126 },
+      { key: "report_claim_generated", label: "研报主张生成", count: 72 },
+      { key: "claim_verified", label: "主张校验通过", count: 58 },
+      { key: "manual_review_pending", label: "待人工复核", count: 14 },
+    ];
+    const funnelTargets = {
+      document_ingested: { view: "documents", documentStep: "ingest" },
+      raw_document_ingested: { view: "documents", documentStep: "ingest" },
+      parse_success: { view: "documents", documentStep: "parse" },
+      parsed_success: { view: "documents", documentStep: "parse" },
+      table_extract_success: { view: "documents", documentStep: "table_extract" },
+      table_extracted: { view: "documents", documentStep: "table_extract" },
+      chunk_vectorized: { view: "documents", documentStep: "chunk" },
+      financial_fact_extracted: { view: "facts" },
+      investment_signal_generated: { view: "signals" },
+      report_claim_generated: { view: "claims" },
+      claim_verified: { view: "claims", claimVerification: "supported" },
+      pending_review: { view: "claims", claimStatus: "pending" },
+      manual_review_pending: { view: "claims", claimStatus: "pending" },
+    };
+    const companyCandidates = [
+      { name: "苹果", aliases: ["苹果", "苹果公司", "Apple", "AAPL"], symbol: "AAPL" },
+      { name: "英伟达", aliases: ["英伟达", "NVIDIA", "NVDA"], symbol: "NVDA" },
+      { name: "特斯拉", aliases: ["特斯拉", "Tesla", "TSLA"], symbol: "TSLA" },
+      { name: "微软", aliases: ["微软", "Microsoft", "MSFT"], symbol: "MSFT" },
+      { name: "腾讯控股", aliases: ["腾讯", "腾讯控股", "Tencent", "0700.HK"], symbol: "0700.HK" },
+      { name: "阿里巴巴", aliases: ["阿里", "阿里巴巴", "Alibaba", "BABA", "9988.HK"], symbol: "BABA" },
+      { name: "贵州茅台", aliases: ["贵州茅台", "茅台", "600519"], symbol: "600519" },
+      { name: "宁德时代", aliases: ["宁德时代", "CATL", "300750"], symbol: "300750" },
+      { name: "比亚迪", aliases: ["比亚迪", "BYD", "002594", "1211.HK"], symbol: "002594" },
+    ];
     const textOf = (map, value) => map[String(value || "")] || fmt(value);
     const statusText = (value) => textOf(statusMap, value);
     const sourceText = (value) => textOf(sourceMap, value);
@@ -566,12 +766,30 @@ def render_workbench_html() -> str:
       btn.addEventListener("click", () => activateView(btn.dataset.view));
     });
     bindJumpHandlers();
+    document.querySelectorAll("[data-funnel-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => activateFunnelTab(btn.dataset.funnelTab));
+    });
+    initCreateTaskModal();
+
+    function activateFunnelTab(tab) {
+      document.querySelectorAll("[data-funnel-tab]").forEach((item) => item.classList.toggle("active", item.dataset.funnelTab === tab));
+      $("funnelTab").classList.toggle("active", tab === "funnel");
+      $("chainTab").classList.toggle("active", tab === "chain");
+    }
 
     function bindJumpHandlers(root = document) {
       root.querySelectorAll("[data-jump]").forEach((btn) => {
         if (btn.dataset.boundJump === "true") return;
         btn.dataset.boundJump = "true";
         btn.addEventListener("click", () => jumpTo(btn.dataset.jump, btn.dataset));
+      });
+    }
+
+    function bindCreateTaskButtons(root = document) {
+      root.querySelectorAll("[data-open-create-task]").forEach((btn) => {
+        if (btn.dataset.boundCreateTask === "true") return;
+        btn.dataset.boundCreateTask = "true";
+        btn.addEventListener("click", openCreateTaskModal);
       });
     }
 
@@ -631,6 +849,83 @@ def render_workbench_html() -> str:
       return `<div class="empty"><div>${esc(text)}</div>${buttons}</div>`;
     }
 
+    function initCreateTaskModal() {
+      bindCreateTaskButtons();
+      $("companyCandidates").innerHTML = companyCandidates.flatMap((item) => item.aliases.map((alias) => `<option value="${esc(alias)}">${esc(item.name)} · ${esc(item.symbol)}</option>`)).join("");
+      $("companyQuickChoices").innerHTML = companyCandidates.slice(0, 6).map((item) => `<button class="choice" type="button" data-company-choice="${esc(item.symbol)}">${esc(item.name)} · ${esc(item.symbol)}</button>`).join("");
+      document.querySelectorAll("[data-company-choice]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          $("taskCompanyInput").value = btn.dataset.companyChoice;
+          updateCompanyResolveNote();
+        });
+      });
+      document.querySelectorAll("[data-close-create-task]").forEach((btn) => btn.addEventListener("click", closeCreateTaskModal));
+      $("createTaskModal").addEventListener("click", (event) => {
+        if (event.target === $("createTaskModal")) closeCreateTaskModal();
+      });
+      $("taskCompanyInput").addEventListener("input", updateCompanyResolveNote);
+      $("createTaskForm").addEventListener("submit", submitCreateTask);
+      updateCompanyResolveNote();
+    }
+
+    function openCreateTaskModal() {
+      $("createTaskModal").classList.add("active");
+      $("createTaskMessage").innerHTML = "";
+      setTimeout(() => $("taskCompanyInput").focus(), 0);
+    }
+
+    function closeCreateTaskModal() {
+      $("createTaskModal").classList.remove("active");
+    }
+
+    function resolveCompany(input) {
+      const raw = String(input || "").trim();
+      if (!raw) return null;
+      const lower = raw.toLowerCase();
+      const matched = companyCandidates.find((item) => item.aliases.some((alias) => String(alias).toLowerCase() === lower));
+      if (matched) return matched;
+      return { name: raw, aliases: [raw], symbol: raw.toUpperCase() };
+    }
+
+    function updateCompanyResolveNote() {
+      const resolved = resolveCompany($("taskCompanyInput").value);
+      $("companyResolveNote").textContent = resolved
+        ? `将按 ${resolved.name} · ${resolved.symbol} 创建任务。`
+        : "支持公司中文名、英文名或股票代码。当前使用内置候选解析，后续接入股票池和实体库。";
+    }
+
+    async function submitCreateTask(event) {
+      event.preventDefault();
+      const resolved = resolveCompany($("taskCompanyInput").value);
+      if (!resolved) {
+        $("createTaskMessage").innerHTML = `<div class="error">请输入公司名称或股票代码。</div>`;
+        return;
+      }
+      const runMode = $("taskRunModeInput").value;
+      const payload = {
+        symbol: resolved.symbol,
+        period: $("taskPeriodInput").value,
+        report_type: $("taskReportTypeInput").value,
+        research_topic: $("taskTopicInput").value.trim(),
+        data_source_scope: $("taskDataSourceInput").value,
+        company_name: resolved.name,
+        run_immediately: runMode === "async",
+        run_async: runMode === "async",
+      };
+      $("createTaskMessage").innerHTML = `<div class="empty">正在创建任务...</div>`;
+      try {
+        const task = await postJson("/api/report-tasks", payload);
+        $("createTaskMessage").innerHTML = `<div class="empty">任务已创建：${esc(task.task_id)}</div>`;
+        closeCreateTaskModal();
+        activateView("tasks");
+        await loadTasks();
+        loadTaskDetail(task.task_id);
+        loadDashboard();
+      } catch (error) {
+        $("createTaskMessage").innerHTML = `<div class="error">创建失败，请检查服务配置或稍后重试。</div>`;
+      }
+    }
+
     function renderCards(summary) {
       const cards = [
         { label: "公司数", value: summary.company_count, view: "stockpool" },
@@ -647,6 +942,7 @@ def render_workbench_html() -> str:
         <div class="value">${esc(card.value)}</div>
       </button>`).join("");
       bindJumpHandlers($("metricCards"));
+      bindCreateTaskButtons($("metricCards"));
     }
 
     function renderDistribution(id, values, mapper) {
@@ -657,28 +953,55 @@ def render_workbench_html() -> str:
     }
 
     function renderFunnel(payload) {
-      const steps = payload.steps || [];
+      const rawSteps = payload.steps || [];
+      const hasRealCounts = rawSteps.some((step) => Number(step.count || 0) > 0);
+      const steps = hasRealCounts ? rawSteps : funnelDemoSteps;
       const max = Math.max(1, ...steps.map((step) => Number(step.count || 0)));
-      if (!steps.length) {
-        $("funnelVisual").innerHTML = emptyBox("暂无漏斗数据", [
-          { label: "查看文档处理", view: "documents", className: "primary" },
-          { label: "创建研报任务", view: "tasks" },
-        ]);
-        $("funnel").innerHTML = "";
-        bindJumpHandlers($("funnelVisual"));
-        return;
-      }
+      $("funnelDemoNote").innerHTML = hasRealCounts
+        ? ""
+        : `<div class="funnel-demo-note">当前暂无真实处理数据，以下为流程示意。创建研报任务或导入文档后将展示真实统计。</div>`;
       $("funnelVisual").innerHTML = steps.map((step, index) => {
-        const width = Math.max(52, Math.round((Number(step.count || 0) / max) * 100));
-        return `<div>
-          <div class="funnel-stage" style="width:${width}%"><span>${esc(step.label)}</span><strong>${esc(number(step.count))}</strong></div>
-          ${index < steps.length - 1 ? `<div class="funnel-arrow">↓</div>` : ""}
-        </div>`;
+        const count = Number(step.count || 0);
+        const prev = index === 0 ? count : Number(steps[index - 1].count || 0);
+        const width = Math.max(28, Math.round((count / max) * 100));
+        const rate = index === 0 ? "基准" : (prev > 0 ? `${Math.round((count / prev) * 1000) / 10}%` : "-");
+        const target = funnelTargets[step.key] || { view: "documents" };
+        return `<button class="funnel-layer" style="width:${width}%" data-jump="${esc(target.view)}"${target.documentStep ? ` data-document-step="${esc(target.documentStep)}"` : ""}${target.claimStatus ? ` data-claim-status="${esc(target.claimStatus)}"` : ""}${target.claimVerification ? ` data-claim-verification="${esc(target.claimVerification)}"` : ""}>
+          <span>${esc(step.label)}</span>
+          <strong>${esc(number(count))}</strong>
+          <span class="rate">${esc(rate)}</span>
+        </button>`;
       }).join("");
-      $("funnel").innerHTML = steps.map((step) => {
+      $("funnelLoss").innerHTML = renderFunnelLoss(steps);
+      $("funnel").innerHTML = steps.map((step, index) => {
             const width = Math.max(2, Math.round((Number(step.count || 0) / max) * 100));
-            return `<div class="funnel-row"><span>${esc(step.label)}</span><div class="bar"><span style="width:${width}%"></span></div><strong>${esc(number(step.count))}</strong></div>`;
+            return `<div>
+              <div class="funnel-row"><span>${esc(step.label)}</span><div class="bar"><span style="width:${width}%"></span></div><strong>${esc(number(step.count))}</strong></div>
+              ${index < steps.length - 1 ? `<div class="funnel-arrow">↓</div>` : ""}
+            </div>`;
           }).join("");
+      bindJumpHandlers($("funnelVisual"));
+    }
+
+    function renderFunnelLoss(steps) {
+      if (steps.length < 2) return "";
+      let maxLoss = null;
+      for (let index = 1; index < steps.length; index += 1) {
+        const prev = Number(steps[index - 1].count || 0);
+        const current = Number(steps[index].count || 0);
+        const loss = Math.max(0, prev - current);
+        const rate = prev > 0 ? current / prev : 0;
+        if (!maxLoss || loss > maxLoss.loss) {
+          maxLoss = { from: steps[index - 1], to: steps[index], loss, rate };
+        }
+      }
+      if (!maxLoss) return "";
+      return `<div class="funnel-loss-card">
+        <h3>最大流失步骤</h3>
+        <div><strong>${esc(maxLoss.from.label)} → ${esc(maxLoss.to.label)}</strong></div>
+        <div class="dist-row"><span>流失数量</span><strong>${esc(number(maxLoss.loss))}</strong></div>
+        <div class="dist-row"><span>阶段转化率</span><strong>${esc(Math.round(maxLoss.rate * 1000) / 10)}%</strong></div>
+      </div>`;
     }
 
     function renderRecentTaskPanel(payload) {
@@ -691,8 +1014,9 @@ def render_workbench_html() -> str:
             </div>
             <div class="mini-meta">${esc(task.period || "-")} · ${esc(stepText(task.current_stage))} · ${esc(fmt(task.created_at))}</div>
           </div>`).join("")
-        : emptyBox("暂无任务", [{ label: "创建研报任务", view: "tasks", className: "primary" }]);
+        : `<div class="empty"><div>暂无任务</div><div class="empty-actions"><button class="btn primary" data-open-create-task>创建研报任务</button></div></div>`;
       bindJumpHandlers($("recentTasks"));
+      bindCreateTaskButtons($("recentTasks"));
       bindRecentTaskButtons($("recentTasks"));
     }
 
@@ -713,6 +1037,82 @@ def render_workbench_html() -> str:
         return `<div class="health-row"><span>${esc(label)}</span><strong>${esc(number(count))}</strong><span class="status ${cls}">${state}</span></div>`;
       }).join("") + (hasAny ? "" : `<div class="empty-actions"><button class="btn primary" data-jump="datasources">配置数据源</button></div>`);
       bindJumpHandlers($("dataSourceHealth"));
+    }
+
+    function renderDonutChart(targetId, rows, options = {}) {
+      const realRows = rows.filter((row) => Number(row.value || 0) > 0);
+      const displayRows = realRows.length ? realRows : (options.demoRows || []);
+      const total = displayRows.reduce((sum, row) => sum + Number(row.value || 0), 0);
+      if (!displayRows.length || total <= 0) {
+        $(targetId).innerHTML = emptyBox(options.emptyText || "暂无统计数据", options.actions || []);
+        bindJumpHandlers($(targetId));
+        return;
+      }
+      let start = 0;
+      const gradient = displayRows.map((row, index) => {
+        const value = Number(row.value || 0);
+        const end = start + (value / total) * 360;
+        const color = row.color || chartColors[index % chartColors.length];
+        const segment = `${color} ${start}deg ${end}deg`;
+        start = end;
+        return segment;
+      }).join(", ");
+      const legend = displayRows.map((row, index) => {
+        const color = row.color || chartColors[index % chartColors.length];
+        const ratio = total > 0 ? Math.round((Number(row.value || 0) / total) * 1000) / 10 : 0;
+        return `<div class="legend-row"><span class="legend-dot" style="background:${esc(color)}"></span><span>${esc(row.label)}</span><strong>${esc(number(row.value))} · ${esc(ratio)}%</strong></div>`;
+      }).join("");
+      $(targetId).innerHTML = `<div class="chart-card">
+        <div class="donut" style="background: conic-gradient(${gradient})">
+          <div class="donut-center"><div><strong>${esc(number(total))}</strong>${esc(options.centerLabel || "合计")}</div></div>
+        </div>
+        <div>
+          <div class="legend">${legend}</div>
+          ${realRows.length ? "" : `<div class="chart-note">${esc(options.demoNote || "暂无真实统计，当前显示流程示意。")}</div>`}
+        </div>
+      </div>`;
+    }
+
+    function renderDashboardCharts(summary) {
+      const sourceRows = Object.entries(summary.data_source_distribution || {}).map(([key, value], index) => ({
+        label: sourceText(key),
+        value,
+        color: chartColors[index % chartColors.length],
+      }));
+      renderDonutChart("dataSourceChart", sourceRows, {
+        centerLabel: "来源",
+        emptyText: "暂无数据源统计",
+        demoNote: "暂无真实数据源统计，当前显示示意分布。",
+        actions: [{ label: "配置数据源", view: "datasources", className: "primary" }],
+        demoRows: [
+          { label: "美国证监会年报", value: 35, color: chartColors[0] },
+          { label: "雅虎财经", value: 20, color: chartColors[1] },
+          { label: "巨潮资讯", value: 18, color: chartColors[2] },
+          { label: "港交所公告", value: 12, color: chartColors[3] },
+          { label: "本地文档", value: 15, color: chartColors[4] },
+        ],
+      });
+
+      const totalClaims = Number(summary.claim_count || 0);
+      const pending = Number(summary.review_pending_claim_count || 0);
+      const verified = Number(summary.verified_claim_count || 0);
+      const other = Math.max(0, totalClaims - pending - verified);
+      renderDonutChart("claimStatusChart", [
+        { label: "已校验", value: verified, color: chartColors[1] },
+        { label: "待复核", value: pending, color: chartColors[2] },
+        { label: "其他主张", value: other, color: chartColors[5] },
+      ], {
+        centerLabel: "主张",
+        emptyText: "暂无主张统计",
+        demoNote: "暂无真实主张统计，当前显示示意分布。",
+        actions: [{ label: "生成新研报", view: "tasks", className: "primary" }],
+        demoRows: [
+          { label: "已校验", value: 58, color: chartColors[1] },
+          { label: "待复核", value: 14, color: chartColors[2] },
+          { label: "引用缺失", value: 7, color: chartColors[3] },
+          { label: "数字冲突", value: 5, color: chartColors[4] },
+        ],
+      });
     }
 
     function renderReviewExceptions(summary) {
@@ -748,8 +1148,9 @@ def render_workbench_html() -> str:
             <td>${esc(fmt(task.finished_at || task.started_at || task.created_at))}</td>
             <td><button class="btn" data-task-detail-jump="${esc(task.task_id)}">查看</button></td>
           </tr>`).join("")
-        : `<tr><td colspan="7">${emptyBox("暂无研报任务", [{ label: "创建研报任务", view: "tasks", className: "primary" }])}</td></tr>`;
+        : `<tr><td colspan="7"><div class="empty"><div>暂无研报任务</div><div class="empty-actions"><button class="btn primary" data-open-create-task>创建研报任务</button></div></div></td></tr>`;
       bindJumpHandlers($("recentTaskRows"));
+      bindCreateTaskButtons($("recentTaskRows"));
       bindRecentTaskButtons($("recentTaskRows"));
     }
 
@@ -785,6 +1186,7 @@ def render_workbench_html() -> str:
         renderRecentTaskPanel(recentTasksPayload);
         renderDataSourceHealth(summary);
         renderReviewExceptions(summary);
+        renderDashboardCharts(summary);
         renderRecentTaskTable(recentTasksPayload);
         renderFunnel(funnel);
       } catch (error) {
