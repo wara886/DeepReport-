@@ -237,7 +237,7 @@ def render_workbench_html() -> str:
     tr[data-selectable="true"]:hover td { background: #f8fbff; }
     .status { display: inline-block; border-radius: 999px; padding: 3px 8px; font-size: 12px; background: var(--panel-2); color: var(--muted); white-space: nowrap; }
     .status.completed, .status.supported, .status.approved, .status.official, .status.success, .status.verified, .status.passed { color: var(--good); background: #e9f7ef; }
-    .status.failed, .status.rejected { color: var(--bad); background: #fff0ed; }
+    .status.failed, .status.rejected, .status.quality_failed { color: var(--bad); background: #fff0ed; }
     .status.running, .status.queued, .status.pending, .status.secondary, .status.regenerate_requested { color: var(--warn); background: #fff6e6; }
     .status.cancelled, .status.archived { color: var(--muted); background: #eef2f5; }
     .links { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -741,7 +741,7 @@ def render_workbench_html() -> str:
     const number = (v) => Number.isFinite(Number(v)) ? Number(v).toLocaleString() : "0";
     const pct = (v) => Math.round((Number(v) || 0) * 100) + "%";
     const activeState = { view: "dashboard" };
-    const terminalTaskStatuses = new Set(["completed", "failed", "timeout", "cancelled", "archived"]);
+    const terminalTaskStatuses = new Set(["completed", "failed", "timeout", "cancelled", "archived", "quality_failed"]);
     let taskPoller = null;
 
     const viewMeta = {
@@ -767,7 +767,7 @@ def render_workbench_html() -> str:
 
     const statusMap = {
       queued: "待启动", running: "运行中", completed: "已完成", failed: "失败", timeout: "超时",
-      cancelled: "已取消", archived: "已归档",
+      cancelled: "已取消", archived: "已归档", quality_failed: "质量未通过",
       pending: "待复核", approved: "已通过", rejected: "已驳回", regenerate_requested: "已请求重生成",
       supported: "已支持", verified: "已验证", passed: "通过", success: "成功", parsed: "已解析",
       official: "官方", primary: "一手", secondary: "二手", unknown: "未知",
@@ -1447,7 +1447,7 @@ def render_workbench_html() -> str:
         buttons.push(`<button class="btn primary" data-task-action="start" data-task-id="${id}">启动</button>`);
         buttons.push(`<button class="btn danger" data-task-action="cancel" data-task-id="${id}">取消</button>`);
       }
-      if (status === "failed" || status === "timeout" || status === "cancelled") {
+      if (status === "failed" || status === "timeout" || status === "cancelled" || status === "quality_failed") {
         buttons.push(`<button class="btn primary" data-task-action="retry" data-task-id="${id}">重试</button>`);
       }
       if (status !== "running" && status !== "archived") {

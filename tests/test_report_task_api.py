@@ -17,6 +17,15 @@ class FakeOrchestrator:
         return {"verification_passed": True, "quality_score": 0.88}
 
 
+def passing_quality_runner(output_dir, report_dir, **kwargs):
+    return {
+        "quality_report": {"objective_pass": True, "total_score": 0.91},
+        "llm_quality_review": {"llm_review_pass": True, "total_score": 0.9, "model_status": "test"},
+        "delivery_gate": {"delivery_pass": True, "objective_pass": True, "llm_review_pass": True},
+        "top_quality_issues": [],
+    }
+
+
 def build_service(tmp_path):
     return ReportTaskService(
         database_url=f"sqlite:///{tmp_path / 'tasks.db'}",
@@ -24,6 +33,7 @@ def build_service(tmp_path):
         report_root=tmp_path / "reports",
         memory_root=tmp_path / "memory",
         orchestrator_factory=FakeOrchestrator,
+        quality_runner=passing_quality_runner,
     )
 
 
@@ -168,6 +178,7 @@ def test_report_task_api_preserves_legacy_run_route(monkeypatch, tmp_path):
             output_root=tmp_path / "task_outputs",
             report_root=tmp_path / "task_reports",
             orchestrator_factory=FakeOrchestrator,
+            quality_runner=passing_quality_runner,
         ),
     )
 

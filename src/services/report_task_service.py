@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.app.chat_task_parser import latest_completed_period
+from src.app.web_ui import run_delivery_quality_pipeline
 from src.db.init_db import init_db
 from src.db.models import ReportArtifact, ReportTask, ReportTaskEvent
 from src.db.session import create_engine_for_url
@@ -44,6 +45,7 @@ class ReportTaskService:
         memory_root: str | Path = "memory/chat",
         mode: str = "user",
         orchestrator_factory: Callable[..., Any] | None = None,
+        quality_runner: Callable[..., dict[str, Any]] | None = None,
         engine: Engine | None = None,
     ) -> None:
         self.database_url = database_url
@@ -53,6 +55,7 @@ class ReportTaskService:
         self.memory_root = Path(memory_root)
         self.mode = mode
         self.orchestrator_factory = orchestrator_factory or MultiAgentOrchestrator
+        self.quality_runner = quality_runner or run_delivery_quality_pipeline
         self._engine = engine
         self._session_factory: sessionmaker[Session] | None = None
         self._init_lock = threading.Lock()
@@ -95,7 +98,7 @@ class ReportTaskService:
             task = self._get_task_for_update(session, task_id)
             if task.status == "running":
                 raise ReportTaskConflict(f"Task {task_id} is already running")
-            if task.status not in {"queued", "failed", "timeout"}:
+            if task.status not in {"queued", "failed", "timeout", "quality_failed"}:
                 return self.serialize_task(task)
 
             task.status = "running"
@@ -117,19 +120,31 @@ class ReportTaskService:
         try:
             self._run_orchestrator(task_id=task_id, metadata=metadata)
             artifacts = self.import_artifacts(task_id)
+            quality_result = self.run_quality_gate(task_id)
+            artifacts = self.import_artifacts(task_id)
             with self.session() as session:
                 task = self._get_task_for_update(session, task_id)
-                task.status = "completed"
-                task.current_stage = "completed"
+                delivery_gate = _dict_path(quality_result, "delivery_gate")
+                delivery_pass = delivery_gate.get("delivery_pass")
+                task.status = "completed" if delivery_pass is True else "quality_failed"
+                task.current_stage = task.status
                 task.finished_at = _utc_now()
                 task.error_message = None
+                task.quality_score = _quality_score_from_result(quality_result)
+                metadata = dict(task.metadata_json or {})
+                metadata["quality_result"] = _compact_quality_result(quality_result)
+                task.metadata_json = metadata
                 session.add(
                     ReportTaskEvent(
                         task_id=task.task_id,
-                        stage="completed",
-                        status="completed",
-                        message="Report task completed",
-                        metadata_json={"artifact_count": len(artifacts)},
+                        stage=task.status,
+                        status=task.status,
+                        message="Report task completed" if task.status == "completed" else "Report generated but quality gate failed",
+                        metadata_json={
+                            "artifact_count": len(artifacts),
+                            "delivery_pass": delivery_pass,
+                            "quality_score": task.quality_score,
+                        },
                     )
                 )
                 session.commit()
@@ -257,6 +272,54 @@ class ReportTaskService:
         )
         importer.import_for_task(task_id)
         return self.get_task(task_id).get("artifacts", [])
+
+    def run_quality_gate(self, task_id: str) -> dict[str, Any]:
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            metadata = dict(task.metadata_json or {})
+            output_dir = Path(str(metadata.get("output_dir") or ""))
+            report_dir = Path(str(metadata.get("report_dir") or ""))
+            session.add(
+                ReportTaskEvent(
+                    task_id=task_id,
+                    stage="quality_gate",
+                    status="running",
+                    message="Delivery quality pipeline started",
+                    metadata_json=None,
+                )
+            )
+            session.commit()
+
+        result = self.quality_runner(
+            output_dir,
+            report_dir,
+            config_path=self.config_path,
+            memory_enabled=bool(metadata.get("memory_enabled", False)),
+        )
+        score = _quality_score_from_result(result)
+        delivery_pass = _dict_path(result, "delivery_gate").get("delivery_pass")
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            if score is not None:
+                task.quality_score = score
+            metadata = dict(task.metadata_json or {})
+            metadata["quality_result"] = _compact_quality_result(result)
+            task.metadata_json = metadata
+            session.add(
+                ReportTaskEvent(
+                    task_id=task_id,
+                    stage="quality_gate",
+                    status="success" if delivery_pass is True else "failed",
+                    message="Delivery quality gate passed" if delivery_pass is True else "Delivery quality gate failed",
+                    metadata_json={
+                        "delivery_pass": delivery_pass,
+                        "quality_score": score,
+                        "top_quality_issues": _top_quality_issues(result),
+                    },
+                )
+            )
+            session.commit()
+        return result
 
     def list_tasks(self, *, status: str | None = None, symbol: str | None = None, limit: int = 50) -> dict[str, Any]:
         limit = max(1, min(int(limit or 50), 200))
@@ -484,6 +547,39 @@ def _normalize_search_engines(value: Any) -> list[str]:
     if value:
         return [part.strip() for part in str(value).split(",") if part.strip()]
     return []
+
+
+def _dict_path(payload: dict[str, Any], key: str) -> dict[str, Any]:
+    value = payload.get(key) if isinstance(payload, dict) else None
+    return value if isinstance(value, dict) else {}
+
+
+def _quality_score_from_result(result: dict[str, Any]) -> float | None:
+    candidates = [
+        _dict_path(result, "quality_report").get("total_score"),
+        _dict_path(result, "llm_quality_review").get("total_score"),
+    ]
+    for value in candidates:
+        if isinstance(value, (int, float)):
+            return float(value)
+    return None
+
+
+def _compact_quality_result(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "quality_report": _dict_path(result, "quality_report"),
+        "llm_quality_review": _dict_path(result, "llm_quality_review"),
+        "delivery_gate": _dict_path(result, "delivery_gate"),
+        "remediation_plan": _dict_path(result, "remediation_plan"),
+        "top_quality_issues": _top_quality_issues(result),
+    }
+
+
+def _top_quality_issues(result: dict[str, Any]) -> list[dict[str, Any]]:
+    issues = result.get("top_quality_issues") if isinstance(result, dict) else []
+    if not isinstance(issues, list):
+        return []
+    return [issue for issue in issues[:5] if isinstance(issue, dict)]
 
 
 def _report_links(artifacts: list[dict[str, Any]]) -> dict[str, Any]:
