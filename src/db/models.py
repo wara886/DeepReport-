@@ -62,6 +62,11 @@ class Workspace(Base):
         cascade="all, delete-orphan",
         order_by="WorkspaceCompany.id",
     )
+    data_sources: Mapped[list[DataSource]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        order_by="DataSource.id",
+    )
 
 
 class Company(Base):
@@ -110,6 +115,33 @@ class WorkspaceCompany(Base):
 
     workspace: Mapped[Workspace] = relationship(back_populates="companies")
     company: Mapped[Company | None] = relationship(back_populates="workspace_links")
+
+
+class DataSource(Base):
+    __tablename__ = "data_sources"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "source_key", name="uq_data_sources_workspace_source_key"),
+        Index("ix_data_sources_key_enabled", "source_key", "enabled"),
+        Index("ix_data_sources_workspace_enabled", "workspace_id", "enabled"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int | None] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    market_scope: Mapped[list[str] | None] = mapped_column(JSONVariant, nullable=True)
+    trust_level: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    config_json: Mapped[dict[str, Any] | None] = mapped_column("config", JSONVariant, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    credential_status: Mapped[str] = mapped_column(String(32), default="not_required", nullable=False)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONVariant, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+    workspace: Mapped[Workspace | None] = relationship(back_populates="data_sources")
 
 
 class Document(Base):

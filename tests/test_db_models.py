@@ -3,6 +3,7 @@ from sqlalchemy import inspect, select
 from src.db.models import (
     ClaimEvidence,
     Company,
+    DataSource,
     Document,
     DocumentProcessingStep,
     EvidenceItem,
@@ -52,6 +53,23 @@ def test_p0_models_expose_expected_columns(temp_db_engine):
             "risk_types",
             "notes",
             "is_active",
+            "metadata",
+            "created_at",
+        },
+        "data_sources": {
+            "id",
+            "workspace_id",
+            "name",
+            "source_key",
+            "source_type",
+            "market_scope",
+            "trust_level",
+            "config",
+            "enabled",
+            "credential_status",
+            "last_sync_at",
+            "last_status",
+            "last_error",
             "metadata",
             "created_at",
         },
@@ -167,6 +185,18 @@ def test_p0_model_relationship_round_trip(temp_db_session):
             aliases=["英伟达", "NVIDIA", "NVDA"],
         )
     )
+    workspace.data_sources.append(
+        DataSource(
+            name="美国证监会年报",
+            source_key="sec_edgar",
+            source_type="official_filing",
+            market_scope=["US"],
+            trust_level="official",
+            enabled=True,
+            credential_status="not_required",
+            config_json={"priority": 1},
+        )
+    )
     document = Document(
         company=company,
         batch_id="batch-001",
@@ -239,6 +269,8 @@ def test_p0_model_relationship_round_trip(temp_db_session):
     assert workspace.companies[0].symbol == "NVDA"
     assert workspace.companies[0].company is not None
     assert workspace.companies[0].company.symbol == "NVDA"
+    assert workspace.data_sources[0].source_key == "sec_edgar"
+    assert workspace.data_sources[0].config_json == {"priority": 1}
 
     step = temp_db_session.scalar(select(DocumentProcessingStep))
     assert step is not None

@@ -15,6 +15,7 @@ from src.app.web_ui import DEFAULT_OUTPUT_DIR, DEFAULT_REPORT_DIR, run_ui_server
 from src.app.workbench_frontend import render_workbench_html
 from src.services.claim_review_service import ClaimNotFound, ClaimReviewService
 from src.services.dashboard_service import DashboardService
+from src.services.datasource_service import DataSourceConflict, DataSourceNotFound, DataSourceService
 from src.services.document_service import DocumentNotFound, DocumentService
 from src.services.evidence_service import EvidenceNotFound, EvidenceService
 from src.services.export_service import ExportService, ExportTaskNotFound
@@ -95,6 +96,7 @@ def create_fastapi_app(
         orchestrator_factory=orchestrator_factory,
     )
     app.state.dashboard_service = DashboardService(session_factory=app.state.report_task_service.session)
+    app.state.datasource_service = DataSourceService(session_factory=app.state.report_task_service.session)
     app.state.evidence_service = EvidenceService(session_factory=app.state.report_task_service.session)
     app.state.claim_review_service = ClaimReviewService(session_factory=app.state.report_task_service.session)
     app.state.document_service = DocumentService(session_factory=app.state.report_task_service.session)
@@ -254,6 +256,78 @@ def create_fastapi_app(
             return JSONResponse(status_code=404, content={"error": f"Workspace not found: {workspace_ref}"})
         except WorkspaceCompanyNotFound:
             return JSONResponse(status_code=404, content={"error": f"Company not found in workspace: {q}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/data-sources/seed")
+    async def seed_data_sources(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(content=_datasource_service(app).seed_registered_sources(workspace_ref=payload.get("workspace_id") or payload.get("workspace")))
+        except DataSourceNotFound as exc:
+            return JSONResponse(status_code=404, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/data-sources")
+    def list_data_sources(
+        workspace_id: str | None = None,
+        enabled: bool | None = None,
+        q: str | None = None,
+        limit: int = 100,
+    ) -> Response:
+        try:
+            return JSONResponse(
+                content=_datasource_service(app).list_sources(
+                    workspace_ref=workspace_id,
+                    enabled=enabled,
+                    q=q,
+                    limit=limit,
+                )
+            )
+        except DataSourceNotFound as exc:
+            return JSONResponse(status_code=404, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/data-sources")
+    async def create_data_source(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(status_code=201, content=_datasource_service(app).create_source(payload))
+        except DataSourceConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except DataSourceNotFound as exc:
+            return JSONResponse(status_code=404, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/data-sources/{source_ref}")
+    def get_data_source(source_ref: str) -> Response:
+        try:
+            return JSONResponse(content=_datasource_service(app).get_source(source_ref))
+        except DataSourceNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Datasource not found: {source_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/data-sources/{source_ref}/enable")
+    async def enable_data_source(source_ref: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(content=_datasource_service(app).set_enabled(source_ref, bool(payload.get("enabled", True))))
+        except DataSourceNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Datasource not found: {source_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/data-sources/{source_ref}/health")
+    async def mark_data_source_health(source_ref: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(content=_datasource_service(app).mark_health(source_ref, payload))
+        except DataSourceNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Datasource not found: {source_ref}"})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -523,6 +597,10 @@ def _report_task_service(app: FastAPI) -> ReportTaskService:
 
 def _dashboard_service(app: FastAPI) -> DashboardService:
     return app.state.dashboard_service
+
+
+def _datasource_service(app: FastAPI) -> DataSourceService:
+    return app.state.datasource_service
 
 
 def _evidence_service(app: FastAPI) -> EvidenceService:

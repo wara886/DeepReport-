@@ -654,7 +654,37 @@ def render_workbench_html() -> str:
             </aside>
           </div>
         </section>
-        <section id="datasources" class="view"></section>
+        <section id="datasources" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">数据源管理</h2>
+                <div class="filters">
+                  <input id="datasourceQuery" placeholder="搜索数据源或类型" />
+                  <select id="datasourceEnabled">
+                    <option value="">全部状态</option>
+                    <option value="true">已启用</option>
+                    <option value="false">已停用</option>
+                  </select>
+                  <button class="btn" id="seedDatasources">同步注册源</button>
+                  <button class="btn" id="refreshDatasources">刷新</button>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr><th>数据源</th><th>类型</th><th>市场</th><th>可信度</th><th>凭证</th><th>最近状态</th><th>操作</th></tr>
+                  </thead>
+                  <tbody id="datasourceRows"></tbody>
+                </table>
+              </div>
+            </section>
+            <aside class="panel detail" id="datasourceDetail">
+              <h2>数据源详情</h2>
+              <div class="empty">选择一个数据源查看配置、健康状态和最近错误。</div>
+            </aside>
+          </div>
+        </section>
         <section id="ingestion" class="view"></section>
         <section id="manual" class="view"></section>
         <section id="facts" class="view"></section>
@@ -748,7 +778,7 @@ def render_workbench_html() -> str:
       dashboard: ["投研首页", "任务、证据、主张与处理漏斗"],
       workspace: ["投研空间", "市场、股票池、指标、风险和默认数据源配置"],
       stockpool: ["股票池管理", "维护空间内公司、代码、市场、行业和别名"],
-      datasources: ["数据源管理", "阶段1接入数据源表后启用"],
+      datasources: ["数据源管理", "配置来源启停、凭证状态、最近同步与错误"],
       ingestion: ["采集任务", "阶段1接入采集批次后启用"],
       manual: ["手动导入", "阶段1接入手动导入后启用"],
       documents: ["文档处理中心", "查看文档处理路径、失败步骤和关联证据"],
@@ -771,6 +801,8 @@ def render_workbench_html() -> str:
       pending: "待复核", approved: "已通过", rejected: "已驳回", regenerate_requested: "已请求重生成",
       supported: "已支持", verified: "已验证", passed: "通过", success: "成功", parsed: "已解析",
       official: "官方", primary: "一手", secondary: "二手", unknown: "未知",
+      not_required: "无需凭证", required: "需配置", configured: "已配置", expired: "已过期",
+      not_run: "未运行",
       approve: "通过", reject: "驳回", edit: "保存修改", regenerate: "重生成",
       rejected_claims_present: "存在已驳回主张", pending_claim_review: "存在待复核主张",
     };
@@ -894,6 +926,7 @@ def render_workbench_html() -> str:
       if (view === "dashboard") loadDashboard();
       else if (view === "workspace") loadWorkspaces();
       else if (view === "stockpool") loadStockpool();
+      else if (view === "datasources") loadDatasources();
       else if (view === "tasks") loadTasks();
       else if (view === "evidence") loadEvidence();
       else if (view === "documents") loadDocuments();
@@ -1161,6 +1194,113 @@ def render_workbench_html() -> str:
       } catch (error) {
         $("stockpoolMessage").innerHTML = `<div class="error">添加失败，该公司可能已在当前股票池。</div>`;
       }
+    }
+
+    function datasourceTypeText(value) {
+      const map = {
+        official_filing: "官方年报",
+        official_announcement: "官方公告",
+        financial_statement: "财务报表",
+        market_data: "行情数据",
+        web_search: "网页搜索",
+        local_dataset: "本地数据",
+        local_index: "本地索引",
+        macro_data: "宏观数据",
+        external: "外部来源",
+      };
+      return textOf(map, value);
+    }
+
+    async function loadDatasources() {
+      const params = new URLSearchParams();
+      const q = $("datasourceQuery").value.trim();
+      const enabled = $("datasourceEnabled").value;
+      if (q) params.set("q", q);
+      if (enabled) params.set("enabled", enabled);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      try {
+        const payload = await getJson("/api/data-sources" + suffix);
+        const rows = payload.items || [];
+        $("datasourceRows").innerHTML = rows.length
+          ? rows.map((item) => `<tr data-selectable="true">
+              <td><button class="btn" data-datasource-detail="${esc(item.id)}">${esc(item.name)}</button><br><span class="label mono">${esc(item.source_key)}</span></td>
+              <td>${esc(datasourceTypeText(item.source_type))}</td>
+              <td>${renderList(item.market_scope)}</td>
+              <td><span class="status ${esc(item.trust_level || "secondary")}">${esc(statusText(item.trust_level || "secondary"))}</span></td>
+              <td><span class="status ${esc(item.credential_status)}">${esc(statusText(item.credential_status))}</span></td>
+              <td><span class="status ${esc(item.last_status || "pending")}">${esc(statusText(item.last_status || "pending"))}</span><br><span class="label">${esc(fmt(item.last_sync_at))}</span></td>
+              <td class="links">
+                <button class="btn" data-datasource-toggle="${esc(item.id)}" data-enabled="${item.enabled ? "false" : "true"}">${item.enabled ? "停用" : "启用"}</button>
+                <button class="btn" data-datasource-health="${esc(item.id)}">标记正常</button>
+              </td>
+            </tr>`).join("")
+          : `<tr><td colspan="7"><div class="empty"><div>暂无数据源</div><div class="empty-actions"><button class="btn primary" id="seedDatasourcesInline">同步注册源</button></div></div></td></tr>`;
+        bindDatasourceButtons($("datasourceRows"));
+        const inline = $("seedDatasourcesInline");
+        if (inline) inline.addEventListener("click", seedDatasources);
+      } catch (error) {
+        showLoadError("datasourceRows", 7);
+      }
+    }
+
+    function bindDatasourceButtons(root = document) {
+      root.querySelectorAll("[data-datasource-detail]").forEach((btn) => {
+        if (btn.dataset.boundDatasourceDetail === "true") return;
+        btn.dataset.boundDatasourceDetail = "true";
+        btn.addEventListener("click", () => loadDatasourceDetail(btn.dataset.datasourceDetail));
+      });
+      root.querySelectorAll("[data-datasource-toggle]").forEach((btn) => {
+        if (btn.dataset.boundDatasourceToggle === "true") return;
+        btn.dataset.boundDatasourceToggle = "true";
+        btn.addEventListener("click", () => toggleDatasource(btn.dataset.datasourceToggle, btn.dataset.enabled === "true"));
+      });
+      root.querySelectorAll("[data-datasource-health]").forEach((btn) => {
+        if (btn.dataset.boundDatasourceHealth === "true") return;
+        btn.dataset.boundDatasourceHealth = "true";
+        btn.addEventListener("click", () => markDatasourceHealth(btn.dataset.datasourceHealth));
+      });
+    }
+
+    async function loadDatasourceDetail(sourceId) {
+      try {
+        const item = await getJson(`/api/data-sources/${encodeURIComponent(sourceId)}`);
+        $("datasourceDetail").innerHTML = `<h2>数据源详情</h2>
+          <div class="kv"><span class="label">名称</span><span>${esc(item.name)}</span></div>
+          <div class="kv"><span class="label">标识</span><span class="mono">${esc(item.source_key)}</span></div>
+          <div class="kv"><span class="label">类型</span><span>${esc(datasourceTypeText(item.source_type))}</span></div>
+          <div class="kv"><span class="label">市场</span><span>${renderList(item.market_scope)}</span></div>
+          <div class="kv"><span class="label">可信度</span><span><span class="status ${esc(item.trust_level || "secondary")}">${esc(statusText(item.trust_level || "secondary"))}</span></span></div>
+          <div class="kv"><span class="label">启用</span><span>${item.enabled ? "是" : "否"}</span></div>
+          <div class="kv"><span class="label">凭证</span><span><span class="status ${esc(item.credential_status)}">${esc(statusText(item.credential_status))}</span></span></div>
+          <div class="kv"><span class="label">最近状态</span><span><span class="status ${esc(item.last_status || "pending")}">${esc(statusText(item.last_status || "pending"))}</span></span></div>
+          <div class="kv"><span class="label">最近同步</span><span>${esc(fmt(item.last_sync_at))}</span></div>
+          ${item.last_error ? `<div class="detail-section"><h3>最近错误</h3><div class="text-block">${esc(item.last_error)}</div></div>` : ""}
+          <div class="detail-section"><h3>配置</h3><div class="text-block">${esc(JSON.stringify(item.config || {}, null, 2))}</div></div>`;
+      } catch (error) {
+        showLoadError("datasourceDetail");
+      }
+    }
+
+    async function seedDatasources() {
+      try {
+        const result = await postJson("/api/data-sources/seed", {});
+        $("datasourceDetail").innerHTML = `<h2>同步注册源</h2><div class="empty">已同步 ${esc(number(result.created))} 个新数据源。</div>`;
+        await loadDatasources();
+      } catch (error) {
+        $("datasourceDetail").innerHTML = `<div class="error">同步失败，请检查 SearchManager 配置。</div>`;
+      }
+    }
+
+    async function toggleDatasource(sourceId, enabled) {
+      await postJson(`/api/data-sources/${encodeURIComponent(sourceId)}/enable`, { enabled });
+      await loadDatasources();
+      await loadDatasourceDetail(sourceId);
+    }
+
+    async function markDatasourceHealth(sourceId) {
+      await postJson(`/api/data-sources/${encodeURIComponent(sourceId)}/health`, { last_status: "success" });
+      await loadDatasources();
+      await loadDatasourceDetail(sourceId);
     }
 
     function renderCards(summary) {
@@ -1865,6 +2005,10 @@ def render_workbench_html() -> str:
     $("addStockCompany").addEventListener("click", addStockCompany);
     $("stockpoolWorkspace").addEventListener("change", loadStockpool);
     $("stockpoolQuery").addEventListener("keydown", (event) => { if (event.key === "Enter") loadStockpool(); });
+    $("refreshDatasources").addEventListener("click", loadDatasources);
+    $("seedDatasources").addEventListener("click", seedDatasources);
+    $("datasourceQuery").addEventListener("keydown", (event) => { if (event.key === "Enter") loadDatasources(); });
+    $("datasourceEnabled").addEventListener("change", loadDatasources);
     $("refreshTasks").addEventListener("click", loadTasks);
     $("symbolFilter").addEventListener("keydown", (event) => { if (event.key === "Enter") loadTasks(); });
     $("refreshEvidence").addEventListener("click", loadEvidence);
