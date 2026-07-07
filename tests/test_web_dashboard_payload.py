@@ -64,6 +64,9 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "主张状态分布" in html
     assert "处理链路" in html
     assert "当前暂无真实处理数据" in html
+    assert "当前真实统计尚未形成完整累计漏斗" in html
+    assert "请切换到“处理链路”查看真实阶段计数" in html
+    assert "isValidFunnelSeries" in html
     assert "最大流失步骤" in html
     assert "funnel-layer" in html
     assert "funnelVisual" in html

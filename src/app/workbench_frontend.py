@@ -146,16 +146,16 @@ def render_workbench_html() -> str:
     .tab-switch button.active { background: #fff; color: var(--text); box-shadow: 0 1px 4px rgba(16,24,32,.08); }
     .funnel-view { display: none; }
     .funnel-view.active { display: block; }
-    .funnel-demo-note { border: 1px solid #f4d39b; background: #fff8ea; color: #8a5300; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+    .funnel-demo-note { border: 1px solid #f4d39b; background: #fff8ea; color: #8a5300; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; line-height: 1.5; }
     .funnel-visual { display: grid; gap: 8px; margin-bottom: 14px; }
     .funnel-layer {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto auto;
       align-items: center;
-      gap: 14px;
+      gap: 12px;
       min-height: 48px;
       margin: 0 auto;
-      padding: 0 18px;
+      padding: 0 16px;
       border: 1px solid #b8d5ee;
       background: linear-gradient(90deg, #e9f6ff 0%, #f7fbff 100%);
       border-radius: 10px;
@@ -168,8 +168,9 @@ def render_workbench_html() -> str:
       width: 100%;
     }
     .funnel-layer:hover { border-color: var(--accent); background: #eef8ff; }
+    .funnel-layer span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .funnel-layer strong { font-size: 16px; }
-    .funnel-layer .rate { color: var(--muted); min-width: 72px; text-align: right; }
+    .funnel-layer .rate { color: var(--muted); min-width: 58px; text-align: right; white-space: nowrap; }
     .funnel-loss-card { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 12px; margin-top: 12px; display: grid; gap: 7px; font-size: 13px; }
     .funnel-loss-card h3 { margin: 0; font-size: 14px; }
     .funnel-stage {
@@ -776,6 +777,8 @@ def render_workbench_html() -> str:
     const sourceMap = {
       sec_edgar: "美国证监会年报", cninfo: "巨潮资讯", hkex: "港交所公告",
       eastmoney: "东方财富", yahoo_finance: "雅虎财经", news: "新闻",
+      company_profile: "公司画像", market_api: "行情接口", market_data: "行情数据",
+      financials: "财务数据", filing: "公告文件", filings: "公告文件", local_pdf: "本地文档",
     };
     const stepMap = {
       ingest: "入库", parse: "解析", table_extract: "表格抽取", chunk: "切分",
@@ -1186,18 +1189,43 @@ def render_workbench_html() -> str:
         : `<div class="empty">暂无数据</div>`;
     }
 
+    function hasRealFunnelCounts(steps) {
+      return steps.some((step) => Number(step.count || 0) > 0);
+    }
+
+    function isValidFunnelSeries(steps) {
+      if (!hasRealFunnelCounts(steps)) return false;
+      for (let index = 1; index < steps.length; index += 1) {
+        const prev = Number(steps[index - 1].count || 0);
+        const current = Number(steps[index].count || 0);
+        if (current > prev) return false;
+      }
+      return true;
+    }
+
+    function funnelNoteHtml(hasRealCounts, hasConsistentFunnel) {
+      if (!hasRealCounts) {
+        return `<div class="funnel-demo-note">当前暂无真实处理数据，以下为流程示意。创建研报任务或导入文档后将展示真实统计。</div>`;
+      }
+      if (!hasConsistentFunnel) {
+        return `<div class="funnel-demo-note">当前真实统计尚未形成完整累计漏斗，以下展示流程示意；请切换到“处理链路”查看真实阶段计数。</div>`;
+      }
+      return "";
+    }
+
     function renderFunnel(payload) {
       const rawSteps = payload.steps || [];
-      const hasRealCounts = rawSteps.some((step) => Number(step.count || 0) > 0);
-      const steps = hasRealCounts ? rawSteps : funnelDemoSteps;
-      const max = Math.max(1, ...steps.map((step) => Number(step.count || 0)));
-      $("funnelDemoNote").innerHTML = hasRealCounts
-        ? ""
-        : `<div class="funnel-demo-note">当前暂无真实处理数据，以下为流程示意。创建研报任务或导入文档后将展示真实统计。</div>`;
-      $("funnelVisual").innerHTML = steps.map((step, index) => {
+      const hasRealCounts = hasRealFunnelCounts(rawSteps);
+      const hasConsistentFunnel = isValidFunnelSeries(rawSteps);
+      const visualSteps = hasConsistentFunnel ? rawSteps : funnelDemoSteps;
+      const chainSteps = hasRealCounts ? rawSteps : funnelDemoSteps;
+      const visualMax = Math.max(1, ...visualSteps.map((step) => Number(step.count || 0)));
+      const chainMax = Math.max(1, ...chainSteps.map((step) => Number(step.count || 0)));
+      $("funnelDemoNote").innerHTML = funnelNoteHtml(hasRealCounts, hasConsistentFunnel);
+      $("funnelVisual").innerHTML = visualSteps.map((step, index) => {
         const count = Number(step.count || 0);
-        const prev = index === 0 ? count : Number(steps[index - 1].count || 0);
-        const width = Math.max(28, Math.round((count / max) * 100));
+        const prev = index === 0 ? count : Number(visualSteps[index - 1].count || 0);
+        const width = Math.max(40, Math.round((count / visualMax) * 100));
         const rate = index === 0 ? "基准" : (prev > 0 ? `${Math.round((count / prev) * 1000) / 10}%` : "-");
         const target = funnelTargets[step.key] || { view: "documents" };
         return `<button class="funnel-layer" style="width:${width}%" data-jump="${esc(target.view)}"${target.documentStep ? ` data-document-step="${esc(target.documentStep)}"` : ""}${target.claimStatus ? ` data-claim-status="${esc(target.claimStatus)}"` : ""}${target.claimVerification ? ` data-claim-verification="${esc(target.claimVerification)}"` : ""}>
@@ -1206,12 +1234,12 @@ def render_workbench_html() -> str:
           <span class="rate">${esc(rate)}</span>
         </button>`;
       }).join("");
-      $("funnelLoss").innerHTML = renderFunnelLoss(steps);
-      $("funnel").innerHTML = steps.map((step, index) => {
-            const width = Math.max(2, Math.round((Number(step.count || 0) / max) * 100));
+      $("funnelLoss").innerHTML = renderFunnelLoss(visualSteps);
+      $("funnel").innerHTML = chainSteps.map((step, index) => {
+            const width = Math.max(2, Math.round((Number(step.count || 0) / chainMax) * 100));
             return `<div>
               <div class="funnel-row"><span>${esc(step.label)}</span><div class="bar"><span style="width:${width}%"></span></div><strong>${esc(number(step.count))}</strong></div>
-              ${index < steps.length - 1 ? `<div class="funnel-arrow">↓</div>` : ""}
+              ${index < chainSteps.length - 1 ? `<div class="funnel-arrow">↓</div>` : ""}
             </div>`;
           }).join("");
       bindJumpHandlers($("funnelVisual"));
@@ -1261,6 +1289,8 @@ def render_workbench_html() -> str:
         ["cninfo", "巨潮资讯"],
         ["hkex", "港交所公告"],
         ["yahoo_finance", "雅虎财经"],
+        ["company_profile", "公司画像"],
+        ["market_api", "行情接口"],
         ["local_pdf", "本地文档"],
       ];
       const hasAny = Object.values(values).some((value) => Number(value || 0) > 0);
