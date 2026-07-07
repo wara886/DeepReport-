@@ -35,9 +35,36 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
 
     assert page.status_code == 200
     html = page.text
-    assert "FinSight Research Workbench" in html
+    assert "慧研投研工作台" in html
+    assert "投研首页" in html
+    assert "创建研报任务" in html
+    assert "公司或股票代码" in html
+    assert "查询期间" in html
+    assert "报告类型" in html
+    assert "运行方式" in html
+    assert "taskCompanyInput" in html
+    assert "companyCandidates" in html
+    assert "data-open-create-task" in html
+    assert "最近任务" in html
+    assert "数据源健康" in html
+    assert "复核异常" in html
+    assert "最近研报任务" in html
+    assert "数据源分布" in html
+    assert "主张状态分布" in html
+    assert "处理链路" in html
+    assert "当前暂无真实处理数据" in html
+    assert "最大流失步骤" in html
+    assert "funnel-layer" in html
+    assert "funnelVisual" in html
+    assert "funnelLoss" in html
+    assert "dataSourceHealth" in html
+    assert "dataSourceChart" in html
+    assert "claimStatusChart" in html
+    assert "reviewExceptions" in html
+    assert "recentTaskRows" in html
     assert 'getJson("/api/dashboard/summary")' in html
     assert 'getJson("/api/dashboard/funnel")' in html
+    assert 'getJson("/api/report-tasks?limit=6")' in html
     assert "/api/report-tasks" in html
     assert "/api/latest" not in html
 

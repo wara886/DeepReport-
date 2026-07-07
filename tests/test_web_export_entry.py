@@ -1,11 +1,11 @@
 from fastapi.testclient import TestClient
 
 from src.app.api_fastapi import create_fastapi_app
-from src.db.models import EvidenceItem
+from src.db.models import ReportArtifact, ReportTask
 from src.services.report_task_service import ReportTaskService
 
 
-def test_workbench_exposes_evidence_center_contract(temp_db_engine, tmp_path):
+def test_workbench_exposes_export_center_entry_contract(temp_db_engine, tmp_path):
     service = ReportTaskService(
         engine=temp_db_engine,
         output_root=tmp_path / "outputs",
@@ -13,14 +13,8 @@ def test_workbench_exposes_evidence_center_contract(temp_db_engine, tmp_path):
         memory_root=tmp_path / "memory",
     )
     with service.session() as session:
-        session.add(
-            EvidenceItem(
-                evidence_id="ev_web_contract",
-                content="Evidence visible from the workbench.",
-                source_type="sec_edgar",
-                trust_level="official",
-            )
-        )
+        session.add(ReportTask(task_id="task-web-export", symbol="TSLA", period="FY2024", status="completed"))
+        session.add(ReportArtifact(task_id="task-web-export", artifact_type="html", path="report.html", url="/artifacts/report.html"))
         session.commit()
     app = create_fastapi_app(
         output_dir=str(tmp_path / "legacy_outputs"),
@@ -31,15 +25,13 @@ def test_workbench_exposes_evidence_center_contract(temp_db_engine, tmp_path):
 
     with TestClient(app) as client:
         page = client.get("/workbench")
-        evidence = client.get("/api/evidence")
+        exports = client.get("/api/exports")
 
     assert page.status_code == 200
     html = page.text
-    assert "证据库" in html
-    assert 'getJson("/api/evidence" + suffix)' in html
-    assert 'getJson(`/api/evidence/${encodeURIComponent(evidenceId)}`)' in html
-    assert "主张复核" in html
-    assert "文档处理中心" in html
     assert "导出中心" in html
-    assert evidence.status_code == 200
-    assert evidence.json()["items"][0]["evidence_id"] == "ev_web_contract"
+    assert 'getJson("/api/exports" + suffix)' in html
+    assert 'getJson(`/api/exports/${encodeURIComponent(taskId)}`)' in html
+    assert "正式导出" in html
+    assert exports.status_code == 200
+    assert exports.json()["items"][0]["task_id"] == "task-web-export"

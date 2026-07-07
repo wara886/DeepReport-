@@ -48,3 +48,10 @@ def test_configure_session_uses_explicit_sqlite_database(tmp_path):
 
     assert configured is engine
     assert get_database_url(database_url) == database_url
+
+
+def test_default_database_url_is_local_sqlite(monkeypatch):
+    monkeypatch.delenv("FINSIGHT_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    assert get_database_url() == "sqlite:///data/finsight_workbench.db"

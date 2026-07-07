@@ -43,6 +43,9 @@ data/curated_real/
 data/features_real/
 data/outputs_real/
 data/reports_real/
+data/*.db
+data/*.sqlite
+data/*.sqlite3
 __pycache__/
 scripts/__pycache__/
 
