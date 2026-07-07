@@ -17,6 +17,7 @@ def test_dashboard_summary_aggregates_database_state(temp_db_engine, tmp_path):
             [
                 ReportTask(task_id="task-ok", symbol="NVDA", period="FY2024", status="completed", quality_score=0.9),
                 ReportTask(task_id="task-failed", symbol="TSLA", period="FY2024", status="failed"),
+                ReportTask(task_id="task-archived", symbol="AAPL", period="FY2024", status="archived", quality_score=0.1),
                 EvidenceItem(evidence_id="ev_sec", content="10-K evidence", source_type="sec_edgar", trust_level="official"),
                 EvidenceItem(evidence_id="ev_news", content="news evidence", source_type="news", trust_level="secondary"),
                 ReportClaim(task_id="task-ok", claim_text="Supported claim", verification_status="supported", review_status="pending"),

@@ -238,6 +238,7 @@ def render_workbench_html() -> str:
     .status.completed, .status.supported, .status.approved, .status.official, .status.success, .status.verified, .status.passed { color: var(--good); background: #e9f7ef; }
     .status.failed, .status.rejected { color: var(--bad); background: #fff0ed; }
     .status.running, .status.queued, .status.pending, .status.secondary, .status.regenerate_requested { color: var(--warn); background: #fff6e6; }
+    .status.cancelled, .status.archived { color: var(--muted); background: #eef2f5; }
     .links { display: flex; gap: 6px; flex-wrap: wrap; }
     .detail { position: sticky; top: 82px; max-height: calc(100vh - 104px); overflow-y: auto; }
     .detail-section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
@@ -420,7 +421,7 @@ def render_workbench_html() -> str:
               <div class="table-scroll">
                 <table>
                   <thead>
-                    <tr><th>任务</th><th>公司</th><th>状态</th><th>阶段</th><th>创建时间</th><th>产物</th></tr>
+                    <tr><th>任务</th><th>公司</th><th>状态</th><th>阶段</th><th>创建时间</th><th>产物</th><th>操作</th></tr>
                   </thead>
                   <tbody id="taskRows"></tbody>
                 </table>
@@ -674,6 +675,8 @@ def render_workbench_html() -> str:
     const number = (v) => Number.isFinite(Number(v)) ? Number(v).toLocaleString() : "0";
     const pct = (v) => Math.round((Number(v) || 0) * 100) + "%";
     const activeState = { view: "dashboard" };
+    const terminalTaskStatuses = new Set(["completed", "failed", "timeout", "cancelled", "archived"]);
+    let taskPoller = null;
 
     const viewMeta = {
       dashboard: ["投研首页", "任务、证据、主张与处理漏斗"],
@@ -697,7 +700,8 @@ def render_workbench_html() -> str:
     };
 
     const statusMap = {
-      queued: "排队中", running: "运行中", completed: "已完成", failed: "失败", timeout: "超时",
+      queued: "待启动", running: "运行中", completed: "已完成", failed: "失败", timeout: "超时",
+      cancelled: "已取消", archived: "已归档",
       pending: "待复核", approved: "已通过", rejected: "已驳回", regenerate_requested: "已请求重生成",
       supported: "已支持", verified: "已验证", passed: "通过", success: "成功", parsed: "已解析",
       official: "官方", primary: "一手", secondary: "二手", unknown: "未知",
@@ -712,11 +716,16 @@ def render_workbench_html() -> str:
       ingest: "入库", parse: "解析", table_extract: "表格抽取", chunk: "切分",
       evidence: "证据化", claim_bind: "绑定主张", verify: "校验",
       orchestrator: "多智能体执行", artifact_import: "产物导入", completed: "完成",
-      queued: "排队", retry: "重试", failed: "失败", claim_review: "主张复核",
+      queued: "待启动", retry: "重试", failed: "失败", cancelled: "已取消", archived: "已归档", claim_review: "主张复核",
     };
     const artifactMap = {
       html: "网页报告", markdown: "文稿", json: "结构化数据",
       claims: "主张数据", evidence: "证据数据", verification_report: "校验报告",
+    };
+    const dataSourceScopeMap = {
+      official_first: "官方公告优先",
+      all_available: "全部可用来源",
+      local_only: "仅本地文档",
     };
     const chartColors = ["#1677ff", "#0f8f7a", "#b56a00", "#7c3aed", "#d92d20", "#475467"];
     const funnelDemoSteps = [
@@ -761,6 +770,11 @@ def render_workbench_html() -> str:
     const sourceText = (value) => textOf(sourceMap, value);
     const stepText = (value) => textOf(stepMap, value);
     const artifactText = (value) => textOf(artifactMap, value);
+    const dataSourceScopeText = (value) => textOf(dataSourceScopeMap, value);
+    const shortTaskId = (value) => {
+      const text = String(value || "");
+      return text.length > 18 ? `${text.slice(0, 10)}...${text.slice(-5)}` : text;
+    };
 
     document.querySelectorAll(".nav button").forEach((btn) => {
       btn.addEventListener("click", () => activateView(btn.dataset.view));
@@ -1175,6 +1189,90 @@ def render_workbench_html() -> str:
       return `<div class="links">${buttons.join("")}</div>`;
     }
 
+    function taskActionButtons(task) {
+      const status = String(task.status || "");
+      const id = esc(task.task_id);
+      const buttons = [];
+      if (status === "queued") {
+        buttons.push(`<button class="btn primary" data-task-action="start" data-task-id="${id}">启动</button>`);
+        buttons.push(`<button class="btn danger" data-task-action="cancel" data-task-id="${id}">取消</button>`);
+      }
+      if (status === "failed" || status === "timeout" || status === "cancelled") {
+        buttons.push(`<button class="btn primary" data-task-action="retry" data-task-id="${id}">重试</button>`);
+      }
+      if (status !== "running" && status !== "archived") {
+        buttons.push(`<button class="btn" data-task-action="archive" data-task-id="${id}">归档</button>`);
+      }
+      if (status === "running") {
+        buttons.push(`<span class="label">运行中任务暂不支持强制停止</span>`);
+      }
+      return buttons.length ? `<div class="links">${buttons.join("")}</div>` : `<span class="label">无可用操作</span>`;
+    }
+
+    function bindTaskActionButtons(root = document) {
+      root.querySelectorAll("[data-task-action]").forEach((btn) => {
+        if (btn.dataset.boundTaskAction === "true") return;
+        btn.dataset.boundTaskAction = "true";
+        btn.addEventListener("click", () => taskLifecycleAction(btn.dataset.taskId, btn.dataset.taskAction));
+      });
+    }
+
+    async function taskLifecycleAction(taskId, action) {
+      const labels = { start: "启动", retry: "重试", cancel: "取消", archive: "归档" };
+      if (["start", "retry", "cancel", "archive"].includes(action) && !confirm(`确认${labels[action]}该研报任务？`)) return;
+      const payloadByAction = {
+        start: { run_immediately: true, run_async: true },
+        retry: { run_immediately: true, run_async: true },
+        cancel: { reason: "用户在工作台取消" },
+        archive: { reason: "用户在工作台归档" },
+      };
+      const endpointByAction = {
+        start: "start",
+        retry: "retry",
+        cancel: "cancel",
+        archive: "archive",
+      };
+      try {
+        const endpoint = endpointByAction[action];
+        const updated = await postJson(`/api/report-tasks/${encodeURIComponent(taskId)}/${endpoint}`, payloadByAction[action]);
+        await loadTasks();
+        await loadTaskDetail(updated.task_id || taskId);
+        loadDashboard();
+        if (action === "start" || action === "retry") scheduleTaskRefresh(updated.task_id || taskId);
+      } catch (error) {
+        $("taskDetail").insertAdjacentHTML("afterbegin", `<div class="error">${esc(labels[action] || "操作")}失败，请刷新后重试。</div>`);
+      }
+    }
+
+    function scheduleTaskRefresh(taskId) {
+      if (taskPoller) {
+        clearInterval(taskPoller.timer);
+        taskPoller = null;
+      }
+      let attempts = 0;
+      taskPoller = {
+        taskId,
+        timer: setInterval(async () => {
+          attempts += 1;
+          try {
+            const task = await getJson(`/api/report-tasks/${encodeURIComponent(taskId)}`);
+            if (activeState.view === "tasks") await loadTaskDetail(task.task_id);
+            await loadTasks();
+            loadDashboard();
+            if (terminalTaskStatuses.has(String(task.status || "")) || attempts >= 30) {
+              clearInterval(taskPoller.timer);
+              taskPoller = null;
+            }
+          } catch (error) {
+            if (taskPoller) {
+              clearInterval(taskPoller.timer);
+              taskPoller = null;
+            }
+          }
+        }, 2000),
+      };
+    }
+
     async function loadDashboard() {
       try {
         const [summary, funnel, recentTasksPayload] = await Promise.all([
@@ -1202,19 +1300,21 @@ def render_workbench_html() -> str:
         const rows = payload.items || [];
         $("taskRows").innerHTML = rows.length
           ? rows.map((task) => `<tr data-selectable="true" data-task-id="${esc(task.task_id)}">
-              <td><button class="btn" data-task-detail="${esc(task.task_id)}">${esc(task.task_id)}</button></td>
+              <td><button class="btn mono" title="${esc(task.task_id)}" data-task-detail="${esc(task.task_id)}">${esc(shortTaskId(task.task_id))}</button></td>
               <td>${esc(task.symbol)}<br><span class="label">${esc(task.period)}</span></td>
               <td><span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span></td>
               <td>${esc(stepText(task.current_stage))}</td>
               <td>${esc(fmt(task.created_at))}</td>
               <td>${artifactButtons(task)}</td>
+              <td>${taskActionButtons(task)}</td>
             </tr>`).join("")
-          : `<tr><td colspan="6"><div class="empty">暂无研报任务</div></td></tr>`;
+          : `<tr><td colspan="7"><div class="empty">暂无研报任务</div></td></tr>`;
         document.querySelectorAll("[data-task-detail]").forEach((btn) => {
           btn.addEventListener("click", () => loadTaskDetail(btn.dataset.taskDetail));
         });
+        bindTaskActionButtons($("taskRows"));
       } catch (error) {
-        showLoadError("taskRows", 6);
+        showLoadError("taskRows", 7);
       }
     }
 
@@ -1222,17 +1322,24 @@ def render_workbench_html() -> str:
       try {
         const task = await getJson(`/api/report-tasks/${encodeURIComponent(taskId)}`);
         const events = task.events || [];
+        const metadata = task.metadata || {};
         $("taskDetail").innerHTML = `<h2>任务详情</h2>
           <div class="kv"><span class="label">任务</span><span class="mono">${esc(task.task_id)}</span></div>
-          <div class="kv"><span class="label">股票代码</span><span>${esc(task.symbol)} / ${esc(task.period)}</span></div>
+          <div class="kv"><span class="label">公司</span><span>${esc(metadata.company_name || task.symbol)} / ${esc(task.symbol)}</span></div>
+          <div class="kv"><span class="label">查询期间</span><span>${esc(task.period)}</span></div>
+          <div class="kv"><span class="label">报告类型</span><span>${esc(reportTypeText(task.report_type))}</span></div>
+          <div class="kv"><span class="label">数据源范围</span><span>${esc(dataSourceScopeText(metadata.data_source_scope))}</span></div>
           <div class="kv"><span class="label">状态</span><span><span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span></span></div>
           <div class="kv"><span class="label">阶段</span><span>${esc(stepText(task.current_stage))}</span></div>
           <div class="kv"><span class="label">质量分</span><span>${esc(fmt(task.quality_score))}</span></div>
+          <div class="detail-section"><h3>研究问题</h3><div class="text-block">${esc(metadata.research_topic || "-")}</div></div>
+          <div class="detail-section"><h3>任务操作</h3>${taskActionButtons(task)}</div>
           ${task.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(task.error_message)}</div></div>` : ""}
           <div class="detail-section"><h3>产物</h3>${artifactButtons(task)}</div>
           <div class="detail-section"><h3>时间线</h3><div class="timeline">${
             events.length ? events.map((event) => `<div class="event"><strong>${esc(stepText(event.stage))}</strong> <span class="status ${esc(event.status)}">${esc(statusText(event.status))}</span><br><span class="label">${esc(fmt(event.created_at))}</span><br>${esc(fmt(event.message))}</div>`).join("") : `<div class="empty">暂无事件</div>`
           }</div></div>`;
+        bindTaskActionButtons($("taskDetail"));
       } catch (error) {
         showLoadError("taskDetail");
       }

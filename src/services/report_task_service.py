@@ -158,6 +158,8 @@ class ReportTaskService:
             task = self._get_task_for_update(session, task_id)
             if task.status == "running":
                 raise ReportTaskConflict(f"Task {task_id} is already running")
+            if task.status == "archived":
+                raise ReportTaskConflict(f"Task {task_id} cannot be retried from archived status")
             task.status = "queued"
             task.current_stage = "queued"
             task.error_message = None
@@ -175,6 +177,76 @@ class ReportTaskService:
             session.commit()
         if run_immediately:
             return self.run_task(task_id)
+        return self.get_task(task_id)
+
+    def start_task(self, task_id: str, *, run_immediately: bool = True) -> dict[str, Any]:
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            if task.status == "running":
+                raise ReportTaskConflict(f"Task {task_id} is already running")
+            if task.status != "queued":
+                raise ReportTaskConflict(f"Task {task_id} cannot be started from status {task.status}")
+            task.current_stage = "queued"
+            session.add(
+                ReportTaskEvent(
+                    task_id=task.task_id,
+                    stage="start",
+                    status="queued",
+                    message="Report task started from workbench",
+                    metadata_json=None,
+                )
+            )
+            session.commit()
+        if run_immediately:
+            return self.run_task(task_id)
+        return self.get_task(task_id)
+
+    def cancel_task(self, task_id: str, *, reason: str | None = None) -> dict[str, Any]:
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            if task.status in {"running", "completed", "failed", "cancelled", "archived"}:
+                raise ReportTaskConflict(f"Task {task_id} cannot be cancelled from status {task.status}")
+            task.status = "cancelled"
+            task.current_stage = "cancelled"
+            task.finished_at = _utc_now()
+            task.error_message = reason or "Task cancelled by user"
+            session.add(
+                ReportTaskEvent(
+                    task_id=task.task_id,
+                    stage="cancelled",
+                    status="cancelled",
+                    message=task.error_message,
+                    metadata_json={"source": "api"},
+                )
+            )
+            session.commit()
+        return self.get_task(task_id)
+
+    def archive_task(self, task_id: str, *, reason: str | None = None) -> dict[str, Any]:
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            if task.status == "running":
+                raise ReportTaskConflict(f"Task {task_id} is running and cannot be archived")
+            if task.status == "archived":
+                raise ReportTaskConflict(f"Task {task_id} is already archived")
+            previous_status = task.status
+            task.status = "archived"
+            task.current_stage = "archived"
+            task.finished_at = task.finished_at or _utc_now()
+            metadata = dict(task.metadata_json or {})
+            metadata["archived_from_status"] = previous_status
+            metadata["archive_reason"] = reason or "Archived by user"
+            task.metadata_json = metadata
+            session.add(
+                ReportTaskEvent(
+                    task_id=task.task_id,
+                    stage="archived",
+                    status="archived",
+                    message=metadata["archive_reason"],
+                    metadata_json={"previous_status": previous_status, "source": "api"},
+                )
+            )
+            session.commit()
         return self.get_task(task_id)
 
     def import_artifacts(self, task_id: str) -> list[dict[str, Any]]:
@@ -199,6 +271,9 @@ class ReportTaskService:
             if status:
                 stmt = stmt.where(ReportTask.status == status)
                 count_stmt = count_stmt.where(ReportTask.status == status)
+            else:
+                stmt = stmt.where(ReportTask.status != "archived")
+                count_stmt = count_stmt.where(ReportTask.status != "archived")
             if symbol:
                 normalized_symbol = symbol.strip().upper()
                 stmt = stmt.where(ReportTask.symbol == normalized_symbol)
@@ -297,8 +372,11 @@ class ReportTaskService:
             "request_id": request_state["request_id"],
             "session_id": request_state["session_id"],
             "research_topic": str(payload.get("research_topic") or payload.get("topic") or f"Generate {symbol} {period} research report"),
+            "company_name": str(payload.get("company_name") or symbol),
             "symbol": symbol,
             "period": period,
+            "report_type": str(payload.get("report_type") or "equity_research"),
+            "data_source_scope": str(payload.get("data_source_scope") or "official_first"),
             "execution_mode": execution_mode,
             "fast": bool(payload.get("fast", True)),
             "search_engines": _normalize_search_engines(payload.get("search_engines")),

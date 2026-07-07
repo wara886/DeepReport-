@@ -42,7 +42,12 @@ class DashboardService:
 
     def summary(self) -> dict[str, Any]:
         with self.session_factory() as session:
-            task_status = _counter(session.execute(select(ReportTask.status, func.count()).group_by(ReportTask.status)).all())
+            active_task_condition = ReportTask.status != "archived"
+            task_status = _counter(
+                session.execute(
+                    select(ReportTask.status, func.count()).where(active_task_condition).group_by(ReportTask.status)
+                ).all()
+            )
             source_distribution = _counter(
                 session.execute(select(EvidenceItem.source_type, func.count()).group_by(EvidenceItem.source_type)).all(),
                 empty_key="unknown",
@@ -54,7 +59,12 @@ class DashboardService:
             verified_claims = _verified_claim_count(session)
             total_claims = _count(session, ReportClaim.id)
             quality_scores = list(
-                session.scalars(select(ReportTask.quality_score).where(ReportTask.quality_score.is_not(None))).all()
+                session.scalars(
+                    select(ReportTask.quality_score).where(
+                        active_task_condition,
+                        ReportTask.quality_score.is_not(None),
+                    )
+                ).all()
             )
             completed_tasks = int(task_status.get("completed", 0))
             failed_tasks = int(task_status.get("failed", 0))

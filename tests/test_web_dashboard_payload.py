@@ -42,6 +42,13 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "查询期间" in html
     assert "报告类型" in html
     assert "运行方式" in html
+    assert "任务操作" in html
+    assert "研究问题" in html
+    assert "数据源范围" in html
+    assert "启动" in html
+    assert "取消" in html
+    assert "重试" in html
+    assert "归档" in html
     assert "taskCompanyInput" in html
     assert "companyCandidates" in html
     assert "data-open-create-task" in html
@@ -65,6 +72,13 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert 'getJson("/api/dashboard/summary")' in html
     assert 'getJson("/api/dashboard/funnel")' in html
     assert 'getJson("/api/report-tasks?limit=6")' in html
+    assert 'start: "start"' in html
+    assert 'cancel: "cancel"' in html
+    assert 'archive: "archive"' in html
+    assert "scheduleTaskRefresh" in html
+    assert 'terminalTaskStatuses' in html
+    assert "shortTaskId" in html
+    assert "确认${labels[action]}该研报任务" in html
     assert "/api/report-tasks" in html
     assert "/api/latest" not in html
 

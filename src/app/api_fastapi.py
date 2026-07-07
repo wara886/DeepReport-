@@ -375,6 +375,48 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.post("/api/report-tasks/{task_id}/start")
+    async def start_report_task(task_id: str, incoming: Request, background_tasks: BackgroundTasks) -> Response:
+        payload = await _json_payload(incoming)
+        run_async = bool(payload.get("run_async", payload.get("async_report_run", True))
+        )
+        try:
+            if run_async:
+                task = _report_task_service(app).start_task(task_id, run_immediately=False)
+                background_tasks.add_task(_report_task_service(app).run_task, task_id)
+                return JSONResponse(status_code=202, content=task)
+            return JSONResponse(content=_report_task_service(app).start_task(task_id, run_immediately=True))
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except ReportTaskConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/report-tasks/{task_id}/cancel")
+    async def cancel_report_task(task_id: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(content=_report_task_service(app).cancel_task(task_id, reason=_optional_string(payload.get("reason"))))
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except ReportTaskConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/report-tasks/{task_id}/archive")
+    async def archive_report_task(task_id: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(content=_report_task_service(app).archive_task(task_id, reason=_optional_string(payload.get("reason"))))
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except ReportTaskConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.get("/artifacts/{artifact_path:path}")
     def artifacts(artifact_path: str, incoming: Request) -> Response:
         suffix = f"?{incoming.url.query}" if incoming.url.query else ""
