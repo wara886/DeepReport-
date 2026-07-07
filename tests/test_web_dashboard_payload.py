@@ -37,6 +37,10 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     html = page.text
     assert "慧研投研工作台" in html
     assert "投研首页" in html
+    assert "投研空间" in html
+    assert "股票池管理" in html
+    assert "创建投研空间" in html
+    assert "添加股票池公司" in html
     assert "创建研报任务" in html
     assert "公司或股票代码" in html
     assert "查询期间" in html
@@ -72,6 +76,9 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert 'getJson("/api/dashboard/summary")' in html
     assert 'getJson("/api/dashboard/funnel")' in html
     assert 'getJson("/api/report-tasks?limit=6")' in html
+    assert 'getJson("/api/workspaces")' in html
+    assert "/api/workspaces/${encodeURIComponent(workspaceId)}/companies" in html
+    assert "resolveCompanyForTask" in html
     assert 'start: "start"' in html
     assert 'cancel: "cancel"' in html
     assert 'archive: "archive"' in html

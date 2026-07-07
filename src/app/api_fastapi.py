@@ -23,6 +23,12 @@ from src.services.report_task_service import (
     ReportTaskNotFound,
     ReportTaskService,
 )
+from src.services.workspace_service import (
+    WorkspaceCompanyNotFound,
+    WorkspaceConflict,
+    WorkspaceNotFound,
+    WorkspaceService,
+)
 
 # Mode-aware default roots
 USER_OUTPUT_DIR = "data/outputs_user"
@@ -93,6 +99,7 @@ def create_fastapi_app(
     app.state.claim_review_service = ClaimReviewService(session_factory=app.state.report_task_service.session)
     app.state.document_service = DocumentService(session_factory=app.state.report_task_service.session)
     app.state.export_service = ExportService(session_factory=app.state.report_task_service.session)
+    app.state.workspace_service = WorkspaceService(session_factory=app.state.report_task_service.session)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -175,6 +182,78 @@ def create_fastapi_app(
     def dashboard_funnel() -> Response:
         try:
             return JSONResponse(content=_dashboard_service(app).funnel())
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/workspaces")
+    def list_workspaces(market: str | None = None, active_only: bool = False, limit: int = 50) -> Response:
+        try:
+            return JSONResponse(
+                content=_workspace_service(app).list_workspaces(market=market, active_only=active_only, limit=limit)
+            )
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/workspaces")
+    async def create_workspace(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(status_code=201, content=_workspace_service(app).create_workspace(payload))
+        except WorkspaceConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/workspaces/{workspace_ref}")
+    def get_workspace(workspace_ref: str) -> Response:
+        try:
+            return JSONResponse(content=_workspace_service(app).get_workspace(workspace_ref))
+        except WorkspaceNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Workspace not found: {workspace_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/workspaces/{workspace_ref}/companies")
+    def list_workspace_companies(
+        workspace_ref: str,
+        q: str | None = None,
+        active_only: bool = False,
+        limit: int = 100,
+    ) -> Response:
+        try:
+            return JSONResponse(
+                content=_workspace_service(app).list_companies(
+                    workspace_ref,
+                    q=q,
+                    active_only=active_only,
+                    limit=limit,
+                )
+            )
+        except WorkspaceNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Workspace not found: {workspace_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/workspaces/{workspace_ref}/companies")
+    async def add_workspace_company(workspace_ref: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(status_code=201, content=_workspace_service(app).add_company(workspace_ref, payload))
+        except WorkspaceNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Workspace not found: {workspace_ref}"})
+        except WorkspaceConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/workspaces/{workspace_ref}/resolve-company")
+    def resolve_workspace_company(workspace_ref: str, q: str) -> Response:
+        try:
+            return JSONResponse(content=_workspace_service(app).resolve_company(workspace_ref, q))
+        except WorkspaceNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Workspace not found: {workspace_ref}"})
+        except WorkspaceCompanyNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Company not found in workspace: {q}"})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -460,6 +539,10 @@ def _document_service(app: FastAPI) -> DocumentService:
 
 def _export_service(app: FastAPI) -> ExportService:
     return app.state.export_service
+
+
+def _workspace_service(app: FastAPI) -> WorkspaceService:
+    return app.state.workspace_service
 
 
 def _optional_string(value: Any) -> str | None:

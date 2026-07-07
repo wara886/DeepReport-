@@ -33,6 +33,37 @@ class Base(DeclarativeBase):
     """Base class for database models."""
 
 
+class Workspace(Base):
+    __tablename__ = "workspaces"
+    __table_args__ = (
+        UniqueConstraint("slug", name="uq_workspaces_slug"),
+        Index("ix_workspaces_market_active", "market", "is_active"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(128), nullable=False)
+    market: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    keywords: Mapped[list[str] | None] = mapped_column(JSONVariant, nullable=True)
+    excluded_keywords: Mapped[list[str] | None] = mapped_column(JSONVariant, nullable=True)
+    focus_metrics: Mapped[list[str] | None] = mapped_column(JSONVariant, nullable=True)
+    risk_types: Mapped[list[str] | None] = mapped_column(JSONVariant, nullable=True)
+    evidence_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quality_gate_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    default_data_sources: Mapped[list[str] | None] = mapped_column(JSONVariant, nullable=True)
+    report_template: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONVariant, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+    companies: Mapped[list[WorkspaceCompany]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        order_by="WorkspaceCompany.id",
+    )
+
+
 class Company(Base):
     __tablename__ = "companies"
     __table_args__ = (
@@ -51,6 +82,34 @@ class Company(Base):
     documents: Mapped[list[Document]] = relationship(back_populates="company", cascade="all, delete-orphan")
     evidence_items: Mapped[list[EvidenceItem]] = relationship(back_populates="company")
     report_tasks: Mapped[list[ReportTask]] = relationship(back_populates="company")
+    workspace_links: Mapped[list[WorkspaceCompany]] = relationship(back_populates="company")
+
+
+class WorkspaceCompany(Base):
+    __tablename__ = "workspace_companies"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "symbol", "market", name="uq_workspace_companies_symbol_market"),
+        Index("ix_workspace_companies_workspace_active", "workspace_id", "is_active"),
+        Index("ix_workspace_companies_symbol_market", "symbol", "market"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    market: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    aliases: Mapped[list[str] | None] = mapped_column(JSONVariant, nullable=True)
+    focus_metrics: Mapped[list[str] | None] = mapped_column(JSONVariant, nullable=True)
+    risk_types: Mapped[list[str] | None] = mapped_column(JSONVariant, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONVariant, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+    workspace: Mapped[Workspace] = relationship(back_populates="companies")
+    company: Mapped[Company | None] = relationship(back_populates="workspace_links")
 
 
 class Document(Base):

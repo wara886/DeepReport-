@@ -14,6 +14,8 @@ def test_init_db_creates_p0_tables(tmp_path):
     assert table_names == set(Base.metadata.tables)
     assert {
         "companies",
+        "workspaces",
+        "workspace_companies",
         "documents",
         "document_processing_steps",
         "evidence_items",

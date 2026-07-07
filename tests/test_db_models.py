@@ -11,6 +11,8 @@ from src.db.models import (
     ReportTask,
     ReportTaskEvent,
     ReviewRecord,
+    Workspace,
+    WorkspaceCompany,
 )
 
 
@@ -19,6 +21,40 @@ def test_p0_models_expose_expected_columns(temp_db_engine):
 
     expected_columns = {
         "companies": {"id", "name", "symbol", "market", "industry", "aliases", "created_at"},
+        "workspaces": {
+            "id",
+            "name",
+            "slug",
+            "market",
+            "description",
+            "keywords",
+            "excluded_keywords",
+            "focus_metrics",
+            "risk_types",
+            "evidence_threshold",
+            "quality_gate_threshold",
+            "default_data_sources",
+            "report_template",
+            "is_active",
+            "metadata",
+            "created_at",
+        },
+        "workspace_companies": {
+            "id",
+            "workspace_id",
+            "company_id",
+            "name",
+            "symbol",
+            "market",
+            "industry",
+            "aliases",
+            "focus_metrics",
+            "risk_types",
+            "notes",
+            "is_active",
+            "metadata",
+            "created_at",
+        },
         "documents": {
             "id",
             "company_id",
@@ -113,6 +149,24 @@ def test_p0_models_expose_expected_columns(temp_db_engine):
 
 def test_p0_model_relationship_round_trip(temp_db_session):
     company = Company(name="NVIDIA Corporation", symbol="NVDA", market="US", aliases=["NVIDIA", "NVDA"])
+    workspace = Workspace(
+        name="AI 投研空间",
+        slug="ai-research",
+        market="US",
+        focus_metrics=["revenue", "gross_margin"],
+        risk_types=["valuation", "supply_chain"],
+        default_data_sources=["sec_edgar"],
+    )
+    workspace.companies.append(
+        WorkspaceCompany(
+            company=company,
+            name="NVIDIA Corporation",
+            symbol="NVDA",
+            market="US",
+            industry="Semiconductors",
+            aliases=["英伟达", "NVIDIA", "NVDA"],
+        )
+    )
     document = Document(
         company=company,
         batch_id="batch-001",
@@ -168,10 +222,11 @@ def test_p0_model_relationship_round_trip(temp_db_session):
         after_value={"review_status": "approved"},
         reviewer="analyst@example.com",
     )
-    temp_db_session.add_all([company, review])
+    temp_db_session.add_all([workspace, review])
     temp_db_session.commit()
 
     task = temp_db_session.scalar(select(ReportTask).where(ReportTask.task_id == "task-001"))
+    workspace = temp_db_session.scalar(select(Workspace).where(Workspace.slug == "ai-research"))
 
     assert task is not None
     assert task.company is not None
@@ -180,6 +235,10 @@ def test_p0_model_relationship_round_trip(temp_db_session):
     assert task.artifacts[0].artifact_type == "html"
     assert task.claims[0].evidence_links[0].evidence_item.evidence_id == "ev-001"
     assert task.claims[0].evidence_links[0].support_type == "supports"
+    assert workspace is not None
+    assert workspace.companies[0].symbol == "NVDA"
+    assert workspace.companies[0].company is not None
+    assert workspace.companies[0].company.symbol == "NVDA"
 
     step = temp_db_session.scalar(select(DocumentProcessingStep))
     assert step is not None

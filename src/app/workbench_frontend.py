@@ -293,8 +293,8 @@ def render_workbench_html() -> str:
       </div>
       <nav class="nav" aria-label="工作台导航">
         <button class="active" data-view="dashboard"><span>投研首页</span><span class="tag available">可用</span></button>
-        <button data-view="workspace"><span>投研空间</span><span class="tag planned">规划中</span></button>
-        <button data-view="stockpool"><span>股票池管理</span><span class="tag planned">规划中</span></button>
+        <button data-view="workspace"><span>投研空间</span><span class="tag preview">预览</span></button>
+        <button data-view="stockpool"><span>股票池管理</span><span class="tag preview">预览</span></button>
         <button data-view="datasources"><span>数据源管理</span><span class="tag planned">规划中</span></button>
         <button data-view="ingestion"><span>采集任务</span><span class="tag planned">规划中</span></button>
         <button data-view="manual"><span>手动导入</span><span class="tag planned">规划中</span></button>
@@ -586,8 +586,73 @@ def render_workbench_html() -> str:
           </div>
         </section>
 
-        <section id="workspace" class="view"></section>
-        <section id="stockpool" class="view"></section>
+        <section id="workspace" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">投研空间</h2>
+                <div class="filters">
+                  <button class="btn" id="refreshWorkspaces">刷新</button>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr><th>空间</th><th>市场</th><th>股票池</th><th>关注指标</th><th>风险类型</th><th>数据源</th></tr>
+                  </thead>
+                  <tbody id="workspaceRows"></tbody>
+                </table>
+              </div>
+            </section>
+            <aside class="panel detail">
+              <h2>创建投研空间</h2>
+              <div class="form-grid">
+                <div class="field full"><label for="workspaceName">空间名称</label><input id="workspaceName" placeholder="例如：AI 美股投研空间" /></div>
+                <div class="field"><label for="workspaceSlug">空间标识</label><input id="workspaceSlug" placeholder="ai-us" /></div>
+                <div class="field"><label for="workspaceMarket">市场</label><input id="workspaceMarket" placeholder="US / HK / CN-A" /></div>
+                <div class="field full"><label for="workspaceMetrics">关注指标</label><input id="workspaceMetrics" placeholder="收入, 毛利率, 自由现金流" /></div>
+                <div class="field full"><label for="workspaceRisks">风险类型</label><input id="workspaceRisks" placeholder="估值风险, 现金流风险, 监管风险" /></div>
+                <div class="field full"><label for="workspaceSources">默认数据源</label><input id="workspaceSources" placeholder="sec_edgar, yahoo_finance" /></div>
+              </div>
+              <div class="modal-actions"><button class="btn primary" id="createWorkspace">创建空间</button></div>
+              <div id="workspaceMessage"></div>
+            </aside>
+          </div>
+        </section>
+        <section id="stockpool" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">股票池管理</h2>
+                <div class="filters">
+                  <select id="stockpoolWorkspace"></select>
+                  <input id="stockpoolQuery" placeholder="搜索公司、代码或行业" />
+                  <button class="btn" id="refreshStockpool">刷新</button>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr><th>公司</th><th>市场</th><th>行业</th><th>别名</th><th>关注指标</th><th>风险类型</th></tr>
+                  </thead>
+                  <tbody id="stockpoolRows"></tbody>
+                </table>
+              </div>
+            </section>
+            <aside class="panel detail">
+              <h2>添加股票池公司</h2>
+              <div class="form-grid">
+                <div class="field full"><label for="stockCompanyName">公司名称</label><input id="stockCompanyName" placeholder="例如：NVIDIA Corporation" /></div>
+                <div class="field"><label for="stockSymbol">股票代码</label><input id="stockSymbol" placeholder="NVDA" /></div>
+                <div class="field"><label for="stockMarket">市场</label><input id="stockMarket" placeholder="US" /></div>
+                <div class="field full"><label for="stockIndustry">行业</label><input id="stockIndustry" placeholder="Semiconductors" /></div>
+                <div class="field full"><label for="stockAliases">公司别名</label><input id="stockAliases" placeholder="英伟达, NVIDIA, NVDA" /></div>
+              </div>
+              <div class="modal-actions"><button class="btn primary" id="addStockCompany">添加公司</button></div>
+              <div id="stockpoolMessage"></div>
+            </aside>
+          </div>
+        </section>
         <section id="datasources" class="view"></section>
         <section id="ingestion" class="view"></section>
         <section id="manual" class="view"></section>
@@ -680,8 +745,8 @@ def render_workbench_html() -> str:
 
     const viewMeta = {
       dashboard: ["投研首页", "任务、证据、主张与处理漏斗"],
-      workspace: ["投研空间", "阶段1接入投研空间配置后启用"],
-      stockpool: ["股票池管理", "阶段1接入股票池公司后启用"],
+      workspace: ["投研空间", "市场、股票池、指标、风险和默认数据源配置"],
+      stockpool: ["股票池管理", "维护空间内公司、代码、市场、行业和别名"],
       datasources: ["数据源管理", "阶段1接入数据源表后启用"],
       ingestion: ["采集任务", "阶段1接入采集批次后启用"],
       manual: ["手动导入", "阶段1接入手动导入后启用"],
@@ -824,6 +889,8 @@ def render_workbench_html() -> str:
       $("viewTitle").textContent = meta[0];
       $("viewSubtitle").textContent = meta[1];
       if (view === "dashboard") loadDashboard();
+      else if (view === "workspace") loadWorkspaces();
+      else if (view === "stockpool") loadStockpool();
       else if (view === "tasks") loadTasks();
       else if (view === "evidence") loadEvidence();
       else if (view === "documents") loadDocuments();
@@ -910,7 +977,7 @@ def render_workbench_html() -> str:
 
     async function submitCreateTask(event) {
       event.preventDefault();
-      const resolved = resolveCompany($("taskCompanyInput").value);
+      const resolved = await resolveCompanyForTask($("taskCompanyInput").value);
       if (!resolved) {
         $("createTaskMessage").innerHTML = `<div class="error">请输入公司名称或股票代码。</div>`;
         return;
@@ -923,6 +990,8 @@ def render_workbench_html() -> str:
         research_topic: $("taskTopicInput").value.trim(),
         data_source_scope: $("taskDataSourceInput").value,
         company_name: resolved.name,
+        workspace_id: resolved.workspace_id || undefined,
+        company_id: resolved.company_id || undefined,
         run_immediately: runMode === "async",
         run_async: runMode === "async",
       };
@@ -937,6 +1006,157 @@ def render_workbench_html() -> str:
         loadDashboard();
       } catch (error) {
         $("createTaskMessage").innerHTML = `<div class="error">创建失败，请检查服务配置或稍后重试。</div>`;
+      }
+    }
+
+    async function resolveCompanyForTask(input) {
+      const raw = String(input || "").trim();
+      if (!raw) return null;
+      try {
+        const workspaces = await getJson("/api/workspaces?active_only=true&limit=1");
+        const workspace = (workspaces.items || [])[0];
+        if (workspace) {
+          const item = await getJson(`/api/workspaces/${encodeURIComponent(workspace.id)}/resolve-company?q=${encodeURIComponent(raw)}`);
+          return {
+            name: item.name,
+            symbol: item.symbol,
+            workspace_id: item.workspace_id,
+            company_id: item.company_id,
+          };
+        }
+      } catch (error) {
+        return resolveCompany(raw);
+      }
+      return resolveCompany(raw);
+    }
+
+    function csvList(value) {
+      return String(value || "").split(/[,，\n]/).map((item) => item.trim()).filter(Boolean);
+    }
+
+    function renderList(values) {
+      const items = Array.isArray(values) ? values : [];
+      return items.length ? items.map((item) => esc(item)).join("、") : "-";
+    }
+
+    async function loadWorkspaces() {
+      try {
+        const payload = await getJson("/api/workspaces");
+        const rows = payload.items || [];
+        $("workspaceRows").innerHTML = rows.length
+          ? rows.map((item) => `<tr data-selectable="true">
+              <td><button class="btn" data-workspace-stockpool="${esc(item.id)}">${esc(item.name)}</button><br><span class="label mono">${esc(item.slug)}</span></td>
+              <td>${esc(item.market || "-")}</td>
+              <td>${esc(number(item.active_company_count))} / ${esc(number(item.company_count))}</td>
+              <td>${renderList(item.focus_metrics)}</td>
+              <td>${renderList(item.risk_types)}</td>
+              <td>${renderList(item.default_data_sources)}</td>
+            </tr>`).join("")
+          : `<tr><td colspan="6"><div class="empty">暂无投研空间</div></td></tr>`;
+        bindWorkspaceButtons($("workspaceRows"));
+        await populateWorkspaceSelect(rows, $("stockpoolWorkspace").value);
+      } catch (error) {
+        showLoadError("workspaceRows", 6);
+      }
+    }
+
+    function bindWorkspaceButtons(root = document) {
+      root.querySelectorAll("[data-workspace-stockpool]").forEach((btn) => {
+        if (btn.dataset.boundWorkspaceStockpool === "true") return;
+        btn.dataset.boundWorkspaceStockpool = "true";
+        btn.addEventListener("click", () => {
+          activateView("stockpool");
+          $("stockpoolWorkspace").value = btn.dataset.workspaceStockpool;
+          loadStockpool();
+        });
+      });
+    }
+
+    async function createWorkspace() {
+      const payload = {
+        name: $("workspaceName").value.trim(),
+        slug: $("workspaceSlug").value.trim(),
+        market: $("workspaceMarket").value.trim(),
+        focus_metrics: csvList($("workspaceMetrics").value),
+        risk_types: csvList($("workspaceRisks").value),
+        default_data_sources: csvList($("workspaceSources").value),
+      };
+      if (!payload.name) {
+        $("workspaceMessage").innerHTML = `<div class="error">请输入空间名称。</div>`;
+        return;
+      }
+      try {
+        const created = await postJson("/api/workspaces", payload);
+        $("workspaceMessage").innerHTML = `<div class="empty">已创建投研空间：${esc(created.name)}</div>`;
+        await loadWorkspaces();
+      } catch (error) {
+        $("workspaceMessage").innerHTML = `<div class="error">创建失败，空间标识可能已存在。</div>`;
+      }
+    }
+
+    async function populateWorkspaceSelect(existingRows = null, preferredValue = "") {
+      const rows = existingRows || (await getJson("/api/workspaces")).items || [];
+      $("stockpoolWorkspace").innerHTML = rows.length
+        ? rows.map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join("")
+        : `<option value="">暂无投研空间</option>`;
+      if (preferredValue && rows.some((item) => String(item.id) === String(preferredValue))) {
+        $("stockpoolWorkspace").value = preferredValue;
+      }
+    }
+
+    async function loadStockpool() {
+      try {
+        const workspaces = await getJson("/api/workspaces");
+        const previousSelection = $("stockpoolWorkspace").value;
+        await populateWorkspaceSelect(workspaces.items || [], previousSelection);
+        const selected = $("stockpoolWorkspace").value || ((workspaces.items || [])[0]?.id ?? "");
+        if (!selected) {
+          $("stockpoolRows").innerHTML = `<tr><td colspan="6"><div class="empty">请先创建投研空间</div></td></tr>`;
+          return;
+        }
+        $("stockpoolWorkspace").value = selected;
+        const query = $("stockpoolQuery").value.trim();
+        const suffix = query ? `?q=${encodeURIComponent(query)}` : "";
+        const payload = await getJson(`/api/workspaces/${encodeURIComponent(selected)}/companies${suffix}`);
+        const rows = payload.items || [];
+        $("stockpoolRows").innerHTML = rows.length
+          ? rows.map((item) => `<tr data-selectable="true">
+              <td><strong>${esc(item.name)}</strong><br><span class="label mono">${esc(item.symbol)}</span></td>
+              <td>${esc(item.market || "-")}</td>
+              <td>${esc(item.industry || "-")}</td>
+              <td>${renderList(item.aliases)}</td>
+              <td>${renderList(item.focus_metrics)}</td>
+              <td>${renderList(item.risk_types)}</td>
+            </tr>`).join("")
+          : `<tr><td colspan="6"><div class="empty">暂无股票池公司</div></td></tr>`;
+      } catch (error) {
+        showLoadError("stockpoolRows", 6);
+      }
+    }
+
+    async function addStockCompany() {
+      const workspaceId = $("stockpoolWorkspace").value;
+      if (!workspaceId) {
+        $("stockpoolMessage").innerHTML = `<div class="error">请先创建或选择投研空间。</div>`;
+        return;
+      }
+      const payload = {
+        name: $("stockCompanyName").value.trim(),
+        symbol: $("stockSymbol").value.trim(),
+        market: $("stockMarket").value.trim(),
+        industry: $("stockIndustry").value.trim(),
+        aliases: csvList($("stockAliases").value),
+      };
+      if (!payload.name || !payload.symbol) {
+        $("stockpoolMessage").innerHTML = `<div class="error">请输入公司名称和股票代码。</div>`;
+        return;
+      }
+      try {
+        const item = await postJson(`/api/workspaces/${encodeURIComponent(workspaceId)}/companies`, payload);
+        $("stockpoolMessage").innerHTML = `<div class="empty">已添加：${esc(item.name)} / ${esc(item.symbol)}</div>`;
+        await loadStockpool();
+      } catch (error) {
+        $("stockpoolMessage").innerHTML = `<div class="error">添加失败，该公司可能已在当前股票池。</div>`;
       }
     }
 
@@ -1609,6 +1829,12 @@ def render_workbench_html() -> str:
     }
 
     $("refreshView").addEventListener("click", () => activateView(activeState.view));
+    $("refreshWorkspaces").addEventListener("click", loadWorkspaces);
+    $("createWorkspace").addEventListener("click", createWorkspace);
+    $("refreshStockpool").addEventListener("click", loadStockpool);
+    $("addStockCompany").addEventListener("click", addStockCompany);
+    $("stockpoolWorkspace").addEventListener("change", loadStockpool);
+    $("stockpoolQuery").addEventListener("keydown", (event) => { if (event.key === "Enter") loadStockpool(); });
     $("refreshTasks").addEventListener("click", loadTasks);
     $("symbolFilter").addEventListener("keydown", (event) => { if (event.key === "Enter") loadTasks(); });
     $("refreshEvidence").addEventListener("click", loadEvidence);
