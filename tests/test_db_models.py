@@ -7,6 +7,8 @@ from src.db.models import (
     Document,
     DocumentProcessingStep,
     EvidenceItem,
+    IngestionBatch,
+    IngestionBatchEvent,
     ReportArtifact,
     ReportClaim,
     ReportTask,
@@ -70,6 +72,37 @@ def test_p0_models_expose_expected_columns(temp_db_engine):
             "last_sync_at",
             "last_status",
             "last_error",
+            "metadata",
+            "created_at",
+        },
+        "ingestion_batches": {
+            "id",
+            "batch_id",
+            "workspace_id",
+            "data_source_id",
+            "source_key",
+            "name",
+            "target_type",
+            "symbol",
+            "period",
+            "query",
+            "status",
+            "retry_count",
+            "item_count",
+            "success_count",
+            "failed_count",
+            "started_at",
+            "finished_at",
+            "error_message",
+            "metadata",
+            "created_at",
+        },
+        "ingestion_batch_events": {
+            "id",
+            "batch_id",
+            "stage",
+            "status",
+            "message",
             "metadata",
             "created_at",
         },
@@ -186,7 +219,7 @@ def test_p0_model_relationship_round_trip(temp_db_session):
         )
     )
     workspace.data_sources.append(
-        DataSource(
+        datasource := DataSource(
             name="美国证监会年报",
             source_key="sec_edgar",
             source_type="official_filing",
@@ -197,6 +230,19 @@ def test_p0_model_relationship_round_trip(temp_db_session):
             config_json={"priority": 1},
         )
     )
+    batch = IngestionBatch(
+        batch_id="ing-001",
+        workspace=workspace,
+        data_source=datasource,
+        source_key="sec_edgar",
+        name="NVDA FY2024 10-K 采集",
+        target_type="filings",
+        symbol="NVDA",
+        period="FY2024",
+        status="running",
+        metadata_json={"query": "10-K"},
+    )
+    batch.events.append(IngestionBatchEvent(stage="run", status="running", message="started"))
     document = Document(
         company=company,
         batch_id="batch-001",
@@ -252,7 +298,7 @@ def test_p0_model_relationship_round_trip(temp_db_session):
         after_value={"review_status": "approved"},
         reviewer="analyst@example.com",
     )
-    temp_db_session.add_all([workspace, review])
+    temp_db_session.add_all([workspace, batch, review])
     temp_db_session.commit()
 
     task = temp_db_session.scalar(select(ReportTask).where(ReportTask.task_id == "task-001"))
@@ -271,6 +317,8 @@ def test_p0_model_relationship_round_trip(temp_db_session):
     assert workspace.companies[0].company.symbol == "NVDA"
     assert workspace.data_sources[0].source_key == "sec_edgar"
     assert workspace.data_sources[0].config_json == {"priority": 1}
+    assert workspace.data_sources[0].ingestion_batches[0].batch_id == "ing-001"
+    assert workspace.data_sources[0].ingestion_batches[0].events[0].stage == "run"
 
     step = temp_db_session.scalar(select(DocumentProcessingStep))
     assert step is not None

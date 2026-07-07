@@ -142,6 +142,68 @@ class DataSource(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
     workspace: Mapped[Workspace | None] = relationship(back_populates="data_sources")
+    ingestion_batches: Mapped[list[IngestionBatch]] = relationship(back_populates="data_source")
+
+
+class IngestionBatch(Base):
+    __tablename__ = "ingestion_batches"
+    __table_args__ = (
+        UniqueConstraint("batch_id", name="uq_ingestion_batches_batch_id"),
+        Index("ix_ingestion_batches_status_created", "status", "created_at"),
+        Index("ix_ingestion_batches_workspace_status", "workspace_id", "status"),
+        Index("ix_ingestion_batches_datasource_status", "data_source_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    batch_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    workspace_id: Mapped[int | None] = mapped_column(ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True)
+    data_source_id: Mapped[int | None] = mapped_column(ForeignKey("data_sources.id", ondelete="SET NULL"), nullable=True)
+    source_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(64), default="documents", nullable=False)
+    symbol: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    period: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    item_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    success_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONVariant, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+    data_source: Mapped[DataSource | None] = relationship(back_populates="ingestion_batches")
+    workspace: Mapped[Workspace | None] = relationship()
+    events: Mapped[list[IngestionBatchEvent]] = relationship(
+        back_populates="batch",
+        cascade="all, delete-orphan",
+        order_by="IngestionBatchEvent.id",
+        primaryjoin="IngestionBatch.batch_id == foreign(IngestionBatchEvent.batch_id)",
+    )
+
+
+class IngestionBatchEvent(Base):
+    __tablename__ = "ingestion_batch_events"
+    __table_args__ = (
+        Index("ix_ingestion_batch_events_batch_created", "batch_id", "created_at"),
+        Index("ix_ingestion_batch_events_stage_status", "stage", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    batch_id: Mapped[str] = mapped_column(ForeignKey("ingestion_batches.batch_id", ondelete="CASCADE"), nullable=False)
+    stage: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONVariant, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+    batch: Mapped[IngestionBatch] = relationship(
+        back_populates="events",
+        primaryjoin="foreign(IngestionBatchEvent.batch_id) == IngestionBatch.batch_id",
+    )
 
 
 class Document(Base):

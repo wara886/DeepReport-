@@ -413,15 +413,33 @@ data_sources
 ingestion_batches
 - id
 - batch_id
-- datasource_id
 - workspace_id
+- data_source_id
+- source_key
+- name
+- target_type
+- symbol
+- period
+- query
 - status
-- total_count
+- retry_count
+- item_count
 - success_count
 - failed_count
 - started_at
 - finished_at
 - error_message
+- metadata JSONB
+- created_at
+
+ingestion_batch_events
+- id
+- batch_id
+- stage
+- status
+- message
+- metadata JSONB
+- created_at
 
 documents
 - id
@@ -582,6 +600,21 @@ llm_runs
 - Vector DB 负责 chunk embedding；证据元数据仍以 PostgreSQL 为准。
 - Elasticsearch/OpenSearch 用于公告标题、财报正文、公司名称、关键词检索。
 - Neo4j 是 P2 增强，不阻塞 P0/P1。
+
+### 7.3 工作台记忆系统
+
+参考视频中的“记忆系统”不是单独的聊天记忆页，而是分布在配置、清洗结果、风险线索、人工复核、PromptOps、实体库和导出中心里的结构化业务记忆。DeepReport- 金融版需要按以下层次沉淀：
+
+- **工作空间记忆**：投研空间、股票池、公司别名、关注指标、风险类型、证据阈值、默认数据源。
+- **数据源/批次记忆**：数据源配置、启用状态、凭证状态、采集批次、运行日志、失败原因、重试次数。
+- **文档处理记忆**：原始文档、解析状态、表格抽取、切分向量化、证据化、Claim 绑定、处理步骤详情。
+- **证据/事实/Claim 记忆**：证据片段、财务事实、Claim、Claim-Evidence 绑定、校验结果、质量门禁结果。
+- **人工复核记忆**：`review_records` 保存通过、驳回、编辑、重生成请求的修改前后内容、理由、审核人和时间。
+- **Prompt/LLM 运行记忆**：`prompt_versions` 和 `llm_runs` 保存 Prompt 版本、输入输出 JSON、Schema 校验、模型、成本、时延、失败和 fallback。
+- **词典/实体图谱记忆**：金融词典、别名库、实体、实体关系、事件链和投资逻辑链。
+- **评测/回放记忆**：评测样例、运行结果、失败样例、回归对比、导出包版本。
+
+关键原则：记忆可以用于路由、召回、检索扩展、失败规避和复核提示，但**不能直接替代证据**。进入正式研报的事实必须来自可追溯来源、财务事实表或人工确认记录。
 
 ---
 

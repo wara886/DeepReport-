@@ -19,6 +19,7 @@ from src.services.datasource_service import DataSourceConflict, DataSourceNotFou
 from src.services.document_service import DocumentNotFound, DocumentService
 from src.services.evidence_service import EvidenceNotFound, EvidenceService
 from src.services.export_service import ExportService, ExportTaskNotFound
+from src.services.ingestion_service import IngestionBatchConflict, IngestionBatchNotFound, IngestionService
 from src.services.report_task_service import (
     ReportTaskConflict,
     ReportTaskNotFound,
@@ -102,6 +103,7 @@ def create_fastapi_app(
     app.state.document_service = DocumentService(session_factory=app.state.report_task_service.session)
     app.state.export_service = ExportService(session_factory=app.state.report_task_service.session)
     app.state.workspace_service = WorkspaceService(session_factory=app.state.report_task_service.session)
+    app.state.ingestion_service = IngestionService(session_factory=app.state.report_task_service.session)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -328,6 +330,108 @@ def create_fastapi_app(
             return JSONResponse(content=_datasource_service(app).mark_health(source_ref, payload))
         except DataSourceNotFound:
             return JSONResponse(status_code=404, content={"error": f"Datasource not found: {source_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/ingestion-batches")
+    async def create_ingestion_batch(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(status_code=201, content=_ingestion_service(app).create_batch(payload))
+        except IngestionBatchConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except IngestionBatchNotFound as exc:
+            return JSONResponse(status_code=404, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/ingestion-batches")
+    def list_ingestion_batches(
+        workspace_id: str | None = None,
+        status: str | None = None,
+        source_key: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> Response:
+        try:
+            return JSONResponse(
+                content=_ingestion_service(app).list_batches(
+                    workspace_id=workspace_id,
+                    status=status,
+                    source_key=source_key,
+                    q=q,
+                    limit=limit,
+                )
+            )
+        except IngestionBatchNotFound as exc:
+            return JSONResponse(status_code=404, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/ingestion-batches/{batch_ref}")
+    def get_ingestion_batch(batch_ref: str) -> Response:
+        try:
+            return JSONResponse(content=_ingestion_service(app).get_batch(batch_ref))
+        except IngestionBatchNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Ingestion batch not found: {batch_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/ingestion-batches/{batch_ref}/start")
+    async def start_ingestion_batch(batch_ref: str) -> Response:
+        try:
+            return JSONResponse(content=_ingestion_service(app).start_batch(batch_ref))
+        except IngestionBatchNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Ingestion batch not found: {batch_ref}"})
+        except IngestionBatchConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/ingestion-batches/{batch_ref}/complete")
+    async def complete_ingestion_batch(batch_ref: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(content=_ingestion_service(app).complete_batch(batch_ref, payload))
+        except IngestionBatchNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Ingestion batch not found: {batch_ref}"})
+        except IngestionBatchConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/ingestion-batches/{batch_ref}/fail")
+    async def fail_ingestion_batch(batch_ref: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(content=_ingestion_service(app).fail_batch(batch_ref, payload))
+        except IngestionBatchNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Ingestion batch not found: {batch_ref}"})
+        except IngestionBatchConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/ingestion-batches/{batch_ref}/retry")
+    async def retry_ingestion_batch(batch_ref: str) -> Response:
+        try:
+            return JSONResponse(content=_ingestion_service(app).retry_batch(batch_ref))
+        except IngestionBatchNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Ingestion batch not found: {batch_ref}"})
+        except IngestionBatchConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/ingestion-batches/{batch_ref}/cancel")
+    async def cancel_ingestion_batch(batch_ref: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(content=_ingestion_service(app).cancel_batch(batch_ref, reason=_optional_string(payload.get("reason"))))
+        except IngestionBatchNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Ingestion batch not found: {batch_ref}"})
+        except IngestionBatchConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -621,6 +725,10 @@ def _export_service(app: FastAPI) -> ExportService:
 
 def _workspace_service(app: FastAPI) -> WorkspaceService:
     return app.state.workspace_service
+
+
+def _ingestion_service(app: FastAPI) -> IngestionService:
+    return app.state.ingestion_service
 
 
 def _optional_string(value: Any) -> str | None:
