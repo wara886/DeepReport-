@@ -1031,7 +1031,7 @@ def render_workbench_html() -> str:
     }
 
     function csvList(value) {
-      return String(value || "").split(/[,，\n]/).map((item) => item.trim()).filter(Boolean);
+      return String(value || "").split(/[,，\\n]/).map((item) => item.trim()).filter(Boolean);
     }
 
     function renderList(values) {
