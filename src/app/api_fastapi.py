@@ -20,6 +20,7 @@ from src.services.document_service import DocumentNotFound, DocumentService
 from src.services.evidence_service import EvidenceNotFound, EvidenceService
 from src.services.export_service import ExportService, ExportTaskNotFound
 from src.services.ingestion_service import IngestionBatchConflict, IngestionBatchNotFound, IngestionService
+from src.services.manual_import_service import ManualImportConflict, ManualImportService
 from src.services.report_task_service import (
     ReportTaskConflict,
     ReportTaskNotFound,
@@ -104,6 +105,7 @@ def create_fastapi_app(
     app.state.export_service = ExportService(session_factory=app.state.report_task_service.session)
     app.state.workspace_service = WorkspaceService(session_factory=app.state.report_task_service.session)
     app.state.ingestion_service = IngestionService(session_factory=app.state.report_task_service.session)
+    app.state.manual_import_service = ManualImportService(session_factory=app.state.report_task_service.session)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -435,6 +437,17 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.post("/api/manual-import")
+    async def manual_import(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            result = _manual_import_service(app).import_document(payload)
+            return JSONResponse(status_code=200 if result.get("duplicate") else 201, content=result)
+        except ManualImportConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.get("/api/evidence")
     def list_evidence(
         company: str | None = None,
@@ -729,6 +742,10 @@ def _workspace_service(app: FastAPI) -> WorkspaceService:
 
 def _ingestion_service(app: FastAPI) -> IngestionService:
     return app.state.ingestion_service
+
+
+def _manual_import_service(app: FastAPI) -> ManualImportService:
+    return app.state.manual_import_service
 
 
 def _optional_string(value: Any) -> str | None:

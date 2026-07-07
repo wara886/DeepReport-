@@ -298,7 +298,7 @@ def render_workbench_html() -> str:
         <button data-view="stockpool"><span>股票池管理</span><span class="tag preview">预览</span></button>
         <button data-view="datasources"><span>数据源管理</span><span class="tag preview">预览</span></button>
         <button data-view="ingestion"><span>采集任务</span><span class="tag preview">预览</span></button>
-        <button data-view="manual"><span>手动导入</span><span class="tag planned">规划中</span></button>
+        <button data-view="manual"><span>手动导入</span><span class="tag preview">预览</span></button>
         <button data-view="documents"><span>文档处理中心</span><span class="tag preview">预览</span></button>
         <button data-view="evidence"><span>证据库</span><span class="tag available">可用</span></button>
         <button data-view="facts"><span>财务事实中心</span><span class="tag planned">规划中</span></button>
@@ -728,7 +728,65 @@ def render_workbench_html() -> str:
             </aside>
           </div>
         </section>
-        <section id="manual" class="view"></section>
+        <section id="manual" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">手动导入</h2>
+                <div class="filters">
+                  <button class="btn" data-jump="documents">查看文档处理中心</button>
+                  <button class="btn" data-jump="ingestion">查看采集批次</button>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="manualImportType">导入类型</label>
+                  <select id="manualImportType">
+                    <option value="text">文本摘录</option>
+                    <option value="url">来源链接</option>
+                    <option value="pdf">PDF 文件</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="manualSymbol">股票代码</label>
+                  <input id="manualSymbol" placeholder="NVDA / 600519 / 0700.HK" />
+                </div>
+                <div class="field">
+                  <label for="manualCompanyName">公司名称</label>
+                  <input id="manualCompanyName" placeholder="NVIDIA Corporation" />
+                </div>
+                <div class="field">
+                  <label for="manualPeriod">期间</label>
+                  <input id="manualPeriod" placeholder="FY2024 / 2025Q1" />
+                </div>
+                <div class="field full">
+                  <label for="manualTitle">资料标题</label>
+                  <input id="manualTitle" placeholder="例如：NVDA FY2024 年报摘录" />
+                </div>
+                <div class="field full" data-manual-field="content">
+                  <label for="manualContent">文本内容</label>
+                  <textarea id="manualContent" rows="8" placeholder="粘贴公告、财报摘录、新闻或券商研报片段。"></textarea>
+                </div>
+                <div class="field full" data-manual-field="source">
+                  <label for="manualSourceUrl">来源链接</label>
+                  <input id="manualSourceUrl" placeholder="https://www.sec.gov/..." />
+                </div>
+                <div class="field full" data-manual-field="file">
+                  <label for="manualFilePath">PDF 文件路径</label>
+                  <input id="manualFilePath" placeholder="/Users/.../annual_report.pdf" />
+                </div>
+              </div>
+              <div class="modal-actions">
+                <button class="btn primary" id="submitManualImport">导入到文档处理中心</button>
+              </div>
+              <div id="manualImportMessage"></div>
+            </section>
+            <aside class="panel detail" id="manualImportResult">
+              <h2>导入结果</h2>
+              <div class="empty">导入后会生成批次和文档记录，后续解析、切分、向量化都从文档处理中心接续。</div>
+            </aside>
+          </div>
+        </section>
         <section id="facts" class="view"></section>
         <section id="signals" class="view"></section>
         <section id="dictionary" class="view"></section>
@@ -822,7 +880,7 @@ def render_workbench_html() -> str:
       stockpool: ["股票池管理", "维护空间内公司、代码、市场、行业和别名"],
       datasources: ["数据源管理", "配置来源启停、凭证状态、最近同步与错误"],
       ingestion: ["采集任务", "创建采集批次、查看运行日志、失败重试和取消"],
-      manual: ["手动导入", "阶段1接入手动导入后启用"],
+      manual: ["手动导入", "文本、PDF、URL 入库并进入文档处理中心"],
       documents: ["文档处理中心", "查看文档处理路径、失败步骤和关联证据"],
       evidence: ["证据库", "证据、文档、主张关联查询"],
       facts: ["财务事实中心", "阶段1接入财务事实后启用"],
@@ -860,6 +918,7 @@ def render_workbench_html() -> str:
       evidence: "证据化", claim_bind: "绑定主张", verify: "校验",
       orchestrator: "多智能体执行", artifact_import: "产物导入", completed: "完成",
       queued: "待启动", retry: "重试", failed: "失败", cancelled: "已取消", archived: "已归档", claim_review: "主张复核",
+      manual_import: "手动导入",
     };
     const artifactMap = {
       html: "网页报告", markdown: "文稿", json: "结构化数据",
@@ -971,6 +1030,7 @@ def render_workbench_html() -> str:
       else if (view === "stockpool") loadStockpool();
       else if (view === "datasources") loadDatasources();
       else if (view === "ingestion") loadIngestionBatches();
+      else if (view === "manual") updateManualImportFields();
       else if (view === "tasks") loadTasks();
       else if (view === "evidence") loadEvidence();
       else if (view === "documents") loadDocuments();
@@ -1472,6 +1532,75 @@ def render_workbench_html() -> str:
         bindIngestionButtons($("ingestionDetail"));
       } catch (error) {
         showLoadError("ingestionDetail");
+      }
+    }
+
+    function updateManualImportFields() {
+      const type = $("manualImportType").value;
+      document.querySelectorAll("[data-manual-field]").forEach((field) => {
+        const key = field.dataset.manualField;
+        const visible = (type === "text" && key === "content") || (type === "url" && key === "source") || (type === "pdf" && key === "file") || (type === "pdf" && key === "source");
+        field.style.display = visible ? "grid" : "none";
+      });
+      const title = $("manualTitle");
+      if (!title.value.trim()) {
+        title.placeholder = type === "text" ? "例如：NVDA FY2024 年报摘录" : (type === "url" ? "例如：AAPL SEC 年报链接" : "例如：AAPL FY2024 年报 PDF");
+      }
+    }
+
+    async function submitManualImport() {
+      const type = $("manualImportType").value;
+      const payload = {
+        import_type: type,
+        title: $("manualTitle").value.trim(),
+        symbol: $("manualSymbol").value.trim(),
+        company_name: $("manualCompanyName").value.trim(),
+        period: $("manualPeriod").value.trim(),
+        content: $("manualContent").value.trim(),
+        source_url: $("manualSourceUrl").value.trim(),
+        file_path: $("manualFilePath").value.trim(),
+      };
+      if (type === "text" && !payload.content) {
+        $("manualImportMessage").innerHTML = `<div class="error">请输入文本内容。</div>`;
+        return;
+      }
+      if (type === "url" && !payload.source_url) {
+        $("manualImportMessage").innerHTML = `<div class="error">请输入来源链接。</div>`;
+        return;
+      }
+      if (type === "pdf" && !payload.file_path && !payload.source_url) {
+        $("manualImportMessage").innerHTML = `<div class="error">请输入 PDF 文件路径或来源链接。</div>`;
+        return;
+      }
+      $("manualImportMessage").innerHTML = `<div class="empty">正在导入...</div>`;
+      try {
+        const result = await postJson("/api/manual-import", payload);
+        const doc = result.document || {};
+        $("manualImportMessage").innerHTML = `<div class="empty">${esc(result.message || "导入完成")}</div>`;
+        $("manualImportResult").innerHTML = `<h2>导入结果</h2>
+          <div class="kv"><span class="label">文档</span><span>${esc(doc.title || "-")}</span></div>
+          <div class="kv"><span class="label">批次</span><span class="mono">${esc(result.batch_id || "-")}</span></div>
+          <div class="kv"><span class="label">状态</span><span><span class="status ${esc(doc.parse_status || "pending")}">${esc(statusText(doc.parse_status || "pending"))}</span></span></div>
+          <div class="kv"><span class="label">类型</span><span>${esc(doc.doc_type || "-")}</span></div>
+          ${doc.source_url ? `<div class="kv"><span class="label">链接</span><a href="${esc(doc.source_url)}" target="_blank">${esc(doc.source_url)}</a></div>` : ""}
+          ${doc.file_path ? `<div class="kv"><span class="label">文件</span><span class="mono">${esc(doc.file_path)}</span></div>` : ""}
+          <div class="links" style="margin-top:12px">
+            <button class="btn primary" id="manualViewDocument">查看处理路径</button>
+            <button class="btn" id="manualViewBatch">查看导入批次</button>
+          </div>
+          ${result.duplicate ? `<div class="detail-section"><div class="empty">检测到相同内容，未重复创建文档。</div></div>` : ""}`;
+        $("manualViewDocument").addEventListener("click", () => {
+          if ($("documentBatch")) $("documentBatch").value = result.batch_id || "";
+          activateView("documents");
+          if (doc.id) loadDocumentDetail(doc.id);
+        });
+        $("manualViewBatch").addEventListener("click", () => {
+          activateView("ingestion");
+          if (result.batch_id) loadIngestionDetail(result.batch_id);
+        });
+        loadDashboard();
+      } catch (error) {
+        $("manualImportMessage").innerHTML = `<div class="error">导入失败，请检查必填项或是否与已有文档冲突。</div>`;
       }
     }
 
@@ -2187,6 +2316,8 @@ def render_workbench_html() -> str:
       $(id).addEventListener("keydown", (event) => { if (event.key === "Enter") loadIngestionBatches(); });
     });
     $("ingestionStatus").addEventListener("change", loadIngestionBatches);
+    $("manualImportType").addEventListener("change", updateManualImportFields);
+    $("submitManualImport").addEventListener("click", submitManualImport);
     $("refreshTasks").addEventListener("click", loadTasks);
     $("symbolFilter").addEventListener("keydown", (event) => { if (event.key === "Enter") loadTasks(); });
     $("refreshEvidence").addEventListener("click", loadEvidence);
@@ -2212,6 +2343,7 @@ def render_workbench_html() -> str:
 
     loadDashboard();
     loadTasks();
+    updateManualImportFields();
   </script>
 </body>
 </html>"""
