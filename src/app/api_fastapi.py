@@ -16,11 +16,15 @@ from src.app.workbench_frontend import render_workbench_html
 from src.services.claim_review_service import ClaimNotFound, ClaimReviewService
 from src.services.dashboard_service import DashboardService
 from src.services.datasource_service import DataSourceConflict, DataSourceNotFound, DataSourceService
+from src.services.dictionary_service import DictionaryConflict, DictionaryService, DictionaryTermNotFound
 from src.services.document_service import DocumentNotFound, DocumentService
 from src.services.evidence_service import EvidenceNotFound, EvidenceService
 from src.services.export_service import ExportService, ExportTaskNotFound
+from src.services.financial_fact_service import FinancialFactConflict, FinancialFactNotFound, FinancialFactService
 from src.services.ingestion_service import IngestionBatchConflict, IngestionBatchNotFound, IngestionService
+from src.services.llm_run_service import LLMRunNotFound, LLMRunService
 from src.services.manual_import_service import ManualImportConflict, ManualImportService
+from src.services.promptops_service import PromptOpsConflict, PromptOpsService, PromptTemplateNotFound
 from src.services.report_task_service import (
     ReportTaskConflict,
     ReportTaskNotFound,
@@ -99,13 +103,17 @@ def create_fastapi_app(
     )
     app.state.dashboard_service = DashboardService(session_factory=app.state.report_task_service.session)
     app.state.datasource_service = DataSourceService(session_factory=app.state.report_task_service.session)
+    app.state.dictionary_service = DictionaryService(session_factory=app.state.report_task_service.session)
     app.state.evidence_service = EvidenceService(session_factory=app.state.report_task_service.session)
     app.state.claim_review_service = ClaimReviewService(session_factory=app.state.report_task_service.session)
     app.state.document_service = DocumentService(session_factory=app.state.report_task_service.session)
     app.state.export_service = ExportService(session_factory=app.state.report_task_service.session)
+    app.state.financial_fact_service = FinancialFactService(session_factory=app.state.report_task_service.session)
     app.state.workspace_service = WorkspaceService(session_factory=app.state.report_task_service.session)
     app.state.ingestion_service = IngestionService(session_factory=app.state.report_task_service.session)
     app.state.manual_import_service = ManualImportService(session_factory=app.state.report_task_service.session)
+    app.state.llm_run_service = LLMRunService(session_factory=app.state.report_task_service.session)
+    app.state.promptops_service = PromptOpsService(session_factory=app.state.report_task_service.session)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -315,6 +323,89 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/dictionary")
+    def list_dictionary_terms(
+        term_type: str | None = None,
+        q: str | None = None,
+        workspace_id: str | None = None,
+        active_only: bool = False,
+        limit: int = 100,
+    ) -> Response:
+        try:
+            return JSONResponse(
+                content=_dictionary_service(app).list_terms(
+                    term_type=term_type,
+                    q=q,
+                    workspace_ref=workspace_id,
+                    active_only=active_only,
+                    limit=limit,
+                )
+            )
+        except DictionaryConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/dictionary")
+    async def create_dictionary_term(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(status_code=201, content=_dictionary_service(app).create_term(payload))
+        except DictionaryConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/dictionary/terms/{term_ref}")
+    def get_dictionary_term(term_ref: str) -> Response:
+        try:
+            return JSONResponse(content=_dictionary_service(app).get_term(term_ref))
+        except DictionaryTermNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Dictionary term not found: {term_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/dictionary/resolve")
+    def resolve_dictionary_alias(
+        q: str,
+        term_type: str | None = None,
+        workspace_id: str | None = None,
+        market: str | None = None,
+    ) -> Response:
+        try:
+            return JSONResponse(
+                content=_dictionary_service(app).resolve_alias(
+                    query=q,
+                    term_type=term_type,
+                    workspace_ref=workspace_id,
+                    market=market,
+                )
+            )
+        except DictionaryTermNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Dictionary alias not found: {q}"})
+        except DictionaryConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/dictionary/resolve-company")
+    def resolve_dictionary_company(q: str, workspace_id: str | None = None, market: str | None = None) -> Response:
+        try:
+            return JSONResponse(content=_dictionary_service(app).resolve_company(q, workspace_ref=workspace_id, market=market))
+        except DictionaryTermNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Company alias not found: {q}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/dictionary/resolve-metric")
+    def resolve_dictionary_metric(q: str, workspace_id: str | None = None) -> Response:
+        try:
+            return JSONResponse(content=_dictionary_service(app).resolve_metric(q, workspace_ref=workspace_id))
+        except DictionaryTermNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Metric alias not found: {q}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.post("/api/data-sources/{source_ref}/enable")
     async def enable_data_source(source_ref: str, incoming: Request) -> Response:
         payload = await _json_payload(incoming)
@@ -448,6 +539,86 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/llm-runs")
+    def list_llm_runs(
+        task_id: str | None = None,
+        prompt_key: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> Response:
+        try:
+            return JSONResponse(content=_llm_run_service(app).list_runs(task_id=task_id, prompt_key=prompt_key, status=status, limit=limit))
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/llm-runs/{run_ref}")
+    def get_llm_run(run_ref: str) -> Response:
+        try:
+            return JSONResponse(content=_llm_run_service(app).get_run(run_ref))
+        except LLMRunNotFound:
+            return JSONResponse(status_code=404, content={"error": f"LLM run not found: {run_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/promptops/templates")
+    def list_prompt_templates(module: str | None = None, active_only: bool = False, limit: int = 100) -> Response:
+        try:
+            return JSONResponse(content=_promptops_service(app).list_templates(module=module, active_only=active_only, limit=limit))
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/promptops/templates")
+    async def create_prompt_template(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(status_code=201, content=_promptops_service(app).create_template(payload))
+        except PromptOpsConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/promptops/templates/{template_ref}/versions")
+    async def create_prompt_version(template_ref: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(status_code=201, content=_promptops_service(app).add_version(template_ref, payload))
+        except PromptTemplateNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Prompt template not found: {template_ref}"})
+        except PromptOpsConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/promptops/templates/{prompt_key}/active")
+    def resolve_prompt_active_version(prompt_key: str) -> Response:
+        try:
+            return JSONResponse(content=_promptops_service(app).resolve_active_version(prompt_key))
+        except PromptTemplateNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Active prompt version not found: {prompt_key}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/promptops/templates/{prompt_key}/test-run")
+    async def test_prompt_template(prompt_key: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(content=_promptops_service(app).test_prompt(prompt_key, payload))
+        except PromptTemplateNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Prompt template not found: {prompt_key}"})
+        except PromptOpsConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/promptops/templates/{template_ref}")
+    def get_prompt_template(template_ref: str) -> Response:
+        try:
+            return JSONResponse(content=_promptops_service(app).get_template(template_ref))
+        except PromptTemplateNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Prompt template not found: {template_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.get("/api/evidence")
     def list_evidence(
         company: str | None = None,
@@ -479,6 +650,46 @@ def create_fastapi_app(
             return JSONResponse(content=_evidence_service(app).get_evidence(evidence_ref))
         except EvidenceNotFound:
             return JSONResponse(status_code=404, content={"error": f"Evidence not found: {evidence_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/financial-facts")
+    def list_financial_facts(
+        company: str | None = None,
+        metric: str | None = None,
+        period: str | None = None,
+        review_status: str | None = None,
+        limit: int = 100,
+    ) -> Response:
+        try:
+            return JSONResponse(
+                content=_financial_fact_service(app).list_facts(
+                    company=company,
+                    metric=metric,
+                    period=period,
+                    review_status=review_status,
+                    limit=limit,
+                )
+            )
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/financial-facts")
+    async def import_financial_fact(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(status_code=201, content=_financial_fact_service(app).import_fact(payload))
+        except FinancialFactConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/financial-facts/{fact_id}")
+    def get_financial_fact(fact_id: int) -> Response:
+        try:
+            return JSONResponse(content=_financial_fact_service(app).get_fact(fact_id))
+        except FinancialFactNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Financial fact not found: {fact_id}"})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -720,6 +931,10 @@ def _datasource_service(app: FastAPI) -> DataSourceService:
     return app.state.datasource_service
 
 
+def _dictionary_service(app: FastAPI) -> DictionaryService:
+    return app.state.dictionary_service
+
+
 def _evidence_service(app: FastAPI) -> EvidenceService:
     return app.state.evidence_service
 
@@ -736,6 +951,10 @@ def _export_service(app: FastAPI) -> ExportService:
     return app.state.export_service
 
 
+def _financial_fact_service(app: FastAPI) -> FinancialFactService:
+    return app.state.financial_fact_service
+
+
 def _workspace_service(app: FastAPI) -> WorkspaceService:
     return app.state.workspace_service
 
@@ -746,6 +965,14 @@ def _ingestion_service(app: FastAPI) -> IngestionService:
 
 def _manual_import_service(app: FastAPI) -> ManualImportService:
     return app.state.manual_import_service
+
+
+def _llm_run_service(app: FastAPI) -> LLMRunService:
+    return app.state.llm_run_service
+
+
+def _promptops_service(app: FastAPI) -> PromptOpsService:
+    return app.state.promptops_service
 
 
 def _optional_string(value: Any) -> str | None:

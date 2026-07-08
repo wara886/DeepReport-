@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from src.app.api_fastapi import create_fastapi_app
-from src.db.models import ClaimEvidence, Document, DocumentProcessingStep, EvidenceItem, ReportClaim, ReportTask
+from src.db.models import ClaimEvidence, Document, DocumentProcessingStep, EvidenceItem, FinancialFact, ReportClaim, ReportTask
 from src.services.report_task_service import ReportTaskService
 
 
@@ -36,6 +36,7 @@ def test_dashboard_funnel_counts_database_steps(temp_db_engine, tmp_path):
                 DocumentProcessingStep(document_id=document.id, step_name="table_extract", status="success"),
                 DocumentProcessingStep(document_id=document.id, step_name="chunk_vectorize", status="success"),
                 ClaimEvidence(claim_id=claim.id, evidence_item_id=evidence.id, support_type="supports"),
+                FinancialFact(metric_name="Revenue", value=391035, currency="USD", unit="million", period="FY2024"),
             ]
         )
         session.commit()

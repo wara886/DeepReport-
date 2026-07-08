@@ -301,12 +301,12 @@ def render_workbench_html() -> str:
         <button data-view="manual"><span>手动导入</span><span class="tag preview">预览</span></button>
         <button data-view="documents"><span>文档处理中心</span><span class="tag preview">预览</span></button>
         <button data-view="evidence"><span>证据库</span><span class="tag available">可用</span></button>
-        <button data-view="facts"><span>财务事实中心</span><span class="tag planned">规划中</span></button>
+        <button data-view="facts"><span>财务事实中心</span><span class="tag preview">预览</span></button>
         <button data-view="signals"><span>投资线索</span><span class="tag enhancing">增强中</span></button>
         <button data-view="tasks"><span>研报任务</span><span class="tag available">可用</span></button>
         <button data-view="claims"><span>主张复核</span><span class="tag available">可用</span></button>
-        <button data-view="dictionary"><span>金融词典</span><span class="tag planned">规划中</span></button>
-        <button data-view="promptops"><span>提示词运营</span><span class="tag planned">规划中</span></button>
+        <button data-view="dictionary"><span>金融词典</span><span class="tag preview">预览</span></button>
+        <button data-view="promptops"><span>提示词运营</span><span class="tag preview">预览</span></button>
         <button data-view="entities"><span>实体库</span><span class="tag enhancing">增强中</span></button>
         <button data-view="graph"><span>关系图谱</span><span class="tag enhancing">增强中</span></button>
         <button data-view="evaluation"><span>评测中心</span><span class="tag planned">规划中</span></button>
@@ -787,10 +787,156 @@ def render_workbench_html() -> str:
             </aside>
           </div>
         </section>
-        <section id="facts" class="view"></section>
+        <section id="facts" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">财务事实中心</h2>
+                <div class="filters">
+                  <input id="factCompany" placeholder="公司或代码" />
+                  <input id="factMetric" placeholder="指标" />
+                  <input id="factPeriodFilter" placeholder="期间，如 FY2024" />
+                  <button class="btn" id="refreshFacts">刷新</button>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr><th>公司</th><th>指标</th><th>数值</th><th>期间</th><th>来源</th><th>状态</th></tr>
+                  </thead>
+                  <tbody id="factRows"></tbody>
+                </table>
+              </div>
+            </section>
+            <aside class="panel detail" id="factDetail">
+              <h2>导入财务事实</h2>
+              <div class="form-grid">
+                <div class="field"><label for="factSymbol">股票代码</label><input id="factSymbol" placeholder="AAPL" /></div>
+                <div class="field"><label for="factCompanyName">公司名称</label><input id="factCompanyName" placeholder="苹果公司" /></div>
+                <div class="field full"><label for="factMetricName">指标</label><input id="factMetricName" placeholder="营业收入 / 毛利率" /></div>
+                <div class="field"><label for="factValue">数值</label><input id="factValue" placeholder="391035" /></div>
+                <div class="field"><label for="factPeriod">期间</label><input id="factPeriod" placeholder="FY2024" /></div>
+                <div class="field"><label for="factCurrency">币种</label><input id="factCurrency" placeholder="USD / CNY / HKD" /></div>
+                <div class="field"><label for="factUnit">单位</label><input id="factUnit" placeholder="million / %" /></div>
+                <div class="field"><label for="factEvidenceId">证据编号</label><input id="factEvidenceId" placeholder="可选，evidence_id 或数字 ID" /></div>
+                <div class="field full"><label for="factSourceUrl">来源链接</label><input id="factSourceUrl" placeholder="https://..." /></div>
+              </div>
+              <div class="modal-actions"><button class="btn primary" id="createFinancialFact">导入事实</button></div>
+              <div id="factMessage"></div>
+            </aside>
+          </div>
+        </section>
         <section id="signals" class="view"></section>
-        <section id="dictionary" class="view"></section>
-        <section id="promptops" class="view"></section>
+        <section id="dictionary" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">金融词典</h2>
+                <div class="filters">
+                  <input id="dictionaryQuery" placeholder="搜索标准词、别名、代码" />
+                  <select id="dictionaryType">
+                    <option value="">全部类型</option>
+                    <option value="company">公司别名</option>
+                    <option value="product">产品别名</option>
+                    <option value="metric">财务指标</option>
+                    <option value="industry">行业术语</option>
+                    <option value="risk">风险词</option>
+                    <option value="exclude">排除词</option>
+                  </select>
+                  <button class="btn" id="refreshDictionary">刷新</button>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr><th>标准词</th><th>类型</th><th>代码/市场</th><th>别名</th><th>说明</th></tr>
+                  </thead>
+                  <tbody id="dictionaryRows"></tbody>
+                </table>
+              </div>
+            </section>
+            <aside class="panel detail" id="dictionaryDetail">
+              <h2>添加词条</h2>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="dictionaryCreateType">类型</label>
+                  <select id="dictionaryCreateType">
+                    <option value="company">公司别名</option>
+                    <option value="metric">财务指标</option>
+                    <option value="product">产品别名</option>
+                    <option value="industry">行业术语</option>
+                    <option value="risk">风险词</option>
+                    <option value="exclude">排除词</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="dictionaryMarket">市场</label>
+                  <input id="dictionaryMarket" placeholder="US / CN / HK" />
+                </div>
+                <div class="field full">
+                  <label for="dictionaryCanonical">标准词</label>
+                  <input id="dictionaryCanonical" placeholder="例如：苹果公司 / 营业收入 / 毛利率" />
+                </div>
+                <div class="field">
+                  <label for="dictionarySymbol">股票代码</label>
+                  <input id="dictionarySymbol" placeholder="公司词条可填，如 AAPL" />
+                </div>
+                <div class="field">
+                  <label for="dictionaryAliases">别名</label>
+                  <input id="dictionaryAliases" placeholder="苹果, Apple, Apple Inc." />
+                </div>
+                <div class="field full">
+                  <label for="dictionaryDescription">说明</label>
+                  <textarea id="dictionaryDescription" rows="3" placeholder="口径、用途或排除原因。"></textarea>
+                </div>
+              </div>
+              <div class="modal-actions"><button class="btn primary" id="createDictionaryTerm">添加词条</button></div>
+              <div id="dictionaryMessage"></div>
+            </aside>
+          </div>
+        </section>
+        <section id="promptops" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">提示词运营</h2>
+                <div class="filters">
+                  <input id="promptModule" placeholder="模块，如 verifier / fact_extractor" />
+                  <button class="btn" id="refreshPromptOps">刷新</button>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr><th>Prompt</th><th>模块</th><th>活动版本</th><th>Schema</th><th>操作</th></tr>
+                  </thead>
+                  <tbody id="promptRows"></tbody>
+                </table>
+              </div>
+              <div class="detail-section">
+                <h3>最近 LLM 调用</h3>
+                <div class="table-scroll">
+                  <table>
+                    <thead><tr><th>运行</th><th>Prompt</th><th>模型</th><th>状态</th><th>耗时/成本</th></tr></thead>
+                    <tbody id="llmRunRows"></tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+            <aside class="panel detail" id="promptDetail">
+              <h2>创建 Prompt</h2>
+              <div class="form-grid">
+                <div class="field"><label for="promptKey">Prompt 标识</label><input id="promptKey" placeholder="claim_verifier" /></div>
+                <div class="field"><label for="promptCreateModule">模块</label><input id="promptCreateModule" placeholder="verifier" /></div>
+                <div class="field full"><label for="promptName">名称</label><input id="promptName" placeholder="主张校验 Prompt" /></div>
+                <div class="field full"><label for="promptContent">内容</label><textarea id="promptContent" rows="7" placeholder="请判断主张是否有证据支持：{{claim}}"></textarea></div>
+                <div class="field full"><label for="promptSchema">输出 Schema JSON</label><textarea id="promptSchema" rows="5" placeholder='{"type":"object","required":["verdict"],"properties":{"verdict":{"type":"string"}}}'></textarea></div>
+              </div>
+              <div class="modal-actions"><button class="btn primary" id="createPromptTemplate">创建 Prompt</button></div>
+              <div id="promptMessage"></div>
+            </aside>
+          </div>
+        </section>
         <section id="entities" class="view"></section>
         <section id="graph" class="view"></section>
         <section id="evaluation" class="view"></section>
@@ -883,12 +1029,12 @@ def render_workbench_html() -> str:
       manual: ["手动导入", "文本、PDF、URL 入库并进入文档处理中心"],
       documents: ["文档处理中心", "查看文档处理路径、失败步骤和关联证据"],
       evidence: ["证据库", "证据、文档、主张关联查询"],
-      facts: ["财务事实中心", "阶段1接入财务事实后启用"],
+      facts: ["财务事实中心", "指标、单位、币种、期间和证据来源"],
       signals: ["投资线索", "阶段2接入投资线索后启用"],
       tasks: ["研报任务", "按任务编号跟踪研报生成和产物"],
       claims: ["主张复核", "查看证据、校验状态和审计轨迹"],
-      dictionary: ["金融词典", "阶段1接入金融词典后启用"],
-      promptops: ["提示词运营", "阶段1接入提示词版本和调用追踪后启用"],
+      dictionary: ["金融词典", "维护公司、指标、行业、风险词和排除词别名"],
+      promptops: ["提示词运营", "管理 Prompt 版本、测试运行和 LLM 调用追踪"],
       entities: ["实体库", "阶段2接入实体库后启用"],
       graph: ["关系图谱", "阶段2接入实体关系后启用"],
       evaluation: ["评测中心", "阶段3接入评测运行后启用"],
@@ -903,6 +1049,7 @@ def render_workbench_html() -> str:
       official: "官方", primary: "一手", secondary: "二手", unknown: "未知",
       not_required: "无需凭证", required: "需配置", configured: "已配置", expired: "已过期",
       not_run: "未运行",
+      company: "公司别名", product: "产品别名", metric: "财务指标", industry: "行业术语", risk: "风险词", exclude: "排除词",
       approve: "通过", reject: "驳回", edit: "保存修改", regenerate: "重生成",
       rejected_claims_present: "存在已驳回主张", pending_claim_review: "存在待复核主张",
       filings: "公告/年报", documents: "文档资料", news: "新闻资料",
@@ -1031,10 +1178,13 @@ def render_workbench_html() -> str:
       else if (view === "datasources") loadDatasources();
       else if (view === "ingestion") loadIngestionBatches();
       else if (view === "manual") updateManualImportFields();
+      else if (view === "facts") loadFinancialFacts();
       else if (view === "tasks") loadTasks();
       else if (view === "evidence") loadEvidence();
       else if (view === "documents") loadDocuments();
       else if (view === "claims") loadClaims();
+      else if (view === "dictionary") loadDictionary();
+      else if (view === "promptops") loadPromptOps();
       else if (view === "export") loadExports();
       else renderPlaceholder(view);
     }
@@ -2067,6 +2217,200 @@ def render_workbench_html() -> str:
       }
     }
 
+    async function loadDictionary() {
+      const params = new URLSearchParams();
+      const q = $("dictionaryQuery").value.trim();
+      const type = $("dictionaryType").value;
+      if (q) params.set("q", q);
+      if (type) params.set("term_type", type);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      try {
+        const payload = await getJson("/api/dictionary" + suffix);
+        const rows = payload.items || [];
+        $("dictionaryRows").innerHTML = rows.length
+          ? rows.map((item) => `<tr data-selectable="true">
+              <td><button class="btn" data-dictionary-detail="${esc(item.id)}">${esc(item.canonical_name)}</button><br><span class="label mono">${esc(item.normalized_key)}</span></td>
+              <td><span class="status ${esc(item.term_type)}">${esc(statusText(item.term_type))}</span></td>
+              <td>${esc(item.symbol || "-")}<br><span class="label">${esc(item.market || "-")}</span></td>
+              <td>${renderList(item.aliases)}</td>
+              <td>${esc(item.description || "-")}</td>
+            </tr>`).join("")
+          : `<tr><td colspan="5"><div class="empty"><div>暂无金融词典词条</div><div class="empty-actions"><button class="btn primary" id="focusDictionaryCreate">添加词条</button></div></div></td></tr>`;
+        document.querySelectorAll("[data-dictionary-detail]").forEach((btn) => {
+          btn.addEventListener("click", () => loadDictionaryDetail(btn.dataset.dictionaryDetail));
+        });
+        const focus = $("focusDictionaryCreate");
+        if (focus) focus.addEventListener("click", () => $("dictionaryCanonical").focus());
+      } catch (error) {
+        showLoadError("dictionaryRows", 5);
+      }
+    }
+
+    async function loadDictionaryDetail(termId) {
+      try {
+        const item = await getJson(`/api/dictionary/terms/${encodeURIComponent(termId)}`);
+        renderDictionaryDetail(item);
+      } catch (error) {
+        $("dictionaryDetail").insertAdjacentHTML("afterbegin", `<div class="error">词条加载失败，请刷新后重试。</div>`);
+      }
+    }
+
+    function renderDictionaryDetail(item) {
+      $("dictionaryDetail").innerHTML = `<h2>词条详情</h2>
+        <div class="kv"><span class="label">标准词</span><span>${esc(item.canonical_name)}</span></div>
+        <div class="kv"><span class="label">类型</span><span><span class="status ${esc(item.term_type)}">${esc(statusText(item.term_type))}</span></span></div>
+        <div class="kv"><span class="label">代码</span><span>${esc(item.symbol || "-")}</span></div>
+        <div class="kv"><span class="label">市场</span><span>${esc(item.market || "-")}</span></div>
+        <div class="detail-section"><h3>别名</h3><div class="text-block">${esc((item.aliases || []).join("\\n") || "-")}</div></div>
+        <div class="detail-section"><h3>说明</h3><div class="text-block">${esc(item.description || "-")}</div></div>
+        <div class="detail-section"><h3>用途</h3><div class="empty">用于公司归一、指标归一、查询理解和后续检索扩展；词典记录本身不替代证据。</div></div>`;
+    }
+
+    async function createDictionaryTerm() {
+      const payload = {
+        term_type: $("dictionaryCreateType").value,
+        canonical_name: $("dictionaryCanonical").value.trim(),
+        symbol: $("dictionarySymbol").value.trim(),
+        market: $("dictionaryMarket").value.trim(),
+        aliases: csvList($("dictionaryAliases").value),
+        description: $("dictionaryDescription").value.trim(),
+      };
+      if (!payload.canonical_name) {
+        $("dictionaryMessage").innerHTML = `<div class="error">请输入标准词。</div>`;
+        return;
+      }
+      try {
+        const item = await postJson("/api/dictionary", payload);
+        $("dictionaryMessage").innerHTML = `<div class="empty">已添加词条：${esc(item.canonical_name)}</div>`;
+        await loadDictionary();
+        renderDictionaryDetail(item);
+      } catch (error) {
+        $("dictionaryMessage").innerHTML = `<div class="error">添加失败，词条可能已存在。</div>`;
+      }
+    }
+
+    async function loadPromptOps() {
+      const params = new URLSearchParams();
+      const module = $("promptModule").value.trim();
+      if (module) params.set("module", module);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      try {
+        const [templates, runs] = await Promise.all([
+          getJson("/api/promptops/templates" + suffix),
+          getJson("/api/llm-runs?limit=8"),
+        ]);
+        const rows = templates.items || [];
+        $("promptRows").innerHTML = rows.length
+          ? rows.map((item) => `<tr data-selectable="true">
+              <td><button class="btn" data-prompt-detail="${esc(item.prompt_key)}">${esc(item.name)}</button><br><span class="label mono">${esc(item.prompt_key)}</span></td>
+              <td>${esc(item.module || "-")}</td>
+              <td>${esc(item.active_version ? "v" + item.active_version : "-")}</td>
+              <td>${Object.keys(item.schema || {}).length ? `<span class="status completed">已配置</span>` : `<span class="status pending">未配置</span>`}</td>
+              <td><button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button></td>
+            </tr>`).join("")
+          : `<tr><td colspan="5"><div class="empty">暂无 Prompt 模板</div></td></tr>`;
+        document.querySelectorAll("[data-prompt-detail]").forEach((btn) => btn.addEventListener("click", () => loadPromptDetail(btn.dataset.promptDetail)));
+        document.querySelectorAll("[data-prompt-test]").forEach((btn) => btn.addEventListener("click", () => testPrompt(btn.dataset.promptTest)));
+        renderLlmRuns(runs.items || []);
+      } catch (error) {
+        showLoadError("promptRows", 5);
+      }
+    }
+
+    function renderLlmRuns(rows) {
+      $("llmRunRows").innerHTML = rows.length
+        ? rows.map((item) => `<tr>
+            <td><button class="btn mono" data-llm-run="${esc(item.run_id)}">${esc(shortTaskId(item.run_id))}</button></td>
+            <td>${esc(item.prompt_key)}</td>
+            <td>${esc(item.model_name || "-")}</td>
+            <td><span class="status ${esc(item.status)}">${esc(statusText(item.status))}</span><br><span class="label">Schema ${item.schema_valid ? "通过" : "未通过"}</span></td>
+            <td>${esc(number(item.latency_ms))} ms<br><span class="label">$${esc(fmt(item.cost_usd))}</span></td>
+          </tr>`).join("")
+        : `<tr><td colspan="5"><div class="empty">暂无 LLM 调用记录</div></td></tr>`;
+      document.querySelectorAll("[data-llm-run]").forEach((btn) => btn.addEventListener("click", () => loadLlmRunDetail(btn.dataset.llmRun)));
+    }
+
+    async function loadPromptDetail(promptKey) {
+      try {
+        const item = await getJson(`/api/promptops/templates/${encodeURIComponent(promptKey)}`);
+        const active = (item.versions || []).find((version) => version.id === item.active_version_id) || (item.versions || [])[0];
+        $("promptDetail").innerHTML = `<h2>Prompt 详情</h2>
+          <div class="kv"><span class="label">标识</span><span class="mono">${esc(item.prompt_key)}</span></div>
+          <div class="kv"><span class="label">模块</span><span>${esc(item.module || "-")}</span></div>
+          <div class="kv"><span class="label">活动版本</span><span>${esc(item.active_version ? "v" + item.active_version : "-")}</span></div>
+          <div class="detail-section"><h3>内容</h3><div class="text-block">${esc(active?.content || "-")}</div></div>
+          <div class="detail-section"><h3>Schema</h3><div class="text-block">${esc(JSON.stringify(item.schema || {}, null, 2))}</div></div>
+          <div class="detail-section"><h3>版本</h3>${
+            (item.versions || []).length ? item.versions.map((version) => `<div class="event"><strong>v${esc(version.version)}</strong> ${version.is_active ? `<span class="status completed">活动</span>` : ""}<br>${esc(version.changelog || "-")}</div>`).join("") : `<div class="empty">暂无版本</div>`
+          }</div>
+          <div class="links"><button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button></div>`;
+        document.querySelectorAll("[data-prompt-test]").forEach((btn) => btn.addEventListener("click", () => testPrompt(btn.dataset.promptTest)));
+      } catch (error) {
+        showLoadError("promptDetail");
+      }
+    }
+
+    async function createPromptTemplate() {
+      let schema = {};
+      const rawSchema = $("promptSchema").value.trim();
+      if (rawSchema) {
+        try { schema = JSON.parse(rawSchema); }
+        catch (error) {
+          $("promptMessage").innerHTML = `<div class="error">Schema 必须是合法 JSON。</div>`;
+          return;
+        }
+      }
+      const payload = {
+        prompt_key: $("promptKey").value.trim(),
+        name: $("promptName").value.trim(),
+        module: $("promptCreateModule").value.trim(),
+        content: $("promptContent").value,
+        schema,
+      };
+      if (!payload.prompt_key || !payload.content) {
+        $("promptMessage").innerHTML = `<div class="error">请输入 Prompt 标识和内容。</div>`;
+        return;
+      }
+      try {
+        const item = await postJson("/api/promptops/templates", payload);
+        $("promptMessage").innerHTML = `<div class="empty">已创建 Prompt：${esc(item.prompt_key)}</div>`;
+        await loadPromptOps();
+        loadPromptDetail(item.prompt_key);
+      } catch (error) {
+        $("promptMessage").innerHTML = `<div class="error">创建失败，Prompt 标识可能已存在。</div>`;
+      }
+    }
+
+    async function testPrompt(promptKey) {
+      try {
+        const result = await postJson(`/api/promptops/templates/${encodeURIComponent(promptKey)}/test-run`, {
+          input: { claim: "收入增长是否被证据支持？", text: "revenue increased" },
+          model_role: "verifier",
+        });
+        $("promptDetail").insertAdjacentHTML("afterbegin", `<div class="empty">测试完成：${esc(result.llm_run_id)}</div>`);
+        await loadPromptOps();
+      } catch (error) {
+        $("promptDetail").insertAdjacentHTML("afterbegin", `<div class="error">测试运行失败，请检查 Schema 和 Prompt。</div>`);
+      }
+    }
+
+    async function loadLlmRunDetail(runId) {
+      try {
+        const item = await getJson(`/api/llm-runs/${encodeURIComponent(runId)}`);
+        $("promptDetail").innerHTML = `<h2>LLM 调用详情</h2>
+          <div class="kv"><span class="label">运行</span><span class="mono">${esc(item.run_id)}</span></div>
+          <div class="kv"><span class="label">Prompt</span><span>${esc(item.prompt_key)}</span></div>
+          <div class="kv"><span class="label">模型</span><span>${esc(item.model_name || "-")}</span></div>
+          <div class="kv"><span class="label">状态</span><span><span class="status ${esc(item.status)}">${esc(statusText(item.status))}</span></span></div>
+          <div class="kv"><span class="label">耗时</span><span>${esc(number(item.latency_ms))} ms</span></div>
+          <div class="detail-section"><h3>输入</h3><div class="text-block">${esc(JSON.stringify(item.input || {}, null, 2))}</div></div>
+          <div class="detail-section"><h3>输出</h3><div class="text-block">${esc(JSON.stringify(item.output || {}, null, 2))}</div></div>
+          ${item.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(item.error_message)}</div></div>` : ""}`;
+      } catch (error) {
+        showLoadError("promptDetail");
+      }
+    }
+
     async function loadEvidenceDetail(evidenceId) {
       try {
         const item = await getJson(`/api/evidence/${encodeURIComponent(evidenceId)}`);
@@ -2084,6 +2428,79 @@ def render_workbench_html() -> str:
           }</div>`;
       } catch (error) {
         showLoadError("evidenceDetail");
+      }
+    }
+
+    async function loadFinancialFacts() {
+      const params = new URLSearchParams();
+      const company = $("factCompany").value.trim();
+      const metric = $("factMetric").value.trim();
+      const period = $("factPeriodFilter").value.trim();
+      if (company) params.set("company", company);
+      if (metric) params.set("metric", metric);
+      if (period) params.set("period", period);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      try {
+        const payload = await getJson("/api/financial-facts" + suffix);
+        const rows = payload.items || [];
+        $("factRows").innerHTML = rows.length
+          ? rows.map((fact) => `<tr data-selectable="true">
+              <td>${esc(fact.company?.name || "-")}<br><span class="label mono">${esc(fact.company?.symbol || "")}</span></td>
+              <td><button class="btn" data-fact-detail="${esc(fact.id)}">${esc(fact.metric_name)}</button><br><span class="label">${esc(fact.metric_type || "-")}</span></td>
+              <td>${esc(number(fact.value))}<br><span class="label">${esc([fact.currency, fact.unit, fact.scale].filter(Boolean).join(" / ") || "-")}</span></td>
+              <td>${esc(fact.period)}</td>
+              <td>${fact.evidence ? esc(fact.evidence.evidence_id) : esc(fact.source_url || "-")}</td>
+              <td><span class="status ${esc(fact.review_status)}">${esc(statusText(fact.review_status))}</span></td>
+            </tr>`).join("")
+          : `<tr><td colspan="6"><div class="empty">暂无财务事实</div></td></tr>`;
+        document.querySelectorAll("[data-fact-detail]").forEach((btn) => btn.addEventListener("click", () => loadFinancialFactDetail(btn.dataset.factDetail)));
+      } catch (error) {
+        showLoadError("factRows", 6);
+      }
+    }
+
+    async function loadFinancialFactDetail(factId) {
+      try {
+        const fact = await getJson(`/api/financial-facts/${encodeURIComponent(factId)}`);
+        $("factDetail").innerHTML = `<h2>财务事实详情</h2>
+          <div class="kv"><span class="label">公司</span><span>${esc(fact.company?.name || "-")} / ${esc(fact.company?.symbol || "-")}</span></div>
+          <div class="kv"><span class="label">指标</span><span>${esc(fact.metric_name)}</span></div>
+          <div class="kv"><span class="label">数值</span><span>${esc(number(fact.value))} ${esc([fact.currency, fact.unit, fact.scale].filter(Boolean).join(" / "))}</span></div>
+          <div class="kv"><span class="label">期间</span><span>${esc(fact.period)}</span></div>
+          <div class="kv"><span class="label">置信度</span><span>${esc(fmt(fact.confidence))}</span></div>
+          <div class="kv"><span class="label">审核</span><span><span class="status ${esc(fact.review_status)}">${esc(statusText(fact.review_status))}</span></span></div>
+          <div class="detail-section"><h3>证据来源</h3>${
+            fact.evidence ? `<div class="event"><strong>${esc(fact.evidence.title || fact.evidence.evidence_id)}</strong><br>${esc(fact.evidence.source_url || "-")}</div>` : `<div class="empty">${esc(fact.source_url || "暂无证据绑定")}</div>`
+          }</div>
+          <div class="detail-section"><h3>元数据</h3><div class="text-block">${esc(JSON.stringify(fact.metadata || {}, null, 2))}</div></div>`;
+      } catch (error) {
+        showLoadError("factDetail");
+      }
+    }
+
+    async function createFinancialFact() {
+      const payload = {
+        symbol: $("factSymbol").value.trim(),
+        company_name: $("factCompanyName").value.trim(),
+        metric_name: $("factMetricName").value.trim(),
+        value: $("factValue").value.trim(),
+        period: $("factPeriod").value.trim(),
+        currency: $("factCurrency").value.trim(),
+        unit: $("factUnit").value.trim(),
+        evidence_id: $("factEvidenceId").value.trim(),
+        source_url: $("factSourceUrl").value.trim(),
+      };
+      if (!payload.metric_name || !payload.value || !payload.period) {
+        $("factMessage").innerHTML = `<div class="error">请输入指标、数值和期间。</div>`;
+        return;
+      }
+      try {
+        const fact = await postJson("/api/financial-facts", payload);
+        $("factMessage").innerHTML = `<div class="empty">已导入事实：${esc(fact.metric_name)}</div>`;
+        await loadFinancialFacts();
+        loadFinancialFactDetail(fact.id);
+      } catch (error) {
+        $("factMessage").innerHTML = `<div class="error">导入失败，金额类指标需要币种和单位。</div>`;
       }
     }
 
@@ -2337,6 +2754,18 @@ def render_workbench_html() -> str:
     });
     $("claimStatus").addEventListener("change", loadClaims);
     $("claimVerification").addEventListener("change", loadClaims);
+    $("refreshDictionary").addEventListener("click", loadDictionary);
+    $("dictionaryQuery").addEventListener("keydown", (event) => { if (event.key === "Enter") loadDictionary(); });
+    $("dictionaryType").addEventListener("change", loadDictionary);
+    $("createDictionaryTerm").addEventListener("click", createDictionaryTerm);
+    $("refreshPromptOps").addEventListener("click", loadPromptOps);
+    $("promptModule").addEventListener("keydown", (event) => { if (event.key === "Enter") loadPromptOps(); });
+    $("createPromptTemplate").addEventListener("click", createPromptTemplate);
+    $("refreshFacts").addEventListener("click", loadFinancialFacts);
+    ["factCompany", "factMetric", "factPeriodFilter"].forEach((id) => {
+      $(id).addEventListener("keydown", (event) => { if (event.key === "Enter") loadFinancialFacts(); });
+    });
+    $("createFinancialFact").addEventListener("click", createFinancialFact);
     $("refreshExports").addEventListener("click", loadExports);
     $("exportSymbol").addEventListener("keydown", (event) => { if (event.key === "Enter") loadExports(); });
     $("exportStatus").addEventListener("change", loadExports);
