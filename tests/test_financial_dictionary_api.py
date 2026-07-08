@@ -36,6 +36,7 @@ def test_financial_dictionary_api_create_list_get_and_resolve(tmp_path):
         listed = client.get("/api/dictionary", params={"term_type": "company", "q": "Apple"})
         detail = client.get(f"/api/dictionary/terms/{created.json()['id']}")
         resolved = client.get("/api/dictionary/resolve-company", params={"q": "Apple Inc.", "market": "US"})
+        resolved_generic = client.get("/api/dictionary/resolve", params={"q": "Apple", "term_type": "company", "market": "US"})
         duplicate = client.post(
             "/api/dictionary",
             json={"term_type": "company", "canonical_name": "苹果公司", "market": "US"},
@@ -51,4 +52,6 @@ def test_financial_dictionary_api_create_list_get_and_resolve(tmp_path):
     assert resolved.status_code == 200
     assert resolved.json()["canonical_name"] == "苹果公司"
     assert resolved.json()["matched_alias"] == "Apple Inc."
+    assert resolved_generic.status_code == 200
+    assert resolved_generic.json()["symbol"] == "AAPL"
     assert duplicate.status_code == 409

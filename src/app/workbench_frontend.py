@@ -2392,6 +2392,54 @@ def render_workbench_html() -> str:
       }
     }
 
+    function renderDictionaryCreatePanel(message = "") {
+      $("dictionaryDetail").innerHTML = `<h2>添加词条</h2>
+        <div class="form-grid">
+          <div class="field">
+            <label for="dictionaryCreateType">类型</label>
+            <select id="dictionaryCreateType">
+              <option value="company">公司别名</option>
+              <option value="metric">财务指标</option>
+              <option value="product">产品别名</option>
+              <option value="industry">行业术语</option>
+              <option value="risk">风险词</option>
+              <option value="exclude">排除词</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="dictionaryMarket">市场</label>
+            <input id="dictionaryMarket" placeholder="US / CN / HK" />
+          </div>
+          <div class="field full">
+            <label for="dictionaryCanonical">标准词</label>
+            <input id="dictionaryCanonical" placeholder="例如：苹果公司 / 营业收入 / 毛利率" />
+          </div>
+          <div class="field">
+            <label for="dictionarySymbol">股票代码</label>
+            <input id="dictionarySymbol" placeholder="公司词条可填，如 AAPL" />
+          </div>
+          <div class="field">
+            <label for="dictionaryAliases">别名</label>
+            <input id="dictionaryAliases" placeholder="苹果, Apple, Apple Inc." />
+          </div>
+          <div class="field full">
+            <label for="dictionaryDescription">说明</label>
+            <textarea id="dictionaryDescription" rows="3" placeholder="口径、用途或排除原因。"></textarea>
+          </div>
+        </div>
+        <div class="modal-actions"><button class="btn primary" id="createDictionaryTerm">添加词条</button></div>
+        <div id="dictionaryMessage">${message}</div>`;
+      bindCreateDictionaryButton();
+      $("dictionaryCanonical").focus();
+    }
+
+    function bindCreateDictionaryButton() {
+      const button = $("createDictionaryTerm");
+      if (!button || button.dataset.boundCreateDictionary === "true") return;
+      button.dataset.boundCreateDictionary = "true";
+      button.addEventListener("click", createDictionaryTerm);
+    }
+
     async function loadDictionaryDetail(termId) {
       try {
         const item = await getJson(`/api/dictionary/terms/${encodeURIComponent(termId)}`);
@@ -2402,6 +2450,7 @@ def render_workbench_html() -> str:
     }
 
     function renderDictionaryDetail(item) {
+      const defaultAlias = (item.aliases || []).find((alias) => alias !== item.canonical_name) || item.canonical_name || "";
       $("dictionaryDetail").innerHTML = `<h2>词条详情</h2>
         <div class="kv"><span class="label">标准词</span><span>${esc(item.canonical_name)}</span></div>
         <div class="kv"><span class="label">类型</span><span><span class="status ${esc(item.term_type)}">${esc(statusText(item.term_type))}</span></span></div>
@@ -2409,7 +2458,46 @@ def render_workbench_html() -> str:
         <div class="kv"><span class="label">市场</span><span>${esc(item.market || "-")}</span></div>
         <div class="detail-section"><h3>别名</h3><div class="text-block">${esc((item.aliases || []).join("\\n") || "-")}</div></div>
         <div class="detail-section"><h3>说明</h3><div class="text-block">${esc(item.description || "-")}</div></div>
+        <div class="detail-section"><h3>解析测试</h3>
+          <div class="form-grid">
+            <div class="field"><label for="dictionaryResolveQuery">待解析文本</label><input id="dictionaryResolveQuery" value="${esc(defaultAlias)}" /></div>
+            <div class="field"><label for="dictionaryResolveType">类型</label><select id="dictionaryResolveType">
+              <option value="">全部类型</option>
+              <option value="company"${item.term_type === "company" ? " selected" : ""}>公司别名</option>
+              <option value="metric"${item.term_type === "metric" ? " selected" : ""}>财务指标</option>
+              <option value="product"${item.term_type === "product" ? " selected" : ""}>产品别名</option>
+              <option value="industry"${item.term_type === "industry" ? " selected" : ""}>行业术语</option>
+              <option value="risk"${item.term_type === "risk" ? " selected" : ""}>风险词</option>
+              <option value="exclude"${item.term_type === "exclude" ? " selected" : ""}>排除词</option>
+            </select></div>
+            <div class="field"><label for="dictionaryResolveMarket">市场</label><input id="dictionaryResolveMarket" value="${esc(item.market || "")}" placeholder="US / CN / HK" /></div>
+          </div>
+          <div class="links"><button class="btn primary" id="testDictionaryResolve">测试解析</button><button class="btn" data-dictionary-create="true">新增词条</button></div>
+          <div id="dictionaryResolveResult"></div>
+        </div>
         <div class="detail-section"><h3>用途</h3><div class="empty">用于公司归一、指标归一、查询理解和后续检索扩展；词典记录本身不替代证据。</div></div>`;
+      $("testDictionaryResolve").addEventListener("click", testDictionaryResolve);
+      document.querySelectorAll("[data-dictionary-create]").forEach((btn) => btn.addEventListener("click", () => renderDictionaryCreatePanel()));
+    }
+
+    async function testDictionaryResolve() {
+      const params = new URLSearchParams();
+      const q = $("dictionaryResolveQuery").value.trim();
+      const type = $("dictionaryResolveType").value;
+      const market = $("dictionaryResolveMarket").value.trim();
+      if (!q) {
+        $("dictionaryResolveResult").innerHTML = `<div class="error">请输入要解析的别名或术语。</div>`;
+        return;
+      }
+      params.set("q", q);
+      if (type) params.set("term_type", type);
+      if (market) params.set("market", market);
+      try {
+        const resolved = await getJson(`/api/dictionary/resolve?${params.toString()}`);
+        $("dictionaryResolveResult").innerHTML = `<div class="empty">已解析为：${esc(resolved.canonical_name)}${resolved.symbol ? ` / ${esc(resolved.symbol)}` : ""}<br><span class="label">命中别名：${esc(resolved.matched_alias || q)}</span></div>`;
+      } catch (error) {
+        $("dictionaryResolveResult").innerHTML = `<div class="error">未命中词典，请检查类型、市场或别名。</div>`;
+      }
     }
 
     async function createDictionaryTerm() {
@@ -2903,7 +2991,7 @@ def render_workbench_html() -> str:
     $("refreshDictionary").addEventListener("click", loadDictionary);
     $("dictionaryQuery").addEventListener("keydown", (event) => { if (event.key === "Enter") loadDictionary(); });
     $("dictionaryType").addEventListener("change", loadDictionary);
-    $("createDictionaryTerm").addEventListener("click", createDictionaryTerm);
+    bindCreateDictionaryButton();
     $("refreshPromptOps").addEventListener("click", loadPromptOps);
     $("promptModule").addEventListener("keydown", (event) => { if (event.key === "Enter") loadPromptOps(); });
     $("createPromptTemplate").addEventListener("click", createPromptTemplate);
