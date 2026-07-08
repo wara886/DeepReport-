@@ -2544,7 +2544,7 @@ def render_workbench_html() -> str:
             </tr>`).join("")
           : `<tr><td colspan="5"><div class="empty">暂无 Prompt 模板</div></td></tr>`;
         document.querySelectorAll("[data-prompt-detail]").forEach((btn) => btn.addEventListener("click", () => loadPromptDetail(btn.dataset.promptDetail)));
-        document.querySelectorAll("[data-prompt-test]").forEach((btn) => btn.addEventListener("click", () => testPrompt(btn.dataset.promptTest)));
+        bindPromptTestButtons($("promptRows"));
         renderLlmRuns(runs.items || []);
       } catch (error) {
         showLoadError("promptRows", 5);
@@ -2578,10 +2578,18 @@ def render_workbench_html() -> str:
             (item.versions || []).length ? item.versions.map((version) => `<div class="event"><strong>v${esc(version.version)}</strong> ${version.is_active ? `<span class="status completed">活动</span>` : ""}<br>${esc(version.changelog || "-")}</div>`).join("") : `<div class="empty">暂无版本</div>`
           }</div>
           <div class="links"><button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button></div>`;
-        document.querySelectorAll("[data-prompt-test]").forEach((btn) => btn.addEventListener("click", () => testPrompt(btn.dataset.promptTest)));
+        bindPromptTestButtons($("promptDetail"));
       } catch (error) {
         showLoadError("promptDetail");
       }
+    }
+
+    function bindPromptTestButtons(root = document) {
+      root.querySelectorAll("[data-prompt-test]").forEach((btn) => {
+        if (btn.dataset.boundPromptTest === "true") return;
+        btn.dataset.boundPromptTest = "true";
+        btn.addEventListener("click", () => testPrompt(btn.dataset.promptTest));
+      });
     }
 
     async function createPromptTemplate() {
@@ -2639,6 +2647,7 @@ def render_workbench_html() -> str:
           <div class="kv"><span class="label">耗时</span><span>${esc(number(item.latency_ms))} ms</span></div>
           <div class="detail-section"><h3>输入</h3><div class="text-block">${esc(JSON.stringify(item.input || {}, null, 2))}</div></div>
           <div class="detail-section"><h3>输出</h3><div class="text-block">${esc(JSON.stringify(item.output || {}, null, 2))}</div></div>
+          <div class="detail-section"><h3>元数据</h3><div class="text-block">${esc(JSON.stringify(item.metadata || {}, null, 2))}</div></div>
           ${item.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(item.error_message)}</div></div>` : ""}`;
       } catch (error) {
         showLoadError("promptDetail");

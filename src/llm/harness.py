@@ -68,6 +68,7 @@ class LLMHarness:
         attempt_count = 0
         fallback_used = False
         last_error: Exception | None = None
+        attempt_errors: list[dict[str, Any]] = []
         output: dict[str, Any] | None = None
         backend_used = self.backend
 
@@ -81,6 +82,7 @@ class LLMHarness:
                     output = self._call_backend(backend, prompt=prompt or prompt_key, input=input, schema=schema)
                     _validate_schema(output, schema)
                     latency_ms = _elapsed_ms(started)
+                    run_metadata = _merge_metadata(metadata, attempt_errors=attempt_errors)
                     self._record_run(
                         run_id=run_id,
                         task_id=task_id,
@@ -96,7 +98,7 @@ class LLMHarness:
                         output_json=output,
                         error_message=None,
                         latency_ms=latency_ms,
-                        metadata=metadata,
+                        metadata=run_metadata,
                     )
                     return LLMHarnessResult(
                         run_id=run_id,
@@ -109,8 +111,17 @@ class LLMHarness:
                     )
                 except Exception as exc:  # noqa: BLE001 - harness must log all backend failures.
                     last_error = exc
+                    attempt_errors.append(
+                        {
+                            "backend": _backend_name(backend),
+                            "attempt": attempt_count,
+                            "fallback": is_fallback,
+                            "error": str(exc),
+                        }
+                    )
 
         latency_ms = _elapsed_ms(started)
+        run_metadata = _merge_metadata(metadata, attempt_errors=attempt_errors)
         self._record_run(
             run_id=run_id,
             task_id=task_id,
@@ -126,7 +137,7 @@ class LLMHarness:
             output_json=output,
             error_message=str(last_error) if last_error else "LLM harness failed",
             latency_ms=latency_ms,
-            metadata=metadata,
+            metadata=run_metadata,
         )
         if isinstance(last_error, LLMHarnessSchemaError):
             raise last_error
@@ -263,3 +274,14 @@ def _token_count(payload: dict[str, Any]) -> int:
 
 def _elapsed_ms(started: float) -> int:
     return max(0, int((time.perf_counter() - started) * 1000))
+
+
+def _backend_name(backend: Any) -> str:
+    return str(getattr(backend, "name", None) or backend.__class__.__name__)
+
+
+def _merge_metadata(metadata: dict[str, Any] | None, *, attempt_errors: list[dict[str, Any]]) -> dict[str, Any]:
+    merged = dict(metadata or {})
+    if attempt_errors:
+        merged["attempt_errors"] = attempt_errors
+    return merged
