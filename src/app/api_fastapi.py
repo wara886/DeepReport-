@@ -36,6 +36,7 @@ from src.services.report_task_service import (
     ReportTaskNotFound,
     ReportTaskService,
 )
+from src.services.task_analysis_service import TaskAnalysisService
 from src.services.workspace_service import (
     WorkspaceCompanyNotFound,
     WorkspaceConflict,
@@ -122,6 +123,10 @@ def create_fastapi_app(
     app.state.llm_run_service = LLMRunService(session_factory=app.state.report_task_service.session)
     app.state.promptops_service = PromptOpsService(session_factory=app.state.report_task_service.session)
     app.state.investment_signal_service = InvestmentSignalService(session_factory=app.state.report_task_service.session)
+    app.state.task_analysis_service = TaskAnalysisService(
+        session_factory=app.state.report_task_service.session,
+        report_task_service=app.state.report_task_service,
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -849,6 +854,15 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/report-tasks/{task_id}/analysis")
+    def get_report_task_analysis(task_id: str) -> Response:
+        try:
+            return JSONResponse(content=_task_analysis_service(app).get_analysis_package(task_id))
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.post("/api/investment-signals/{signal_ref}/add-to-task")
     async def add_investment_signal_to_task(signal_ref: str, incoming: Request) -> Response:
         payload = await _json_payload(incoming)
@@ -1152,6 +1166,10 @@ def _promptops_service(app: FastAPI) -> PromptOpsService:
 
 def _investment_signal_service(app: FastAPI) -> InvestmentSignalService:
     return app.state.investment_signal_service
+
+
+def _task_analysis_service(app: FastAPI) -> TaskAnalysisService:
+    return app.state.task_analysis_service
 
 
 def _optional_string(value: Any) -> str | None:

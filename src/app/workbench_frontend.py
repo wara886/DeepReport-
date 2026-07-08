@@ -256,6 +256,20 @@ def render_workbench_html() -> str:
     .diagnostic-issue { border-left: 3px solid var(--warn); padding-left: 8px; font-size: 13px; line-height: 1.45; }
     .diagnostic-issue.blocker, .diagnostic-issue.fatal, .diagnostic-issue.error { border-left-color: var(--bad); }
     .diagnostic-empty { color: var(--muted); font-size: 13px; }
+    .analysis-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+    .analysis-stat { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 10px; min-height: 72px; }
+    .analysis-stat strong { display: block; font-size: 18px; margin-top: 5px; }
+    .check-grid { display: grid; gap: 8px; }
+    .check-item { border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 8px; background: #fbfcfd; padding: 10px; font-size: 13px; }
+    .check-item.passed { border-left-color: var(--good); }
+    .check-item.failed { border-left-color: var(--bad); }
+    .chain-list { display: grid; gap: 8px; }
+    .chain-node { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 10px; font-size: 13px; }
+    .chain-node-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+    .chain-edge { margin: 6px 0 6px 14px; color: var(--muted); font-size: 12px; }
+    .chain-summary { border: 1px solid #cfe2f3; background: #f4f9ff; color: #18436b; border-radius: 8px; padding: 10px; font-size: 13px; line-height: 1.5; margin-bottom: 10px; }
+    .action-list { display: grid; gap: 7px; }
+    .action-item { border: 1px solid var(--line); border-radius: 8px; padding: 9px; background: #fbfcfd; display: grid; gap: 6px; font-size: 13px; }
     .reason-list { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
     .reason-pill { display: inline-block; border-radius: 999px; background: #eef6ff; color: #175cd3; padding: 3px 7px; font-size: 12px; }
     .score-note { color: var(--muted); font-size: 12px; line-height: 1.45; }
@@ -1180,7 +1194,7 @@ def render_workbench_html() -> str:
       cancelled: "已取消", archived: "已归档", quality_failed: "质量未通过", skipped: "已跳过",
       pending: "待复核", approved: "已通过", rejected: "已驳回", regenerate_requested: "已请求重生成",
       in_context: "已加入任务", dismissed: "已忽略",
-      supported: "已支持", verified: "已验证", passed: "通过", success: "成功", parsed: "已解析",
+      supported: "已支持", verified: "已验证", passed: "通过", success: "成功", done: "已完成", parsed: "已解析",
       official: "官方", primary: "一手", secondary: "二手", medium: "中可信", low: "低可信", high: "高可信", unknown: "未知",
       not_required: "无需凭证", required: "需配置", configured: "已配置", expired: "已过期",
       not_run: "未运行",
@@ -2745,7 +2759,8 @@ def render_workbench_html() -> str:
 
     async function loadTaskDetail(taskId) {
       try {
-        const task = await getJson(`/api/report-tasks/${encodeURIComponent(taskId)}`);
+        const analysis = await getJson(`/api/report-tasks/${encodeURIComponent(taskId)}/analysis`);
+        const task = analysis.task || {};
         const events = task.events || [];
         const metadata = task.metadata || {};
         $("taskDetail").innerHTML = `<h2>任务详情</h2>
@@ -2759,6 +2774,12 @@ def render_workbench_html() -> str:
           <div class="detail-section"><h3>研究问题</h3><div class="text-block">${esc(metadata.research_topic || "-")}</div></div>
           <div class="detail-section"><h3>任务操作</h3>${taskActionButtons(task)}</div>
           ${task.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(task.error_message)}</div></div>` : ""}
+          ${renderTaskNarrative(analysis)}
+          ${renderTaskAnalysisStats(analysis.stats || {})}
+          ${renderQualityProof(analysis.quality_proof || {}, task)}
+          ${renderArgumentChain(analysis.argument_chain || {})}
+          ${renderRiskChain(analysis.risk_chain || {})}
+          ${renderRecommendedActions(analysis.recommended_actions || [])}
           ${renderQualityDiagnostics(task)}
           <div class="detail-section"><h3>产物</h3>${artifactButtons(task)}</div>
           ${systemInfoBlock("系统信息", [["任务编号", task.task_id]])}
@@ -2766,9 +2787,91 @@ def render_workbench_html() -> str:
             events.length ? events.map((event) => `<div class="event"><strong>${esc(stepText(event.stage))}</strong> <span class="status ${esc(event.status)}">${esc(statusText(event.status))}</span><br><span class="label">${esc(fmt(event.created_at))}</span><br>${esc(fmt(event.message))}</div>`).join("") : `<div class="empty">暂无事件</div>`
           }</div></div>`;
         bindTaskActionButtons($("taskDetail"));
+        bindJumpHandlers($("taskDetail"));
       } catch (error) {
         showLoadError("taskDetail");
       }
+    }
+
+    function renderTaskNarrative(analysis) {
+      const items = analysis.narrative || [];
+      return `<div class="detail-section"><h3>业务链路</h3><div class="timeline">${
+        items.length ? items.map((item) => `<div class="event"><strong>${esc(item.stage)}</strong> <span class="status ${esc(item.status || "pending")}">${esc(statusText(item.status || "pending"))}</span><br>${esc(item.description || "")}</div>`).join("") : `<div class="empty">暂无链路数据</div>`
+      }</div></div>`;
+    }
+
+    function renderTaskAnalysisStats(stats) {
+      const cards = [
+        ["证据", stats.evidence_count, `官方/一手 ${number(stats.official_evidence_count || 0)} 条`],
+        ["财务事实", stats.financial_fact_count, "结构化指标和口径"],
+        ["投资线索", stats.investment_signal_count, `高优先级 ${number(stats.high_severity_signal_count || 0)} 条`],
+        ["主张校验", `${number(stats.verified_claim_count || 0)} / ${number(stats.claim_count || 0)}`, `待复核 ${number(stats.pending_review_count || 0)} 条`],
+      ];
+      return `<div class="detail-section"><h3>分析包概览</h3>
+        <div class="analysis-stats">${cards.map(([label, value, note]) => `<div class="analysis-stat"><span class="label">${esc(label)}</span><strong>${esc(fmt(value))}</strong><span class="score-note">${esc(note)}</span></div>`).join("")}</div>
+        <div class="score-note" style="margin-top:8px">引用覆盖率：${percentText(stats.citation_coverage_rate)}；主张通过率：${percentText(stats.claim_verified_rate)}；官方证据占比：${percentText(stats.official_evidence_rate)}</div>
+      </div>`;
+    }
+
+    function renderQualityProof(proof, task) {
+      const checks = proof.checks || [];
+      const issues = proof.top_issues || [];
+      const failedClaims = proof.failed_claims || [];
+      return `<div class="detail-section"><h3>研报质量证明</h3>
+        <div class="chain-summary">${esc(proof.explanation || "暂无质量解释。")}</div>
+        <div class="kv"><span class="label">交付门禁</span><span><span class="status ${esc(proof.delivery_pass === true ? "passed" : (proof.delivery_pass === false ? "failed" : "pending"))}">${esc(passText(proof.delivery_pass))}</span></span></div>
+        <div class="kv"><span class="label">质量分</span><span>${esc(fmt(proof.quality_score ?? task.quality_score))}</span></div>
+        <div class="check-grid">${checks.length ? checks.map((item) => `<div class="check-item ${item.passed ? "passed" : "failed"}"><div class="diagnostic-head"><strong>${esc(item.title)}</strong><span class="status ${item.passed ? "passed" : "failed"}">${esc(item.passed ? "通过" : "需处理")}</span></div><div class="score-note">${esc(item.description || "")}</div><div class="mono">${esc(checkValueText(item))}</div></div>`).join("") : `<div class="empty">暂无质量检查项</div>`}</div>
+        ${issues.length ? `<div class="detail-section"><h3>主要问题</h3><div class="diagnostic-list">${issues.slice(0, 5).map((issue) => `<div class="diagnostic-issue ${esc(issue.severity || "")}">${esc(issue.message || issue)}</div>`).join("")}</div></div>` : ""}
+        ${failedClaims.length ? `<div class="detail-section"><h3>需关注主张</h3><div class="mini-list">${failedClaims.slice(0, 5).map((claim) => `<div class="mini-item"><strong>主张 ${esc(claim.id)}</strong><br>${esc(claim.claim_text || "")}<br><span class="label">校验：${esc(statusText(claim.verification_status))} · 数字：${esc(statusText(claim.numeric_check_status))} · 引用：${esc(statusText(claim.citation_check_status))}</span></div>`).join("")}</div></div>` : ""}
+      </div>`;
+    }
+
+    function renderArgumentChain(chain) {
+      const nodes = chain.nodes || [];
+      const edges = chain.edges || [];
+      return `<div class="detail-section"><h3>投资逻辑链</h3>
+        <div class="chain-summary">${esc(chain.summary || "尚未形成投资逻辑链。")}</div>
+        <div class="chain-list">${nodes.length ? nodes.slice(0, 8).map((node) => {
+          const outgoing = edges.filter((edge) => edge.from === node.id).slice(0, 2);
+          return `<div class="chain-node"><div class="chain-node-head"><strong>${esc(node.title || node.id)}</strong><span class="status ${esc(node.type || "neutral")}">${esc(chainNodeTypeText(node.type))}</span></div>${outgoing.map((edge) => `<div class="chain-edge">→ ${esc(edge.label || "关联")} → ${esc(chainTargetTitle(edge.to, nodes))}</div>`).join("")}</div>`;
+        }).join("") : `<div class="empty">暂无可展示链路。导入证据、财务事实和投资线索后会自动补全。</div>`}</div>
+      </div>`;
+    }
+
+    function renderRiskChain(chain) {
+      const nodes = chain.nodes || [];
+      const risks = nodes.filter((node) => node.type === "risk");
+      return `<div class="detail-section"><h3>风险传导链</h3>
+        <div class="chain-summary">${esc(chain.summary || "尚未识别风险传导节点。")}</div>
+        <div class="mini-list">${risks.length ? risks.slice(0, 5).map((node) => `<div class="mini-item"><strong>${esc(node.title || "风险线索")}</strong><br><span class="label">${esc(signalSeverityText(node.payload?.severity || ""))} · ${esc(signalDirectionText(node.payload?.direction || ""))}</span><br>${esc(node.payload?.summary || "")}</div>`).join("") : `<div class="empty">暂无风险线索，可先在投资线索页生成。</div>`}</div>
+      </div>`;
+    }
+
+    function renderRecommendedActions(actions) {
+      return `<div class="detail-section"><h3>下一步动作</h3>
+        <div class="action-list">${actions.length ? actions.map((item) => `<div class="action-item"><div class="diagnostic-head"><strong>${esc(item.label)}</strong><button class="btn" data-jump="${esc(item.view || "tasks")}">前往</button></div><div class="score-note">${esc(item.reason || "")}</div></div>`).join("") : `<div class="empty">当前任务暂无阻塞动作。</div>`}</div>
+      </div>`;
+    }
+
+    function percentText(value) {
+      if (value === null || value === undefined || value === "") return "未记录";
+      return `${Math.round(Number(value) * 1000) / 10}%`;
+    }
+
+    function checkValueText(item) {
+      if (typeof item.value === "number" && item.value >= 0 && item.value <= 1) return `当前值：${percentText(item.value)}`;
+      return `当前值：${fmt(item.value)}`;
+    }
+
+    function chainNodeTypeText(value) {
+      const map = { evidence: "证据", fact: "事实", signal: "线索", claim: "主张", company: "公司", risk: "风险" };
+      return textOf(map, value);
+    }
+
+    function chainTargetTitle(id, nodes) {
+      const node = nodes.find((item) => item.id === id);
+      return node?.title || id;
     }
 
     async function loadEvidence() {
