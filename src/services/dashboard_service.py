@@ -16,6 +16,7 @@ from src.db.models import (
     DocumentProcessingStep,
     EvidenceItem,
     FinancialFact,
+    LLMRun,
     ReportArtifact,
     ReportClaim,
     ReportTask,
@@ -70,6 +71,14 @@ class DashboardService:
             completed_tasks = int(task_status.get("completed", 0))
             failed_tasks = int(task_status.get("failed", 0))
             total_tasks = sum(task_status.values())
+            llm_total = _count(session, LLMRun.id)
+            llm_failed = _count_where(session, LLMRun.id, LLMRun.status != "success")
+            llm_latency_values = [
+                value
+                for value in session.scalars(select(LLMRun.latency_ms).where(LLMRun.latency_ms.is_not(None))).all()
+                if isinstance(value, int)
+            ]
+            llm_cost = float(session.scalar(select(func.coalesce(func.sum(LLMRun.cost_usd), 0.0))) or 0.0)
 
             return {
                 "company_count": _count(session, Company.id),
@@ -85,6 +94,11 @@ class DashboardService:
                 "data_source_distribution": source_distribution,
                 "artifact_distribution": artifact_distribution,
                 "failed_task_count": failed_tasks,
+                "llm_run_count": llm_total,
+                "llm_failed_run_count": llm_failed,
+                "llm_failure_rate": _ratio(llm_failed, llm_total),
+                "average_llm_latency_ms": round(sum(llm_latency_values) / len(llm_latency_values), 2) if llm_latency_values else None,
+                "llm_cost_usd": round(llm_cost, 6),
             }
 
     def funnel(self) -> dict[str, Any]:

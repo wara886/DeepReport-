@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from src.app.api_fastapi import create_fastapi_app
-from src.db.models import EvidenceItem, ReportArtifact, ReportClaim, ReportTask
+from src.db.models import EvidenceItem, LLMRun, ReportArtifact, ReportClaim, ReportTask
 from src.services.report_task_service import ReportTaskService
 
 
@@ -23,6 +23,30 @@ def test_dashboard_summary_aggregates_database_state(temp_db_engine, tmp_path):
                 ReportClaim(task_id="task-ok", claim_text="Supported claim", verification_status="supported", review_status="pending"),
                 ReportClaim(task_id="task-ok", claim_text="Rejected claim", verification_status="failed", review_status="rejected"),
                 ReportArtifact(task_id="task-ok", artifact_type="html", path="report.html", url="/artifacts/report.html"),
+                LLMRun(
+                    run_id="llm-dashboard-ok",
+                    task_id="task-ok",
+                    prompt_key="report_quality_gate",
+                    model_role="quality_gate",
+                    model_name="quality-gate-trace",
+                    status="success",
+                    attempt_count=1,
+                    fallback_used=False,
+                    latency_ms=120,
+                    cost_usd=0.002,
+                ),
+                LLMRun(
+                    run_id="llm-dashboard-failed",
+                    task_id="task-failed",
+                    prompt_key="claim_verifier",
+                    model_role="verifier",
+                    model_name="mock",
+                    status="failed",
+                    attempt_count=2,
+                    fallback_used=True,
+                    latency_ms=240,
+                    cost_usd=0.004,
+                ),
             ]
         )
         session.commit()
@@ -47,3 +71,8 @@ def test_dashboard_summary_aggregates_database_state(temp_db_engine, tmp_path):
     assert body["report_task_status_distribution"] == {"completed": 1, "failed": 1}
     assert body["data_source_distribution"] == {"news": 1, "sec_edgar": 1}
     assert body["artifact_distribution"] == {"html": 1}
+    assert body["llm_run_count"] == 2
+    assert body["llm_failed_run_count"] == 1
+    assert body["llm_failure_rate"] == 0.5
+    assert body["average_llm_latency_ms"] == 180
+    assert body["llm_cost_usd"] == 0.006
