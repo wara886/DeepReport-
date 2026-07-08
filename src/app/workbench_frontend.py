@@ -451,7 +451,7 @@ def render_workbench_html() -> str:
                 <h2 style="margin:0">证据库</h2>
                 <div class="filters">
                   <input id="evidenceQuery" placeholder="搜索证据" />
-                  <input id="evidenceTask" placeholder="任务编号" />
+                  <input id="evidenceTask" placeholder="按研报任务筛选" />
                   <select id="evidenceSource">
                     <option value="">全部来源</option>
                     <option value="sec_edgar">美国证监会年报</option>
@@ -493,7 +493,7 @@ def render_workbench_html() -> str:
                 <h2 style="margin:0">文档处理中心</h2>
                 <div class="filters">
                   <input id="documentQuery" placeholder="搜索文档" />
-                  <input id="documentBatch" placeholder="批次编号" />
+                  <input id="documentBatch" placeholder="按采集批次筛选" />
                   <select id="documentStep">
                     <option value="">全部步骤</option>
                     <option value="ingest">入库</option>
@@ -530,7 +530,7 @@ def render_workbench_html() -> str:
                 <h2 style="margin:0">主张复核</h2>
                 <div class="filters">
                   <input id="claimQuery" placeholder="搜索主张" />
-                  <input id="claimTask" placeholder="任务编号" />
+                  <input id="claimTask" placeholder="按研报任务筛选" />
                   <select id="claimStatus">
                     <option value="">全部复核状态</option>
                     <option value="pending">待复核</option>
@@ -619,7 +619,7 @@ def render_workbench_html() -> str:
               <div class="form-grid">
                 <div class="field full"><label for="workspaceName">空间名称</label><input id="workspaceName" placeholder="例如：AI 美股投研空间" /></div>
                 <div class="field"><label for="workspaceSlug">空间标识</label><input id="workspaceSlug" placeholder="ai-us" /></div>
-                <div class="field"><label for="workspaceMarket">市场</label><input id="workspaceMarket" placeholder="US / HK / CN-A" /></div>
+                <div class="field"><label for="workspaceMarket">市场</label><input id="workspaceMarket" placeholder="美股 / A 股 / 港股" /></div>
                 <div class="field full"><label for="workspaceMetrics">关注指标</label><input id="workspaceMetrics" placeholder="收入, 毛利率, 自由现金流" /></div>
                 <div class="field full"><label for="workspaceRisks">风险类型</label><input id="workspaceRisks" placeholder="估值风险, 现金流风险, 监管风险" /></div>
                 <div class="field full"><label for="workspaceSources">默认数据源</label><input id="workspaceSources" placeholder="sec_edgar, yahoo_finance" /></div>
@@ -654,7 +654,7 @@ def render_workbench_html() -> str:
               <div class="form-grid">
                 <div class="field full"><label for="stockCompanyName">公司名称</label><input id="stockCompanyName" placeholder="例如：NVIDIA Corporation" /></div>
                 <div class="field"><label for="stockSymbol">股票代码</label><input id="stockSymbol" placeholder="NVDA" /></div>
-                <div class="field"><label for="stockMarket">市场</label><input id="stockMarket" placeholder="US" /></div>
+                <div class="field"><label for="stockMarket">市场</label><input id="stockMarket" placeholder="美股 / A 股 / 港股" /></div>
                 <div class="field full"><label for="stockIndustry">行业</label><input id="stockIndustry" placeholder="Semiconductors" /></div>
                 <div class="field full"><label for="stockAliases">公司别名</label><input id="stockAliases" placeholder="英伟达, NVIDIA, NVDA" /></div>
               </div>
@@ -709,7 +709,7 @@ def render_workbench_html() -> str:
                     <option value="failed">失败</option>
                     <option value="cancelled">已取消</option>
                   </select>
-                  <input id="ingestionSource" placeholder="数据源标识，如 sec_edgar" />
+                  <input id="ingestionSource" placeholder="按数据源筛选，如美国证监会年报" />
                   <button class="btn" id="refreshIngestion">刷新</button>
                 </div>
               </div>
@@ -726,7 +726,7 @@ def render_workbench_html() -> str:
               <h2>创建采集批次</h2>
               <div class="form-grid">
                 <div class="field full"><label for="ingestionName">批次名称</label><input id="ingestionName" placeholder="例如：NVDA FY2024 年报采集" /></div>
-                <div class="field"><label for="ingestionCreateSource">数据源标识</label><input id="ingestionCreateSource" placeholder="sec_edgar" /></div>
+                <div class="field"><label for="ingestionCreateSource">数据源</label><input id="ingestionCreateSource" placeholder="例如：美国证监会年报 / sec_edgar" /></div>
                 <div class="field"><label for="ingestionTargetType">采集目标</label><select id="ingestionTargetType"><option value="filings">公告/年报</option><option value="market_data">行情数据</option><option value="news">新闻资料</option><option value="documents">文档资料</option></select></div>
                 <div class="field"><label for="ingestionSymbol">股票代码</label><input id="ingestionSymbol" placeholder="NVDA" /></div>
                 <div class="field"><label for="ingestionPeriod">期间</label><input id="ingestionPeriod" placeholder="FY2024" /></div>
@@ -827,7 +827,7 @@ def render_workbench_html() -> str:
                 <div class="field"><label for="factPeriod">期间</label><input id="factPeriod" placeholder="FY2024" /></div>
                 <div class="field"><label for="factCurrency">币种</label><input id="factCurrency" placeholder="USD / CNY / HKD" /></div>
                 <div class="field"><label for="factUnit">单位</label><input id="factUnit" placeholder="million / %" /></div>
-                <div class="field"><label for="factEvidenceId">证据编号</label><input id="factEvidenceId" placeholder="可选，evidence_id 或数字 ID" /></div>
+                <div class="field"><label for="factEvidenceId">关联证据</label><input id="factEvidenceId" placeholder="可选，填写证据编号或记录 ID" /></div>
                 <div class="field full"><label for="factSourceUrl">来源链接</label><input id="factSourceUrl" placeholder="https://..." /></div>
               </div>
               <div class="modal-actions"><button class="btn primary" id="createFinancialFact">导入事实</button></div>
@@ -880,7 +880,7 @@ def render_workbench_html() -> str:
                 </div>
                 <div class="field">
                   <label for="dictionaryMarket">市场</label>
-                  <input id="dictionaryMarket" placeholder="US / CN / HK" />
+                  <input id="dictionaryMarket" placeholder="美股 / A 股 / 港股" />
                 </div>
                 <div class="field full">
                   <label for="dictionaryCanonical">标准词</label>
@@ -910,38 +910,38 @@ def render_workbench_html() -> str:
               <div class="toolbar">
                 <h2 style="margin:0">提示词运营</h2>
                 <div class="filters">
-                  <input id="promptModule" placeholder="模块，如 verifier / fact_extractor" />
+                  <input id="promptModule" placeholder="按运行模块筛选，如主张校验 / 事实抽取" />
                   <button class="btn" id="refreshPromptOps">刷新</button>
                 </div>
               </div>
               <div class="table-scroll">
                 <table>
                   <thead>
-                    <tr><th>Prompt</th><th>模块</th><th>活动版本</th><th>Schema</th><th>操作</th></tr>
+                    <tr><th>提示词</th><th>模块</th><th>活动版本</th><th>结构化输出</th><th>操作</th></tr>
                   </thead>
                   <tbody id="promptRows"></tbody>
                 </table>
               </div>
               <div class="detail-section">
-                <h3>最近 LLM 调用</h3>
+                <h3>最近智能体运行</h3>
                 <div class="table-scroll">
                   <table>
-                    <thead><tr><th>运行</th><th>Prompt</th><th>模型</th><th>状态</th><th>耗时/成本</th></tr></thead>
+                    <thead><tr><th>运行</th><th>提示词</th><th>模型</th><th>状态</th><th>耗时/成本</th></tr></thead>
                     <tbody id="llmRunRows"></tbody>
                   </table>
                 </div>
               </div>
             </section>
             <aside class="panel detail" id="promptDetail">
-              <h2>创建 Prompt</h2>
+              <h2>创建提示词</h2>
               <div class="form-grid">
-                <div class="field"><label for="promptKey">Prompt 标识</label><input id="promptKey" placeholder="claim_verifier" /></div>
-                <div class="field"><label for="promptCreateModule">模块</label><input id="promptCreateModule" placeholder="verifier" /></div>
-                <div class="field full"><label for="promptName">名称</label><input id="promptName" placeholder="主张校验 Prompt" /></div>
+                <div class="field"><label for="promptKey">模板标识</label><input id="promptKey" placeholder="例如：主张校验模板" /></div>
+                <div class="field"><label for="promptCreateModule">运行模块</label><input id="promptCreateModule" placeholder="例如：主张校验" /></div>
+                <div class="field full"><label for="promptName">名称</label><input id="promptName" placeholder="主张校验提示词" /></div>
                 <div class="field full"><label for="promptContent">内容</label><textarea id="promptContent" rows="7" placeholder="请判断主张是否有证据支持：{{claim}}"></textarea></div>
-                <div class="field full"><label for="promptSchema">输出 Schema JSON</label><textarea id="promptSchema" rows="5" placeholder='{"type":"object","required":["verdict"],"properties":{"verdict":{"type":"string"}}}'></textarea></div>
+                <div class="field full"><label for="promptSchema">结构化输出要求</label><textarea id="promptSchema" rows="5" placeholder='{"type":"object","required":["verdict"],"properties":{"verdict":{"type":"string"}}}'></textarea></div>
               </div>
-              <div class="modal-actions"><button class="btn primary" id="createPromptTemplate">创建 Prompt</button></div>
+              <div class="modal-actions"><button class="btn primary" id="createPromptTemplate">创建提示词</button></div>
               <div id="promptMessage"></div>
             </aside>
           </div>
@@ -1040,10 +1040,10 @@ def render_workbench_html() -> str:
       evidence: ["证据库", "证据、文档、主张关联查询"],
       facts: ["财务事实中心", "指标、单位、币种、期间和证据来源"],
       signals: ["投资线索", "阶段2接入投资线索后启用"],
-      tasks: ["研报任务", "按任务编号跟踪研报生成和产物"],
+      tasks: ["研报任务", "按公司、期间和状态跟踪研报生成与产物"],
       claims: ["主张复核", "查看证据、校验状态和审计轨迹"],
       dictionary: ["金融词典", "维护公司、指标、行业、风险词和排除词别名"],
-      promptops: ["提示词运营", "管理 Prompt 版本、测试运行和 LLM 调用追踪"],
+      promptops: ["提示词运营", "管理提示词版本、测试运行和智能体调用追踪"],
       entities: ["实体库", "阶段2接入实体库后启用"],
       graph: ["关系图谱", "阶段2接入实体关系后启用"],
       evaluation: ["评测中心", "阶段3接入评测运行后启用"],
@@ -1064,8 +1064,14 @@ def render_workbench_html() -> str:
       filings: "公告/年报", documents: "文档资料", news: "新闻资料",
     };
     const sourceMap = {
-      sec_edgar: "美国证监会年报", cninfo: "巨潮资讯", hkex: "港交所公告",
-      eastmoney: "东方财富", yahoo_finance: "雅虎财经", news: "新闻",
+      local_real_data: "本地真实数据", local_evidence: "本地证据库", independent_macro: "宏观独立来源",
+      sec_edgar: "美国证监会年报", cninfo: "巨潮资讯", cninfo_announcements: "巨潮资讯公告",
+      exchange_announcements: "交易所公告", hkex: "港交所公告", hkex_announcements: "港交所公告",
+      eastmoney: "东方财富行情", eastmoney_financials: "东方财富财务", sina_finance: "新浪财经行情",
+      hk_financials: "港股财务数据", serper: "Serper 搜索", tavily: "Tavily 搜索",
+      sec_filing: "SEC 披露文件", cninfo_announcement: "巨潮公告", hkex_announcement: "港交所公告",
+      hkex_annual_report: "港交所年报", yahoo_profile: "雅虎公司画像", yahoo_financials: "雅虎财务数据",
+      eastmoney_quote: "东方财富行情", news: "新闻",
       company_profile: "公司画像", market_api: "行情接口", market_data: "行情数据",
       financials: "财务数据", filing: "公告文件", filings: "公告文件", local_pdf: "本地文档",
     };
@@ -1138,6 +1144,193 @@ def render_workbench_html() -> str:
     const stepText = (value) => textOf(stepMap, value);
     const docTypeText = (value) => textOf(docTypeMap, value);
     const artifactText = (value) => textOf(artifactMap, value);
+
+    function marketText(value) {
+      const map = { US: "美股", CN: "A 股", HK: "港股" };
+      return textOf(map, value);
+    }
+
+    function marketValue(value) {
+      const text = String(value || "").trim();
+      const map = {
+        美股: "US",
+        "A股": "CN",
+        "A 股": "CN",
+        港股: "HK",
+      };
+      return map[text] || text;
+    }
+
+    function promptModuleText(value) {
+      const map = {
+        verifier: "主张校验",
+        fact_extractor: "事实抽取",
+        writer: "研报撰写",
+        researcher: "资料检索",
+        planner: "任务规划",
+        "claim_verifier": "主张校验",
+        "agent.writer": "研报撰写",
+        "agent.verifier": "报告校验",
+        "agent.planner": "任务规划",
+        "agent.researcher": "资料检索",
+        "agent.research": "资料研究",
+        "agent.browser": "网页检索",
+        "agent.analyze": "深度分析",
+        "agent.final_answer": "最终研报",
+        "agent.gap_resolver": "证据缺口修复",
+        "agent.planning": "任务规划",
+      };
+      return textOf(map, value);
+    }
+
+    function promptModuleValue(value) {
+      const text = String(value || "").trim();
+      const map = {
+        主张校验: "verifier",
+        报告校验: "verifier",
+        事实抽取: "fact_extractor",
+        研报撰写: "writer",
+        资料检索: "researcher",
+        任务规划: "planner",
+      };
+      return map[text] || text;
+    }
+
+    function metricTypeText(value) {
+      const map = {
+        money: "金额",
+        ratio: "比例",
+        percent: "百分比",
+        count: "数量",
+        per_share: "每股指标",
+        valuation: "估值指标",
+        growth: "增长率",
+      };
+      return textOf(map, value);
+    }
+
+    function modelDisplayText(value) {
+      const map = {
+        unknown: "未记录",
+        "claim-verifier-rules": "规则校验",
+        "rule-verifier": "规则校验",
+        "local-rules": "本地规则",
+      };
+      return textOf(map, value);
+    }
+
+    function severityText(value) {
+      const map = {
+        fatal: "致命",
+        blocker: "阻塞",
+        warning: "提醒",
+        info: "信息",
+        error: "错误",
+      };
+      return textOf(map, value);
+    }
+
+    function qualityCategoryText(value) {
+      const map = {
+        blocker: "阻塞问题",
+        warning: "提醒问题",
+        info: "信息提示",
+        citation_missing: "引用缺失",
+        citation_or_evidence_gap: "证据链缺口",
+        evidence: "证据不足",
+        quality_gate_blocker: "质量门禁阻塞",
+        runtime_or_model_failure: "运行或模型失败",
+        chart_text_mismatch: "图表文字不一致",
+        source_access_or_fetch: "来源访问失败",
+        valuation: "估值口径",
+        period: "期间错配",
+        llm_review: "智能复核",
+        numeric: "数字核验",
+        structure: "结构完整性",
+        freshness: "时效性",
+      };
+      return textOf(map, value);
+    }
+
+    function marketScopeText(values) {
+      const items = Array.isArray(values) ? values : [];
+      return items.length ? items.map(marketText).join("、") : "未限定";
+    }
+
+    function renderSourceList(values) {
+      const items = Array.isArray(values) ? values : [];
+      return items.length ? items.map(sourceText).map(esc).join("、") : "-";
+    }
+
+    function sourcePurposeText(item) {
+      const key = String(item?.source_key || "");
+      const type = String(item?.source_type || "");
+      const map = {
+        local_real_data: "离线回归和样例演示",
+        local_evidence: "本地资料补充检索",
+        independent_macro: "利率、通胀、就业等宏观背景",
+        sec_edgar: "美股公司年报、季报和 XBRL 财务事实",
+        cninfo_announcements: "A 股公告和年报 PDF",
+        exchange_announcements: "交易所公告补充",
+        hkex_announcements: "港股公告和年报",
+        eastmoney_financials: "A 股结构化三表和关键财务指标",
+        eastmoney: "A 股实时行情和估值倍数",
+        sina_finance: "行情数据补充",
+        yahoo_finance: "海外与港股行情、公司画像和财务摘要",
+        hk_financials: "港股结构化财务补充",
+        serper: "公开网页搜索补充",
+        tavily: "公开网页搜索和新闻补充",
+      };
+      if (map[key]) return map[key];
+      if (type === "official_filing" || type === "official_announcement") return "官方披露和公告核验";
+      if (type === "financial_statement") return "结构化财务事实提取";
+      if (type === "market_data") return "行情、估值和交易数据补充";
+      if (type === "web_search") return "公开网页和新闻搜索补充";
+      if (type === "macro_data") return "宏观环境和政策背景补充";
+      if (type === "local_dataset" || type === "local_index") return "本地资料和回归样例";
+      return "外部资料补充";
+    }
+
+    function credentialText(value) {
+      const map = {
+        not_required: "无需配置",
+        required: "需要配置密钥",
+        configured: "已配置",
+        expired: "已过期",
+      };
+      return textOf(map, value);
+    }
+
+    function systemInfoBlock(title, rows) {
+      const validRows = rows.filter(([, value]) => value != null && value !== "");
+      if (!validRows.length) return "";
+      return `<details class="detail-section"><summary>${esc(title)}</summary>${
+        validRows.map(([label, value]) => `<div class="kv"><span class="label">${esc(label)}</span><span class="mono">${esc(fmt(value))}</span></div>`).join("")
+      }</details>`;
+    }
+
+    function evidenceDisplayTitle(item) {
+      return item?.title || sourceText(item?.source_type) || "证据片段";
+    }
+
+    function batchDisplayTitle(batch) {
+      if (batch?.name) return batch.name;
+      const symbolPeriod = [batch?.symbol, batch?.period].filter(Boolean).join(" · ");
+      return symbolPeriod || "采集批次";
+    }
+
+    function exportDisplayTitle(item) {
+      const company = item?.company_name || item?.symbol || "研报";
+      return `${company} · ${item?.period || "-"}`;
+    }
+
+    function claimTaskText(claim) {
+      const task = claim?.task || claim?.report_task || {};
+      const company = task.metadata?.company_name || task.company_name || task.symbol || claim?.symbol;
+      const period = task.period || claim?.period;
+      if (company || period) return [company || "研报任务", period].filter(Boolean).join(" · ");
+      return "研报任务";
+    }
 
     function stepMetadataText(metadata) {
       const data = metadata || {};
@@ -1326,7 +1519,7 @@ def render_workbench_html() -> str:
       $("createTaskMessage").innerHTML = `<div class="empty">正在创建任务...</div>`;
       try {
         const task = await postJson("/api/report-tasks", payload);
-        $("createTaskMessage").innerHTML = `<div class="empty">任务已创建：${esc(task.task_id)}</div>`;
+        $("createTaskMessage").innerHTML = `<div class="empty">任务已创建，已进入研报任务列表。</div>`;
         closeCreateTaskModal();
         activateView("tasks");
         await loadTasks();
@@ -1373,12 +1566,12 @@ def render_workbench_html() -> str:
         const rows = payload.items || [];
         $("workspaceRows").innerHTML = rows.length
           ? rows.map((item) => `<tr data-selectable="true">
-              <td><button class="btn" data-workspace-stockpool="${esc(item.id)}">${esc(item.name)}</button><br><span class="label mono">${esc(item.slug)}</span></td>
-              <td>${esc(item.market || "-")}</td>
+              <td><button class="btn" data-workspace-stockpool="${esc(item.id)}">${esc(item.name)}</button><br><span class="label">${esc(item.description || "投研空间")}</span></td>
+              <td>${esc(marketText(item.market))}</td>
               <td>${esc(number(item.active_company_count))} / ${esc(number(item.company_count))}</td>
               <td>${renderList(item.focus_metrics)}</td>
               <td>${renderList(item.risk_types)}</td>
-              <td>${renderList(item.default_data_sources)}</td>
+              <td>${renderSourceList(item.default_data_sources)}</td>
             </tr>`).join("")
           : `<tr><td colspan="6"><div class="empty">暂无投研空间</div></td></tr>`;
         bindWorkspaceButtons($("workspaceRows"));
@@ -1404,7 +1597,7 @@ def render_workbench_html() -> str:
       const payload = {
         name: $("workspaceName").value.trim(),
         slug: $("workspaceSlug").value.trim(),
-        market: $("workspaceMarket").value.trim(),
+        market: marketValue($("workspaceMarket").value),
         focus_metrics: csvList($("workspaceMetrics").value),
         risk_types: csvList($("workspaceRisks").value),
         default_data_sources: csvList($("workspaceSources").value),
@@ -1450,7 +1643,7 @@ def render_workbench_html() -> str:
         $("stockpoolRows").innerHTML = rows.length
           ? rows.map((item) => `<tr data-selectable="true">
               <td><strong>${esc(item.name)}</strong><br><span class="label mono">${esc(item.symbol)}</span></td>
-              <td>${esc(item.market || "-")}</td>
+              <td>${esc(marketText(item.market))}</td>
               <td>${esc(item.industry || "-")}</td>
               <td>${renderList(item.aliases)}</td>
               <td>${renderList(item.focus_metrics)}</td>
@@ -1471,7 +1664,7 @@ def render_workbench_html() -> str:
       const payload = {
         name: $("stockCompanyName").value.trim(),
         symbol: $("stockSymbol").value.trim(),
-        market: $("stockMarket").value.trim(),
+        market: marketValue($("stockMarket").value),
         industry: $("stockIndustry").value.trim(),
         aliases: csvList($("stockAliases").value),
       };
@@ -1515,11 +1708,11 @@ def render_workbench_html() -> str:
         const rows = payload.items || [];
         $("datasourceRows").innerHTML = rows.length
           ? rows.map((item) => `<tr data-selectable="true">
-              <td><button class="btn" data-datasource-detail="${esc(item.id)}">${esc(item.name)}</button><br><span class="label mono">${esc(item.source_key)}</span></td>
+              <td><button class="btn" data-datasource-detail="${esc(item.id)}">${esc(item.name || sourceText(item.source_key))}</button><br><span class="label">${esc(sourcePurposeText(item))}</span></td>
               <td>${esc(datasourceTypeText(item.source_type))}</td>
-              <td>${renderList(item.market_scope)}</td>
+              <td>${esc(marketScopeText(item.market_scope))}</td>
               <td><span class="status ${esc(item.trust_level || "secondary")}">${esc(statusText(item.trust_level || "secondary"))}</span></td>
-              <td><span class="status ${esc(item.credential_status)}">${esc(statusText(item.credential_status))}</span></td>
+              <td><span class="status ${esc(item.credential_status)}">${esc(credentialText(item.credential_status))}</span></td>
               <td><span class="status ${esc(item.last_status || "pending")}">${esc(statusText(item.last_status || "pending"))}</span><br><span class="label">${esc(fmt(item.last_sync_at))}</span></td>
               <td class="links">
                 <button class="btn" data-datasource-toggle="${esc(item.id)}" data-enabled="${item.enabled ? "false" : "true"}">${item.enabled ? "停用" : "启用"}</button>
@@ -1557,17 +1750,18 @@ def render_workbench_html() -> str:
       try {
         const item = await getJson(`/api/data-sources/${encodeURIComponent(sourceId)}`);
         $("datasourceDetail").innerHTML = `<h2>数据源详情</h2>
-          <div class="kv"><span class="label">名称</span><span>${esc(item.name)}</span></div>
-          <div class="kv"><span class="label">标识</span><span class="mono">${esc(item.source_key)}</span></div>
+          <div class="kv"><span class="label">名称</span><span>${esc(item.name || sourceText(item.source_key))}</span></div>
+          <div class="kv"><span class="label">用途</span><span>${esc(sourcePurposeText(item))}</span></div>
           <div class="kv"><span class="label">类型</span><span>${esc(datasourceTypeText(item.source_type))}</span></div>
-          <div class="kv"><span class="label">市场</span><span>${renderList(item.market_scope)}</span></div>
+          <div class="kv"><span class="label">覆盖市场</span><span>${esc(marketScopeText(item.market_scope))}</span></div>
           <div class="kv"><span class="label">可信度</span><span><span class="status ${esc(item.trust_level || "secondary")}">${esc(statusText(item.trust_level || "secondary"))}</span></span></div>
           <div class="kv"><span class="label">启用</span><span>${item.enabled ? "是" : "否"}</span></div>
-          <div class="kv"><span class="label">凭证</span><span><span class="status ${esc(item.credential_status)}">${esc(statusText(item.credential_status))}</span></span></div>
+          <div class="kv"><span class="label">凭证</span><span><span class="status ${esc(item.credential_status)}">${esc(credentialText(item.credential_status))}</span></span></div>
           <div class="kv"><span class="label">最近状态</span><span><span class="status ${esc(item.last_status || "pending")}">${esc(statusText(item.last_status || "pending"))}</span></span></div>
           <div class="kv"><span class="label">最近同步</span><span>${esc(fmt(item.last_sync_at))}</span></div>
           ${item.last_error ? `<div class="detail-section"><h3>最近错误</h3><div class="text-block">${esc(item.last_error)}</div></div>` : ""}
-          <div class="detail-section"><h3>配置</h3><div class="text-block">${esc(JSON.stringify(item.config || {}, null, 2))}</div></div>`;
+          ${systemInfoBlock("系统信息", [["数据源标识", item.source_key], ["空间编号", item.workspace_id]])}
+          <details class="detail-section"><summary>接入配置</summary><div class="text-block">${esc(JSON.stringify(item.config || {}, null, 2))}</div></details>`;
       } catch (error) {
         showLoadError("datasourceDetail");
       }
@@ -1618,7 +1812,7 @@ def render_workbench_html() -> str:
       $("ingestionDetail").innerHTML = `<h2>创建采集批次</h2>
         <div class="form-grid">
           <div class="field full"><label for="ingestionName">批次名称</label><input id="ingestionName" placeholder="例如：NVDA FY2024 年报采集" /></div>
-          <div class="field"><label for="ingestionCreateSource">数据源标识</label><input id="ingestionCreateSource" placeholder="sec_edgar" /></div>
+          <div class="field"><label for="ingestionCreateSource">数据源</label><input id="ingestionCreateSource" placeholder="例如：美国证监会年报 / sec_edgar" /></div>
           <div class="field"><label for="ingestionTargetType">采集目标</label><select id="ingestionTargetType"><option value="filings">公告/年报</option><option value="market_data">行情数据</option><option value="news">新闻资料</option><option value="documents">文档资料</option></select></div>
           <div class="field"><label for="ingestionSymbol">股票代码</label><input id="ingestionSymbol" placeholder="NVDA" /></div>
           <div class="field"><label for="ingestionPeriod">期间</label><input id="ingestionPeriod" placeholder="FY2024" /></div>
@@ -1651,8 +1845,8 @@ def render_workbench_html() -> str:
         const rows = payload.items || [];
         $("ingestionRows").innerHTML = rows.length
           ? rows.map((batch) => `<tr data-selectable="true">
-              <td><button class="btn mono" data-ingestion-detail="${esc(batch.batch_id)}">${esc(shortTaskId(batch.batch_id))}</button><br><span class="label">${esc(batch.name)}</span></td>
-              <td>${esc(batch.source_name || sourceText(batch.source_key))}<br><span class="label mono">${esc(fmt(batch.source_key))}</span></td>
+              <td><button class="btn" data-ingestion-detail="${esc(batch.batch_id)}">${esc(batchDisplayTitle(batch))}</button><br><span class="label">${esc(fmt(batch.symbol))} ${esc(fmt(batch.period))}</span></td>
+              <td>${esc(batch.source_name || sourceText(batch.source_key))}<br><span class="label">${esc(sourcePurposeText(batch))}</span></td>
               <td>${esc(statusText(batch.target_type))}<br><span class="label">${esc(fmt(batch.symbol))} · ${esc(fmt(batch.period))}</span></td>
               <td><span class="status ${esc(batch.status)}">${esc(statusText(batch.status))}</span><br><span class="label">重试 ${esc(number(batch.retry_count))} 次</span></td>
               <td>${esc(number(batch.success_count))} 成功 / ${esc(number(batch.failed_count))} 失败<br><span class="label">共 ${esc(number(batch.item_count))} 项</span></td>
@@ -1710,11 +1904,11 @@ def render_workbench_html() -> str:
       }
       try {
         const created = await postJson("/api/ingestion-batches", payload);
-        $("ingestionMessage").innerHTML = `<div class="empty">已创建采集批次：${esc(created.batch_id)}</div>`;
+        $("ingestionMessage").innerHTML = `<div class="empty">采集批次已创建，可在下方启动或查看处理文档。</div>`;
         await loadIngestionBatches();
         await loadIngestionDetail(created.batch_id);
       } catch (error) {
-        $("ingestionMessage").innerHTML = `<div class="error">创建失败，请确认数据源标识存在或留空后重试。</div>`;
+        $("ingestionMessage").innerHTML = `<div class="error">创建失败，请确认数据源已配置或留空后重试。</div>`;
       }
     }
 
@@ -1741,9 +1935,8 @@ def render_workbench_html() -> str:
         const batch = await getJson(`/api/ingestion-batches/${encodeURIComponent(batchId)}`);
         const events = batch.events || [];
         $("ingestionDetail").innerHTML = `<h2>采集批次详情</h2>
-          <div class="kv"><span class="label">批次</span><span class="mono">${esc(batch.batch_id)}</span></div>
           <div class="kv"><span class="label">名称</span><span>${esc(batch.name)}</span></div>
-          <div class="kv"><span class="label">数据源</span><span>${esc(batch.source_name || sourceText(batch.source_key))} / <span class="mono">${esc(fmt(batch.source_key))}</span></span></div>
+          <div class="kv"><span class="label">数据源</span><span>${esc(batch.source_name || sourceText(batch.source_key))}</span></div>
           <div class="kv"><span class="label">目标</span><span>${esc(statusText(batch.target_type))}</span></div>
           <div class="kv"><span class="label">公司期间</span><span>${esc(fmt(batch.symbol))} · ${esc(fmt(batch.period))}</span></div>
           <div class="kv"><span class="label">状态</span><span><span class="status ${esc(batch.status)}">${esc(statusText(batch.status))}</span></span></div>
@@ -1752,6 +1945,7 @@ def render_workbench_html() -> str:
           <div class="detail-section"><h3>查询条件</h3><div class="text-block">${esc(batch.query || "-")}</div></div>
           <div class="detail-section"><h3>批次操作</h3>${ingestionActionButtons(batch)}<div class="links"><button class="btn" data-ingestion-documents="${esc(batch.batch_id)}">查看同批次文档</button><button class="btn" data-ingestion-create="true">新建采集批次</button></div></div>
           ${batch.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(batch.error_message)}</div></div>` : ""}
+          ${systemInfoBlock("系统信息", [["批次编号", batch.batch_id], ["数据源标识", batch.source_key]])}
           <div class="detail-section"><h3>运行日志</h3><div class="timeline">${
             events.length ? events.map((event) => `<div class="event"><strong>${esc(stepText(event.stage))}</strong> <span class="status ${esc(event.status)}">${esc(statusText(event.status))}</span><br><span class="label">${esc(fmt(event.created_at))}</span><br>${esc(fmt(event.message))}</div>`).join("") : `<div class="empty">暂无日志</div>`
           }</div></div>`;
@@ -1805,11 +1999,10 @@ def render_workbench_html() -> str:
         $("manualImportMessage").innerHTML = `<div class="empty">${esc(result.message || "导入完成")}</div>`;
         $("manualImportResult").innerHTML = `<h2>导入结果</h2>
           <div class="kv"><span class="label">文档</span><span>${esc(doc.title || "-")}</span></div>
-          <div class="kv"><span class="label">批次</span><span class="mono">${esc(result.batch_id || "-")}</span></div>
           <div class="kv"><span class="label">状态</span><span><span class="status ${esc(doc.parse_status || "pending")}">${esc(statusText(doc.parse_status || "pending"))}</span></span></div>
-          <div class="kv"><span class="label">类型</span><span>${esc(doc.doc_type || "-")}</span></div>
+          <div class="kv"><span class="label">类型</span><span>${esc(docTypeText(doc.doc_type))}</span></div>
           ${doc.source_url ? `<div class="kv"><span class="label">链接</span><a href="${esc(doc.source_url)}" target="_blank">${esc(doc.source_url)}</a></div>` : ""}
-          ${doc.file_path ? `<div class="kv"><span class="label">文件</span><span class="mono">${esc(doc.file_path)}</span></div>` : ""}
+          ${systemInfoBlock("系统信息", [["批次编号", result.batch_id], ["文件路径", doc.file_path]])}
           <div class="links" style="margin-top:12px">
             <button class="btn primary" id="manualViewDocument">查看处理路径</button>
             <button class="btn" id="manualViewBatch">查看导入批次</button>
@@ -1939,7 +2132,7 @@ def render_workbench_html() -> str:
       $("recentTasks").innerHTML = tasks.length
         ? tasks.map((task) => `<div class="mini-item">
             <div class="mini-title">
-              <button class="btn" data-task-detail-jump="${esc(task.task_id)}">${esc(task.symbol || task.task_id)}</button>
+              <button class="btn" data-task-detail-jump="${esc(task.task_id)}">${esc(metadataName(task))}</button>
               <span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span>
             </div>
             <div class="mini-meta">${esc(task.period || "-")} · ${esc(stepText(task.current_stage))} · ${esc(fmt(task.created_at))}</div>
@@ -2103,7 +2296,7 @@ def render_workbench_html() -> str:
       if (links.html_web_url) buttons.push(`<a class="btn primary" href="${esc(links.html_web_url)}" target="_blank">网页报告</a>`);
       if (links.markdown_web_url) buttons.push(`<a class="btn" href="${esc(links.markdown_web_url)}" target="_blank">文稿</a>`);
       if (links.json_web_url) buttons.push(`<a class="btn" href="${esc(links.json_web_url)}" target="_blank">数据</a>`);
-      buttons.push(`<a class="btn" href="/api/report-tasks/${encodeURIComponent(task.task_id)}/artifacts" target="_blank">产物清单</a>`);
+      buttons.push(`<a class="btn" href="/api/report-tasks/${encodeURIComponent(task.task_id)}/artifacts" target="_blank">全部产物</a>`);
       return `<div class="links">${buttons.join("")}</div>`;
     }
 
@@ -2218,7 +2411,7 @@ def render_workbench_html() -> str:
         const rows = payload.items || [];
         $("taskRows").innerHTML = rows.length
           ? rows.map((task) => `<tr data-selectable="true" data-task-id="${esc(task.task_id)}">
-              <td><button class="btn mono" title="${esc(task.task_id)}" data-task-detail="${esc(task.task_id)}">${esc(shortTaskId(task.task_id))}</button></td>
+              <td><button class="btn" data-task-detail="${esc(task.task_id)}">${esc(metadataName(task))}</button></td>
               <td>${esc(task.symbol)}<br><span class="label">${esc(task.period)}</span></td>
               <td><span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span></td>
               <td class="nowrap">${esc(stepText(task.current_stage))}</td>
@@ -2240,7 +2433,7 @@ def render_workbench_html() -> str:
       const diag = task.quality_diagnostics || {};
       const hasQuality = diag.delivery_pass !== undefined || diag.quality_score !== undefined || Number(diag.llm_run_count || 0) > 0;
       if (!hasQuality) {
-        return `<div class="detail-section"><h3>质量诊断</h3><div class="empty">暂无质量门禁和智能体运行诊断。任务完成后会展示 Writer、Verifier 和质量门禁结果。</div></div>`;
+        return `<div class="detail-section"><h3>质量诊断</h3><div class="empty">暂无质量门禁和智能体运行诊断。任务完成后会展示撰写智能体、校验智能体和质量门禁结果。</div></div>`;
       }
       const gateStatus = diag.delivery_pass === true ? "passed" : (diag.delivery_pass === false ? "failed" : "not_run");
       const categories = Object.entries(diag.failure_categories || {});
@@ -2248,8 +2441,8 @@ def render_workbench_html() -> str:
       const failedSections = diag.failed_sections || [];
       const fixes = diag.required_fixes || [];
       const runCards = [
-        ["Writer", diag.writer],
-        ["Verifier", diag.verifier],
+        ["撰写智能体", diag.writer],
+        ["校验智能体", diag.verifier],
         ["质量门禁", diag.quality_gate],
       ].map(([label, run]) => renderDiagnosticRunCard(label, run)).join("");
       return `<div class="detail-section"><h3>质量诊断</h3>
@@ -2262,13 +2455,13 @@ def render_workbench_html() -> str:
             <div class="diagnostic-meta">
               <span>质量分：${esc(fmt(diag.quality_score))}</span>
               <span>客观规则：${esc(passText(diag.objective_pass))}</span>
-              <span>LLM复核：${esc(passText(diag.llm_review_pass))}</span>
-              <span>LLM运行：${esc(number(diag.llm_run_count || 0))}</span>
+              <span>智能复核：${esc(passText(diag.llm_review_pass))}</span>
+              <span>智能体运行：${esc(number(diag.llm_run_count || 0))}</span>
               <span>失败运行：${esc(number(diag.failed_llm_run_count || 0))}</span>
             </div>
           </div>
-          ${categories.length ? `<div class="diagnostic-card"><strong>失败分类</strong>${categories.map(([key, value]) => `<div class="dist-row"><span>${esc(key)}</span><strong>${esc(number(value))}</strong></div>`).join("")}</div>` : ""}
-          ${issues.length ? `<div class="diagnostic-card"><strong>主要问题</strong><div class="diagnostic-list">${issues.map((issue) => `<div class="diagnostic-issue ${esc(issue.severity || "")}"><span class="label">${esc(issue.severity || "warning")}${issue.category ? ` / ${esc(issue.category)}` : ""}</span><br>${esc(issue.message || "")}</div>`).join("")}</div></div>` : ""}
+          ${categories.length ? `<div class="diagnostic-card"><strong>失败分类</strong>${categories.map(([key, value]) => `<div class="dist-row"><span>${esc(qualityCategoryText(key))}</span><strong>${esc(number(value))}</strong></div>`).join("")}</div>` : ""}
+          ${issues.length ? `<div class="diagnostic-card"><strong>主要问题</strong><div class="diagnostic-list">${issues.map((issue) => `<div class="diagnostic-issue ${esc(issue.severity || "")}"><span class="label">${esc(severityText(issue.severity || "warning"))}${issue.category ? ` / ${esc(qualityCategoryText(issue.category))}` : ""}</span><br>${esc(issue.message || "")}</div>`).join("")}</div></div>` : ""}
           ${failedSections.length ? `<div class="diagnostic-card"><strong>需修复章节</strong><div class="diagnostic-meta">${failedSections.map((item) => `<span class="status failed">${esc(item)}</span>`).join("")}</div></div>` : ""}
           ${fixes.length ? `<div class="diagnostic-card"><strong>修复建议</strong><div class="diagnostic-list">${fixes.map((item) => `<div class="diagnostic-issue">${esc(item)}</div>`).join("")}</div></div>` : ""}
           <div class="diagnostic-grid">${runCards}</div>
@@ -2286,10 +2479,10 @@ def render_workbench_html() -> str:
           <span class="status ${esc(run.status || "unknown")}">${esc(statusText(run.status || "unknown"))}</span>
         </div>
         <div class="diagnostic-meta">
-          <span>${esc(run.model_name || "未知模型")}</span>
+          <span>${esc(modelDisplayText(run.model_name || "unknown"))}</span>
           <span>${esc(run.latency_ms ?? "-")} ms</span>
           <span>降级：${esc(run.fallback_used ? "是" : "否")}</span>
-          <span>Schema：${esc(passText(run.schema_valid))}</span>
+          <span>结构化校验：${esc(passText(run.schema_valid))}</span>
           ${run.metadata?.quality_feedback_used ? `<span>已使用质量反馈</span>` : ""}
         </div>
         ${run.summary ? `<div class="text-block">${esc(run.summary)}</div>` : ""}
@@ -2304,13 +2497,18 @@ def render_workbench_html() -> str:
       return String(value);
     }
 
+    function metadataName(task) {
+      const metadata = task?.metadata || {};
+      const company = metadata.company_name || task?.symbol || "研报任务";
+      return `${company} · ${task?.period || "-"}`;
+    }
+
     async function loadTaskDetail(taskId) {
       try {
         const task = await getJson(`/api/report-tasks/${encodeURIComponent(taskId)}`);
         const events = task.events || [];
         const metadata = task.metadata || {};
         $("taskDetail").innerHTML = `<h2>任务详情</h2>
-          <div class="kv"><span class="label">任务</span><span class="mono">${esc(task.task_id)}</span></div>
           <div class="kv"><span class="label">公司</span><span>${esc(metadata.company_name || task.symbol)} / ${esc(task.symbol)}</span></div>
           <div class="kv"><span class="label">查询期间</span><span>${esc(task.period)}</span></div>
           <div class="kv"><span class="label">报告类型</span><span>${esc(reportTypeText(task.report_type))}</span></div>
@@ -2323,6 +2521,7 @@ def render_workbench_html() -> str:
           ${task.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(task.error_message)}</div></div>` : ""}
           ${renderQualityDiagnostics(task)}
           <div class="detail-section"><h3>产物</h3>${artifactButtons(task)}</div>
+          ${systemInfoBlock("系统信息", [["任务编号", task.task_id]])}
           <div class="detail-section"><h3>时间线</h3><div class="timeline">${
             events.length ? events.map((event) => `<div class="event"><strong>${esc(stepText(event.stage))}</strong> <span class="status ${esc(event.status)}">${esc(statusText(event.status))}</span><br><span class="label">${esc(fmt(event.created_at))}</span><br>${esc(fmt(event.message))}</div>`).join("") : `<div class="empty">暂无事件</div>`
           }</div></div>`;
@@ -2348,7 +2547,7 @@ def render_workbench_html() -> str:
         const rows = payload.items || [];
         $("evidenceRows").innerHTML = rows.length
           ? rows.map((item) => `<tr data-selectable="true">
-              <td><button class="btn" data-evidence-detail="${esc(item.evidence_id)}">${esc(item.title || item.evidence_id)}</button><br><span class="label mono">${esc(item.evidence_id)}</span><br>${esc(item.snippet || "")}</td>
+              <td><button class="btn" data-evidence-detail="${esc(item.evidence_id)}">${esc(evidenceDisplayTitle(item))}</button><br>${esc(item.snippet || "")}</td>
               <td>${esc(sourceText(item.source_type))}<br><span class="label">${esc(fmt(item.source_url))}</span></td>
               <td><span class="status ${esc(item.trust_level)}">${esc(statusText(item.trust_level))}</span></td>
               <td>${esc(item.document?.title || "-")}<br><span class="label">${esc(item.document?.report_period || "")}</span></td>
@@ -2375,9 +2574,9 @@ def render_workbench_html() -> str:
         const rows = payload.items || [];
         $("dictionaryRows").innerHTML = rows.length
           ? rows.map((item) => `<tr data-selectable="true">
-              <td><button class="btn" data-dictionary-detail="${esc(item.id)}">${esc(item.canonical_name)}</button><br><span class="label mono">${esc(item.normalized_key)}</span></td>
+              <td><button class="btn" data-dictionary-detail="${esc(item.id)}">${esc(item.canonical_name)}</button><br><span class="label">${esc(item.description || "用于识别别名和口径")}</span></td>
               <td><span class="status ${esc(item.term_type)}">${esc(statusText(item.term_type))}</span></td>
-              <td>${esc(item.symbol || "-")}<br><span class="label">${esc(item.market || "-")}</span></td>
+              <td>${esc(item.symbol || "-")}<br><span class="label">${esc(marketText(item.market))}</span></td>
               <td>${renderList(item.aliases)}</td>
               <td>${esc(item.description || "-")}</td>
             </tr>`).join("")
@@ -2408,7 +2607,7 @@ def render_workbench_html() -> str:
           </div>
           <div class="field">
             <label for="dictionaryMarket">市场</label>
-            <input id="dictionaryMarket" placeholder="US / CN / HK" />
+                  <input id="dictionaryMarket" placeholder="美股 / A 股 / 港股" />
           </div>
           <div class="field full">
             <label for="dictionaryCanonical">标准词</label>
@@ -2455,7 +2654,7 @@ def render_workbench_html() -> str:
         <div class="kv"><span class="label">标准词</span><span>${esc(item.canonical_name)}</span></div>
         <div class="kv"><span class="label">类型</span><span><span class="status ${esc(item.term_type)}">${esc(statusText(item.term_type))}</span></span></div>
         <div class="kv"><span class="label">代码</span><span>${esc(item.symbol || "-")}</span></div>
-        <div class="kv"><span class="label">市场</span><span>${esc(item.market || "-")}</span></div>
+        <div class="kv"><span class="label">市场</span><span>${esc(marketText(item.market))}</span></div>
         <div class="detail-section"><h3>别名</h3><div class="text-block">${esc((item.aliases || []).join("\\n") || "-")}</div></div>
         <div class="detail-section"><h3>说明</h3><div class="text-block">${esc(item.description || "-")}</div></div>
         <div class="detail-section"><h3>解析测试</h3>
@@ -2470,7 +2669,7 @@ def render_workbench_html() -> str:
               <option value="risk"${item.term_type === "risk" ? " selected" : ""}>风险词</option>
               <option value="exclude"${item.term_type === "exclude" ? " selected" : ""}>排除词</option>
             </select></div>
-            <div class="field"><label for="dictionaryResolveMarket">市场</label><input id="dictionaryResolveMarket" value="${esc(item.market || "")}" placeholder="US / CN / HK" /></div>
+            <div class="field"><label for="dictionaryResolveMarket">市场</label><input id="dictionaryResolveMarket" value="${esc(item.market || "")}" placeholder="美股 / A 股 / 港股" /></div>
           </div>
           <div class="links"><button class="btn primary" id="testDictionaryResolve">测试解析</button><button class="btn" data-dictionary-create="true">新增词条</button></div>
           <div id="dictionaryResolveResult"></div>
@@ -2484,7 +2683,7 @@ def render_workbench_html() -> str:
       const params = new URLSearchParams();
       const q = $("dictionaryResolveQuery").value.trim();
       const type = $("dictionaryResolveType").value;
-      const market = $("dictionaryResolveMarket").value.trim();
+      const market = marketValue($("dictionaryResolveMarket").value);
       if (!q) {
         $("dictionaryResolveResult").innerHTML = `<div class="error">请输入要解析的别名或术语。</div>`;
         return;
@@ -2505,7 +2704,7 @@ def render_workbench_html() -> str:
         term_type: $("dictionaryCreateType").value,
         canonical_name: $("dictionaryCanonical").value.trim(),
         symbol: $("dictionarySymbol").value.trim(),
-        market: $("dictionaryMarket").value.trim(),
+        market: marketValue($("dictionaryMarket").value),
         aliases: csvList($("dictionaryAliases").value),
         description: $("dictionaryDescription").value.trim(),
       };
@@ -2525,7 +2724,7 @@ def render_workbench_html() -> str:
 
     async function loadPromptOps() {
       const params = new URLSearchParams();
-      const module = $("promptModule").value.trim();
+      const module = promptModuleValue($("promptModule").value);
       if (module) params.set("module", module);
       const suffix = params.toString() ? `?${params.toString()}` : "";
       try {
@@ -2536,13 +2735,13 @@ def render_workbench_html() -> str:
         const rows = templates.items || [];
         $("promptRows").innerHTML = rows.length
           ? rows.map((item) => `<tr data-selectable="true">
-              <td><button class="btn" data-prompt-detail="${esc(item.prompt_key)}">${esc(item.name)}</button><br><span class="label mono">${esc(item.prompt_key)}</span></td>
-              <td>${esc(item.module || "-")}</td>
+              <td><button class="btn" data-prompt-detail="${esc(item.prompt_key)}">${esc(item.name || promptKeyText(item.prompt_key))}</button><br><span class="label">${esc(item.description || promptKeyText(item.prompt_key))}</span></td>
+              <td>${esc(promptModuleText(item.module))}</td>
               <td>${esc(item.active_version ? "v" + item.active_version : "-")}</td>
               <td>${Object.keys(item.schema || {}).length ? `<span class="status completed">已配置</span>` : `<span class="status pending">未配置</span>`}</td>
               <td><button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button></td>
             </tr>`).join("")
-          : `<tr><td colspan="5"><div class="empty">暂无 Prompt 模板</div></td></tr>`;
+          : `<tr><td colspan="5"><div class="empty">暂无提示词模板</div></td></tr>`;
         document.querySelectorAll("[data-prompt-detail]").forEach((btn) => btn.addEventListener("click", () => loadPromptDetail(btn.dataset.promptDetail)));
         bindPromptTestButtons($("promptRows"));
         renderLlmRuns(runs.items || []);
@@ -2554,29 +2753,40 @@ def render_workbench_html() -> str:
     function renderLlmRuns(rows) {
       $("llmRunRows").innerHTML = rows.length
         ? rows.map((item) => `<tr>
-            <td><button class="btn mono" data-llm-run="${esc(item.run_id)}">${esc(shortTaskId(item.run_id))}</button></td>
-            <td>${esc(item.prompt_key)}</td>
-            <td>${esc(item.model_name || "-")}</td>
-            <td><span class="status ${esc(item.status)}">${esc(statusText(item.status))}</span><br><span class="label">Schema ${item.schema_valid ? "通过" : "未通过"}</span></td>
+            <td><button class="btn" data-llm-run="${esc(item.run_id)}">${esc(promptRunTitle(item))}</button></td>
+            <td>${esc(promptKeyText(item.prompt_key))}</td>
+            <td>${esc(modelDisplayText(item.model_name || "unknown"))}</td>
+            <td><span class="status ${esc(item.status)}">${esc(statusText(item.status))}</span><br><span class="label">结构化校验 ${esc(passText(item.schema_valid))}</span></td>
             <td>${esc(number(item.latency_ms))} ms<br><span class="label">$${esc(fmt(item.cost_usd))}</span></td>
           </tr>`).join("")
-        : `<tr><td colspan="5"><div class="empty">暂无 LLM 调用记录</div></td></tr>`;
+        : `<tr><td colspan="5"><div class="empty">暂无智能体运行记录</div></td></tr>`;
       document.querySelectorAll("[data-llm-run]").forEach((btn) => btn.addEventListener("click", () => loadLlmRunDetail(btn.dataset.llmRun)));
+    }
+
+    function promptKeyText(value) {
+      return promptModuleText(value);
+    }
+
+    function promptRunTitle(item) {
+      const module = promptKeyText(item.prompt_key);
+      const status = statusText(item.status);
+      return `${module} · ${status}`;
     }
 
     async function loadPromptDetail(promptKey) {
       try {
         const item = await getJson(`/api/promptops/templates/${encodeURIComponent(promptKey)}`);
         const active = (item.versions || []).find((version) => version.id === item.active_version_id) || (item.versions || [])[0];
-        $("promptDetail").innerHTML = `<h2>Prompt 详情</h2>
-          <div class="kv"><span class="label">标识</span><span class="mono">${esc(item.prompt_key)}</span></div>
-          <div class="kv"><span class="label">模块</span><span>${esc(item.module || "-")}</span></div>
+        $("promptDetail").innerHTML = `<h2>提示词详情</h2>
+          <div class="kv"><span class="label">名称</span><span>${esc(item.name || promptKeyText(item.prompt_key))}</span></div>
+          <div class="kv"><span class="label">模块</span><span>${esc(promptModuleText(item.module))}</span></div>
           <div class="kv"><span class="label">活动版本</span><span>${esc(item.active_version ? "v" + item.active_version : "-")}</span></div>
           <div class="detail-section"><h3>内容</h3><div class="text-block">${esc(active?.content || "-")}</div></div>
-          <div class="detail-section"><h3>Schema</h3><div class="text-block">${esc(JSON.stringify(item.schema || {}, null, 2))}</div></div>
+          <details class="detail-section"><summary>结构化输出要求</summary><div class="text-block">${esc(JSON.stringify(item.schema || {}, null, 2))}</div></details>
           <div class="detail-section"><h3>版本</h3>${
             (item.versions || []).length ? item.versions.map((version) => `<div class="event"><strong>v${esc(version.version)}</strong> ${version.is_active ? `<span class="status completed">活动</span>` : ""}<br>${esc(version.changelog || "-")}</div>`).join("") : `<div class="empty">暂无版本</div>`
           }</div>
+          ${systemInfoBlock("系统信息", [["提示词标识", item.prompt_key]])}
           <div class="links"><button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button></div>`;
         bindPromptTestButtons($("promptDetail"));
       } catch (error) {
@@ -2598,28 +2808,28 @@ def render_workbench_html() -> str:
       if (rawSchema) {
         try { schema = JSON.parse(rawSchema); }
         catch (error) {
-          $("promptMessage").innerHTML = `<div class="error">Schema 必须是合法 JSON。</div>`;
+          $("promptMessage").innerHTML = `<div class="error">结构化输出要求必须是合法 JSON。</div>`;
           return;
         }
       }
       const payload = {
         prompt_key: $("promptKey").value.trim(),
         name: $("promptName").value.trim(),
-        module: $("promptCreateModule").value.trim(),
+        module: promptModuleValue($("promptCreateModule").value),
         content: $("promptContent").value,
         schema,
       };
       if (!payload.prompt_key || !payload.content) {
-        $("promptMessage").innerHTML = `<div class="error">请输入 Prompt 标识和内容。</div>`;
+        $("promptMessage").innerHTML = `<div class="error">请输入模板标识和提示词内容。</div>`;
         return;
       }
       try {
         const item = await postJson("/api/promptops/templates", payload);
-        $("promptMessage").innerHTML = `<div class="empty">已创建 Prompt：${esc(item.prompt_key)}</div>`;
+        $("promptMessage").innerHTML = `<div class="empty">提示词已创建，可立即测试运行。</div>`;
         await loadPromptOps();
         loadPromptDetail(item.prompt_key);
       } catch (error) {
-        $("promptMessage").innerHTML = `<div class="error">创建失败，Prompt 标识可能已存在。</div>`;
+        $("promptMessage").innerHTML = `<div class="error">创建失败，模板标识可能已存在。</div>`;
       }
     }
 
@@ -2629,25 +2839,26 @@ def render_workbench_html() -> str:
           input: { claim: "收入增长是否被证据支持？", text: "revenue increased" },
           model_role: "verifier",
         });
-        $("promptDetail").insertAdjacentHTML("afterbegin", `<div class="empty">测试完成：${esc(result.llm_run_id)}</div>`);
+        $("promptDetail").insertAdjacentHTML("afterbegin", `<div class="empty">测试完成，已记录一条智能体运行。</div>`);
         await loadPromptOps();
       } catch (error) {
-        $("promptDetail").insertAdjacentHTML("afterbegin", `<div class="error">测试运行失败，请检查 Schema 和 Prompt。</div>`);
+        $("promptDetail").insertAdjacentHTML("afterbegin", `<div class="error">测试运行失败，请检查结构化输出要求和提示词内容。</div>`);
       }
     }
 
     async function loadLlmRunDetail(runId) {
       try {
         const item = await getJson(`/api/llm-runs/${encodeURIComponent(runId)}`);
-        $("promptDetail").innerHTML = `<h2>LLM 调用详情</h2>
-          <div class="kv"><span class="label">运行</span><span class="mono">${esc(item.run_id)}</span></div>
-          <div class="kv"><span class="label">Prompt</span><span>${esc(item.prompt_key)}</span></div>
-          <div class="kv"><span class="label">模型</span><span>${esc(item.model_name || "-")}</span></div>
+        $("promptDetail").innerHTML = `<h2>智能体运行详情</h2>
+          <div class="kv"><span class="label">模块</span><span>${esc(promptKeyText(item.prompt_key))}</span></div>
+          <div class="kv"><span class="label">模型</span><span>${esc(modelDisplayText(item.model_name || "unknown"))}</span></div>
           <div class="kv"><span class="label">状态</span><span><span class="status ${esc(item.status)}">${esc(statusText(item.status))}</span></span></div>
           <div class="kv"><span class="label">耗时</span><span>${esc(number(item.latency_ms))} ms</span></div>
-          <div class="detail-section"><h3>输入</h3><div class="text-block">${esc(JSON.stringify(item.input || {}, null, 2))}</div></div>
-          <div class="detail-section"><h3>输出</h3><div class="text-block">${esc(JSON.stringify(item.output || {}, null, 2))}</div></div>
-          <div class="detail-section"><h3>元数据</h3><div class="text-block">${esc(JSON.stringify(item.metadata || {}, null, 2))}</div></div>
+          <div class="kv"><span class="label">结构化校验</span><span>${esc(passText(item.schema_valid))}</span></div>
+          <details class="detail-section" open><summary>运行输入</summary><div class="text-block">${esc(JSON.stringify(item.input || {}, null, 2))}</div></details>
+          <details class="detail-section" open><summary>运行输出</summary><div class="text-block">${esc(JSON.stringify(item.output || {}, null, 2))}</div></details>
+          <details class="detail-section"><summary>运行诊断</summary><div class="text-block">${esc(JSON.stringify(item.metadata || {}, null, 2))}</div></details>
+          ${systemInfoBlock("系统信息", [["运行编号", item.run_id], ["提示词标识", item.prompt_key], ["任务编号", item.task_id]])}
           ${item.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(item.error_message)}</div></div>` : ""}`;
       } catch (error) {
         showLoadError("promptDetail");
@@ -2659,7 +2870,6 @@ def render_workbench_html() -> str:
         const item = await getJson(`/api/evidence/${encodeURIComponent(evidenceId)}`);
         const claims = item.claims || [];
         $("evidenceDetail").innerHTML = `<h2>证据详情</h2>
-          <div class="kv"><span class="label">证据</span><span class="mono">${esc(item.evidence_id)}</span></div>
           <div class="kv"><span class="label">来源</span><span>${esc(sourceText(item.source_type))}</span></div>
           <div class="kv"><span class="label">可信度</span><span><span class="status ${esc(item.trust_level)}">${esc(statusText(item.trust_level))}</span></span></div>
           <div class="kv"><span class="label">页码</span><span>${esc(fmt(item.page_no))}</span></div>
@@ -2667,8 +2877,9 @@ def render_workbench_html() -> str:
           ${item.source_url ? `<div class="kv"><span class="label">链接</span><a href="${esc(item.source_url)}" target="_blank">${esc(item.source_url)}</a></div>` : ""}
           <div class="detail-section"><h3>来源原文</h3><div class="text-block">${esc(item.content || item.snippet || "")}</div></div>
           <div class="detail-section"><h3>关联主张</h3>${
-            claims.length ? claims.map((claim) => `<div class="event"><strong>${esc(claim.section_name || claim.claim_type || "主张")}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}<br><span class="label mono">${esc(claim.task_id)}</span></div>`).join("") : `<div class="empty">暂无关联主张</div>`
-          }</div>`;
+            claims.length ? claims.map((claim) => `<div class="event"><strong>${esc(claim.section_name || claim.claim_type || "主张")}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}</div>`).join("") : `<div class="empty">暂无关联主张</div>`
+          }</div>
+          ${systemInfoBlock("系统信息", [["证据编号", item.evidence_id]])}`;
       } catch (error) {
         showLoadError("evidenceDetail");
       }
@@ -2689,10 +2900,10 @@ def render_workbench_html() -> str:
         $("factRows").innerHTML = rows.length
           ? rows.map((fact) => `<tr data-selectable="true">
               <td>${esc(fact.company?.name || "-")}<br><span class="label mono">${esc(fact.company?.symbol || "")}</span></td>
-              <td><button class="btn" data-fact-detail="${esc(fact.id)}">${esc(fact.metric_name)}</button><br><span class="label">${esc(fact.metric_type || "-")}</span></td>
+              <td><button class="btn" data-fact-detail="${esc(fact.id)}">${esc(fact.metric_name)}</button><br><span class="label">${esc(metricTypeText(fact.metric_type))}</span></td>
               <td>${esc(number(fact.value))}<br><span class="label">${esc([fact.currency, fact.unit, fact.scale].filter(Boolean).join(" / ") || "-")}</span></td>
               <td>${esc(fact.period)}</td>
-              <td>${fact.evidence ? esc(fact.evidence.evidence_id) : esc(fact.source_url || "-")}</td>
+              <td>${fact.evidence ? esc(evidenceDisplayTitle(fact.evidence)) : (fact.source_url ? `<a href="${esc(fact.source_url)}" target="_blank">打开来源</a>` : "-")}</td>
               <td><span class="status ${esc(fact.review_status)}">${esc(statusText(fact.review_status))}</span></td>
             </tr>`).join("")
           : `<tr><td colspan="6"><div class="empty">暂无财务事实</div></td></tr>`;
@@ -2713,9 +2924,10 @@ def render_workbench_html() -> str:
           <div class="kv"><span class="label">置信度</span><span>${esc(fmt(fact.confidence))}</span></div>
           <div class="kv"><span class="label">审核</span><span><span class="status ${esc(fact.review_status)}">${esc(statusText(fact.review_status))}</span></span></div>
           <div class="detail-section"><h3>证据来源</h3>${
-            fact.evidence ? `<div class="event"><strong>${esc(fact.evidence.title || fact.evidence.evidence_id)}</strong><br>${esc(fact.evidence.source_url || "-")}</div>` : `<div class="empty">${esc(fact.source_url || "暂无证据绑定")}</div>`
+            fact.evidence ? `<div class="event"><strong>${esc(evidenceDisplayTitle(fact.evidence))}</strong><br>${fact.evidence.source_url ? `<a href="${esc(fact.evidence.source_url)}" target="_blank">打开来源</a>` : `<span class="label">暂无在线链接</span>`}</div>` : `<div class="empty">${fact.source_url ? `<a href="${esc(fact.source_url)}" target="_blank">打开来源</a>` : "暂无证据绑定"}</div>`
           }</div>
-          <div class="detail-section"><h3>元数据</h3><div class="text-block">${esc(JSON.stringify(fact.metadata || {}, null, 2))}</div></div>`;
+          <details class="detail-section"><summary>运行诊断</summary><div class="text-block">${esc(JSON.stringify(fact.metadata || {}, null, 2))}</div></details>
+          ${systemInfoBlock("系统信息", [["事实编号", fact.id], ["证据编号", fact.evidence?.evidence_id]])}`;
       } catch (error) {
         showLoadError("factDetail");
       }
@@ -2763,8 +2975,8 @@ def render_workbench_html() -> str:
         const rows = payload.items || [];
         $("claimRows").innerHTML = rows.length
           ? rows.map((claim) => `<tr data-selectable="true">
-              <td><button class="btn" data-claim-detail="${esc(claim.id)}">#${esc(claim.id)}</button> ${esc(claim.section_name || claim.claim_type || "主张")}<br>${esc(claim.claim_text)}</td>
-              <td><span class="mono">${esc(claim.task_id)}</span></td>
+              <td><button class="btn" data-claim-detail="${esc(claim.id)}">主张 ${esc(claim.id)}</button> ${esc(claim.section_name || claim.claim_type || "主张")}<br>${esc(claim.claim_text)}</td>
+              <td>${esc(claimTaskText(claim))}</td>
               <td><span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span></td>
               <td><span class="status ${esc(claim.verification_status)}">${esc(statusText(claim.verification_status))}</span><br><span class="label">数字 ${esc(statusText(claim.numeric_check_status))} / 引用 ${esc(statusText(claim.citation_check_status))}</span></td>
               <td>${esc(number(claim.evidence_count))}</td>
@@ -2793,7 +3005,7 @@ def render_workbench_html() -> str:
         $("documentRows").innerHTML = rows.length
           ? rows.map((doc) => `<tr data-selectable="true">
               <td><button class="btn" data-document-detail="${esc(doc.id)}">${esc(doc.title)}</button><br><span class="label">${esc(docTypeText(doc.doc_type))} · ${esc(doc.report_period || "-")}</span></td>
-              <td><span class="mono">${esc(fmt(doc.batch_id))}</span></td>
+              <td>${esc(doc.batch_name || "导入批次")}</td>
               <td><span class="status ${esc(doc.parse_status)}">${esc(statusText(doc.parse_status))}</span><br><span class="label">${esc(number(doc.failed_step_count))} 个失败</span></td>
               <td>${esc(stepText(doc.latest_step?.step_name))}<br><span class="status ${esc(doc.latest_step?.status || "")}">${esc(statusText(doc.latest_step?.status))}</span></td>
               <td>${esc(number(doc.evidence_count))}</td>
@@ -2816,18 +3028,17 @@ def render_workbench_html() -> str:
         const claims = doc.claims || [];
         $("documentDetail").innerHTML = `<h2>处理路径</h2>
           <div class="kv"><span class="label">文档</span><span>${esc(doc.title)}</span></div>
-          <div class="kv"><span class="label">批次</span><span class="mono">${esc(fmt(doc.batch_id))}</span></div>
           <div class="kv"><span class="label">状态</span><span><span class="status ${esc(doc.parse_status)}">${esc(statusText(doc.parse_status))}</span></span></div>
           ${doc.source_url ? `<div class="kv"><span class="label">链接</span><a href="${esc(doc.source_url)}" target="_blank">${esc(doc.source_url)}</a></div>` : ""}
-          ${doc.file_path ? `<div class="kv"><span class="label">文件</span><span class="mono">${esc(doc.file_path)}</span></div>` : ""}
+          ${systemInfoBlock("系统信息", [["批次编号", doc.batch_id], ["文件路径", doc.file_path]])}
           <div class="detail-section"><h3>处理步骤</h3><div class="timeline">${
             steps.length ? steps.map((step) => `<div class="event"><strong>${esc(stepText(step.step_name))}</strong> <span class="status ${esc(step.status)}">${esc(statusText(step.status))}</span><br><span class="label">${esc(fmt(step.started_at))} - ${esc(fmt(step.finished_at))}</span>${step.error_message ? `<div class="text-block">${esc(step.error_message)}</div>` : ""}<br><span class="label">${esc(stepMetadataText(step.metadata))}</span></div>`).join("") : `<div class="empty">暂无处理步骤</div>`
           }</div></div>
           <div class="detail-section"><h3>证据</h3>${
-            evidence.length ? evidence.map((item) => `<div class="event"><strong>${esc(item.title || item.evidence_id)}</strong> <span class="status ${esc(item.trust_level)}">${esc(statusText(item.trust_level))}</span><br>${esc(item.snippet || "")}</div>`).join("") : `<div class="empty">暂无证据</div>`
+            evidence.length ? evidence.map((item) => `<div class="event"><strong>${esc(item.title || sourceText(item.source_type) || "证据")}</strong> <span class="status ${esc(item.trust_level)}">${esc(statusText(item.trust_level))}</span><br>${esc(item.snippet || "")}</div>`).join("") : `<div class="empty">暂无证据</div>`
           }</div>
           <div class="detail-section"><h3>主张</h3>${
-            claims.length ? claims.map((claim) => `<div class="event"><strong>#${esc(claim.id)}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}<br><span class="label mono">${esc(claim.task_id)}</span></div>`).join("") : `<div class="empty">暂无主张</div>`
+            claims.length ? claims.map((claim) => `<div class="event"><strong>主张 ${esc(claim.id)}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}</div>`).join("") : `<div class="empty">暂无主张</div>`
           }</div>`;
       } catch (error) {
         showLoadError("documentDetail");
@@ -2855,7 +3066,7 @@ def render_workbench_html() -> str:
         const rows = payload.items || [];
         $("exportRows").innerHTML = rows.length
           ? rows.map((item) => `<tr data-selectable="true">
-              <td><button class="btn" data-export-detail="${esc(item.task_id)}">${esc(item.task_id)}</button><br><span class="label">${esc(item.symbol)} · ${esc(item.period)}</span></td>
+              <td><button class="btn" data-export-detail="${esc(item.task_id)}">${esc(exportDisplayTitle(item))}</button><br><span class="label">${esc(item.symbol)} · ${esc(item.period)}</span></td>
               <td><span class="status ${esc(item.status)}">${esc(statusText(item.status))}</span></td>
               <td>${esc(number(item.artifact_count))}</td>
               <td><span class="status approved">${esc(number(item.approved_claim_count))} 个已通过</span><br><span class="status pending">${esc(number(item.pending_claim_count))} 个待复核</span><br><span class="status rejected">${esc(number(item.rejected_claim_count))} 个已驳回</span></td>
@@ -2876,7 +3087,6 @@ def render_workbench_html() -> str:
         const artifacts = item.artifacts || [];
         const claims = item.claims || [];
         $("exportDetail").innerHTML = `<h2>产物复核</h2>
-          <div class="kv"><span class="label">任务</span><span class="mono">${esc(item.task_id)}</span></div>
           <div class="kv"><span class="label">股票代码</span><span>${esc(item.symbol)} / ${esc(item.period)}</span></div>
           <div class="kv"><span class="label">正式导出</span><span>${item.official_export_ready ? `<span class="status completed">可导出</span>` : `<span class="status failed">已阻塞</span>`}</span></div>
           <div class="kv"><span class="label">复核</span><span>${esc(number(item.approved_claim_count))} 个已通过 · ${esc(number(item.pending_claim_count))} 个待复核 · ${esc(number(item.rejected_claim_count))} 个已驳回</span></div>
@@ -2884,11 +3094,12 @@ def render_workbench_html() -> str:
             (item.blocked_reasons || []).length ? `<div class="text-block">${esc((item.blocked_reasons || []).map(statusText).join("\\n"))}</div>` : `<div class="empty">无阻塞项</div>`
           }</div>
           <div class="detail-section"><h3>产物</h3>${
-            artifacts.length ? artifacts.map((artifact) => `<div class="event"><strong>${esc(artifactText(artifact.artifact_type))}</strong><br>${artifact.url ? `<a href="${esc(artifact.url)}" target="_blank">${esc(artifact.url)}</a>` : `<span class="mono">${esc(fmt(artifact.path))}</span>`}</div>`).join("") : `<div class="empty">暂无产物</div>`
+            artifacts.length ? artifacts.map((artifact) => `<div class="event"><strong>${esc(artifactText(artifact.artifact_type))}</strong><br>${artifact.url ? `<a href="${esc(artifact.url)}" target="_blank">打开产物</a>` : `<span class="label">已生成，暂无在线链接</span>`}${artifact.path ? systemInfoBlock("文件信息", [["文件路径", artifact.path]]) : ""}</div>`).join("") : `<div class="empty">暂无产物</div>`
           }</div>
           <div class="detail-section"><h3>主张</h3>${
-            claims.length ? claims.map((claim) => `<div class="event"><strong>#${esc(claim.id)}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}</div>`).join("") : `<div class="empty">暂无主张</div>`
+            claims.length ? claims.map((claim) => `<div class="event"><strong>主张 ${esc(claim.id)}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}</div>`).join("") : `<div class="empty">暂无主张</div>`
           }</div>
+          ${systemInfoBlock("系统信息", [["任务编号", item.task_id]])}
           <div class="detail-section"><h3>说明</h3><div class="empty">${esc(item.formal_export_note || "正式导出包将在后续阶段接入。")}</div></div>`;
       } catch (error) {
         showLoadError("exportDetail");
@@ -2899,8 +3110,8 @@ def render_workbench_html() -> str:
       const evidence = claim.evidence || [];
       const records = claim.review_records || [];
       $("claimDetail").innerHTML = `<h2>主张详情</h2>
-        <div class="kv"><span class="label">主张</span><span class="mono">#${esc(claim.id)}</span></div>
-        <div class="kv"><span class="label">任务</span><span class="mono">${esc(claim.task_id)}</span></div>
+        <div class="kv"><span class="label">主张</span><span>主张 ${esc(claim.id)}</span></div>
+        <div class="kv"><span class="label">研报任务</span><span>${esc(claimTaskText(claim))}</span></div>
         <div class="kv"><span class="label">复核</span><span><span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span></span></div>
         <div class="kv"><span class="label">校验</span><span><span class="status ${esc(claim.verification_status)}">${esc(statusText(claim.verification_status))}</span></span></div>
         <div class="detail-section"><h3>主张文本</h3><textarea id="claimEditText" style="width:100%;min-height:96px">${esc(claim.claim_text)}</textarea></div>
@@ -2911,11 +3122,12 @@ def render_workbench_html() -> str:
           <button class="btn" data-claim-action="regenerate" data-claim-id="${esc(claim.id)}">重生成</button>
         </div>
         <div class="detail-section"><h3>证据</h3>${
-          evidence.length ? evidence.map((item) => `<div class="event"><strong>${esc(item.title || item.evidence_id)}</strong> <span class="status ${esc(item.trust_level)}">${esc(statusText(item.trust_level))}</span><br>${esc(item.snippet || "")}<br><span class="label">${esc(sourceText(item.source_type))} · 页 ${esc(fmt(item.page_no))}</span></div>`).join("") : `<div class="empty">暂无关联证据</div>`
+          evidence.length ? evidence.map((item) => `<div class="event"><strong>${esc(item.title || sourceText(item.source_type) || "证据")}</strong> <span class="status ${esc(item.trust_level)}">${esc(statusText(item.trust_level))}</span><br>${esc(item.snippet || "")}<br><span class="label">${esc(sourceText(item.source_type))} · 页 ${esc(fmt(item.page_no))}</span></div>`).join("") : `<div class="empty">暂无关联证据</div>`
         }</div>
         <div class="detail-section"><h3>审计记录</h3>${
           records.length ? records.map((record) => `<div class="event"><strong>${esc(statusText(record.decision))}</strong> <span class="label">${esc(fmt(record.created_at))}</span><br>${esc(fmt(record.comment))}<br><span class="label">${esc(fmt(record.reviewer))}</span></div>`).join("") : `<div class="empty">暂无审计记录</div>`
-        }</div>`;
+        }</div>
+        ${systemInfoBlock("系统信息", [["主张编号", claim.id], ["任务编号", claim.task_id]])}`;
       document.querySelectorAll("[data-claim-action]").forEach((btn) => {
         btn.addEventListener("click", () => claimAction(btn.dataset.claimId, btn.dataset.claimAction));
       });
