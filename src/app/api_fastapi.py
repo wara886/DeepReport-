@@ -20,6 +20,7 @@ from src.services.dictionary_service import DictionaryConflict, DictionaryServic
 from src.services.document_service import DocumentNotFound, DocumentService
 from src.services.entity_service import EntityConflict, EntityNotFound, EntityService
 from src.services.evidence_service import EvidenceNotFound, EvidenceService
+from src.services.evaluation_service import EvaluationService
 from src.services.export_service import ExportService, ExportTaskNotFound
 from src.services.financial_fact_service import FinancialFactConflict, FinancialFactNotFound, FinancialFactService
 from src.services.ingestion_service import IngestionBatchConflict, IngestionBatchNotFound, IngestionService
@@ -109,6 +110,7 @@ def create_fastapi_app(
         orchestrator_factory=orchestrator_factory,
     )
     app.state.dashboard_service = DashboardService(session_factory=app.state.report_task_service.session)
+    app.state.evaluation_service = EvaluationService(session_factory=app.state.report_task_service.session)
     app.state.datasource_service = DataSourceService(session_factory=app.state.report_task_service.session)
     app.state.dictionary_service = DictionaryService(session_factory=app.state.report_task_service.session)
     app.state.evidence_service = EvidenceService(session_factory=app.state.report_task_service.session)
@@ -213,6 +215,13 @@ def create_fastapi_app(
     def dashboard_funnel() -> Response:
         try:
             return JSONResponse(content=_dashboard_service(app).funnel())
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/evaluation/summary")
+    def evaluation_summary(limit: int = 50) -> Response:
+        try:
+            return JSONResponse(content=_evaluation_service(app).summary(limit=limit))
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -1110,6 +1119,10 @@ def _report_task_service(app: FastAPI) -> ReportTaskService:
 
 def _dashboard_service(app: FastAPI) -> DashboardService:
     return app.state.dashboard_service
+
+
+def _evaluation_service(app: FastAPI) -> EvaluationService:
+    return app.state.evaluation_service
 
 
 def _datasource_service(app: FastAPI) -> DataSourceService:

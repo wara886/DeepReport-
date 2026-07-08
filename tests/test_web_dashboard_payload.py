@@ -52,8 +52,8 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "交付门禁" in html
     assert "失败分类" in html
     assert "主要问题" in html
-    assert "Writer" in html
-    assert "Verifier" in html
+    assert "撰写智能体" in html
+    assert "校验智能体" in html
     assert "数据源范围" in html
     assert "启动" in html
     assert "取消" in html

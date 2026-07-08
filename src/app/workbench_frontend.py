@@ -336,7 +336,7 @@ def render_workbench_html() -> str:
         <button data-view="promptops"><span>提示词运营</span><span class="tag preview">预览</span></button>
         <button data-view="entities"><span>实体库</span><span class="tag enhancing">增强中</span></button>
         <button data-view="graph"><span>关系图谱</span><span class="tag enhancing">增强中</span></button>
-        <button data-view="evaluation"><span>评测中心</span><span class="tag planned">规划中</span></button>
+        <button data-view="evaluation"><span>评测中心</span><span class="tag preview">预览</span></button>
         <button data-view="export"><span>导出中心</span><span class="tag preview">预览</span></button>
       </nav>
     </aside>
@@ -1084,7 +1084,69 @@ def render_workbench_html() -> str:
             </aside>
           </div>
         </section>
-        <section id="evaluation" class="view"></section>
+        <section id="evaluation" class="view">
+          <section class="grid cards" id="evaluationCards"></section>
+          <section class="grid dashboard-layout">
+            <div class="grid">
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>质量门禁</h2>
+                  <button class="btn" data-jump="tasks">查看研报任务</button>
+                </div>
+                <div id="evaluationGates" class="check-grid"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>最近研报质量</h2>
+                  <button class="btn" data-jump="tasks">任务列表</button>
+                </div>
+                <div class="table-scroll">
+                  <table>
+                    <thead><tr><th>研报</th><th>状态</th><th>质量分</th><th>证据覆盖</th><th>校验通过</th><th>风险项</th><th>操作</th></tr></thead>
+                    <tbody id="evaluationTaskRows"></tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+            <div class="grid">
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>主张与证据质量</h2>
+                  <button class="btn" data-jump="claims">进入复核</button>
+                </div>
+                <div id="evaluationClaimQuality" class="diagnostic-grid"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>模型运行健康</h2>
+                  <button class="btn" data-jump="promptops">查看调用</button>
+                </div>
+                <div id="evaluationModelHealth" class="dist"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>待处理问题</h2>
+                  <button class="btn" data-jump="claims">处理问题</button>
+                </div>
+                <div id="evaluationFailures" class="mini-list"></div>
+              </section>
+            </div>
+          </section>
+          <section class="panel dashboard-bottom">
+            <div class="panel-head">
+              <h2>最近模型与智能体运行</h2>
+              <button class="btn" data-jump="promptops">提示词运营</button>
+            </div>
+            <div id="evaluationRuns" class="mini-list"></div>
+          </section>
+          <section class="panel dashboard-bottom">
+            <div class="panel-head">
+              <h2>下一步接入</h2>
+              <span class="status pending">评测跑批待接入</span>
+            </div>
+            <div id="evaluationNotes" class="diagnostic-grid"></div>
+          </section>
+        </section>
       </main>
     </section>
   </div>
@@ -1185,8 +1247,22 @@ def render_workbench_html() -> str:
       promptops: ["提示词运营", "管理提示词版本、测试运行和智能体调用追踪"],
       entities: ["实体库", "公司、文档、指标、产品和风险事件沉淀"],
       graph: ["关系图谱", "查看实体之间的证据化关系链"],
-      evaluation: ["评测中心", "阶段3接入评测运行后启用"],
+      evaluation: ["评测中心", "研报质量、证据覆盖、模型运行和失败原因"],
       export: ["导出中心", "查看产物复核和正式导出状态"],
+    };
+
+    const evaluationMetricMap = {
+      delivery_pass_rate: "交付通过率",
+      average_quality_score: "平均质量分",
+      traceable_claim_rate: "可追溯主张率",
+      evidence_coverage_rate: "证据覆盖率",
+      verified_claim_rate: "主张校验通过率",
+      numeric_consistency_rate: "数值一致性",
+      citation_support_rate: "引用支持率",
+      schema_valid_rate: "结构化输出有效率",
+      llm_success_rate: "模型运行成功率",
+      llm_cost_usd: "模型成本",
+      average_llm_latency_ms: "平均耗时",
     };
 
     const statusMap = {
@@ -1670,6 +1746,7 @@ def render_workbench_html() -> str:
       else if (view === "promptops") loadPromptOps();
       else if (view === "entities") loadEntities();
       else if (view === "graph") loadRelations();
+      else if (view === "evaluation") loadEvaluation();
       else if (view === "export") loadExports();
       else renderPlaceholder(view);
     }
@@ -2636,6 +2713,169 @@ def render_workbench_html() -> str:
           }
         }, 2000),
       };
+    }
+
+    async function loadEvaluation() {
+      try {
+        const payload = await getJson("/api/evaluation/summary");
+        renderEvaluation(payload);
+      } catch (error) {
+        showLoadError("evaluationCards");
+      }
+    }
+
+    function renderEvaluation(payload) {
+      const metrics = payload.metrics || {};
+      const cards = [
+        { label: "交付通过率", value: percentText(metrics.delivery_pass_rate), note: `${number(metrics.completed_task_count)} / ${number(metrics.active_task_count)} 个任务`, view: "tasks" },
+        { label: "平均质量分", value: scoreText(metrics.average_quality_score), note: "已评分研报均值", view: "tasks" },
+        { label: "可追溯主张率", value: percentText(metrics.traceable_claim_rate), note: `${number(metrics.traceable_claim_count)} / ${number(metrics.claim_count)} 条主张`, view: "claims" },
+        { label: "引用支持率", value: percentText(metrics.citation_support_rate), note: `${number(metrics.citation_supported_count)} 条有证据或引用`, view: "claims" },
+        { label: "数值一致性", value: percentText(metrics.numeric_consistency_rate), note: `${number(metrics.numeric_checked_count)} 条已检查`, view: "facts" },
+        { label: "模型运行成功率", value: percentText(metrics.llm_success_rate), note: `${number(metrics.llm_success_count)} / ${number(metrics.llm_run_count)} 次运行`, view: "promptops" },
+        { label: "结构化输出有效率", value: percentText(metrics.schema_valid_rate), note: `${number(metrics.schema_valid_count)} / ${number(metrics.schema_checked_count)} 次校验`, view: "promptops" },
+        { label: "平均耗时", value: metrics.average_llm_latency_ms == null ? "-" : `${number(metrics.average_llm_latency_ms)} ms`, note: `成本 $${fmt(metrics.llm_cost_usd)}`, view: "promptops" },
+      ];
+      $("evaluationCards").innerHTML = cards.map((card) => `<button class="card metric-card" data-jump="${esc(card.view)}">
+        <div class="label"><span>${esc(card.label)}</span><span class="hint">查看</span></div>
+        <div class="value">${esc(card.value)}</div>
+        <div class="score-note">${esc(card.note)}</div>
+      </button>`).join("");
+      renderEvaluationGates(payload.quality_gates || []);
+      renderEvaluationClaimQuality(payload.claim_quality || {});
+      renderEvaluationModelHealth(payload.model_health || {});
+      renderEvaluationFailures(payload.failure_categories || []);
+      renderEvaluationTaskRows(payload.recent_tasks || []);
+      renderEvaluationRuns(payload.recent_llm_runs || []);
+      renderEvaluationNotes(payload);
+      bindJumpHandlers($("evaluation"));
+      bindRecentTaskButtons($("evaluation"));
+    }
+
+    function renderEvaluationGates(gates) {
+      $("evaluationGates").innerHTML = gates.length
+        ? gates.map((gate) => `<div class="check-item ${esc(gate.status === "passed" ? "passed" : (gate.status === "failed" ? "failed" : ""))}">
+            <div class="diagnostic-head">
+              <strong>${esc(gate.label)}</strong>
+              <span class="status ${esc(gate.status)}">${esc(evaluationGateStatusText(gate.status))}</span>
+            </div>
+            <div class="diagnostic-meta">
+              <span>当前：${esc(metricValueText(gate.key, gate.value))}</span>
+              <span>目标：${esc(percentText(gate.target))}</span>
+            </div>
+            <div class="score-note">${esc(gate.description || "")}</div>
+          </div>`).join("")
+        : emptyBox("暂无质量门禁数据", [{ label: "创建研报任务", view: "tasks", className: "primary" }]);
+    }
+
+    function renderEvaluationClaimQuality(quality) {
+      const cards = quality.cards || [];
+      $("evaluationClaimQuality").innerHTML = cards.length
+        ? cards.map((card) => `<button class="diagnostic-card" data-jump="claims">
+            <div class="diagnostic-head"><strong>${esc(card.label)}</strong><span>${esc(percentText(card.value))}</span></div>
+            <div class="score-note">相关主张：${esc(number(card.count))} 条</div>
+          </button>`).join("")
+          + `<div class="dist">
+              <div class="dist-row"><span>待人工复核</span><strong>${esc(number(quality.pending_review))}</strong></div>
+              <div class="dist-row"><span>数字冲突</span><strong>${esc(number(quality.numeric_failed))}</strong></div>
+              <div class="dist-row"><span>引用缺失</span><strong>${esc(number(quality.citation_failed))}</strong></div>
+            </div>`
+        : emptyBox("暂无主张质量数据", [
+            { label: "生成新研报", view: "tasks", className: "primary" },
+            { label: "导入报告产物", view: "manual" },
+          ]);
+    }
+
+    function renderEvaluationModelHealth(health) {
+      const rows = [
+        ["模型运行", `${number(health.success_count)} 成功 / ${number(health.run_count)} 总计`],
+        ["失败运行", number(health.failed_count)],
+        ["降级运行", number(health.fallback_count)],
+        ["结构化输出", percentText(health.schema_valid_rate)],
+        ["平均耗时", health.average_latency_ms == null ? "-" : `${number(health.average_latency_ms)} ms`],
+        ["累计成本", `$${fmt(health.cost_usd)}`],
+      ];
+      $("evaluationModelHealth").innerHTML = rows.map(([label, value]) => `<div class="dist-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join("")
+        + ((health.recent_roles || []).length ? `<div class="detail-section"><h3>最近运行角色</h3>${health.recent_roles.map((item) => `<div class="dist-row"><span>${esc(modelRoleText(item.role))}</span><strong>${esc(number(item.count))}</strong></div>`).join("")}</div>` : "");
+    }
+
+    function renderEvaluationFailures(items) {
+      $("evaluationFailures").innerHTML = items.length
+        ? items.map((item) => `<div class="mini-item">
+            <div class="mini-title">
+              <strong>${esc(item.label)}</strong>
+              <span class="status ${esc(item.severity)}">${esc(signalSeverityText(item.severity))}</span>
+            </div>
+            <div class="mini-meta">${esc(number(item.count))} 项需要处理</div>
+            <div style="margin-top:8px"><button class="btn" data-jump="${esc(item.next_view || "evaluation")}">查看处理入口</button></div>
+          </div>`).join("")
+        : emptyBox("当前没有明显阻塞问题", [{ label: "查看研报任务", view: "tasks", className: "primary" }]);
+    }
+
+    function renderEvaluationTaskRows(tasks) {
+      $("evaluationTaskRows").innerHTML = tasks.length
+        ? tasks.map((task) => `<tr>
+            <td>${esc(task.company_name || task.symbol)}<br><span class="label">${esc(task.symbol)} · ${esc(task.period)} · ${esc(reportTypeText(task.report_type))}</span></td>
+            <td><span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span><br><span class="label">门禁：${esc(passText(task.delivery_pass))}</span></td>
+            <td>${esc(scoreText(task.quality_score))}</td>
+            <td>${esc(percentText(task.traceable_claim_rate))}</td>
+            <td>${esc(percentText(task.verified_claim_rate))}</td>
+            <td>${esc(number(Number(task.issue_count || 0) + Number(task.citation_failed_count || 0) + Number(task.numeric_failed_count || 0) + Number(task.pending_review_count || 0)))}</td>
+            <td><button class="btn" data-task-detail-jump="${esc(task.task_id)}">查看分析包</button></td>
+          </tr>`).join("")
+        : `<tr><td colspan="7">${emptyBox("暂无研报质量记录", [{ label: "创建研报任务", view: "tasks", className: "primary" }])}</td></tr>`;
+    }
+
+    function renderEvaluationRuns(runs) {
+      $("evaluationRuns").innerHTML = runs.length
+        ? runs.map((run) => `<div class="mini-item">
+            <div class="mini-title">
+              <strong>${esc(run.label || "模型运行")}</strong>
+              <span class="status ${esc(run.status)}">${esc(statusText(run.status))}</span>
+            </div>
+            <div class="mini-meta">${esc(run.task_id || "未绑定任务")} · 结构化输出 ${esc(passText(run.schema_valid))} · ${esc(run.latency_ms == null ? "-" : run.latency_ms + " ms")} · ${esc(fmt(run.created_at))}</div>
+            ${run.fallback_used ? `<div class="score-note">已启用降级运行</div>` : ""}
+          </div>`).join("")
+        : emptyBox("暂无模型运行记录", [{ label: "查看提示词运营", view: "promptops", className: "primary" }]);
+    }
+
+    function renderEvaluationNotes(payload) {
+      const notes = payload.notes || [];
+      const fixedNotes = [
+        "当前页面聚合现有任务、主张、证据和模型运行记录，用于证明研报质量。",
+        "Formal-18、Quick-9 和回归集跑批仍属于后续评测能力，需要在评测样例和局部诊断接口稳定后接入。",
+      ];
+      $("evaluationNotes").innerHTML = [...notes, ...fixedNotes].map((note) => `<div class="diagnostic-card">${esc(note)}</div>`).join("");
+    }
+
+    function metricValueText(key, value) {
+      if (key === "average_quality_score") return scoreText(value);
+      if (String(key || "").includes("rate")) return percentText(value);
+      return fmt(value);
+    }
+
+    function scoreText(value) {
+      if (value === null || value === undefined || value === "") return "-";
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return fmt(value);
+      return numeric <= 1 ? String(Math.round(numeric * 1000) / 10) : String(Math.round(numeric * 10) / 10);
+    }
+
+    function evaluationGateStatusText(value) {
+      const map = { passed: "达标", warning: "需关注", failed: "未达标", pending: "待生成" };
+      return textOf(map, value);
+    }
+
+    function modelRoleText(value) {
+      const map = {
+        quality_gate: "质量门禁",
+        verifier: "校验智能体",
+        writer: "研报撰写",
+        researcher: "资料检索",
+        planner: "任务规划",
+        final_answer: "最终研报",
+      };
+      return textOf(map, value);
     }
 
     async function loadDashboard() {
