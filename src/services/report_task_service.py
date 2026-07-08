@@ -19,8 +19,9 @@ from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.app.chat_task_parser import latest_completed_period
 from src.app.web_ui import run_delivery_quality_pipeline
 from src.db.init_db import init_db
-from src.db.models import ReportArtifact, ReportTask, ReportTaskEvent
+from src.db.models import PromptTemplate, ReportArtifact, ReportTask, ReportTaskEvent
 from src.db.session import create_engine_for_url
+from src.llm.harness import LLMHarness
 from src.services.artifact_importer import ArtifactImporter
 
 
@@ -296,6 +297,7 @@ class ReportTaskService:
             config_path=self.config_path,
             memory_enabled=bool(metadata.get("memory_enabled", False)),
         )
+        llm_run_id = self._record_quality_gate_harness_run(task_id, metadata=metadata, quality_result=result)
         score = _quality_score_from_result(result)
         delivery_pass = _dict_path(result, "delivery_gate").get("delivery_pass")
         with self.session() as session:
@@ -315,11 +317,74 @@ class ReportTaskService:
                         "delivery_pass": delivery_pass,
                         "quality_score": score,
                         "top_quality_issues": _top_quality_issues(result),
+                        "llm_run_id": llm_run_id,
                     },
                 )
             )
             session.commit()
         return result
+
+    def _record_quality_gate_harness_run(
+        self,
+        task_id: str,
+        *,
+        metadata: dict[str, Any],
+        quality_result: dict[str, Any],
+    ) -> str | None:
+        prompt_key = "report_quality_gate"
+        active_prompt = self._active_prompt(prompt_key)
+        backend = QualityGateTraceBackend()
+        harness = LLMHarness(session_factory=self.session, backend=backend)
+        input_payload = {
+            "task_id": task_id,
+            "symbol": metadata.get("symbol"),
+            "period": metadata.get("period"),
+            "report_type": metadata.get("report_type"),
+            "delivery_gate": _dict_path(quality_result, "delivery_gate"),
+            "quality_report": _dict_path(quality_result, "quality_report"),
+            "llm_quality_review": _dict_path(quality_result, "llm_quality_review"),
+            "top_quality_issues": _top_quality_issues(quality_result),
+        }
+        prompt = active_prompt["content"] if active_prompt else "Record report quality gate result."
+        result = harness.run_prompt(
+            prompt_key=prompt_key,
+            input=input_payload,
+            schema={
+                "type": "object",
+                "required": ["delivery_pass", "issue_count", "summary"],
+                "properties": {
+                    "delivery_pass": {"type": "boolean"},
+                    "issue_count": {"type": "integer"},
+                    "summary": {"type": "string"},
+                },
+            },
+            model_role="quality_gate",
+            task_id=task_id,
+            prompt=prompt,
+            prompt_version_id=active_prompt["version_id"] if active_prompt else None,
+            metadata={
+                "source": "report_task_quality_gate",
+                "promptops_bound": bool(active_prompt),
+            },
+        )
+        return result.run_id
+
+    def _active_prompt(self, prompt_key: str) -> dict[str, Any] | None:
+        with self.session() as session:
+            template = session.scalar(
+                select(PromptTemplate)
+                .where(PromptTemplate.prompt_key == prompt_key, PromptTemplate.is_active.is_(True))
+                .options(selectinload(PromptTemplate.versions))
+            )
+            if template is None:
+                return None
+            versions = [version for version in template.versions if version.is_active]
+            if not versions:
+                versions = list(template.versions)
+            if not versions:
+                return None
+            version = sorted(versions, key=lambda item: item.version, reverse=True)[0]
+            return {"version_id": version.id, "content": version.content}
 
     def list_tasks(self, *, status: str | None = None, symbol: str | None = None, limit: int = 50) -> dict[str, Any]:
         limit = max(1, min(int(limit or 50), 200))
@@ -577,9 +642,32 @@ def _compact_quality_result(result: dict[str, Any]) -> dict[str, Any]:
 
 def _top_quality_issues(result: dict[str, Any]) -> list[dict[str, Any]]:
     issues = result.get("top_quality_issues") if isinstance(result, dict) else []
+    if not issues:
+        issues = _dict_path(result, "delivery_gate").get("top_issues")
     if not isinstance(issues, list):
         return []
     return [issue for issue in issues[:5] if isinstance(issue, dict)]
+
+
+class QualityGateTraceBackend:
+    """Deterministic backend used to make quality-gate observability queryable."""
+
+    name = "quality-gate-trace"
+
+    def generate_structured(self, prompt: str, schema: dict[str, Any] | None = None, **kwargs: Any) -> dict[str, Any]:
+        gate = kwargs.get("delivery_gate") if isinstance(kwargs.get("delivery_gate"), dict) else {}
+        issues = kwargs.get("top_quality_issues") if isinstance(kwargs.get("top_quality_issues"), list) else []
+        delivery_pass = gate.get("delivery_pass") is True
+        summary = "质量门禁通过" if delivery_pass else "质量门禁未通过"
+        if issues:
+            first = issues[0]
+            if isinstance(first, dict) and first.get("message"):
+                summary = f"{summary}: {first['message']}"
+        return {
+            "delivery_pass": delivery_pass,
+            "issue_count": len(issues),
+            "summary": summary,
+        }
 
 
 def _report_links(artifacts: list[dict[str, Any]]) -> dict[str, Any]:

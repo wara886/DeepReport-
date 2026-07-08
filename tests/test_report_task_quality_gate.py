@@ -111,3 +111,62 @@ def test_report_task_quality_failed_task_can_be_retried(tmp_path):
     stages = [event["stage"] for event in body["events"]]
     assert "quality_failed" in stages
     assert stages[-1] == "completed"
+
+
+def test_report_task_quality_gate_records_llm_run_observability(tmp_path):
+    with make_client(tmp_path, failing_quality_runner) as client:
+        response = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-quality-llm-run", "symbol": "NVDA", "period": "FY2024"},
+        )
+        runs = client.get("/api/llm-runs", params={"task_id": "task-quality-llm-run"})
+
+    assert response.status_code == 201
+    assert runs.status_code == 200
+    body = runs.json()
+    assert body["total"] == 1
+    item = body["items"][0]
+    assert item["prompt_key"] == "report_quality_gate"
+    assert item["model_role"] == "quality_gate"
+    assert item["model_name"] == "quality-gate-trace"
+    assert item["status"] == "success"
+    assert item["schema_valid"] is True
+    assert item["output"]["delivery_pass"] is False
+    assert item["metadata"]["source"] == "report_task_quality_gate"
+    quality_events = [event for event in response.json()["events"] if event["stage"] == "quality_gate"]
+    assert quality_events[-1]["metadata"]["llm_run_id"] == item["run_id"]
+
+
+def test_report_task_quality_gate_binds_promptops_active_version(tmp_path):
+    with make_client(tmp_path, failing_quality_runner) as client:
+        created_prompt = client.post(
+            "/api/promptops/templates",
+            json={
+                "prompt_key": "report_quality_gate",
+                "name": "质量门禁记录",
+                "module": "quality_gate",
+                "content": "记录 {{task_id}} 的质量门禁结果",
+                "schema": {
+                    "type": "object",
+                    "required": ["delivery_pass", "issue_count", "summary"],
+                    "properties": {
+                        "delivery_pass": {"type": "boolean"},
+                        "issue_count": {"type": "integer"},
+                        "summary": {"type": "string"},
+                    },
+                },
+            },
+        )
+        active = client.get("/api/promptops/templates/report_quality_gate/active")
+        response = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-quality-promptops", "symbol": "NVDA", "period": "FY2024"},
+        )
+        runs = client.get("/api/llm-runs", params={"task_id": "task-quality-promptops"})
+
+    assert created_prompt.status_code == 201
+    assert active.status_code == 200
+    assert response.status_code == 201
+    item = runs.json()["items"][0]
+    assert item["prompt_version_id"] == active.json()["id"]
+    assert item["metadata"]["promptops_bound"] is True
