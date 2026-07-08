@@ -1052,10 +1052,10 @@ def render_workbench_html() -> str:
 
     const statusMap = {
       queued: "待启动", running: "运行中", completed: "已完成", failed: "失败", timeout: "超时",
-      cancelled: "已取消", archived: "已归档", quality_failed: "质量未通过",
+      cancelled: "已取消", archived: "已归档", quality_failed: "质量未通过", skipped: "已跳过",
       pending: "待复核", approved: "已通过", rejected: "已驳回", regenerate_requested: "已请求重生成",
       supported: "已支持", verified: "已验证", passed: "通过", success: "成功", parsed: "已解析",
-      official: "官方", primary: "一手", secondary: "二手", unknown: "未知",
+      official: "官方", primary: "一手", secondary: "二手", medium: "中可信", low: "低可信", high: "高可信", unknown: "未知",
       not_required: "无需凭证", required: "需配置", configured: "已配置", expired: "已过期",
       not_run: "未运行",
       company: "公司别名", product: "产品别名", metric: "财务指标", industry: "行业术语", risk: "风险词", exclude: "排除词",
@@ -1070,15 +1070,24 @@ def render_workbench_html() -> str:
       financials: "财务数据", filing: "公告文件", filings: "公告文件", local_pdf: "本地文档",
     };
     const stepMap = {
-      ingest: "入库", parse: "解析", table_extract: "表格抽取", chunk: "切分",
+      ingest: "入库", parse: "解析", table_extract: "表格抽取", chunk: "切分", chunk_vectorize: "切分向量化",
       evidence: "证据化", claim_bind: "绑定主张", verify: "校验",
-      orchestrator: "多智能体执行", artifact_import: "产物导入", completed: "完成",
+      orchestrator: "多智能体执行", artifact_import: "产物导入", quality_gate: "质量门禁", completed: "完成",
       queued: "待启动", retry: "重试", failed: "失败", quality_failed: "质量未通过", cancelled: "已取消", archived: "已归档", claim_review: "主张复核",
       manual_import: "手动导入",
+    };
+    const docTypeMap = {
+      report_artifact: "研报任务产物",
+      generated_report_artifacts: "研报任务产物",
+      manual_text: "手动文本",
+      manual_pdf: "手动 PDF",
+      manual_url: "手动链接",
     };
     const artifactMap = {
       html: "网页报告", markdown: "文稿", json: "结构化数据",
       claims: "主张数据", evidence: "证据数据", verification_report: "校验报告",
+      run_summary: "运行摘要", delivery_gate: "交付门禁", quality_report: "质量报告",
+      llm_quality_review: "大模型质检", quality_remediation_plan: "修复计划",
     };
     const dataSourceScopeMap = {
       official_first: "官方公告优先",
@@ -1127,7 +1136,27 @@ def render_workbench_html() -> str:
     const statusText = (value) => textOf(statusMap, value);
     const sourceText = (value) => textOf(sourceMap, value);
     const stepText = (value) => textOf(stepMap, value);
+    const docTypeText = (value) => textOf(docTypeMap, value);
     const artifactText = (value) => textOf(artifactMap, value);
+
+    function stepMetadataText(metadata) {
+      const data = metadata || {};
+      const items = [];
+      if (data.artifact_count != null) items.push(`产物 ${number(data.artifact_count)} 个`);
+      if (Array.isArray(data.artifact_types) && data.artifact_types.length) {
+        items.push(`产物类型：${data.artifact_types.map(artifactText).join("、")}`);
+      }
+      if (Array.isArray(data.report_files) && data.report_files.length) {
+        items.push(`报告文件：${data.report_files.join("、")}`);
+      }
+      if (data.financial_fact_count != null) items.push(`财务事实 ${number(data.financial_fact_count)} 条`);
+      if (data.evidence_count != null) items.push(`证据 ${number(data.evidence_count)} 条`);
+      if (data.claim_count != null) items.push(`主张 ${number(data.claim_count)} 条`);
+      if (data.claim_evidence_count != null) items.push(`证据绑定 ${number(data.claim_evidence_count)} 条`);
+      if (data.verification_exists != null) items.push(`校验文件：${data.verification_exists ? "已生成" : "未生成"}`);
+      if (data.verification_passed != null) items.push(`校验结果：${data.verification_passed ? "通过" : "未通过"}`);
+      return items.length ? items.join("；") : "无附加信息";
+    }
     const dataSourceScopeText = (value) => textOf(dataSourceScopeMap, value);
     const shortTaskId = (value) => {
       const text = String(value || "");
@@ -2627,7 +2656,7 @@ def render_workbench_html() -> str:
         const rows = payload.items || [];
         $("documentRows").innerHTML = rows.length
           ? rows.map((doc) => `<tr data-selectable="true">
-              <td><button class="btn" data-document-detail="${esc(doc.id)}">${esc(doc.title)}</button><br><span class="label">${esc(doc.doc_type || "-")} · ${esc(doc.report_period || "-")}</span></td>
+              <td><button class="btn" data-document-detail="${esc(doc.id)}">${esc(doc.title)}</button><br><span class="label">${esc(docTypeText(doc.doc_type))} · ${esc(doc.report_period || "-")}</span></td>
               <td><span class="mono">${esc(fmt(doc.batch_id))}</span></td>
               <td><span class="status ${esc(doc.parse_status)}">${esc(statusText(doc.parse_status))}</span><br><span class="label">${esc(number(doc.failed_step_count))} 个失败</span></td>
               <td>${esc(stepText(doc.latest_step?.step_name))}<br><span class="status ${esc(doc.latest_step?.status || "")}">${esc(statusText(doc.latest_step?.status))}</span></td>
@@ -2656,7 +2685,7 @@ def render_workbench_html() -> str:
           ${doc.source_url ? `<div class="kv"><span class="label">链接</span><a href="${esc(doc.source_url)}" target="_blank">${esc(doc.source_url)}</a></div>` : ""}
           ${doc.file_path ? `<div class="kv"><span class="label">文件</span><span class="mono">${esc(doc.file_path)}</span></div>` : ""}
           <div class="detail-section"><h3>处理步骤</h3><div class="timeline">${
-            steps.length ? steps.map((step) => `<div class="event"><strong>${esc(stepText(step.step_name))}</strong> <span class="status ${esc(step.status)}">${esc(statusText(step.status))}</span><br><span class="label">${esc(fmt(step.started_at))} - ${esc(fmt(step.finished_at))}</span>${step.error_message ? `<div class="text-block">${esc(step.error_message)}</div>` : ""}<br><span class="label mono">${esc(JSON.stringify(step.metadata || {}))}</span></div>`).join("") : `<div class="empty">暂无处理步骤</div>`
+            steps.length ? steps.map((step) => `<div class="event"><strong>${esc(stepText(step.step_name))}</strong> <span class="status ${esc(step.status)}">${esc(statusText(step.status))}</span><br><span class="label">${esc(fmt(step.started_at))} - ${esc(fmt(step.finished_at))}</span>${step.error_message ? `<div class="text-block">${esc(step.error_message)}</div>` : ""}<br><span class="label">${esc(stepMetadataText(step.metadata))}</span></div>`).join("") : `<div class="empty">暂无处理步骤</div>`
           }</div></div>
           <div class="detail-section"><h3>证据</h3>${
             evidence.length ? evidence.map((item) => `<div class="event"><strong>${esc(item.title || item.evidence_id)}</strong> <span class="status ${esc(item.trust_level)}">${esc(statusText(item.trust_level))}</span><br>${esc(item.snippet || "")}</div>`).join("") : `<div class="empty">暂无证据</div>`

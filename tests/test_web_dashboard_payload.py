@@ -94,6 +94,13 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "scheduleTaskRefresh" in html
     assert 'terminalTaskStatuses' in html
     assert 'quality_failed: "质量未通过"' in html
+    assert 'quality_gate: "质量门禁"' in html
+    assert 'chunk_vectorize: "切分向量化"' in html
+    assert 'report_artifact: "研报任务产物"' in html
+    assert 'medium: "中可信"' in html
+    assert "stepMetadataText" in html
+    assert "产物类型：" in html
+    assert "证据绑定" in html
     assert "shortTaskId" in html
     assert "确认${labels[action]}该研报任务" in html
     assert "/api/report-tasks" in html

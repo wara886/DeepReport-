@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -12,7 +14,19 @@ from uuid import uuid4
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from src.db.models import ClaimEvidence, Company, EvidenceItem, FinancialFact, LLMRun, ReportArtifact, ReportClaim, ReportTask, ReportTaskEvent
+from src.db.models import (
+    ClaimEvidence,
+    Company,
+    Document,
+    DocumentProcessingStep,
+    EvidenceItem,
+    FinancialFact,
+    LLMRun,
+    ReportArtifact,
+    ReportClaim,
+    ReportTask,
+    ReportTaskEvent,
+)
 
 
 REPORT_ARTIFACTS = {
@@ -43,6 +57,8 @@ class ArtifactImportResult:
     claim_evidence_count: int
     financial_fact_count: int
     llm_run_count: int
+    document_count: int
+    document_processing_step_count: int
     warnings: list[str]
 
     def to_dict(self) -> dict[str, Any]:
@@ -54,6 +70,8 @@ class ArtifactImportResult:
             "claim_evidence_count": self.claim_evidence_count,
             "financial_fact_count": self.financial_fact_count,
             "llm_run_count": self.llm_run_count,
+            "document_count": self.document_count,
+            "document_processing_step_count": self.document_processing_step_count,
             "warnings": list(self.warnings),
         }
 
@@ -91,10 +109,20 @@ class ArtifactImporter:
             )
 
             artifacts = self._import_artifacts(session, task_id, output_dir, report_dir)
+            document = self._upsert_task_document(
+                session,
+                task=task,
+                company_id=company_id,
+                period=period,
+                output_dir=output_dir,
+                report_dir=report_dir,
+                artifacts=artifacts,
+            )
             evidence_by_external_id = self._import_evidence(
                 session,
                 task_id=task_id,
                 company_id=company_id,
+                document_id=document.id if document is not None else None,
                 period=period,
                 output_dir=output_dir,
                 warnings=warnings,
@@ -121,6 +149,21 @@ class ArtifactImporter:
                 task_id=task_id,
                 output_dir=output_dir,
             )
+            document_step_count = (
+                self._replace_document_processing_steps(
+                    session,
+                    document=document,
+                    artifacts=artifacts,
+                    output_dir=output_dir,
+                    report_dir=report_dir,
+                    evidence_count=len(evidence_by_external_id),
+                    claim_count=claim_count,
+                    claim_evidence_count=link_count,
+                    financial_fact_count=financial_fact_count,
+                )
+                if document is not None
+                else 0
+            )
 
             result = ArtifactImportResult(
                 task_id=task_id,
@@ -130,6 +173,8 @@ class ArtifactImporter:
                 claim_evidence_count=link_count,
                 financial_fact_count=financial_fact_count,
                 llm_run_count=llm_run_count,
+                document_count=1 if document is not None else 0,
+                document_processing_step_count=document_step_count,
                 warnings=warnings,
             )
             session.add(
@@ -184,12 +229,117 @@ class ArtifactImporter:
         session.add_all(rows)
         return rows
 
+    def _upsert_task_document(
+        self,
+        session: Session,
+        *,
+        task: ReportTask,
+        company_id: int | None,
+        period: str,
+        output_dir: Path,
+        report_dir: Path,
+        artifacts: list[ReportArtifact],
+    ) -> Document | None:
+        if not artifacts and not _has_importable_outputs(output_dir, report_dir):
+            return None
+
+        task_id = task.task_id
+        content_hash = _task_document_hash(task_id)
+        document = session.scalar(select(Document).where(Document.content_hash == content_hash))
+        if document is None:
+            document = Document(title="", content_hash=content_hash)
+            session.add(document)
+
+        title = _report_title(report_dir / "report.json") or _task_document_title(task, period)
+        primary_artifact = _primary_report_artifact(artifacts)
+        document.company_id = company_id
+        document.batch_id = task_id
+        document.title = title
+        document.doc_type = "report_artifact"
+        document.report_period = period or task.period
+        document.source_url = primary_artifact.url if primary_artifact is not None else None
+        document.file_path = primary_artifact.path if primary_artifact is not None else None
+        document.parse_status = "parsed"
+        session.flush()
+        return document
+
+    def _replace_document_processing_steps(
+        self,
+        session: Session,
+        *,
+        document: Document,
+        artifacts: list[ReportArtifact],
+        output_dir: Path,
+        report_dir: Path,
+        evidence_count: int,
+        claim_count: int,
+        claim_evidence_count: int,
+        financial_fact_count: int,
+    ) -> int:
+        session.execute(delete(DocumentProcessingStep).where(DocumentProcessingStep.document_id == document.id))
+        now = datetime.now(timezone.utc)
+        verification = _read_json(output_dir / "verification_report.json", default={})
+        verification_exists = (output_dir / "verification_report.json").exists()
+        verification_passed = bool(verification.get("passed")) if isinstance(verification, dict) else False
+        has_report_file = any((report_dir / filename).exists() for filename in REPORT_ARTIFACTS)
+        artifact_types = sorted({artifact.artifact_type for artifact in artifacts})
+        steps = [
+            _processing_step(
+                "ingest",
+                "success",
+                now,
+                {"artifact_count": len(artifacts), "artifact_types": artifact_types},
+            ),
+            _processing_step(
+                "parse",
+                "success" if has_report_file else "skipped",
+                now,
+                {"report_files": [filename for filename in REPORT_ARTIFACTS if (report_dir / filename).exists()]},
+            ),
+            _processing_step(
+                "table_extract",
+                "success" if financial_fact_count else "skipped",
+                now,
+                {"financial_fact_count": financial_fact_count},
+            ),
+            _processing_step(
+                "chunk_vectorize",
+                "success" if evidence_count else "skipped",
+                now,
+                {"evidence_count": evidence_count},
+            ),
+            _processing_step(
+                "evidence",
+                "success" if evidence_count else "skipped",
+                now,
+                {"evidence_count": evidence_count},
+            ),
+            _processing_step(
+                "claim_bind",
+                _claim_bind_step_status(claim_count=claim_count, claim_evidence_count=claim_evidence_count),
+                now,
+                {"claim_count": claim_count, "claim_evidence_count": claim_evidence_count},
+            ),
+            _processing_step(
+                "verify",
+                _verify_step_status(verification_exists=verification_exists, verification_passed=verification_passed),
+                now,
+                {"verification_passed": verification_passed, "verification_exists": verification_exists},
+            ),
+        ]
+        for step in steps:
+            step.document_id = document.id
+        session.add_all(steps)
+        session.flush()
+        return len(steps)
+
     def _import_evidence(
         self,
         session: Session,
         *,
         task_id: str,
         company_id: int | None,
+        document_id: int | None,
         period: str,
         output_dir: Path,
         warnings: list[str],
@@ -205,7 +355,7 @@ class ArtifactImporter:
                 item = EvidenceItem(evidence_id=evidence_id, content="")
                 session.add(item)
             item.company_id = _optional_int(record.get("company_id")) or company_id
-            item.document_id = _optional_int(record.get("document_id"))
+            item.document_id = _optional_int(record.get("document_id")) or document_id
             item.chunk_id = _string_or_none(record.get("chunk_id"))
             item.source_type = _string_or_none(record.get("source_type"))
             item.trust_level = _string_or_none(record.get("trust_level"))
@@ -429,6 +579,67 @@ class ArtifactImporter:
             session.add_all(rows)
             session.flush()
         return len(rows)
+
+
+def _has_importable_outputs(output_dir: Path, report_dir: Path) -> bool:
+    return any((report_dir / filename).exists() for filename in REPORT_ARTIFACTS) or any(
+        (output_dir / filename).exists() for filename in OUTPUT_ARTIFACTS
+    )
+
+
+def _task_document_hash(task_id: str) -> str:
+    return hashlib.sha256(f"report_task:{task_id}".encode("utf-8")).hexdigest()
+
+
+def _report_title(path: Path) -> str | None:
+    payload = _read_json(path, default={})
+    if isinstance(payload, dict):
+        return _string_or_none(payload.get("title") or payload.get("report_title"))
+    return None
+
+
+def _task_document_title(task: ReportTask, period: str) -> str:
+    symbol = _string_or_none(task.symbol) or "未知标的"
+    suffix = f" {period}" if period else ""
+    return f"{symbol}{suffix} 研报任务产物"
+
+
+def _primary_report_artifact(artifacts: list[ReportArtifact]) -> ReportArtifact | None:
+    by_type = {artifact.artifact_type: artifact for artifact in artifacts}
+    for artifact_type in ("html", "markdown", "json"):
+        if artifact_type in by_type:
+            return by_type[artifact_type]
+    return artifacts[0] if artifacts else None
+
+
+def _processing_step(
+    step_name: str,
+    status: str,
+    now: datetime,
+    metadata: dict[str, Any],
+) -> DocumentProcessingStep:
+    completed_at = now if status in {"success", "failed", "skipped"} else None
+    return DocumentProcessingStep(
+        step_name=step_name,
+        status=status,
+        started_at=now if status != "skipped" else None,
+        finished_at=completed_at if status != "skipped" else None,
+        metadata_json=metadata,
+    )
+
+
+def _claim_bind_step_status(*, claim_count: int, claim_evidence_count: int) -> str:
+    if claim_count <= 0:
+        return "skipped"
+    if claim_evidence_count <= 0:
+        return "failed"
+    return "success"
+
+
+def _verify_step_status(*, verification_exists: bool, verification_passed: bool) -> str:
+    if not verification_exists:
+        return "skipped"
+    return "success" if verification_passed else "failed"
 
 
 def _read_json(path: Path, default: Any) -> Any:

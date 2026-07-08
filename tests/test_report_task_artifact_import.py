@@ -172,6 +172,7 @@ def test_report_task_artifact_import_populates_financial_facts_from_claim_number
         )
         facts = client.get("/api/financial-facts", params={"company": "AAPL", "period": "FY2024"})
         dashboard = client.get("/api/dashboard/summary")
+        documents = client.get("/api/documents", params={"company": "AAPL", "batch_id": "task-facts-001"})
 
     assert created.status_code == 201
     assert facts.status_code == 200
@@ -180,6 +181,31 @@ def test_report_task_artifact_import_populates_financial_facts_from_claim_number
     assert all(item["evidence"]["evidence_id"] == "ev_financials" for item in items)
     assert all(item["source_url"] == "https://www.sec.gov/aapl/10-k" for item in items)
     assert dashboard.json()["financial_fact_count"] == 2
+    assert documents.status_code == 200
+    document_items = documents.json()["items"]
+    assert len(document_items) == 1
+    assert document_items[0]["batch_id"] == "task-facts-001"
+    assert document_items[0]["evidence_count"] == 1
+    assert document_items[0]["claim_count"] == 1
+    assert document_items[0]["step_count"] == 7
+
+    with TestClient(app) as client:
+        detail = client.get(f"/api/documents/{document_items[0]['id']}")
+
+    assert detail.status_code == 200
+    detail_body = detail.json()
+    assert {step["step_name"] for step in detail_body["processing_steps"]} == {
+        "ingest",
+        "parse",
+        "table_extract",
+        "chunk_vectorize",
+        "evidence",
+        "claim_bind",
+        "verify",
+    }
+    assert {step["status"] for step in detail_body["processing_steps"]} == {"success"}
+    assert detail_body["evidence"][0]["evidence_id"] == "ev_financials"
+    assert detail_body["claims"][0]["claim_text"] == "AAPL FY2024 revenue was 391.04B and net income was 93.74B."
 
 
 def test_report_task_artifact_import_binds_financial_metrics_lineage(tmp_path):
