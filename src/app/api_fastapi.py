@@ -627,6 +627,7 @@ def create_fastapi_app(
         trust_level: str | None = None,
         task_id: str | None = None,
         q: str | None = None,
+        mode: str | None = None,
         limit: int = 50,
     ) -> Response:
         try:
@@ -638,6 +639,7 @@ def create_fastapi_app(
                     trust_level=trust_level,
                     task_id=task_id,
                     q=q,
+                    mode=mode,
                     limit=limit,
                 )
             )

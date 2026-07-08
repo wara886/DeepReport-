@@ -255,6 +255,9 @@ def render_workbench_html() -> str:
     .diagnostic-issue { border-left: 3px solid var(--warn); padding-left: 8px; font-size: 13px; line-height: 1.45; }
     .diagnostic-issue.blocker, .diagnostic-issue.fatal, .diagnostic-issue.error { border-left-color: var(--bad); }
     .diagnostic-empty { color: var(--muted); font-size: 13px; }
+    .reason-list { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+    .reason-pill { display: inline-block; border-radius: 999px; background: #eef6ff; color: #175cd3; padding: 3px 7px; font-size: 12px; }
+    .score-note { color: var(--muted); font-size: 12px; line-height: 1.45; }
     .timeline { display: grid; gap: 8px; }
     .event { border-left: 3px solid var(--line); padding-left: 10px; font-size: 13px; }
     .empty, .error { color: var(--muted); font-size: 13px; padding: 18px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; background: #fbfcfd; }
@@ -451,6 +454,8 @@ def render_workbench_html() -> str:
                 <h2 style="margin:0">证据库</h2>
                 <div class="filters">
                   <input id="evidenceQuery" placeholder="搜索证据" />
+                  <input id="evidenceCompany" placeholder="公司或代码" />
+                  <input id="evidencePeriod" placeholder="期间，如 FY2024" />
                   <input id="evidenceTask" placeholder="按研报任务筛选" />
                   <select id="evidenceSource">
                     <option value="">全部来源</option>
@@ -467,13 +472,17 @@ def render_workbench_html() -> str:
                     <option value="primary">一手</option>
                     <option value="secondary">二手</option>
                   </select>
+                  <select id="evidenceMode">
+                    <option value="">普通筛选</option>
+                    <option value="hybrid">智能检索</option>
+                  </select>
                   <button class="btn" id="refreshEvidence">刷新</button>
                 </div>
               </div>
               <div class="table-scroll">
                 <table>
                   <thead>
-                    <tr><th>证据</th><th>来源</th><th>可信度</th><th>文档</th><th>主张</th></tr>
+                    <tr><th>证据</th><th>匹配原因</th><th>来源</th><th>可信度</th><th>文档</th><th>主张</th></tr>
                   </thead>
                   <tbody id="evidenceRows"></tbody>
                 </table>
@@ -1028,6 +1037,7 @@ def render_workbench_html() -> str:
     const activeState = { view: "dashboard" };
     const terminalTaskStatuses = new Set(["completed", "failed", "timeout", "cancelled", "archived", "quality_failed"]);
     let taskPoller = null;
+    let evidenceSearchContext = new Map();
 
     const viewMeta = {
       dashboard: ["投研首页", "任务、证据、主张与处理漏斗"],
@@ -1311,6 +1321,37 @@ def render_workbench_html() -> str:
 
     function evidenceDisplayTitle(item) {
       return item?.title || sourceText(item?.source_type) || "证据片段";
+    }
+
+    function renderEvidenceSearchSummary(item) {
+      const info = item?.search;
+      if (!info) return `<span class="score-note">按筛选条件展示</span>`;
+      const reasons = (info.reasons || []).slice(0, 3);
+      const rank = info.rank ? `第 ${esc(info.rank)} 位` : "智能排序";
+      return `<div><strong>${rank}</strong><div class="reason-list">${
+        reasons.length ? reasons.map((reason) => `<span class="reason-pill">${esc(reason)}</span>`).join("") : `<span class="reason-pill">相关证据</span>`
+      }</div></div>`;
+    }
+
+    function renderEvidenceSearchDetail(info) {
+      if (!info) return "";
+      const reasons = info.reasons || [];
+      const terms = info.matched_terms || [];
+      return `<div class="detail-section"><h3>检索说明</h3>
+        <div class="kv"><span class="label">排序</span><span>${esc(info.rank ? "第 " + info.rank + " 位" : "智能排序")}</span></div>
+        <div class="kv"><span class="label">来源</span><span>${esc((info.rank_sources || []).map(searchSourceText).join(" / ") || "证据质量排序")}</span></div>
+        <div class="reason-list">${reasons.length ? reasons.map((reason) => `<span class="reason-pill">${esc(reason)}</span>`).join("") : `<span class="reason-pill">相关证据</span>`}</div>
+        ${terms.length ? `<div class="score-note">命中关键词：${esc(terms.join("、"))}</div>` : ""}
+        <div class="score-note">检索排序仅用于辅助定位资料，研报事实仍以原文证据、主张校验和人工复核为准。</div>
+      </div>`;
+    }
+
+    function searchSourceText(value) {
+      const map = {
+        keyword: "关键词召回",
+        evidence_quality: "证据质量排序",
+      };
+      return textOf(map, value);
     }
 
     function batchDisplayTitle(batch) {
@@ -2534,31 +2575,39 @@ def render_workbench_html() -> str:
     async function loadEvidence() {
       const params = new URLSearchParams();
       const q = $("evidenceQuery").value.trim();
+      const company = $("evidenceCompany").value.trim();
+      const period = $("evidencePeriod").value.trim();
       const taskId = $("evidenceTask").value.trim();
       const source = $("evidenceSource").value;
       const trust = $("evidenceTrust").value;
+      const mode = $("evidenceMode").value;
       if (q) params.set("q", q);
+      if (company) params.set("company", company);
+      if (period) params.set("period", period);
       if (taskId) params.set("task_id", taskId);
       if (source) params.set("source_type", source);
       if (trust) params.set("trust_level", trust);
+      if (mode) params.set("mode", mode);
       const suffix = params.toString() ? `?${params.toString()}` : "";
       try {
         const payload = await getJson("/api/evidence" + suffix);
         const rows = payload.items || [];
+        evidenceSearchContext = new Map(rows.map((item) => [item.evidence_id, item.search]).filter(([, info]) => info));
         $("evidenceRows").innerHTML = rows.length
           ? rows.map((item) => `<tr data-selectable="true">
               <td><button class="btn" data-evidence-detail="${esc(item.evidence_id)}">${esc(evidenceDisplayTitle(item))}</button><br>${esc(item.snippet || "")}</td>
+              <td>${renderEvidenceSearchSummary(item)}</td>
               <td>${esc(sourceText(item.source_type))}<br><span class="label">${esc(fmt(item.source_url))}</span></td>
               <td><span class="status ${esc(item.trust_level)}">${esc(statusText(item.trust_level))}</span></td>
               <td>${esc(item.document?.title || "-")}<br><span class="label">${esc(item.document?.report_period || "")}</span></td>
               <td>${esc(number(item.claim_count))}</td>
             </tr>`).join("")
-          : `<tr><td colspan="5"><div class="empty">暂无证据</div></td></tr>`;
+          : `<tr><td colspan="6"><div class="empty">暂无证据</div></td></tr>`;
         document.querySelectorAll("[data-evidence-detail]").forEach((btn) => {
           btn.addEventListener("click", () => loadEvidenceDetail(btn.dataset.evidenceDetail));
         });
       } catch (error) {
-        showLoadError("evidenceRows", 5);
+        showLoadError("evidenceRows", 6);
       }
     }
 
@@ -2869,12 +2918,14 @@ def render_workbench_html() -> str:
       try {
         const item = await getJson(`/api/evidence/${encodeURIComponent(evidenceId)}`);
         const claims = item.claims || [];
+        const searchInfo = evidenceSearchContext.get(item.evidence_id);
         $("evidenceDetail").innerHTML = `<h2>证据详情</h2>
           <div class="kv"><span class="label">来源</span><span>${esc(sourceText(item.source_type))}</span></div>
           <div class="kv"><span class="label">可信度</span><span><span class="status ${esc(item.trust_level)}">${esc(statusText(item.trust_level))}</span></span></div>
           <div class="kv"><span class="label">页码</span><span>${esc(fmt(item.page_no))}</span></div>
           <div class="kv"><span class="label">文档</span><span>${esc(item.document?.title || "-")}</span></div>
           ${item.source_url ? `<div class="kv"><span class="label">链接</span><a href="${esc(item.source_url)}" target="_blank">${esc(item.source_url)}</a></div>` : ""}
+          ${renderEvidenceSearchDetail(searchInfo)}
           <div class="detail-section"><h3>来源原文</h3><div class="text-block">${esc(item.content || item.snippet || "")}</div></div>
           <div class="detail-section"><h3>关联主张</h3>${
             claims.length ? claims.map((claim) => `<div class="event"><strong>${esc(claim.section_name || claim.claim_type || "主张")}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}</div>`).join("") : `<div class="empty">暂无关联主张</div>`
@@ -3193,11 +3244,12 @@ def render_workbench_html() -> str:
     $("refreshTasks").addEventListener("click", loadTasks);
     $("symbolFilter").addEventListener("keydown", (event) => { if (event.key === "Enter") loadTasks(); });
     $("refreshEvidence").addEventListener("click", loadEvidence);
-    ["evidenceQuery", "evidenceTask"].forEach((id) => {
+    ["evidenceQuery", "evidenceCompany", "evidencePeriod", "evidenceTask"].forEach((id) => {
       $(id).addEventListener("keydown", (event) => { if (event.key === "Enter") loadEvidence(); });
     });
     $("evidenceSource").addEventListener("change", loadEvidence);
     $("evidenceTrust").addEventListener("change", loadEvidence);
+    $("evidenceMode").addEventListener("change", loadEvidence);
     $("refreshDocuments").addEventListener("click", loadDocuments);
     ["documentQuery", "documentBatch"].forEach((id) => {
       $(id).addEventListener("keydown", (event) => { if (event.key === "Enter") loadDocuments(); });
