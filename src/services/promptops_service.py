@@ -10,9 +10,11 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from src.agents.verifier import Verifier
 from src.db.models import PromptTemplate, PromptVersion
 from src.generation.backend_mock import MockGenerationBackend
 from src.llm.harness import LLMHarness
+from src.schemas.claim import ClaimItem
 
 
 class PromptTemplateNotFound(LookupError):
@@ -125,7 +127,7 @@ class PromptOpsService:
         template = active["template"]
         input_payload = _dict_or_none(payload.get("input")) or {}
         prompt = _render_prompt(active["content"], input_payload)
-        backend = payload.get("backend")
+        backend = payload.get("backend") or _module_backend(prompt_key=prompt_key, module=template.get("module"), input_payload=input_payload)
         harness = self._harness(backend=backend)
         result = harness.run_prompt(
             prompt_key=prompt_key,
@@ -135,7 +137,11 @@ class PromptOpsService:
             task_id=_optional_string(payload.get("task_id")),
             prompt=prompt,
             prompt_version_id=active["id"],
-            metadata={"source": "promptops_test"},
+            metadata={
+                "source": "promptops_test",
+                "module_binding": getattr(backend, "module_binding", None),
+                "promptops_bound": True,
+            },
         )
         return {
             "prompt_key": prompt_key,
@@ -185,6 +191,31 @@ class PromptOpsService:
         return LLMHarness(session_factory=self.session_factory, backend=backend or MockGenerationBackend())
 
 
+class ClaimVerifierPromptBackend:
+    """Harness backend that binds PromptOps runs to the rule-based Claim Verifier."""
+
+    name = "claim-verifier-rules"
+    module_binding = "claim_verifier"
+
+    def generate_structured(self, prompt: str, schema: dict[str, Any] | None = None, **kwargs: Any) -> dict[str, Any]:
+        del prompt, schema
+        claims = [_claim_from_payload(item) for item in list(kwargs.get("claims") or []) if isinstance(item, dict)]
+        markdown = str(kwargs.get("markdown") or "")
+        evidence_records = [item for item in list(kwargs.get("evidence_records") or []) if isinstance(item, dict)]
+        charts = [item for item in list(kwargs.get("charts") or []) if isinstance(item, dict)]
+        tables = [item for item in list(kwargs.get("tables") or []) if isinstance(item, dict)]
+        valuation = kwargs.get("valuation") if isinstance(kwargs.get("valuation"), dict) else None
+        return Verifier().verify(
+            claims=claims,
+            markdown=markdown,
+            evidence_records=evidence_records,
+            charts=charts,
+            tables=tables,
+            valuation=valuation,
+            expected_symbol=_optional_string(kwargs.get("expected_symbol")),
+        )
+
+
 def _get_template(session: Session, template_ref: int | str) -> PromptTemplate:
     text = str(template_ref).strip()
     condition = PromptTemplate.id == int(text) if text.isdigit() else PromptTemplate.prompt_key == text
@@ -203,6 +234,33 @@ def _active_version(template: PromptTemplate) -> PromptVersion | None:
     if active:
         return sorted(active, key=lambda item: item.version, reverse=True)[0]
     return sorted(template.versions, key=lambda item: item.version, reverse=True)[0] if template.versions else None
+
+
+def _module_backend(*, prompt_key: str, module: str | None, input_payload: dict[str, Any]) -> Any | None:
+    normalized_key = str(prompt_key or "").strip().lower()
+    normalized_module = str(module or "").strip().lower()
+    if normalized_key == "claim_verifier" and normalized_module in {"verifier", "claim_verifier"} and isinstance(input_payload.get("claims"), list):
+        return ClaimVerifierPromptBackend()
+    return None
+
+
+def _claim_from_payload(payload: dict[str, Any]) -> ClaimItem:
+    return ClaimItem.from_dict(
+        {
+            "claim_id": payload.get("claim_id") or payload.get("id") or "",
+            "section_name": payload.get("section_name") or "financial_analysis",
+            "claim_text": payload.get("claim_text") or payload.get("text") or "",
+            "evidence_ids": payload.get("evidence_ids") or [],
+            "numeric_values": payload.get("numeric_values") or {},
+            "risk_level": payload.get("risk_level") or "unknown",
+            "confidence": payload.get("confidence", 0.0),
+            "notes": payload.get("notes") or "",
+            "metric_lineage_ids": payload.get("metric_lineage_ids") or [],
+            "input_metric_lineage_ids": payload.get("input_metric_lineage_ids") or [],
+            "is_critical": payload.get("is_critical", False),
+            "critical_claim_type": payload.get("critical_claim_type") or "",
+        }
+    )
 
 
 def _render_prompt(content: str, values: dict[str, Any]) -> str:
