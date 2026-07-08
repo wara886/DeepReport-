@@ -85,6 +85,13 @@ def test_report_task_quality_gate_failure_marks_task_as_quality_failed(tmp_path)
     assert body["current_stage"] == "quality_failed"
     assert body["quality_score"] == 0.73
     assert body["metadata"]["quality_result"]["delivery_gate"]["delivery_pass"] is False
+    assert body["quality_diagnostics"]["delivery_pass"] is False
+    assert body["quality_diagnostics"]["objective_pass"] is False
+    assert body["quality_diagnostics"]["llm_review_pass"] is False
+    assert body["quality_diagnostics"]["quality_score"] == 0.73
+    assert body["quality_diagnostics"]["top_issues"][0]["message"] == "执行摘要深度不足"
+    assert body["quality_diagnostics"]["failure_categories"]["blocker"] == 1
+    assert body["quality_diagnostics"]["quality_gate"]["prompt_key"] == "report_quality_gate"
     quality_events = [event for event in body["events"] if event["stage"] == "quality_gate"]
     assert quality_events[-1]["status"] == "failed"
     assert body["events"][-1]["stage"] == "quality_failed"

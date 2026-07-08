@@ -19,8 +19,9 @@ from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.app.chat_task_parser import latest_completed_period
 from src.app.web_ui import run_delivery_quality_pipeline
 from src.db.init_db import init_db
-from src.db.models import PromptTemplate, ReportArtifact, ReportTask, ReportTaskEvent
+from src.db.models import LLMRun, PromptTemplate, ReportArtifact, ReportTask, ReportTaskEvent
 from src.db.session import create_engine_for_url
+from src.llm.harness import serialize_llm_run
 from src.llm.harness import LLMHarness
 from src.services.artifact_importer import ArtifactImporter
 
@@ -419,7 +420,17 @@ class ReportTaskService:
             )
             if task is None:
                 raise ReportTaskNotFound(task_id)
-            return self.serialize_task(task)
+            payload = self.serialize_task(task)
+            llm_runs = list(
+                session.scalars(
+                    select(LLMRun)
+                    .where(LLMRun.task_id == task_id)
+                    .order_by(LLMRun.created_at.desc(), LLMRun.id.desc())
+                    .limit(50)
+                ).all()
+            )
+            payload["quality_diagnostics"] = build_quality_diagnostics(task, llm_runs)
+            return payload
 
     def get_artifacts(self, task_id: str) -> dict[str, Any]:
         task = self.get_task(task_id)
@@ -582,6 +593,167 @@ def serialize_artifact(artifact: ReportArtifact) -> dict[str, Any]:
         "url": artifact.url,
         "created_at": _dt(artifact.created_at),
     }
+
+
+def build_quality_diagnostics(task: ReportTask, llm_runs: list[LLMRun]) -> dict[str, Any]:
+    """Build a compact task-level quality diagnosis for the workbench detail view."""
+
+    metadata = task.metadata_json or {}
+    quality_result = metadata.get("quality_result") if isinstance(metadata.get("quality_result"), dict) else {}
+    quality_report = _dict_path(quality_result, "quality_report")
+    llm_quality_review = _dict_path(quality_result, "llm_quality_review")
+    delivery_gate = _dict_path(quality_result, "delivery_gate")
+    remediation_plan = _dict_path(quality_result, "remediation_plan")
+    top_issues = _normalize_quality_issues(_top_quality_issues(quality_result))
+    llm_payloads = [_compact_llm_run(item) for item in llm_runs]
+    role_runs = _quality_role_runs(llm_payloads)
+    categories = _quality_failure_categories(
+        delivery_gate=delivery_gate,
+        quality_report=quality_report,
+        llm_quality_review=llm_quality_review,
+        remediation_plan=remediation_plan,
+        top_issues=top_issues,
+        runs=llm_payloads,
+    )
+    return {
+        "delivery_pass": delivery_gate.get("delivery_pass"),
+        "objective_pass": delivery_gate.get("objective_pass", quality_report.get("objective_pass")),
+        "llm_review_pass": delivery_gate.get("llm_review_pass", llm_quality_review.get("llm_review_pass")),
+        "quality_score": task.quality_score if task.quality_score is not None else _quality_score_from_result(quality_result),
+        "failed_sections": _string_list(
+            remediation_plan.get("failed_sections")
+            or quality_report.get("failed_sections")
+            or llm_quality_review.get("failed_sections")
+        )[:8],
+        "top_issues": top_issues,
+        "required_fixes": _string_list(
+            remediation_plan.get("required_fixes")
+            or remediation_plan.get("fixes")
+            or remediation_plan.get("actions")
+        )[:8],
+        "failure_categories": categories,
+        "writer": role_runs.get("final_answer") or role_runs.get("writer"),
+        "verifier": role_runs.get("verifier"),
+        "quality_gate": role_runs.get("quality_gate"),
+        "agent_runs": [run for run in llm_payloads if str(run.get("prompt_key") or "").startswith("agent.")],
+        "llm_run_count": len(llm_payloads),
+        "failed_llm_run_count": sum(1 for run in llm_payloads if run.get("status") == "failed"),
+    }
+
+
+def _compact_llm_run(item: LLMRun) -> dict[str, Any]:
+    payload = serialize_llm_run(item)
+    output = payload.get("output") if isinstance(payload.get("output"), dict) else {}
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    return {
+        "run_id": payload.get("run_id"),
+        "prompt_key": payload.get("prompt_key"),
+        "model_role": payload.get("model_role"),
+        "model_name": payload.get("model_name"),
+        "status": payload.get("status"),
+        "attempt_count": payload.get("attempt_count"),
+        "fallback_used": payload.get("fallback_used"),
+        "schema_valid": payload.get("schema_valid"),
+        "latency_ms": payload.get("latency_ms"),
+        "cost_usd": payload.get("cost_usd"),
+        "created_at": payload.get("created_at"),
+        "summary": _llm_output_summary(output),
+        "output_keys": output.get("output_keys") if isinstance(output.get("output_keys"), list) else [],
+        "metadata": {
+            "source": metadata.get("source"),
+            "route_profile": metadata.get("route_profile"),
+            "memory_used": metadata.get("memory_used"),
+            "quality_feedback_used": metadata.get("quality_feedback_used"),
+            "model_enabled": metadata.get("model_enabled"),
+            "promptops_bound": metadata.get("promptops_bound"),
+        },
+        "error_message": payload.get("error_message"),
+    }
+
+
+def _quality_role_runs(runs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    roles: dict[str, dict[str, Any]] = {}
+    for run in runs:
+        role = str(run.get("model_role") or "").strip()
+        prompt_key = str(run.get("prompt_key") or "").strip()
+        if role and role not in roles:
+            roles[role] = run
+        if prompt_key == "report_quality_gate":
+            roles["quality_gate"] = run
+    return roles
+
+
+def _quality_failure_categories(
+    *,
+    delivery_gate: dict[str, Any],
+    quality_report: dict[str, Any],
+    llm_quality_review: dict[str, Any],
+    remediation_plan: dict[str, Any],
+    top_issues: list[dict[str, Any]],
+    runs: list[dict[str, Any]],
+) -> dict[str, int]:
+    categories: dict[str, int] = {}
+    for issue in top_issues:
+        category = _string(issue.get("category") or issue.get("severity") or "未分类")
+        categories[category] = categories.get(category, 0) + 1
+    if delivery_gate.get("objective_pass") is False or quality_report.get("objective_pass") is False:
+        categories["客观规则未通过"] = categories.get("客观规则未通过", 0) + 1
+    if delivery_gate.get("llm_review_pass") is False or llm_quality_review.get("llm_review_pass") is False:
+        categories["LLM复核未通过"] = categories.get("LLM复核未通过", 0) + 1
+    for section in _string_list(remediation_plan.get("failed_sections")):
+        categories[f"章节需修复:{section}"] = categories.get(f"章节需修复:{section}", 0) + 1
+    for run in runs:
+        status = run.get("status")
+        if status == "failed":
+            role = _string(run.get("model_role") or run.get("prompt_key") or "unknown")
+            categories[f"模型运行失败:{role}"] = categories.get(f"模型运行失败:{role}", 0) + 1
+        elif status == "skipped":
+            role = _string(run.get("model_role") or run.get("prompt_key") or "unknown")
+            categories[f"模型跳过:{role}"] = categories.get(f"模型跳过:{role}", 0) + 1
+    return dict(sorted(categories.items(), key=lambda item: item[1], reverse=True)[:8])
+
+
+def _normalize_quality_issues(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for issue in issues:
+        message = _string(issue.get("message") or issue.get("detail") or issue.get("reason"))
+        if not message:
+            continue
+        normalized.append(
+            {
+                "severity": _string(issue.get("severity") or "warning"),
+                "category": _string(issue.get("category") or ""),
+                "message": message,
+            }
+        )
+    return normalized[:5]
+
+
+def _llm_output_summary(output: dict[str, Any]) -> str:
+    summary = output.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        return summary.strip()
+    output_summary = output.get("output_summary")
+    if isinstance(output_summary, dict):
+        for key in ("summary", "decision", "finding", "message"):
+            value = output_summary.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        if output_summary:
+            return json.dumps(output_summary, ensure_ascii=False, sort_keys=True)[:240]
+    return ""
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [_string(item) for item in value if _string(item)]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def _string(value: Any) -> str:
+    return str(value).strip() if value is not None else ""
 
 
 def _utc_now() -> datetime:

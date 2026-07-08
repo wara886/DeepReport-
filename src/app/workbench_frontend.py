@@ -245,7 +245,16 @@ def render_workbench_html() -> str:
     .detail-section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
     .kv { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 8px; font-size: 13px; margin: 7px 0; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; }
+    .nowrap { white-space: nowrap; }
     .text-block { border: 1px solid var(--line); background: #fbfcfd; border-radius: 8px; padding: 10px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
+    .diagnostic-grid { display: grid; gap: 8px; }
+    .diagnostic-card { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 10px; display: grid; gap: 6px; font-size: 13px; }
+    .diagnostic-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+    .diagnostic-meta { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 12px; }
+    .diagnostic-list { display: grid; gap: 6px; }
+    .diagnostic-issue { border-left: 3px solid var(--warn); padding-left: 8px; font-size: 13px; line-height: 1.45; }
+    .diagnostic-issue.blocker, .diagnostic-issue.fatal, .diagnostic-issue.error { border-left-color: var(--bad); }
+    .diagnostic-empty { color: var(--muted); font-size: 13px; }
     .timeline { display: grid; gap: 8px; }
     .event { border-left: 3px solid var(--line); padding-left: 10px; font-size: 13px; }
     .empty, .error { color: var(--muted); font-size: 13px; padding: 18px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; background: #fbfcfd; }
@@ -1064,7 +1073,7 @@ def render_workbench_html() -> str:
       ingest: "入库", parse: "解析", table_extract: "表格抽取", chunk: "切分",
       evidence: "证据化", claim_bind: "绑定主张", verify: "校验",
       orchestrator: "多智能体执行", artifact_import: "产物导入", completed: "完成",
-      queued: "待启动", retry: "重试", failed: "失败", cancelled: "已取消", archived: "已归档", claim_review: "主张复核",
+      queued: "待启动", retry: "重试", failed: "失败", quality_failed: "质量未通过", cancelled: "已取消", archived: "已归档", claim_review: "主张复核",
       manual_import: "手动导入",
     };
     const artifactMap = {
@@ -2144,7 +2153,7 @@ def render_workbench_html() -> str:
               <td><button class="btn mono" title="${esc(task.task_id)}" data-task-detail="${esc(task.task_id)}">${esc(shortTaskId(task.task_id))}</button></td>
               <td>${esc(task.symbol)}<br><span class="label">${esc(task.period)}</span></td>
               <td><span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span></td>
-              <td>${esc(stepText(task.current_stage))}</td>
+              <td class="nowrap">${esc(stepText(task.current_stage))}</td>
               <td>${esc(fmt(task.created_at))}</td>
               <td>${artifactButtons(task)}</td>
               <td>${taskActionButtons(task)}</td>
@@ -2157,6 +2166,74 @@ def render_workbench_html() -> str:
       } catch (error) {
         showLoadError("taskRows", 7);
       }
+    }
+
+    function renderQualityDiagnostics(task) {
+      const diag = task.quality_diagnostics || {};
+      const hasQuality = diag.delivery_pass !== undefined || diag.quality_score !== undefined || Number(diag.llm_run_count || 0) > 0;
+      if (!hasQuality) {
+        return `<div class="detail-section"><h3>质量诊断</h3><div class="empty">暂无质量门禁和智能体运行诊断。任务完成后会展示 Writer、Verifier 和质量门禁结果。</div></div>`;
+      }
+      const gateStatus = diag.delivery_pass === true ? "passed" : (diag.delivery_pass === false ? "failed" : "not_run");
+      const categories = Object.entries(diag.failure_categories || {});
+      const issues = diag.top_issues || [];
+      const failedSections = diag.failed_sections || [];
+      const fixes = diag.required_fixes || [];
+      const runCards = [
+        ["Writer", diag.writer],
+        ["Verifier", diag.verifier],
+        ["质量门禁", diag.quality_gate],
+      ].map(([label, run]) => renderDiagnosticRunCard(label, run)).join("");
+      return `<div class="detail-section"><h3>质量诊断</h3>
+        <div class="diagnostic-grid">
+          <div class="diagnostic-card">
+            <div class="diagnostic-head">
+              <strong>交付门禁</strong>
+              <span class="status ${esc(gateStatus)}">${esc(diag.delivery_pass === true ? "通过" : (diag.delivery_pass === false ? "未通过" : "未运行"))}</span>
+            </div>
+            <div class="diagnostic-meta">
+              <span>质量分：${esc(fmt(diag.quality_score))}</span>
+              <span>客观规则：${esc(passText(diag.objective_pass))}</span>
+              <span>LLM复核：${esc(passText(diag.llm_review_pass))}</span>
+              <span>LLM运行：${esc(number(diag.llm_run_count || 0))}</span>
+              <span>失败运行：${esc(number(diag.failed_llm_run_count || 0))}</span>
+            </div>
+          </div>
+          ${categories.length ? `<div class="diagnostic-card"><strong>失败分类</strong>${categories.map(([key, value]) => `<div class="dist-row"><span>${esc(key)}</span><strong>${esc(number(value))}</strong></div>`).join("")}</div>` : ""}
+          ${issues.length ? `<div class="diagnostic-card"><strong>主要问题</strong><div class="diagnostic-list">${issues.map((issue) => `<div class="diagnostic-issue ${esc(issue.severity || "")}"><span class="label">${esc(issue.severity || "warning")}${issue.category ? ` / ${esc(issue.category)}` : ""}</span><br>${esc(issue.message || "")}</div>`).join("")}</div></div>` : ""}
+          ${failedSections.length ? `<div class="diagnostic-card"><strong>需修复章节</strong><div class="diagnostic-meta">${failedSections.map((item) => `<span class="status failed">${esc(item)}</span>`).join("")}</div></div>` : ""}
+          ${fixes.length ? `<div class="diagnostic-card"><strong>修复建议</strong><div class="diagnostic-list">${fixes.map((item) => `<div class="diagnostic-issue">${esc(item)}</div>`).join("")}</div></div>` : ""}
+          <div class="diagnostic-grid">${runCards}</div>
+        </div>
+      </div>`;
+    }
+
+    function renderDiagnosticRunCard(label, run) {
+      if (!run) {
+        return `<div class="diagnostic-card"><div class="diagnostic-head"><strong>${esc(label)}</strong><span class="status not_run">未记录</span></div><div class="diagnostic-empty">暂无可查询的运行记录</div></div>`;
+      }
+      return `<div class="diagnostic-card">
+        <div class="diagnostic-head">
+          <strong>${esc(label)}</strong>
+          <span class="status ${esc(run.status || "unknown")}">${esc(statusText(run.status || "unknown"))}</span>
+        </div>
+        <div class="diagnostic-meta">
+          <span>${esc(run.model_name || "未知模型")}</span>
+          <span>${esc(run.latency_ms ?? "-")} ms</span>
+          <span>降级：${esc(run.fallback_used ? "是" : "否")}</span>
+          <span>Schema：${esc(passText(run.schema_valid))}</span>
+          ${run.metadata?.quality_feedback_used ? `<span>已使用质量反馈</span>` : ""}
+        </div>
+        ${run.summary ? `<div class="text-block">${esc(run.summary)}</div>` : ""}
+        ${run.error_message ? `<div class="error">${esc(run.error_message)}</div>` : ""}
+      </div>`;
+    }
+
+    function passText(value) {
+      if (value === true) return "通过";
+      if (value === false) return "未通过";
+      if (value === null || value === undefined) return "未记录";
+      return String(value);
     }
 
     async function loadTaskDetail(taskId) {
@@ -2176,6 +2253,7 @@ def render_workbench_html() -> str:
           <div class="detail-section"><h3>研究问题</h3><div class="text-block">${esc(metadata.research_topic || "-")}</div></div>
           <div class="detail-section"><h3>任务操作</h3>${taskActionButtons(task)}</div>
           ${task.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(task.error_message)}</div></div>` : ""}
+          ${renderQualityDiagnostics(task)}
           <div class="detail-section"><h3>产物</h3>${artifactButtons(task)}</div>
           <div class="detail-section"><h3>时间线</h3><div class="timeline">${
             events.length ? events.map((event) => `<div class="event"><strong>${esc(stepText(event.stage))}</strong> <span class="status ${esc(event.status)}">${esc(statusText(event.status))}</span><br><span class="label">${esc(fmt(event.created_at))}</span><br>${esc(fmt(event.message))}</div>`).join("") : `<div class="empty">暂无事件</div>`

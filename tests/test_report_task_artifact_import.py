@@ -275,6 +275,7 @@ def test_report_task_imports_agent_trace_as_llm_runs(tmp_path):
         )
         runs = client.get("/api/llm-runs", params={"task_id": "task-agent-trace", "limit": 20})
         dashboard = client.get("/api/dashboard/summary")
+        detail = client.get("/api/report-tasks/task-agent-trace")
 
     assert created.status_code == 201
     body = runs.json()
@@ -288,3 +289,11 @@ def test_report_task_imports_agent_trace_as_llm_runs(tmp_path):
     gap = next(item for item in agent_runs if item["model_role"] == "gap_resolver")
     assert gap["status"] == "skipped"
     assert dashboard.json()["llm_run_count"] == 6
+    diagnostics = detail.json()["quality_diagnostics"]
+    assert diagnostics["delivery_pass"] is True
+    assert diagnostics["writer"]["model_role"] == "final_answer"
+    assert diagnostics["writer"]["model_name"] == "writer-model"
+    assert diagnostics["verifier"]["model_role"] == "verifier"
+    assert diagnostics["verifier"]["model_name"] == "verifier-model"
+    assert diagnostics["quality_gate"]["prompt_key"] == "report_quality_gate"
+    assert diagnostics["failure_categories"]["模型跳过:gap_resolver"] == 1

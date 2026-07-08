@@ -48,6 +48,12 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "运行方式" in html
     assert "任务操作" in html
     assert "研究问题" in html
+    assert "质量诊断" in html
+    assert "交付门禁" in html
+    assert "失败分类" in html
+    assert "主要问题" in html
+    assert "Writer" in html
+    assert "Verifier" in html
     assert "数据源范围" in html
     assert "启动" in html
     assert "取消" in html
@@ -87,6 +93,7 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert 'archive: "archive"' in html
     assert "scheduleTaskRefresh" in html
     assert 'terminalTaskStatuses' in html
+    assert 'quality_failed: "质量未通过"' in html
     assert "shortTaskId" in html
     assert "确认${labels[action]}该研报任务" in html
     assert "/api/report-tasks" in html
