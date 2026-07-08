@@ -1829,9 +1829,9 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
         else:
             key = str(raw.get("chunk_id") or hit.url or hit.result_id or f"{hit.engine}:{hit.title}:{hit.snippet[:80]}")
         existing = deduped.get(key)
-        if existing is None or hit.score > existing.score:
+        if existing is None or (hit.authority_score, hit.score) > (existing.authority_score, existing.score):
             deduped[key] = hit
-    ranked = sorted(deduped.values(), key=lambda item: (item.score, item.authority_score), reverse=True)
+    ranked = sorted(deduped.values(), key=lambda item: (item.authority_score, item.score), reverse=True)
     selected: List[SearchResult] = []
     source_counts: Dict[str, int] = {}
     default_diversity_cap = 4
