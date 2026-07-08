@@ -1818,6 +1818,7 @@ def render_workbench_html() -> str:
         $("manualViewDocument").addEventListener("click", () => {
           if ($("documentBatch")) $("documentBatch").value = result.batch_id || "";
           activateView("documents");
+          loadDocuments();
           if (doc.id) loadDocumentDetail(doc.id);
         });
         $("manualViewBatch").addEventListener("click", () => {
