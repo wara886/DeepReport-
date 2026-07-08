@@ -431,6 +431,75 @@ class FinancialFact(Base):
     evidence_item: Mapped[EvidenceItem | None] = relationship()
 
 
+class Entity(Base):
+    __tablename__ = "entities"
+    __table_args__ = (
+        UniqueConstraint("entity_key", name="uq_entities_key"),
+        Index("ix_entities_type_market", "entity_type", "market"),
+        Index("ix_entities_symbol_market", "symbol", "market"),
+        Index("ix_entities_workspace_type", "workspace_id", "entity_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int | None] = mapped_column(ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True)
+    entity_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    canonical_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    normalized_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    market: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    symbol: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source_evidence_item_id: Mapped[int | None] = mapped_column(ForeignKey("evidence_items.id", ondelete="SET NULL"), nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONVariant, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+    workspace: Mapped[Workspace | None] = relationship()
+    source_evidence_item: Mapped[EvidenceItem | None] = relationship()
+    outgoing_relations: Mapped[list[EntityRelation]] = relationship(
+        back_populates="source_entity",
+        foreign_keys="EntityRelation.source_entity_id",
+        cascade="all, delete-orphan",
+    )
+    incoming_relations: Mapped[list[EntityRelation]] = relationship(
+        back_populates="target_entity",
+        foreign_keys="EntityRelation.target_entity_id",
+        cascade="all, delete-orphan",
+    )
+
+
+class EntityRelation(Base):
+    __tablename__ = "entity_relations"
+    __table_args__ = (
+        UniqueConstraint("relation_key", name="uq_entity_relations_key"),
+        Index("ix_entity_relations_source_type", "source_entity_id", "relation_type"),
+        Index("ix_entity_relations_target_type", "target_entity_id", "relation_type"),
+        Index("ix_entity_relations_evidence", "source_evidence_item_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    relation_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)
+    target_entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)
+    relation_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source_evidence_item_id: Mapped[int | None] = mapped_column(ForeignKey("evidence_items.id", ondelete="SET NULL"), nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONVariant, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+    source_entity: Mapped[Entity] = relationship(
+        back_populates="outgoing_relations",
+        foreign_keys=[source_entity_id],
+    )
+    target_entity: Mapped[Entity] = relationship(
+        back_populates="incoming_relations",
+        foreign_keys=[target_entity_id],
+    )
+    source_evidence_item: Mapped[EvidenceItem | None] = relationship()
+
+
 class ReportTask(Base):
     __tablename__ = "report_tasks"
     __table_args__ = (

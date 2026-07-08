@@ -18,6 +18,7 @@ from src.services.dashboard_service import DashboardService
 from src.services.datasource_service import DataSourceConflict, DataSourceNotFound, DataSourceService
 from src.services.dictionary_service import DictionaryConflict, DictionaryService, DictionaryTermNotFound
 from src.services.document_service import DocumentNotFound, DocumentService
+from src.services.entity_service import EntityConflict, EntityNotFound, EntityService
 from src.services.evidence_service import EvidenceNotFound, EvidenceService
 from src.services.export_service import ExportService, ExportTaskNotFound
 from src.services.financial_fact_service import FinancialFactConflict, FinancialFactNotFound, FinancialFactService
@@ -107,6 +108,7 @@ def create_fastapi_app(
     app.state.evidence_service = EvidenceService(session_factory=app.state.report_task_service.session)
     app.state.claim_review_service = ClaimReviewService(session_factory=app.state.report_task_service.session)
     app.state.document_service = DocumentService(session_factory=app.state.report_task_service.session)
+    app.state.entity_service = EntityService(session_factory=app.state.report_task_service.session)
     app.state.export_service = ExportService(session_factory=app.state.report_task_service.session)
     app.state.financial_fact_service = FinancialFactService(session_factory=app.state.report_task_service.session)
     app.state.workspace_service = WorkspaceService(session_factory=app.state.report_task_service.session)
@@ -655,6 +657,95 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/entities")
+    def list_entities(
+        entity_type: str | None = None,
+        q: str | None = None,
+        market: str | None = None,
+        limit: int = 100,
+    ) -> Response:
+        try:
+            return JSONResponse(
+                content=_entity_service(app).list_entities(
+                    entity_type=entity_type,
+                    q=q,
+                    market=market,
+                    limit=limit,
+                )
+            )
+        except EntityConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/entities")
+    async def upsert_entity(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(status_code=201, content=_entity_service(app).upsert_entity(payload))
+        except EntityConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/entities/{entity_ref}")
+    def get_entity(entity_ref: str) -> Response:
+        try:
+            return JSONResponse(content=_entity_service(app).get_entity(entity_ref))
+        except EntityNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Entity not found: {entity_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/entities/extract-from-evidence")
+    async def extract_entities_from_evidence(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        evidence_ref = payload.get("evidence_id") or payload.get("evidence_ref") or payload.get("id")
+        try:
+            return JSONResponse(status_code=201, content=_entity_service(app).extract_from_evidence(evidence_ref))
+        except EntityConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/entity-relations")
+    def list_entity_relations(
+        relation_type: str | None = None,
+        entity_id: int | None = None,
+        q: str | None = None,
+        limit: int = 100,
+    ) -> Response:
+        try:
+            return JSONResponse(
+                content=_entity_service(app).list_relations(
+                    relation_type=relation_type,
+                    entity_id=entity_id,
+                    q=q,
+                    limit=limit,
+                )
+            )
+        except EntityConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/entity-relations")
+    async def upsert_entity_relation(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(status_code=201, content=_entity_service(app).upsert_relation(payload))
+        except (EntityConflict, EntityNotFound) as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/graph/summary")
+    def entity_graph_summary(limit: int = 100) -> Response:
+        try:
+            return JSONResponse(content=_entity_service(app).graph_summary(limit=limit))
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.get("/api/financial-facts")
     def list_financial_facts(
         company: str | None = None,
@@ -947,6 +1038,10 @@ def _claim_review_service(app: FastAPI) -> ClaimReviewService:
 
 def _document_service(app: FastAPI) -> DocumentService:
     return app.state.document_service
+
+
+def _entity_service(app: FastAPI) -> EntityService:
+    return app.state.entity_service
 
 
 def _export_service(app: FastAPI) -> ExportService:

@@ -955,8 +955,79 @@ def render_workbench_html() -> str:
             </aside>
           </div>
         </section>
-        <section id="entities" class="view"></section>
-        <section id="graph" class="view"></section>
+        <section id="entities" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">实体库</h2>
+                <div class="filters">
+                  <input id="entityQuery" placeholder="搜索公司、指标、产品或风险" />
+                  <select id="entityType">
+                    <option value="">全部实体</option>
+                    <option value="company">公司</option>
+                    <option value="ticker">股票代码</option>
+                    <option value="industry">行业</option>
+                    <option value="product">产品</option>
+                    <option value="customer">客户</option>
+                    <option value="supplier">供应商</option>
+                    <option value="executive">高管</option>
+                    <option value="metric">财务指标</option>
+                    <option value="document">文档</option>
+                    <option value="risk_event">风险事件</option>
+                    <option value="news_event">新闻事件</option>
+                    <option value="peer_company">同行公司</option>
+                  </select>
+                  <button class="btn" id="refreshEntities">刷新</button>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th>实体</th><th>类型</th><th>市场/代码</th><th>来源证据</th><th>置信度</th></tr></thead>
+                  <tbody id="entityRows"></tbody>
+                </table>
+              </div>
+            </section>
+            <aside class="panel detail" id="entityDetail">
+              <h2>实体详情</h2>
+              <div class="empty">选择一个实体查看来源、说明和后续关系。</div>
+            </aside>
+          </div>
+        </section>
+        <section id="graph" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">关系图谱</h2>
+                <div class="filters">
+                  <input id="relationQuery" placeholder="搜索关系两端实体" />
+                  <select id="relationType">
+                    <option value="">全部关系</option>
+                    <option value="BELONGS_TO">属于行业</option>
+                    <option value="PUBLISHED">发布文档</option>
+                    <option value="HAS_PRODUCT">拥有产品</option>
+                    <option value="HAS_METRIC">关联指标</option>
+                    <option value="HAS_EVENT">关联事件</option>
+                    <option value="PEER_OF">同行对比</option>
+                    <option value="SUPPLIES_TO">供应关系</option>
+                    <option value="MENTIONED_IN">出现在文档</option>
+                  </select>
+                  <button class="btn" id="refreshRelations">刷新</button>
+                </div>
+              </div>
+              <div id="graphStats" class="dist" style="margin-bottom:12px"></div>
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th>关系</th><th>来源</th><th>置信度</th></tr></thead>
+                  <tbody id="relationRows"></tbody>
+                </table>
+              </div>
+            </section>
+            <aside class="panel detail" id="relationDetail">
+              <h2>关系详情</h2>
+              <div class="empty">选择一条关系查看两端实体和证据来源。</div>
+            </aside>
+          </div>
+        </section>
         <section id="evaluation" class="view"></section>
       </main>
     </section>
@@ -1038,6 +1109,8 @@ def render_workbench_html() -> str:
     const terminalTaskStatuses = new Set(["completed", "failed", "timeout", "cancelled", "archived", "quality_failed"]);
     let taskPoller = null;
     let evidenceSearchContext = new Map();
+    let entityContext = new Map();
+    let relationContext = new Map();
 
     const viewMeta = {
       dashboard: ["投研首页", "任务、证据、主张与处理漏斗"],
@@ -1054,8 +1127,8 @@ def render_workbench_html() -> str:
       claims: ["主张复核", "查看证据、校验状态和审计轨迹"],
       dictionary: ["金融词典", "维护公司、指标、行业、风险词和排除词别名"],
       promptops: ["提示词运营", "管理提示词版本、测试运行和智能体调用追踪"],
-      entities: ["实体库", "阶段2接入实体库后启用"],
-      graph: ["关系图谱", "阶段2接入实体关系后启用"],
+      entities: ["实体库", "公司、文档、指标、产品和风险事件沉淀"],
+      graph: ["关系图谱", "查看实体之间的证据化关系链"],
       evaluation: ["评测中心", "阶段3接入评测运行后启用"],
       export: ["导出中心", "查看产物复核和正式导出状态"],
     };
@@ -1072,6 +1145,15 @@ def render_workbench_html() -> str:
       approve: "通过", reject: "驳回", edit: "保存修改", regenerate: "重生成",
       rejected_claims_present: "存在已驳回主张", pending_claim_review: "存在待复核主张",
       filings: "公告/年报", documents: "文档资料", news: "新闻资料",
+    };
+    const entityTypeMap = {
+      company: "公司", ticker: "股票代码", industry: "行业", product: "产品", customer: "客户",
+      supplier: "供应商", executive: "高管", metric: "财务指标", document: "文档",
+      risk_event: "风险事件", news_event: "新闻事件", peer_company: "同行公司",
+    };
+    const relationTypeMap = {
+      BELONGS_TO: "属于行业", PUBLISHED: "发布文档", HAS_PRODUCT: "拥有产品", HAS_METRIC: "关联指标",
+      HAS_EVENT: "关联事件", PEER_OF: "同行对比", SUPPLIES_TO: "供应关系", MENTIONED_IN: "出现在文档",
     };
     const sourceMap = {
       local_real_data: "本地真实数据", local_evidence: "本地证据库", independent_macro: "宏观独立来源",
@@ -1095,6 +1177,9 @@ def render_workbench_html() -> str:
     const docTypeMap = {
       report_artifact: "研报任务产物",
       generated_report_artifacts: "研报任务产物",
+      annual_report: "年报",
+      quarterly_report: "季报",
+      earnings_release: "业绩公告",
       manual_text: "手动文本",
       manual_pdf: "手动 PDF",
       manual_url: "手动链接",
@@ -1154,6 +1239,8 @@ def render_workbench_html() -> str:
     const stepText = (value) => textOf(stepMap, value);
     const docTypeText = (value) => textOf(docTypeMap, value);
     const artifactText = (value) => textOf(artifactMap, value);
+    const entityTypeText = (value) => textOf(entityTypeMap, value);
+    const relationTypeText = (value) => textOf(relationTypeMap, value);
 
     function marketText(value) {
       const map = { US: "美股", CN: "A 股", HK: "港股" };
@@ -1354,6 +1441,49 @@ def render_workbench_html() -> str:
       return textOf(map, value);
     }
 
+    function entityTitle(entity) {
+      const name = entity?.canonical_name || "实体";
+      const symbol = entity?.symbol ? ` / ${entity.symbol}` : "";
+      return `${name}${symbol}`;
+    }
+
+    function entityMarketSymbolText(entity) {
+      const parts = [];
+      if (entity?.market) parts.push(marketText(entity.market));
+      if (entity?.symbol) parts.push(entity.symbol);
+      return parts.length ? parts.join(" · ") : "-";
+    }
+
+    function entityDescriptionText(entity) {
+      const value = String(entity?.description || "");
+      const map = {
+        revenue: "收入相关指标",
+        gross_margin: "毛利率相关指标",
+        net_income: "净利润相关指标",
+        free_cash_flow: "自由现金流指标",
+        operating_cash_flow: "经营现金流指标",
+        valuation: "估值相关指标",
+        supply_chain_risk: "供应链相关风险",
+        margin_pressure: "利润率压力风险",
+        demand_risk: "需求相关风险",
+        regulatory_risk: "监管或政策风险",
+      };
+      if (entity?.entity_type === "document" && value) return docTypeText(value);
+      return map[value] || value || "结构化业务记忆";
+    }
+
+    function evidenceSourceButton(evidenceId) {
+      return evidenceId
+        ? `<button class="btn" data-entity-evidence="${esc(evidenceId)}">查看证据来源</button>`
+        : `<span class="label">暂无证据来源</span>`;
+    }
+
+    function relationTitle(relation) {
+      const source = relation?.source?.canonical_name || "来源实体";
+      const target = relation?.target?.canonical_name || "目标实体";
+      return `${source} → ${relationTypeText(relation?.relation_type)} → ${target}`;
+    }
+
     function batchDisplayTitle(batch) {
       if (batch?.name) return batch.name;
       const symbolPeriod = [batch?.symbol, batch?.period].filter(Boolean).join(" · ");
@@ -1457,6 +1587,8 @@ def render_workbench_html() -> str:
       else if (view === "claims") loadClaims();
       else if (view === "dictionary") loadDictionary();
       else if (view === "promptops") loadPromptOps();
+      else if (view === "entities") loadEntities();
+      else if (view === "graph") loadRelations();
       else if (view === "export") loadExports();
       else renderPlaceholder(view);
     }
@@ -2930,10 +3062,217 @@ def render_workbench_html() -> str:
           <div class="detail-section"><h3>关联主张</h3>${
             claims.length ? claims.map((claim) => `<div class="event"><strong>${esc(claim.section_name || claim.claim_type || "主张")}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}</div>`).join("") : `<div class="empty">暂无关联主张</div>`
           }</div>
+          <div class="detail-section"><h3>结构化记忆</h3>
+            <div class="empty">将公司、文档、财务指标和风险事件沉淀到实体库，并生成可追溯关系。</div>
+            <div class="links" style="margin-top:10px">
+              <button class="btn primary" data-extract-evidence-entities="${esc(item.evidence_id)}">沉淀到实体库</button>
+              <button class="btn" data-jump="entities">查看实体库</button>
+              <button class="btn" data-jump="graph">查看关系图谱</button>
+            </div>
+            <div id="entityExtractResult"></div>
+          </div>
           ${systemInfoBlock("系统信息", [["证据编号", item.evidence_id]])}`;
+        bindEntityExtractionButtons($("evidenceDetail"));
+        bindJumpHandlers($("evidenceDetail"));
       } catch (error) {
         showLoadError("evidenceDetail");
       }
+    }
+
+    function bindEntityExtractionButtons(root = document) {
+      root.querySelectorAll("[data-extract-evidence-entities]").forEach((btn) => {
+        if (btn.dataset.boundExtractEntities === "true") return;
+        btn.dataset.boundExtractEntities = "true";
+        btn.addEventListener("click", () => extractEntitiesFromEvidence(btn.dataset.extractEvidenceEntities));
+      });
+    }
+
+    async function extractEntitiesFromEvidence(evidenceId) {
+      const resultBox = $("entityExtractResult");
+      if (resultBox) resultBox.innerHTML = `<div class="empty">正在沉淀实体和关系...</div>`;
+      try {
+        const result = await postJson("/api/entities/extract-from-evidence", { evidence_id: evidenceId });
+        if (resultBox) {
+          resultBox.innerHTML = `<div class="empty">已沉淀 ${esc(number(result.entity_count))} 个实体、${esc(number(result.relation_count))} 条关系。</div>
+            <div class="links"><button class="btn primary" data-jump="entities">查看实体库</button><button class="btn" data-jump="graph">查看关系图谱</button></div>`;
+          bindJumpHandlers(resultBox);
+        }
+        if (activeState.view === "entities") await loadEntities();
+        if (activeState.view === "graph") await loadRelations();
+      } catch (error) {
+        if (resultBox) resultBox.innerHTML = `<div class="error">沉淀失败，请确认该证据已绑定公司或文档。</div>`;
+      }
+    }
+
+    async function loadEntities() {
+      const params = new URLSearchParams();
+      const q = $("entityQuery").value.trim();
+      const type = $("entityType").value;
+      if (q) params.set("q", q);
+      if (type) params.set("entity_type", type);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      try {
+        const payload = await getJson("/api/entities" + suffix);
+        const rows = payload.items || [];
+        entityContext = new Map(rows.map((item) => [String(item.id), item]));
+        $("entityRows").innerHTML = rows.length
+          ? rows.map((entity) => `<tr data-selectable="true">
+              <td><button class="btn" data-entity-detail="${esc(entity.id)}">${esc(entityTitle(entity))}</button><br><span class="label">${esc(entityDescriptionText(entity))}</span></td>
+              <td><span class="status ${esc(entity.entity_type)}">${esc(entityTypeText(entity.entity_type))}</span></td>
+              <td>${esc(entityMarketSymbolText(entity))}</td>
+              <td>${evidenceSourceButton(entity.source_evidence_id)}</td>
+              <td>${esc(Math.round(Number(entity.confidence || 0) * 1000) / 10)}%</td>
+            </tr>`).join("")
+          : `<tr><td colspan="5"><div class="empty"><div>暂无实体记忆</div><div class="empty-actions"><button class="btn primary" data-jump="evidence">从证据库沉淀</button><button class="btn" data-jump="manual">导入资料</button></div></div></td></tr>`;
+        bindEntityButtons($("entityRows"));
+        bindJumpHandlers($("entityRows"));
+      } catch (error) {
+        showLoadError("entityRows", 5);
+      }
+    }
+
+    function bindEntityButtons(root = document) {
+      root.querySelectorAll("[data-entity-detail]").forEach((btn) => {
+        if (btn.dataset.boundEntityDetail === "true") return;
+        btn.dataset.boundEntityDetail = "true";
+        btn.addEventListener("click", () => loadEntityDetail(btn.dataset.entityDetail));
+      });
+      root.querySelectorAll("[data-entity-evidence]").forEach((btn) => {
+        if (btn.dataset.boundEntityEvidence === "true") return;
+        btn.dataset.boundEntityEvidence = "true";
+        btn.addEventListener("click", () => {
+          activateView("evidence");
+          loadEvidenceDetail(btn.dataset.entityEvidence);
+        });
+      });
+      root.querySelectorAll("[data-entity-relations]").forEach((btn) => {
+        if (btn.dataset.boundEntityRelations === "true") return;
+        btn.dataset.boundEntityRelations = "true";
+        btn.addEventListener("click", () => {
+          $("relationQuery").value = btn.dataset.entityName || "";
+          activateView("graph");
+          loadRelations();
+        });
+      });
+    }
+
+    async function loadEntityDetail(entityId) {
+      try {
+        const entity = await getJson(`/api/entities/${encodeURIComponent(entityId)}`);
+        const relations = await getJson(`/api/entity-relations?entity_id=${encodeURIComponent(entity.id)}&limit=20`);
+        const relationRows = relations.items || [];
+        $("entityDetail").innerHTML = `<h2>实体详情</h2>
+          <div class="kv"><span class="label">实体</span><span>${esc(entityTitle(entity))}</span></div>
+          <div class="kv"><span class="label">类型</span><span><span class="status ${esc(entity.entity_type)}">${esc(entityTypeText(entity.entity_type))}</span></span></div>
+          <div class="kv"><span class="label">市场代码</span><span>${esc(entityMarketSymbolText(entity))}</span></div>
+          <div class="kv"><span class="label">置信度</span><span>${esc(Math.round(Number(entity.confidence || 0) * 1000) / 10)}%</span></div>
+          <div class="detail-section"><h3>说明</h3><div class="text-block">${esc(entityDescriptionText(entity))}</div></div>
+          <div class="detail-section"><h3>来源</h3>${evidenceSourceButton(entity.source_evidence_id)}</div>
+          <div class="detail-section"><h3>相关关系</h3>${
+            relationRows.length ? relationRows.map((relation) => `<div class="event"><strong>${esc(relationTitle(relation))}</strong><br><span class="label">${esc(relation.source_evidence_id ? "证据支持" : "手工维护")} · ${esc(Math.round(Number(relation.confidence || 0) * 1000) / 10)}%</span></div>`).join("") : `<div class="empty">暂无关系记录</div>`
+          }</div>
+          <div class="links"><button class="btn primary" data-entity-relations="${esc(entity.id)}" data-entity-name="${esc(entity.canonical_name)}">查看关系图谱</button></div>
+          ${systemInfoBlock("系统信息", [["实体编号", entity.id], ["实体键", entity.entity_key], ["来源证据", entity.source_evidence_id]])}`;
+        bindEntityButtons($("entityDetail"));
+      } catch (error) {
+        showLoadError("entityDetail");
+      }
+    }
+
+    async function loadRelations() {
+      const params = new URLSearchParams();
+      const q = $("relationQuery").value.trim();
+      const type = $("relationType").value;
+      if (q) params.set("q", q);
+      if (type) params.set("relation_type", type);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      try {
+        const [payload, summary] = await Promise.all([
+          getJson("/api/entity-relations" + suffix),
+          getJson("/api/graph/summary?limit=120"),
+        ]);
+        renderGraphStats(summary);
+        const rows = payload.items || [];
+        relationContext = new Map(rows.map((item) => [String(item.id), item]));
+        $("relationRows").innerHTML = rows.length
+          ? rows.map((relation) => `<tr data-selectable="true">
+              <td><button class="btn" data-relation-detail="${esc(relation.id)}">${esc(relationTitle(relation))}</button><br><span class="label">${esc(relationTypeText(relation.relation_type))}</span></td>
+              <td>${relation.source_evidence_id ? `<span class="status completed">证据支持</span>` : `<span class="status pending">手工维护</span>`}</td>
+              <td>${esc(Math.round(Number(relation.confidence || 0) * 1000) / 10)}%</td>
+            </tr>`).join("")
+          : `<tr><td colspan="3"><div class="empty"><div>暂无实体关系</div><div class="empty-actions"><button class="btn primary" data-jump="evidence">从证据库沉淀</button><button class="btn" data-jump="entities">查看实体库</button></div></div></td></tr>`;
+        bindRelationButtons($("relationRows"));
+        bindJumpHandlers($("relationRows"));
+      } catch (error) {
+        showLoadError("relationRows", 3);
+        showLoadError("graphStats");
+      }
+    }
+
+    function renderGraphStats(summary) {
+      const nodes = summary.nodes || [];
+      const edges = summary.edges || [];
+      const typeCounts = nodes.reduce((acc, node) => {
+        const label = entityTypeText(node.entity_type);
+        acc[label] = (acc[label] || 0) + 1;
+        return acc;
+      }, {});
+      const relationCounts = edges.reduce((acc, edge) => {
+        const label = relationTypeText(edge.relation_type);
+        acc[label] = (acc[label] || 0) + 1;
+        return acc;
+      }, {});
+      const typeRows = Object.entries(typeCounts).slice(0, 4);
+      const relationRows = Object.entries(relationCounts).slice(0, 4);
+      $("graphStats").innerHTML = `<div class="dist-row"><span>实体总数</span><strong>${esc(number(summary.node_count || 0))}</strong></div>
+        <div class="dist-row"><span>关系总数</span><strong>${esc(number(summary.edge_count || 0))}</strong></div>
+        ${typeRows.map(([label, value]) => `<div class="dist-row"><span>${esc(label)}</span><strong>${esc(number(value))}</strong></div>`).join("")}
+        ${relationRows.map(([label, value]) => `<div class="dist-row"><span>${esc(label)}</span><strong>${esc(number(value))}</strong></div>`).join("")}`;
+    }
+
+    function bindRelationButtons(root = document) {
+      root.querySelectorAll("[data-relation-detail]").forEach((btn) => {
+        if (btn.dataset.boundRelationDetail === "true") return;
+        btn.dataset.boundRelationDetail = "true";
+        btn.addEventListener("click", () => loadRelationDetail(btn.dataset.relationDetail));
+      });
+      root.querySelectorAll("[data-relation-entity]").forEach((btn) => {
+        if (btn.dataset.boundRelationEntity === "true") return;
+        btn.dataset.boundRelationEntity = "true";
+        btn.addEventListener("click", () => {
+          activateView("entities");
+          loadEntityDetail(btn.dataset.relationEntity);
+        });
+      });
+      root.querySelectorAll("[data-relation-evidence]").forEach((btn) => {
+        if (btn.dataset.boundRelationEvidence === "true") return;
+        btn.dataset.boundRelationEvidence = "true";
+        btn.addEventListener("click", () => {
+          activateView("evidence");
+          loadEvidenceDetail(btn.dataset.relationEvidence);
+        });
+      });
+    }
+
+    function loadRelationDetail(relationId) {
+      const relation = relationContext.get(String(relationId));
+      if (!relation) {
+        $("relationDetail").innerHTML = `<div class="error">关系详情已过期，请刷新关系图谱。</div>`;
+        return;
+      }
+      $("relationDetail").innerHTML = `<h2>关系详情</h2>
+        <div class="kv"><span class="label">关系</span><span>${esc(relationTypeText(relation.relation_type))}</span></div>
+        <div class="kv"><span class="label">来源实体</span><span>${esc(entityTitle(relation.source))}</span></div>
+        <div class="kv"><span class="label">目标实体</span><span>${esc(entityTitle(relation.target))}</span></div>
+        <div class="kv"><span class="label">置信度</span><span>${esc(Math.round(Number(relation.confidence || 0) * 1000) / 10)}%</span></div>
+        <div class="detail-section"><h3>业务含义</h3><div class="text-block">${esc(relationTitle(relation))}</div></div>
+        <div class="detail-section"><h3>来源</h3>${relation.source_evidence_id ? `<button class="btn" data-relation-evidence="${esc(relation.source_evidence_id)}">查看证据来源</button>` : `<div class="empty">暂无证据来源</div>`}</div>
+        <div class="links">
+          <button class="btn" data-relation-entity="${esc(relation.source_entity_id)}">查看来源实体</button>
+          <button class="btn" data-relation-entity="${esc(relation.target_entity_id)}">查看目标实体</button>
+        </div>
+        ${systemInfoBlock("系统信息", [["关系编号", relation.id], ["关系键", relation.relation_key], ["来源证据", relation.source_evidence_id]])}`;
+      bindRelationButtons($("relationDetail"));
     }
 
     async function loadFinancialFacts() {
@@ -3268,6 +3607,12 @@ def render_workbench_html() -> str:
     $("refreshPromptOps").addEventListener("click", loadPromptOps);
     $("promptModule").addEventListener("keydown", (event) => { if (event.key === "Enter") loadPromptOps(); });
     $("createPromptTemplate").addEventListener("click", createPromptTemplate);
+    $("refreshEntities").addEventListener("click", loadEntities);
+    $("entityQuery").addEventListener("keydown", (event) => { if (event.key === "Enter") loadEntities(); });
+    $("entityType").addEventListener("change", loadEntities);
+    $("refreshRelations").addEventListener("click", loadRelations);
+    $("relationQuery").addEventListener("keydown", (event) => { if (event.key === "Enter") loadRelations(); });
+    $("relationType").addEventListener("change", loadRelations);
     $("refreshFacts").addEventListener("click", loadFinancialFacts);
     ["factCompany", "factMetric", "factPeriodFilter"].forEach((id) => {
       $(id).addEventListener("keydown", (event) => { if (event.key === "Enter") loadFinancialFacts(); });
