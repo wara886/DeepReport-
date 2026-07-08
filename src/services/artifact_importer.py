@@ -7,11 +7,12 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from src.db.models import ClaimEvidence, Company, EvidenceItem, FinancialFact, ReportArtifact, ReportClaim, ReportTask, ReportTaskEvent
+from src.db.models import ClaimEvidence, Company, EvidenceItem, FinancialFact, LLMRun, ReportArtifact, ReportClaim, ReportTask, ReportTaskEvent
 
 
 REPORT_ARTIFACTS = {
@@ -41,6 +42,7 @@ class ArtifactImportResult:
     claim_count: int
     claim_evidence_count: int
     financial_fact_count: int
+    llm_run_count: int
     warnings: list[str]
 
     def to_dict(self) -> dict[str, Any]:
@@ -51,6 +53,7 @@ class ArtifactImportResult:
             "claim_count": self.claim_count,
             "claim_evidence_count": self.claim_evidence_count,
             "financial_fact_count": self.financial_fact_count,
+            "llm_run_count": self.llm_run_count,
             "warnings": list(self.warnings),
         }
 
@@ -113,6 +116,11 @@ class ArtifactImporter:
                 evidence_by_external_id=evidence_by_external_id,
                 warnings=warnings,
             )
+            llm_run_count = self._import_agent_llm_runs(
+                session,
+                task_id=task_id,
+                output_dir=output_dir,
+            )
 
             result = ArtifactImportResult(
                 task_id=task_id,
@@ -121,6 +129,7 @@ class ArtifactImporter:
                 claim_count=claim_count,
                 claim_evidence_count=link_count,
                 financial_fact_count=financial_fact_count,
+                llm_run_count=llm_run_count,
                 warnings=warnings,
             )
             session.add(
@@ -339,6 +348,88 @@ class ArtifactImporter:
             session.flush()
         return len(rows)
 
+    def _import_agent_llm_runs(
+        self,
+        session: Session,
+        *,
+        task_id: str,
+        output_dir: Path,
+    ) -> int:
+        existing_ids = list(
+            session.scalars(
+                select(LLMRun.id).where(
+                    LLMRun.task_id == task_id,
+                    LLMRun.metadata_json["source"].as_string() == "agent_trace_import",
+                )
+            ).all()
+        )
+        if existing_ids:
+            session.execute(delete(LLMRun).where(LLMRun.id.in_(existing_ids)))
+
+        summary = _read_json(output_dir / "run_summary.json", default={})
+        trace = _read_json(output_dir / "agent_collaboration_trace.json", default={})
+        if not isinstance(summary, dict):
+            return 0
+        executed_agents = summary.get("executed_agents")
+        model_usage = summary.get("model_usage_by_agent")
+        if not isinstance(executed_agents, list) or not isinstance(model_usage, dict):
+            return 0
+        trace_by_role = _agent_trace_by_role(trace)
+        rows: list[LLMRun] = []
+        for role in executed_agents:
+            role_key = _string(role).strip()
+            if not role_key:
+                continue
+            usage = model_usage.get(role_key)
+            if not isinstance(usage, dict):
+                usage = {}
+            trace_item = trace_by_role.get(role_key, {})
+            model_enabled = bool(usage.get("model_enabled", True))
+            status = _string(trace_item.get("status") or "success")
+            if not model_enabled:
+                status = "skipped"
+            elif status == "completed":
+                status = "success"
+            rows.append(
+                LLMRun(
+                    run_id=f"agent_{task_id}_{role_key}_{uuid4().hex[:8]}",
+                    task_id=task_id,
+                    prompt_key=f"agent.{role_key}",
+                    prompt_version_id=None,
+                    model_role=role_key,
+                    model_name=_string_or_none(usage.get("model_name")) or _string_or_none(usage.get("provider")) or "unknown",
+                    status=status,
+                    attempt_count=1,
+                    fallback_used=bool(usage.get("model_fallback_used", False)),
+                    schema_valid=None,
+                    input_json=_dict_or_none(trace_item.get("input_summary")) or {},
+                    output_json={
+                        "output_keys": trace_item.get("output_keys") if isinstance(trace_item.get("output_keys"), list) else [],
+                        "output_summary": trace_item.get("output_summary") if isinstance(trace_item.get("output_summary"), dict) else {},
+                    },
+                    error_message=_string_or_none(trace_item.get("error")),
+                    prompt_tokens=None,
+                    completion_tokens=None,
+                    total_tokens=None,
+                    cost_usd=0.0,
+                    latency_ms=_duration_to_ms(trace_item.get("duration_sec")),
+                    metadata_json={
+                        "source": "agent_trace_import",
+                        "agent": trace_item.get("agent"),
+                        "task_type": trace_item.get("task_type") or role_key,
+                        "route_profile": usage.get("route_profile"),
+                        "api_key_present": usage.get("api_key_present"),
+                        "model_enabled": model_enabled,
+                        "memory_used": trace_item.get("memory_used"),
+                        "quality_feedback_used": trace_item.get("quality_feedback_used"),
+                    },
+                )
+            )
+        if rows:
+            session.add_all(rows)
+            session.flush()
+        return len(rows)
+
 
 def _read_json(path: Path, default: Any) -> Any:
     if not path.exists():
@@ -518,6 +609,58 @@ def _optional_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _dict_or_none(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
+
+
+def _agent_trace_by_role(trace: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(trace, dict):
+        return {}
+    agents = trace.get("agents")
+    if not isinstance(agents, list):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for item in agents:
+        if not isinstance(item, dict):
+            continue
+        task_type = _string(item.get("task_type")).strip()
+        role = _normalize_agent_role(task_type or item.get("agent"))
+        if role:
+            result[role] = item
+    return result
+
+
+def _normalize_agent_role(value: Any) -> str:
+    text = _string(value).strip()
+    mapping = {
+        "planning": "planning",
+        "deep_researcher": "research",
+        "research": "research",
+        "browser": "browser",
+        "deep_analyze": "analyze",
+        "analyze": "analyze",
+        "final_answer": "final_answer",
+        "writer": "final_answer",
+        "verifier": "verifier",
+        "gap_resolver": "gap_resolver",
+        "PlanningAgent": "planning",
+        "DeepResearcherAgent": "research",
+        "BrowserAgent": "browser",
+        "DeepAnalyzeAgent": "analyze",
+        "FinalAnswerAgent": "final_answer",
+        "VerifierAgent": "verifier",
+        "GapResolverAgent": "gap_resolver",
+    }
+    return mapping.get(text, text)
+
+
+def _duration_to_ms(value: Any) -> int | None:
+    number = _optional_float(value)
+    if number is None:
+        return None
+    return max(0, int(number * 1000))
 
 
 def _extract_fact_records(output_dir: Path, *, task_id: str, period: str, warnings: list[str]) -> list[dict[str, Any]]:

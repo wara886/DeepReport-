@@ -62,6 +62,43 @@ class FactArtifactWritingOrchestrator(ArtifactWritingOrchestrator):
         return result
 
 
+class AgentTraceWritingOrchestrator(ArtifactWritingOrchestrator):
+    def run(self, **kwargs):
+        result = super().run(**kwargs)
+        (self.output_dir / "run_summary.json").write_text(
+            json.dumps(
+                {
+                    "symbol": kwargs["symbol"],
+                    "period": kwargs["period"],
+                    "executed_agents": ["planning", "research", "final_answer", "verifier", "gap_resolver"],
+                    "model_usage_by_agent": {
+                        "planning": {"model_name": "planner-model", "route_profile": "test", "api_key_present": True, "model_enabled": True},
+                        "research": {"model_name": "research-model", "route_profile": "test", "api_key_present": True, "model_enabled": True},
+                        "final_answer": {"model_name": "writer-model", "route_profile": "test", "api_key_present": True, "model_enabled": True},
+                        "verifier": {"model_name": "verifier-model", "route_profile": "test", "api_key_present": True, "model_enabled": True},
+                        "gap_resolver": {"model_name": "", "route_profile": "rule_only", "api_key_present": False, "model_enabled": False},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.output_dir / "agent_collaboration_trace.json").write_text(
+            json.dumps(
+                {
+                    "agents": [
+                        {"agent": "PlanningAgent", "task_type": "planning", "status": "completed", "duration_sec": 0.1, "input_summary": {"topic": "x"}, "output_keys": ["plan"]},
+                        {"agent": "DeepResearcherAgent", "task_type": "deep_researcher", "status": "completed", "duration_sec": 1.2, "input_summary": {"symbol": "AAPL"}, "output_keys": ["evidence"]},
+                        {"agent": "FinalAnswerAgent", "task_type": "final_answer", "status": "completed", "duration_sec": 2.3, "input_summary": {"claims": 3}, "output_keys": ["report_md"]},
+                        {"agent": "VerifierAgent", "task_type": "verifier", "status": "completed", "duration_sec": 0.4, "input_summary": {"claims": 3}, "output_keys": ["verification_report"]},
+                        {"agent": "GapResolverAgent", "task_type": "gap_resolver", "status": "completed", "duration_sec": 0.0, "input_summary": {}, "output_keys": ["gaps"]},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        return result
+
+
 def passing_quality_runner(output_dir, report_dir, **kwargs):
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "quality_report.json").write_text(
@@ -213,3 +250,41 @@ def test_report_task_artifact_import_binds_financial_metrics_lineage(tmp_path):
     assert item["unit"] == "%"
     assert item["evidence"]["evidence_id"] == "ev_yahoo_financials"
     assert item["source_url"] == "https://finance.yahoo.com/quote/AAPL/key-statistics"
+
+
+def test_report_task_imports_agent_trace_as_llm_runs(tmp_path):
+    service = ReportTaskService(
+        database_url=f"sqlite:///{tmp_path / 'tasks.db'}",
+        output_root=tmp_path / "outputs",
+        report_root=tmp_path / "reports",
+        memory_root=tmp_path / "memory",
+        orchestrator_factory=AgentTraceWritingOrchestrator,
+        quality_runner=passing_quality_runner,
+    )
+    app = create_fastapi_app(
+        output_dir=str(tmp_path / "legacy_outputs"),
+        report_dir=str(tmp_path / "legacy_reports"),
+        memory_root=str(tmp_path / "legacy_memory"),
+        report_task_service=service,
+    )
+
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-agent-trace", "symbol": "AAPL", "period": "FY2024"},
+        )
+        runs = client.get("/api/llm-runs", params={"task_id": "task-agent-trace", "limit": 20})
+        dashboard = client.get("/api/dashboard/summary")
+
+    assert created.status_code == 201
+    body = runs.json()
+    prompt_keys = {item["prompt_key"] for item in body["items"]}
+    assert {"agent.planning", "agent.research", "agent.final_answer", "agent.verifier", "agent.gap_resolver", "report_quality_gate"}.issubset(prompt_keys)
+    agent_runs = [item for item in body["items"] if item["metadata"].get("source") == "agent_trace_import"]
+    assert len(agent_runs) == 5
+    verifier = next(item for item in agent_runs if item["model_role"] == "verifier")
+    assert verifier["model_name"] == "verifier-model"
+    assert verifier["latency_ms"] == 400
+    gap = next(item for item in agent_runs if item["model_role"] == "gap_resolver")
+    assert gap["status"] == "skipped"
+    assert dashboard.json()["llm_run_count"] == 6
