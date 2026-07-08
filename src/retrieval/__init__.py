@@ -2,10 +2,9 @@
 
 from src.retrieval.bm25_index import BM25Index
 from src.retrieval.chroma_index import ChromaIndex
+from src.retrieval.chunking import EvidenceChunk, chunk_record, chunk_records
 from src.retrieval.evidence_store import EvidenceRecord, EvidenceStore
 from src.retrieval.faiss_index import FaissIndex
-from src.retrieval.retrieve import retrieve_evidence, retrieve_evidence_with_mode
-from src.retrieval.chunking import EvidenceChunk, chunk_record, chunk_records
 
 __all__ = [
     "EvidenceRecord",
@@ -19,3 +18,11 @@ __all__ = [
     "chunk_record",
     "chunk_records",
 ]
+
+
+def __getattr__(name: str):
+    if name in {"retrieve_evidence", "retrieve_evidence_with_mode"}:
+        from src.retrieval import retrieve as _retrieve
+
+        return getattr(_retrieve, name)
+    raise AttributeError(name)
