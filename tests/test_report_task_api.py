@@ -84,6 +84,21 @@ def test_report_task_api_create_list_detail_without_running(tmp_path):
     assert detail.json()["events"][0]["stage"] == "queued"
 
 
+def test_report_task_api_accepts_auto_run_false_alias(tmp_path):
+    with build_client(tmp_path) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-api-auto-run-alias", "symbol": "AAPL", "period": "FY2024", "auto_run": False},
+        )
+        cancelled = client.post("/api/report-tasks/task-api-auto-run-alias/cancel", json={"reason": "不再生成"})
+
+    assert created.status_code == 201
+    assert created.json()["status"] == "queued"
+    assert created.json()["started_at"] is None
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+
 def test_report_task_api_cancel_and_archive_lifecycle(tmp_path):
     with build_client(tmp_path) as client:
         created = client.post(

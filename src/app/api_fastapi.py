@@ -144,7 +144,7 @@ def create_fastapi_app(
     async def create_report_task(incoming: Request, background_tasks: BackgroundTasks) -> Response:
         payload = await _json_payload(incoming)
         run_async = bool(payload.pop("run_async", payload.pop("async_report_run", False)))
-        run_immediately = bool(payload.pop("run_immediately", True))
+        run_immediately = bool(payload.pop("run_immediately", payload.pop("auto_run", payload.pop("run", True))))
         try:
             task = _report_task_service(app).create_task(payload)
             if run_immediately:
