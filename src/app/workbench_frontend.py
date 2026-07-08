@@ -1606,11 +1606,35 @@ def render_workbench_html() -> str:
       if (status === "running") {
         buttons.push(`<button class="btn" data-ingestion-action="complete" data-batch-id="${id}">标记完成</button>`);
         buttons.push(`<button class="btn danger" data-ingestion-action="fail" data-batch-id="${id}">标记失败</button>`);
+        buttons.push(`<button class="btn danger" data-ingestion-action="cancel" data-batch-id="${id}">取消</button>`);
       }
       if (status === "failed" || status === "cancelled") {
         buttons.push(`<button class="btn primary" data-ingestion-action="retry" data-batch-id="${id}">重试</button>`);
       }
       return buttons.length ? `<div class="links">${buttons.join("")}</div>` : `<span class="label">无可用操作</span>`;
+    }
+
+    function renderIngestionCreatePanel(message = "") {
+      $("ingestionDetail").innerHTML = `<h2>创建采集批次</h2>
+        <div class="form-grid">
+          <div class="field full"><label for="ingestionName">批次名称</label><input id="ingestionName" placeholder="例如：NVDA FY2024 年报采集" /></div>
+          <div class="field"><label for="ingestionCreateSource">数据源标识</label><input id="ingestionCreateSource" placeholder="sec_edgar" /></div>
+          <div class="field"><label for="ingestionTargetType">采集目标</label><select id="ingestionTargetType"><option value="filings">公告/年报</option><option value="market_data">行情数据</option><option value="news">新闻资料</option><option value="documents">文档资料</option></select></div>
+          <div class="field"><label for="ingestionSymbol">股票代码</label><input id="ingestionSymbol" placeholder="NVDA" /></div>
+          <div class="field"><label for="ingestionPeriod">期间</label><input id="ingestionPeriod" placeholder="FY2024" /></div>
+          <div class="field full"><label for="ingestionCreateQuery">查询条件</label><textarea id="ingestionCreateQuery" rows="3" placeholder="例如：NVDA 10-K FY2024"></textarea></div>
+        </div>
+        <div class="modal-actions"><button class="btn primary" id="createIngestionBatch">创建批次</button></div>
+        <div id="ingestionMessage">${message}</div>`;
+      bindCreateIngestionButton();
+      $("ingestionName").focus();
+    }
+
+    function bindCreateIngestionButton() {
+      const button = $("createIngestionBatch");
+      if (!button || button.dataset.boundCreateIngestion === "true") return;
+      button.dataset.boundCreateIngestion = "true";
+      button.addEventListener("click", createIngestionBatch);
     }
 
     async function loadIngestionBatches() {
@@ -1654,6 +1678,20 @@ def render_workbench_html() -> str:
         if (btn.dataset.boundIngestionAction === "true") return;
         btn.dataset.boundIngestionAction = "true";
         btn.addEventListener("click", () => ingestionLifecycleAction(btn.dataset.batchId, btn.dataset.ingestionAction));
+      });
+      root.querySelectorAll("[data-ingestion-documents]").forEach((btn) => {
+        if (btn.dataset.boundIngestionDocuments === "true") return;
+        btn.dataset.boundIngestionDocuments = "true";
+        btn.addEventListener("click", () => {
+          $("documentBatch").value = btn.dataset.ingestionDocuments || "";
+          activateView("documents");
+          loadDocuments();
+        });
+      });
+      root.querySelectorAll("[data-ingestion-create]").forEach((btn) => {
+        if (btn.dataset.boundIngestionCreate === "true") return;
+        btn.dataset.boundIngestionCreate = "true";
+        btn.addEventListener("click", () => renderIngestionCreatePanel());
       });
     }
 
@@ -1712,7 +1750,7 @@ def render_workbench_html() -> str:
           <div class="kv"><span class="label">结果</span><span>${esc(number(batch.success_count))} 成功 / ${esc(number(batch.failed_count))} 失败 / 共 ${esc(number(batch.item_count))} 项</span></div>
           <div class="kv"><span class="label">时间</span><span>${esc(fmt(batch.started_at))} - ${esc(fmt(batch.finished_at))}</span></div>
           <div class="detail-section"><h3>查询条件</h3><div class="text-block">${esc(batch.query || "-")}</div></div>
-          <div class="detail-section"><h3>批次操作</h3>${ingestionActionButtons(batch)}</div>
+          <div class="detail-section"><h3>批次操作</h3>${ingestionActionButtons(batch)}<div class="links"><button class="btn" data-ingestion-documents="${esc(batch.batch_id)}">查看同批次文档</button><button class="btn" data-ingestion-create="true">新建采集批次</button></div></div>
           ${batch.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(batch.error_message)}</div></div>` : ""}
           <div class="detail-section"><h3>运行日志</h3><div class="timeline">${
             events.length ? events.map((event) => `<div class="event"><strong>${esc(stepText(event.stage))}</strong> <span class="status ${esc(event.status)}">${esc(statusText(event.status))}</span><br><span class="label">${esc(fmt(event.created_at))}</span><br>${esc(fmt(event.message))}</div>`).join("") : `<div class="empty">暂无日志</div>`
@@ -2835,7 +2873,7 @@ def render_workbench_html() -> str:
     $("datasourceQuery").addEventListener("keydown", (event) => { if (event.key === "Enter") loadDatasources(); });
     $("datasourceEnabled").addEventListener("change", loadDatasources);
     $("refreshIngestion").addEventListener("click", loadIngestionBatches);
-    $("createIngestionBatch").addEventListener("click", createIngestionBatch);
+    bindCreateIngestionButton();
     ["ingestionQuery", "ingestionSource"].forEach((id) => {
       $(id).addEventListener("keydown", (event) => { if (event.key === "Enter") loadIngestionBatches(); });
     });

@@ -87,3 +87,23 @@ def test_ingestion_batch_rejects_invalid_transitions(tmp_path):
     assert completed.status_code == 200
     assert retry.status_code == 409
     assert cancel.status_code == 409
+
+
+def test_ingestion_batch_allows_cancelling_running_batch(tmp_path):
+    with build_client(tmp_path) as client:
+        created = client.post("/api/ingestion-batches", json={"batch_id": "ing-cancel-running", "name": "运行中取消采集"})
+        started = client.post("/api/ingestion-batches/ing-cancel-running/start")
+        cancelled = client.post("/api/ingestion-batches/ing-cancel-running/cancel", json={"reason": "用户停止采集"})
+        retry = client.post("/api/ingestion-batches/ing-cancel-running/retry")
+        detail = client.get("/api/ingestion-batches/ing-cancel-running")
+
+    assert created.status_code == 201
+    assert started.status_code == 200
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["error_message"] == "用户停止采集"
+    assert retry.status_code == 200
+    assert retry.json()["status"] == "queued"
+    assert retry.json()["retry_count"] == 1
+    stages = [event["stage"] for event in detail.json()["events"]]
+    assert stages == ["created", "run", "cancel", "retry"]
