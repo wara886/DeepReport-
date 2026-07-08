@@ -236,9 +236,10 @@ def render_workbench_html() -> str:
     tr[data-selectable="true"] { cursor: pointer; }
     tr[data-selectable="true"]:hover td { background: #f8fbff; }
     .status { display: inline-block; border-radius: 999px; padding: 3px 8px; font-size: 12px; background: var(--panel-2); color: var(--muted); white-space: nowrap; }
-    .status.completed, .status.supported, .status.approved, .status.official, .status.success, .status.verified, .status.passed { color: var(--good); background: #e9f7ef; }
-    .status.failed, .status.rejected, .status.quality_failed { color: var(--bad); background: #fff0ed; }
-    .status.running, .status.queued, .status.pending, .status.secondary, .status.regenerate_requested { color: var(--warn); background: #fff6e6; }
+    .status.completed, .status.supported, .status.approved, .status.official, .status.success, .status.verified, .status.passed, .status.positive { color: var(--good); background: #e9f7ef; }
+    .status.failed, .status.rejected, .status.quality_failed, .status.negative, .status.high { color: var(--bad); background: #fff0ed; }
+    .status.running, .status.queued, .status.pending, .status.secondary, .status.regenerate_requested, .status.medium { color: var(--warn); background: #fff6e6; }
+    .status.neutral, .status.low, .status.in_context { color: var(--muted); background: #eef2f5; }
     .status.cancelled, .status.archived { color: var(--muted); background: #eef2f5; }
     .links { display: flex; gap: 6px; flex-wrap: wrap; }
     .detail { position: sticky; top: 82px; max-height: calc(100vh - 104px); overflow-y: auto; }
@@ -844,7 +845,48 @@ def render_workbench_html() -> str:
             </aside>
           </div>
         </section>
-        <section id="signals" class="view"></section>
+        <section id="signals" class="view">
+          <div class="grid work-layout">
+            <section class="panel">
+              <div class="toolbar">
+                <h2 style="margin:0">投资线索</h2>
+                <div class="filters">
+                  <input id="signalCompany" placeholder="公司或代码" />
+                  <input id="signalPeriod" placeholder="期间，如 FY2024" />
+                  <select id="signalType">
+                    <option value="">全部线索</option>
+                    <option value="margin_decline">利润率下滑</option>
+                    <option value="cashflow_gap">利润与现金流背离</option>
+                    <option value="official_source_missing">官方来源缺口</option>
+                    <option value="currency_mismatch">币种口径不一致</option>
+                    <option value="valuation_blocked">估值资料不足</option>
+                    <option value="revenue_growth_acceleration">收入增速改善</option>
+                  </select>
+                  <select id="signalStatus">
+                    <option value="">全部状态</option>
+                    <option value="pending">待复核</option>
+                    <option value="in_context">已加入任务</option>
+                    <option value="dismissed">已忽略</option>
+                  </select>
+                  <button class="btn primary" id="generateSignals">生成规则线索</button>
+                  <button class="btn" id="refreshSignals">刷新</button>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr><th>线索</th><th>公司</th><th>期间</th><th>方向</th><th>强度</th><th>证据</th><th>状态</th></tr>
+                  </thead>
+                  <tbody id="signalRows"></tbody>
+                </table>
+              </div>
+            </section>
+            <aside class="panel detail" id="signalDetail">
+              <h2>线索详情</h2>
+              <div class="empty">选择线索查看证据、来源事实和加入研报任务入口。</div>
+            </aside>
+          </div>
+        </section>
         <section id="dictionary" class="view">
           <div class="grid work-layout">
             <section class="panel">
@@ -1122,7 +1164,7 @@ def render_workbench_html() -> str:
       documents: ["文档处理中心", "查看文档处理路径、失败步骤和关联证据"],
       evidence: ["证据库", "证据、文档、主张关联查询"],
       facts: ["财务事实中心", "指标、单位、币种、期间和证据来源"],
-      signals: ["投资线索", "阶段2接入投资线索后启用"],
+      signals: ["投资线索", "经营变化、财务异常、估值缺口和证据缺口"],
       tasks: ["研报任务", "按公司、期间和状态跟踪研报生成与产物"],
       claims: ["主张复核", "查看证据、校验状态和审计轨迹"],
       dictionary: ["金融词典", "维护公司、指标、行业、风险词和排除词别名"],
@@ -1137,6 +1179,7 @@ def render_workbench_html() -> str:
       queued: "待启动", running: "运行中", completed: "已完成", failed: "失败", timeout: "超时",
       cancelled: "已取消", archived: "已归档", quality_failed: "质量未通过", skipped: "已跳过",
       pending: "待复核", approved: "已通过", rejected: "已驳回", regenerate_requested: "已请求重生成",
+      in_context: "已加入任务", dismissed: "已忽略",
       supported: "已支持", verified: "已验证", passed: "通过", success: "成功", parsed: "已解析",
       official: "官方", primary: "一手", secondary: "二手", medium: "中可信", low: "低可信", high: "高可信", unknown: "未知",
       not_required: "无需凭证", required: "需配置", configured: "已配置", expired: "已过期",
@@ -1241,6 +1284,29 @@ def render_workbench_html() -> str:
     const artifactText = (value) => textOf(artifactMap, value);
     const entityTypeText = (value) => textOf(entityTypeMap, value);
     const relationTypeText = (value) => textOf(relationTypeMap, value);
+    const signalTypeMap = {
+      margin_decline: "利润率下滑",
+      cashflow_gap: "利润与现金流背离",
+      official_source_missing: "官方来源缺口",
+      currency_mismatch: "币种口径不一致",
+      valuation_blocked: "估值资料不足",
+      revenue_growth_acceleration: "收入增速改善",
+    };
+    const signalCategoryMap = {
+      profitability: "盈利能力",
+      cashflow: "现金流",
+      source_gap: "证据缺口",
+      data_quality: "数据质量",
+      valuation: "估值口径",
+      growth: "成长变化",
+      research: "研究线索",
+    };
+    const signalDirectionMap = { positive: "正向", negative: "负向", neutral: "中性" };
+    const signalSeverityMap = { high: "高", medium: "中", low: "低" };
+    const signalTypeText = (value) => textOf(signalTypeMap, value);
+    const signalCategoryText = (value) => textOf(signalCategoryMap, value);
+    const signalDirectionText = (value) => textOf(signalDirectionMap, value);
+    const signalSeverityText = (value) => textOf(signalSeverityMap, value);
 
     function marketText(value) {
       const map = { US: "美股", CN: "A 股", HK: "港股" };
@@ -1581,6 +1647,7 @@ def render_workbench_html() -> str:
       else if (view === "ingestion") loadIngestionBatches();
       else if (view === "manual") updateManualImportFields();
       else if (view === "facts") loadFinancialFacts();
+      else if (view === "signals") loadSignals();
       else if (view === "tasks") loadTasks();
       else if (view === "evidence") loadEvidence();
       else if (view === "documents") loadDocuments();
@@ -3349,6 +3416,143 @@ def render_workbench_html() -> str:
       }
     }
 
+    function signalEvidenceText(signal) {
+      if (signal?.evidence?.evidence_id) return evidenceDisplayTitle(signal.evidence);
+      if (signal?.source_fact?.id) return signal.source_fact.metric_name || "财务事实";
+      return "待补证据";
+    }
+
+    function signalStatusClass(signal) {
+      if (signal.status === "in_context") return "completed";
+      if (signal.severity === "high") return "failed";
+      return signal.status || "pending";
+    }
+
+    function signalSubtitle(signal) {
+      const typeText = signalTypeText(signal.signal_type);
+      const categoryText = signalCategoryText(signal.category);
+      if (!typeText || typeText === signal.title) return categoryText;
+      return `${typeText} · ${categoryText}`;
+    }
+
+    async function loadSignals() {
+      const params = new URLSearchParams();
+      const company = $("signalCompany").value.trim();
+      const period = $("signalPeriod").value.trim();
+      const type = $("signalType").value;
+      const status = $("signalStatus").value;
+      if (company) params.set("company", company);
+      if (period) params.set("period", period);
+      if (type) params.set("signal_type", type);
+      if (status) params.set("status", status);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      try {
+        const payload = await getJson("/api/investment-signals" + suffix);
+        const rows = payload.items || [];
+        $("signalRows").innerHTML = rows.length
+          ? rows.map((signal) => `<tr data-selectable="true">
+              <td><button class="btn" data-signal-detail="${esc(signal.id)}">${esc(signal.title)}</button><br><span class="label">${esc(signalSubtitle(signal))}</span></td>
+              <td>${esc(signal.company?.name || "-")}<br><span class="label mono">${esc(signal.company?.symbol || "")}</span></td>
+              <td>${esc(fmt(signal.period))}</td>
+              <td><span class="status ${esc(signal.direction)}">${esc(signalDirectionText(signal.direction))}</span></td>
+              <td><span class="status ${esc(signal.severity)}">${esc(signalSeverityText(signal.severity))}</span><br><span class="label">置信度 ${esc(fmt(signal.confidence))}</span></td>
+              <td>${esc(signalEvidenceText(signal))}</td>
+              <td><span class="status ${esc(signalStatusClass(signal))}">${esc(statusText(signal.status))}</span></td>
+            </tr>`).join("")
+          : `<tr><td colspan="7"><div class="empty"><div>暂无投资线索</div><div class="empty-actions"><button class="btn primary" id="generateSignalsInline">生成规则线索</button><button class="btn" data-jump="facts">导入财务事实</button></div></div></td></tr>`;
+        bindSignalButtons($("signalRows"));
+        bindJumpHandlers($("signalRows"));
+        const inline = $("generateSignalsInline");
+        if (inline) inline.addEventListener("click", generateSignals);
+      } catch (error) {
+        showLoadError("signalRows", 7);
+      }
+    }
+
+    function bindSignalButtons(root = document) {
+      root.querySelectorAll("[data-signal-detail]").forEach((btn) => {
+        if (btn.dataset.boundSignalDetail === "true") return;
+        btn.dataset.boundSignalDetail = "true";
+        btn.addEventListener("click", () => loadSignalDetail(btn.dataset.signalDetail));
+      });
+    }
+
+    async function generateSignals() {
+      const payload = {
+        company: $("signalCompany").value.trim(),
+        period: $("signalPeriod").value.trim(),
+      };
+      $("signalDetail").innerHTML = `<h2>生成规则线索</h2><div class="empty">正在根据财务事实、证据来源和任务上下文生成线索...</div>`;
+      try {
+        const result = await postJson("/api/investment-signals/generate", payload);
+        $("signalDetail").innerHTML = `<h2>生成规则线索</h2><div class="empty">已生成或更新 ${esc(number(result.generated))} 条线索。规则线索仅供研究，不构成投资建议。</div>`;
+        await loadSignals();
+        loadDashboard();
+      } catch (error) {
+        $("signalDetail").innerHTML = `<div class="error">生成失败，请先导入财务事实或检查筛选条件。</div>`;
+      }
+    }
+
+    async function loadSignalDetail(signalId) {
+      try {
+        const signal = await getJson(`/api/investment-signals/${encodeURIComponent(signalId)}`);
+        renderSignalDetail(signal);
+      } catch (error) {
+        showLoadError("signalDetail");
+      }
+    }
+
+    function renderSignalDetail(signal) {
+      const evidence = signal.evidence || {};
+      const fact = signal.source_fact || {};
+      $("signalDetail").innerHTML = `<h2>线索详情</h2>
+        <div class="kv"><span class="label">线索</span><span>${esc(signal.title)}</span></div>
+        <div class="kv"><span class="label">公司</span><span>${esc(signal.company?.name || "-")} / ${esc(signal.company?.symbol || "-")}</span></div>
+        <div class="kv"><span class="label">类型</span><span>${esc(signalTypeText(signal.signal_type))} · ${esc(signalCategoryText(signal.category))}</span></div>
+        <div class="kv"><span class="label">期间</span><span>${esc(fmt(signal.period))}</span></div>
+        <div class="kv"><span class="label">方向</span><span><span class="status ${esc(signal.direction)}">${esc(signalDirectionText(signal.direction))}</span></span></div>
+        <div class="kv"><span class="label">强度</span><span><span class="status ${esc(signal.severity)}">${esc(signalSeverityText(signal.severity))}</span> · 置信度 ${esc(fmt(signal.confidence))}</span></div>
+        <div class="kv"><span class="label">状态</span><span><span class="status ${esc(signalStatusClass(signal))}">${esc(statusText(signal.status))}</span></span></div>
+        <div class="detail-section"><h3>研究摘要</h3><div class="text-block">${esc(signal.summary)}</div><div class="score-note">仅供研究，不构成投资建议；进入正式研报仍需要证据和主张复核。</div></div>
+        <div class="detail-section"><h3>来源事实</h3>${
+          fact.id ? `<div class="event"><strong>${esc(fact.metric_name || "财务事实")}</strong><br>${esc(number(fact.value))} ${esc([fact.currency, fact.unit, fact.scale].filter(Boolean).join(" / "))}<br><span class="label">${esc(fmt(fact.period))} · ${esc(metricTypeText(fact.metric_type))}</span></div>` : `<div class="empty">暂无来源事实绑定</div>`
+        }</div>
+        <div class="detail-section"><h3>证据来源</h3>${
+          evidence.evidence_id ? `<div class="event"><strong>${esc(evidenceDisplayTitle(evidence))}</strong> <span class="status ${esc(evidence.trust_level || "unknown")}">${esc(statusText(evidence.trust_level || "unknown"))}</span><br><span class="label">${esc(sourceText(evidence.source_type))} · 页 ${esc(fmt(evidence.page_no))}</span>${evidence.source_url ? `<br><a href="${esc(evidence.source_url)}" target="_blank">打开来源</a>` : ""}</div>` : `<div class="empty">暂无证据绑定，请回到证据库或手动导入补齐。</div>`
+        }</div>
+        <div class="detail-section"><h3>加入研报任务</h3>
+          <div class="field"><label for="signalTaskInput">任务编号</label><input id="signalTaskInput" placeholder="粘贴研报任务编号" value="${esc(signal.task_id || "")}" /></div>
+          <div class="links" style="margin-top:10px">
+            <button class="btn primary" data-signal-add-task="${esc(signal.id)}">加入任务上下文</button>
+            <button class="btn" data-jump="tasks">查看研报任务</button>
+            <button class="btn" data-jump="evidence">查看证据库</button>
+          </div>
+          <div id="signalContextMessage"></div>
+        </div>
+        ${systemInfoBlock("系统信息", [["线索编号", signal.signal_id], ["规则", signalTypeText(signal.signal_type)], ["来源规则", signalTypeText(signal.source_rule)]])}`;
+      bindJumpHandlers($("signalDetail"));
+      $("signalDetail").querySelectorAll("[data-signal-add-task]").forEach((btn) => {
+        btn.addEventListener("click", () => addSignalToTask(btn.dataset.signalAddTask));
+      });
+    }
+
+    async function addSignalToTask(signalId) {
+      const taskId = $("signalTaskInput").value.trim();
+      if (!taskId) {
+        $("signalContextMessage").innerHTML = `<div class="error">请输入研报任务编号。</div>`;
+        return;
+      }
+      try {
+        const result = await postJson(`/api/investment-signals/${encodeURIComponent(signalId)}/add-to-task`, { task_id: taskId });
+        renderSignalDetail(result.signal);
+        $("signalContextMessage").innerHTML = `<div class="empty">已加入 ${esc(result.task?.symbol || "研报任务")} ${esc(result.task?.period || "")} 的任务上下文。</div>`;
+        await loadSignals();
+        loadDashboard();
+      } catch (error) {
+        $("signalContextMessage").innerHTML = `<div class="error">加入失败，请确认任务编号存在。</div>`;
+      }
+    }
+
     async function loadClaims() {
       const params = new URLSearchParams();
       const q = $("claimQuery").value.trim();
@@ -3618,6 +3822,13 @@ def render_workbench_html() -> str:
       $(id).addEventListener("keydown", (event) => { if (event.key === "Enter") loadFinancialFacts(); });
     });
     $("createFinancialFact").addEventListener("click", createFinancialFact);
+    $("refreshSignals").addEventListener("click", loadSignals);
+    $("generateSignals").addEventListener("click", generateSignals);
+    ["signalCompany", "signalPeriod"].forEach((id) => {
+      $(id).addEventListener("keydown", (event) => { if (event.key === "Enter") loadSignals(); });
+    });
+    $("signalType").addEventListener("change", loadSignals);
+    $("signalStatus").addEventListener("change", loadSignals);
     $("refreshExports").addEventListener("click", loadExports);
     $("exportSymbol").addEventListener("keydown", (event) => { if (event.key === "Enter") loadExports(); });
     $("exportStatus").addEventListener("change", loadExports);

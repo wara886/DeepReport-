@@ -23,6 +23,11 @@ from src.services.evidence_service import EvidenceNotFound, EvidenceService
 from src.services.export_service import ExportService, ExportTaskNotFound
 from src.services.financial_fact_service import FinancialFactConflict, FinancialFactNotFound, FinancialFactService
 from src.services.ingestion_service import IngestionBatchConflict, IngestionBatchNotFound, IngestionService
+from src.services.investment_signal_service import (
+    InvestmentSignalConflict,
+    InvestmentSignalNotFound,
+    InvestmentSignalService,
+)
 from src.services.llm_run_service import LLMRunNotFound, LLMRunService
 from src.services.manual_import_service import ManualImportConflict, ManualImportService
 from src.services.promptops_service import PromptOpsConflict, PromptOpsService, PromptTemplateNotFound
@@ -116,6 +121,7 @@ def create_fastapi_app(
     app.state.manual_import_service = ManualImportService(session_factory=app.state.report_task_service.session)
     app.state.llm_run_service = LLMRunService(session_factory=app.state.report_task_service.session)
     app.state.promptops_service = PromptOpsService(session_factory=app.state.report_task_service.session)
+    app.state.investment_signal_service = InvestmentSignalService(session_factory=app.state.report_task_service.session)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -128,6 +134,10 @@ def create_fastapi_app(
     @app.get("/workbench")
     def workbench() -> Response:
         return Response(content=render_workbench_html(), media_type="text/html")
+
+    @app.get("/favicon.ico")
+    def favicon() -> Response:
+        return Response(status_code=204)
 
     @app.get("/api/latest")
     def latest(incoming: Request) -> Response:
@@ -786,6 +796,74 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/investment-signals")
+    def list_investment_signals(
+        company: str | None = None,
+        period: str | None = None,
+        signal_type: str | None = None,
+        status: str | None = None,
+        task_id: str | None = None,
+        q: str | None = None,
+        limit: int = 100,
+    ) -> Response:
+        try:
+            return JSONResponse(
+                content=_investment_signal_service(app).list_signals(
+                    company=company,
+                    period=period,
+                    signal_type=signal_type,
+                    status=status,
+                    task_id=task_id,
+                    q=q,
+                    limit=limit,
+                )
+            )
+        except InvestmentSignalConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/investment-signals/generate")
+    async def generate_investment_signals(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(
+                status_code=201,
+                content=_investment_signal_service(app).generate_signals(
+                    company=_optional_string(payload.get("company") or payload.get("symbol")),
+                    period=_optional_string(payload.get("period")),
+                    task_id=_optional_string(payload.get("task_id")),
+                ),
+            )
+        except InvestmentSignalConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/investment-signals/{signal_ref}")
+    def get_investment_signal(signal_ref: str) -> Response:
+        try:
+            return JSONResponse(content=_investment_signal_service(app).get_signal(signal_ref))
+        except InvestmentSignalNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Investment signal not found: {signal_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/investment-signals/{signal_ref}/add-to-task")
+    async def add_investment_signal_to_task(signal_ref: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        task_id = _optional_string(payload.get("task_id"))
+        if not task_id:
+            return JSONResponse(status_code=409, content={"error": "task_id is required"})
+        try:
+            return JSONResponse(content=_investment_signal_service(app).add_to_report_context(signal_ref, task_id))
+        except InvestmentSignalNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Investment signal not found: {signal_ref}"})
+        except InvestmentSignalConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.get("/api/claims")
     def list_claims(
         task_id: str | None = None,
@@ -1070,6 +1148,10 @@ def _llm_run_service(app: FastAPI) -> LLMRunService:
 
 def _promptops_service(app: FastAPI) -> PromptOpsService:
     return app.state.promptops_service
+
+
+def _investment_signal_service(app: FastAPI) -> InvestmentSignalService:
+    return app.state.investment_signal_service
 
 
 def _optional_string(value: Any) -> str | None:

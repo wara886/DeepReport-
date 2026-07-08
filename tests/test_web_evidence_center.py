@@ -41,6 +41,8 @@ def test_workbench_exposes_evidence_center_contract(temp_db_engine, tmp_path):
     assert "主张复核" in html
     assert "文档处理中心" in html
     assert "导出中心" in html
+    assert "投资线索" in html
+    assert "生成规则线索" in html
     assert "实体库" in html
     assert "关系图谱" in html
     assert "沉淀到实体库" in html
@@ -48,5 +50,8 @@ def test_workbench_exposes_evidence_center_contract(temp_db_engine, tmp_path):
     assert 'getJson("/api/entities" + suffix)' in html
     assert 'getJson("/api/entity-relations" + suffix)' in html
     assert 'getJson("/api/graph/summary?limit=120")' in html
+    assert 'getJson("/api/investment-signals" + suffix)' in html
+    assert 'postJson("/api/investment-signals/generate"' in html
+    assert 'add-to-task' in html
     assert evidence.status_code == 200
     assert evidence.json()["items"][0]["evidence_id"] == "ev_web_contract"

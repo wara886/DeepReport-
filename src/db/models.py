@@ -431,6 +431,41 @@ class FinancialFact(Base):
     evidence_item: Mapped[EvidenceItem | None] = relationship()
 
 
+class InvestmentSignal(Base):
+    __tablename__ = "investment_signals"
+    __table_args__ = (
+        UniqueConstraint("signal_id", name="uq_investment_signals_signal_id"),
+        Index("ix_investment_signals_type_status", "signal_type", "status"),
+        Index("ix_investment_signals_company_period", "company_id", "period"),
+        Index("ix_investment_signals_task_status", "task_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    signal_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("report_tasks.task_id", ondelete="SET NULL"), nullable=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+    evidence_item_id: Mapped[int | None] = mapped_column(ForeignKey("evidence_items.id", ondelete="SET NULL"), nullable=True)
+    source_fact_id: Mapped[int | None] = mapped_column(ForeignKey("financial_facts.id", ondelete="SET NULL"), nullable=True)
+    signal_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(String(32), default="medium", nullable=False)
+    direction: Mapped[str] = mapped_column(String(32), default="neutral", nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    period: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_rule: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONVariant, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+    task: Mapped[ReportTask | None] = relationship()
+    company: Mapped[Company | None] = relationship()
+    evidence_item: Mapped[EvidenceItem | None] = relationship()
+    source_fact: Mapped[FinancialFact | None] = relationship()
+
+
 class Entity(Base):
     __tablename__ = "entities"
     __table_args__ = (

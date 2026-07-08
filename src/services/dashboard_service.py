@@ -16,6 +16,7 @@ from src.db.models import (
     DocumentProcessingStep,
     EvidenceItem,
     FinancialFact,
+    InvestmentSignal,
     LLMRun,
     ReportArtifact,
     ReportClaim,
@@ -109,7 +110,7 @@ class DashboardService:
                 "table_extract_success": _document_step_success_count(session, "table_extract"),
                 "chunk_vectorized": _document_step_success_count(session, "chunk"),
                 "financial_fact_extracted": _count(session, FinancialFact.id),
-                "investment_signal_generated": _count_where(session, ReportClaim.id, ReportClaim.claim_type == "signal"),
+                "investment_signal_generated": _investment_signal_count(session),
                 "report_claim_generated": _count(session, ReportClaim.id),
                 "claim_verified": _verified_claim_count(session),
                 "pending_review": _count_where(session, ReportClaim.id, ReportClaim.review_status == "pending"),
@@ -124,6 +125,13 @@ def _count(session: Session, column: Any) -> int:
 
 def _count_where(session: Session, column: Any, condition: Any) -> int:
     return int(session.scalar(select(func.count(column)).where(condition)) or 0)
+
+
+def _investment_signal_count(session: Session) -> int:
+    signals = _count(session, InvestmentSignal.id)
+    if signals:
+        return signals
+    return _count_where(session, ReportClaim.id, ReportClaim.claim_type == "signal")
 
 
 def _counter(rows: list[tuple[Any, int]], *, empty_key: str = "unknown") -> dict[str, int]:
