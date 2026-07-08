@@ -278,6 +278,108 @@ def test_report_task_artifact_import_binds_financial_metrics_lineage(tmp_path):
     assert item["source_url"] == "https://finance.yahoo.com/quote/AAPL/key-statistics"
 
 
+def test_report_task_artifact_import_populates_facts_from_tables_and_valuation(tmp_path):
+    class TablesAndValuationOrchestrator(ArtifactWritingOrchestrator):
+        def run(self, **kwargs):
+            result = super().run(**kwargs)
+            (self.output_dir / "evidence.json").write_text(
+                json.dumps(
+                    [
+                        {
+                            "evidence_id": "ev_income",
+                            "title": "AAPL FY2024 income statement",
+                            "content": "Revenue was 391035 million USD.",
+                            "source_type": "sec_edgar",
+                            "trust_level": "official",
+                            "source_url": "https://www.sec.gov/aapl/income",
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (self.output_dir / "tables.json").write_text(
+                json.dumps(
+                    [
+                        {
+                            "table_type": "income_statement",
+                            "source_evidence_id": "ev_income",
+                            "rows": [
+                                {
+                                    "line_item": "revenue",
+                                    "value": 391035,
+                                    "unit": "USD_million",
+                                    "period": "FY2024",
+                                }
+                            ],
+                        },
+                        {
+                            "table_type": "balance_sheet",
+                            "rows": [
+                                {
+                                    "line_item": "total_assets",
+                                    "value": 364980,
+                                    "unit": "USD_million",
+                                    "period": "FY2024",
+                                    "evidence_id": "ev_income",
+                                }
+                            ],
+                        },
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (self.output_dir / "valuation_model.json").write_text(
+                json.dumps(
+                    {
+                        "period": "FY2024",
+                        "currency": "USD",
+                        "unit": "million",
+                        "confidence": 0.7,
+                        "blended_equity_value": 3200000,
+                        "relative_valuation": {"pe_ratio": 31.4},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return result
+
+    service = ReportTaskService(
+        database_url=f"sqlite:///{tmp_path / 'tasks.db'}",
+        output_root=tmp_path / "outputs",
+        report_root=tmp_path / "reports",
+        memory_root=tmp_path / "memory",
+        orchestrator_factory=TablesAndValuationOrchestrator,
+        quality_runner=passing_quality_runner,
+    )
+    app = create_fastapi_app(
+        output_dir=str(tmp_path / "legacy_outputs"),
+        report_dir=str(tmp_path / "legacy_reports"),
+        memory_root=str(tmp_path / "legacy_memory"),
+        report_task_service=service,
+    )
+
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-table-valuation-facts", "symbol": "AAPL", "period": "FY2024"},
+        )
+        facts = client.get("/api/financial-facts", params={"company": "AAPL", "period": "FY2024"})
+
+    assert created.status_code == 201
+    items = facts.json()["items"]
+    by_metric = {item["metric_name"]: item for item in items}
+    assert {"revenue", "total_assets", "valuation_model.blended_equity_value", "valuation_model.relative_valuation.pe_ratio"}.issubset(by_metric)
+    assert by_metric["revenue"]["currency"] == "USD"
+    assert by_metric["revenue"]["unit"] == "million"
+    assert by_metric["revenue"]["evidence"]["evidence_id"] == "ev_income"
+    assert by_metric["revenue"]["metadata"]["table_type"] == "income_statement"
+    assert by_metric["valuation_model.blended_equity_value"]["currency"] == "USD"
+    assert by_metric["valuation_model.blended_equity_value"]["unit"] == "million"
+    assert by_metric["valuation_model.blended_equity_value"]["metadata"]["source"] == "valuation_model"
+    assert by_metric["valuation_model.relative_valuation.pe_ratio"]["metric_type"] == "ratio"
+    assert by_metric["valuation_model.relative_valuation.pe_ratio"]["currency"] is None
+
+
 def test_report_task_imports_agent_trace_as_llm_runs(tmp_path):
     service = ReportTaskService(
         database_url=f"sqlite:///{tmp_path / 'tasks.db'}",

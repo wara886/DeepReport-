@@ -39,6 +39,10 @@ OUTPUT_ARTIFACTS = {
     "run_summary.json": "run_summary",
     "evidence.json": "evidence",
     "claims.json": "claims",
+    "tables.json": "tables",
+    "financial_metrics.json": "financial_metrics",
+    "valuation_model.json": "valuation_model",
+    "valuation_sensitivity.json": "valuation_sensitivity",
     "verification_report.json": "verification_report",
     "delivery_gate.json": "delivery_gate",
     "quality_report.json": "quality_report",
@@ -878,6 +882,9 @@ def _extract_fact_records(output_dir: Path, *, task_id: str, period: str, warnin
     records: list[dict[str, Any]] = []
     records.extend(_extract_fact_records_from_claims(output_dir / "claims.json", task_id=task_id, period=period, warnings=warnings))
     records.extend(_extract_fact_records_from_financial_metrics(output_dir / "financial_metrics.json", task_id=task_id, period=period))
+    records.extend(_extract_fact_records_from_tables(output_dir / "tables.json", task_id=task_id, period=period))
+    records.extend(_extract_fact_records_from_valuation(output_dir / "valuation_model.json", task_id=task_id, period=period, source="valuation_model"))
+    records.extend(_extract_fact_records_from_valuation(output_dir / "valuation_sensitivity.json", task_id=task_id, period=period, source="valuation_sensitivity"))
     return records
 
 
@@ -952,6 +959,113 @@ def _extract_fact_records_from_financial_metrics(path: Path, *, task_id: str, pe
     return records
 
 
+def _extract_fact_records_from_tables(path: Path, *, task_id: str, period: str) -> list[dict[str, Any]]:
+    payload = _read_json(path, default=[])
+    if not payload:
+        return []
+    tables = payload if isinstance(payload, list) else payload.get("tables", []) if isinstance(payload, dict) else []
+    records: list[dict[str, Any]] = []
+    for table in tables:
+        if not isinstance(table, dict):
+            continue
+        table_type = _string_or_none(table.get("table_type") or table.get("statement") or table.get("type"))
+        rows = table.get("rows") if isinstance(table.get("rows"), list) else []
+        table_evidence_id = _fact_evidence_id(table)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            metric_name = row.get("metric_name") or row.get("line_item") or row.get("item") or row.get("name")
+            value = row.get("value")
+            if metric_name is None or _optional_float(value) is None:
+                continue
+            record = dict(row)
+            record["metric_name"] = metric_name
+            record["value"] = value
+            record["period"] = row.get("period") or table.get("period") or period
+            if not _fact_evidence_id(record) and table_evidence_id:
+                record["evidence_id"] = table_evidence_id
+            if table_type:
+                record["metric_type"] = "money" if _infer_metric_type(str(metric_name), record) == "money" else record.get("metric_type")
+            metadata = dict(row.get("metadata", {})) if isinstance(row.get("metadata"), dict) else {}
+            metadata.setdefault("task_id", task_id)
+            metadata.setdefault("source", "tables")
+            if table_type:
+                metadata.setdefault("table_type", table_type)
+            record["metadata"] = metadata
+            records.append(record)
+    return records
+
+
+def _extract_fact_records_from_valuation(path: Path, *, task_id: str, period: str, source: str) -> list[dict[str, Any]]:
+    payload = _read_json(path, default={})
+    if not isinstance(payload, dict) or not payload:
+        return []
+    currency = _optional_upper(payload.get("currency") or payload.get("valuation_currency"))
+    source_evidence_id = _fact_evidence_id(payload)
+    records: list[dict[str, Any]] = []
+    for metric_path, value in _iter_numeric_leaf_values(payload):
+        if not _is_valuation_metric(metric_path):
+            continue
+        metadata = {"task_id": task_id, "source": source, "metric_path": metric_path}
+        metric_type = _valuation_metric_type(metric_path)
+        record = {
+            "metric_name": f"{source}.{metric_path}",
+            "metric_type": metric_type,
+            "value": value,
+            "period": payload.get("period") or period,
+            "currency": currency if metric_type == "money" else None,
+            "unit": payload.get("unit") or ("raw" if metric_type == "money" and currency else "%" if metric_type == "ratio" else None),
+            "source_evidence_id": source_evidence_id,
+            "confidence": payload.get("confidence"),
+            "metadata": metadata,
+        }
+        records.append(record)
+    return records
+
+
+def _iter_numeric_leaf_values(payload: dict[str, Any], prefix: str = "") -> list[tuple[str, float]]:
+    rows: list[tuple[str, float]] = []
+    for key, value in payload.items():
+        path = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(value, dict):
+            rows.extend(_iter_numeric_leaf_values(value, path))
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                if isinstance(item, dict):
+                    rows.extend(_iter_numeric_leaf_values(item, f"{path}.{index}"))
+        elif _optional_float(value) is not None and not isinstance(value, bool):
+            rows.append((path, float(value)))
+    return rows
+
+
+def _is_valuation_metric(metric_path: str) -> bool:
+    lower = metric_path.lower()
+    return any(
+        token in lower
+        for token in (
+            "value",
+            "price",
+            "multiple",
+            "ratio",
+            "wacc",
+            "terminal",
+            "discount",
+            "upside",
+            "downside",
+            "pe",
+            "ev_ebitda",
+            "sensitivity",
+        )
+    )
+
+
+def _valuation_metric_type(metric_path: str) -> str:
+    lower = metric_path.lower()
+    if any(token in lower for token in ("ratio", "multiple", "wacc", "terminal", "discount", "upside", "downside", "pe", "ev_ebitda")):
+        return "ratio"
+    return "money"
+
+
 def _infer_metric_type(metric_name: str, record: dict[str, Any]) -> str:
     unit = _string(record.get("unit") or "").lower()
     if unit in {"pct", "%", "percent", "percentage"}:
@@ -967,6 +1081,9 @@ def _infer_metric_type(metric_name: str, record: dict[str, Any]) -> str:
 
 def _fact_unit(record: dict[str, Any]) -> str | None:
     unit = _string_or_none(record.get("unit"))
+    currency_unit = _split_currency_unit(unit)
+    if currency_unit:
+        return currency_unit[1]
     if unit and unit.lower() in {"pct", "percent", "percentage"}:
         return "%"
     if unit and unit.lower() not in {"unknown"}:
@@ -984,11 +1101,23 @@ def _fact_currency(record: dict[str, Any]) -> str | None:
     currency = _optional_upper(record.get("currency"))
     if currency and currency not in {"UNKNOWN", "N/A", "NA"}:
         return currency
+    currency_unit = _split_currency_unit(_string_or_none(record.get("unit")))
+    if currency_unit:
+        return currency_unit[0]
     metric_name = _string(record.get("metric_name") or record.get("metric"))
     lower = metric_name.lower()
     if "margin" in lower or "rate" in lower or "ratio" in lower or "率" in metric_name:
         return None
     return "USD" if any(token in lower for token in ("revenue", "income", "profit", "cash", "asset", "liabilit", "equity", "capex", "fcf")) else None
+
+
+def _split_currency_unit(unit: str | None) -> tuple[str, str] | None:
+    if not unit:
+        return None
+    parts = str(unit).strip().split("_", 1)
+    if len(parts) == 2 and len(parts[0]) == 3 and parts[0].isalpha():
+        return parts[0].upper(), parts[1]
+    return None
 
 
 def _fact_evidence_id(record: dict[str, Any]) -> str | None:
