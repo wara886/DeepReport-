@@ -81,3 +81,96 @@ def test_artifact_importer_imports_claims_and_claim_evidence_links(temp_db_engin
         assert claims[0].metadata_json["original_claim_id"] == "cl_revenue"
         assert claims[0].metadata_json["verification_summary"]["passed"] is True
         assert {link.support_type for link in links} == {"supports"}
+
+
+def test_artifact_importer_infers_claim_check_statuses(temp_db_engine, tmp_path):
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    output_dir = output_root / "runs" / "task-claim-status" / "outputs"
+    report_dir = report_root / "runs" / "task-claim-status" / "reports"
+    output_dir.mkdir(parents=True)
+    report_dir.mkdir(parents=True)
+    (output_dir / "evidence.json").write_text(
+        json.dumps(
+            [
+                {
+                    "evidence_id": "ev_fin",
+                    "content": "Revenue was 391.04B in FY2024.",
+                    "source_type": "sec_edgar",
+                    "trust_level": "official",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "claims.json").write_text(
+        json.dumps(
+            [
+                {
+                    "claim_id": "cl_supported",
+                    "claim_text": "Revenue was 391.04B.",
+                    "evidence_ids": ["ev_fin"],
+                    "numeric_values": {"revenue": 391040000000},
+                },
+                {
+                    "claim_id": "cl_missing_evidence",
+                    "claim_text": "Capex was 12.71B.",
+                    "evidence_ids": ["ev_missing"],
+                    "numeric_values": {"capex": 12710000000},
+                },
+                {
+                    "claim_id": "cl_numeric_mismatch",
+                    "claim_text": "Net income was 99.99B.",
+                    "evidence_ids": ["ev_fin"],
+                    "numeric_values": {"net_income": 99990000000},
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "verification_report.json").write_text(
+        json.dumps(
+            {
+                "passed": False,
+                "claim_results": [
+                    {"claim_id": "cl_supported", "passed": True},
+                    {"claim_id": "cl_missing_evidence", "passed": False},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with Session(temp_db_engine) as session:
+        session.add(
+            ReportTask(
+                task_id="task-claim-status",
+                symbol="AAPL",
+                period="FY2024",
+                metadata_json={"output_dir": str(output_dir), "report_dir": str(report_dir)},
+            )
+        )
+        session.commit()
+
+    importer = ArtifactImporter(
+        session_factory=lambda: Session(temp_db_engine),
+        output_root=output_root,
+        report_root=report_root,
+    )
+    result = importer.import_for_task("task-claim-status")
+
+    with Session(temp_db_engine) as session:
+        rows = {
+            claim.metadata_json["original_claim_id"]: claim
+            for claim in session.scalars(select(ReportClaim).order_by(ReportClaim.id)).all()
+        }
+
+    assert result.claim_count == 3
+    assert rows["cl_supported"].verification_status == "supported"
+    assert rows["cl_supported"].numeric_check_status == "passed"
+    assert rows["cl_supported"].citation_check_status == "passed"
+    assert rows["cl_missing_evidence"].verification_status == "failed"
+    assert rows["cl_missing_evidence"].numeric_check_status == "failed"
+    assert rows["cl_missing_evidence"].citation_check_status == "failed"
+    assert rows["cl_numeric_mismatch"].verification_status == "failed"
+    assert rows["cl_numeric_mismatch"].numeric_check_status == "failed"
+    assert rows["cl_numeric_mismatch"].citation_check_status == "passed"

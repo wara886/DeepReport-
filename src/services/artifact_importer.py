@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from src.db.models import ClaimEvidence, EvidenceItem, ReportArtifact, ReportClaim, ReportTask, ReportTaskEvent
+from src.db.models import ClaimEvidence, Company, EvidenceItem, FinancialFact, ReportArtifact, ReportClaim, ReportTask, ReportTaskEvent
 
 
 REPORT_ARTIFACTS = {
@@ -40,6 +40,7 @@ class ArtifactImportResult:
     evidence_count: int
     claim_count: int
     claim_evidence_count: int
+    financial_fact_count: int
     warnings: list[str]
 
     def to_dict(self) -> dict[str, Any]:
@@ -49,6 +50,7 @@ class ArtifactImportResult:
             "evidence_count": self.evidence_count,
             "claim_count": self.claim_count,
             "claim_evidence_count": self.claim_evidence_count,
+            "financial_fact_count": self.financial_fact_count,
             "warnings": list(self.warnings),
         }
 
@@ -78,7 +80,12 @@ class ArtifactImporter:
             output_dir = Path(str(metadata.get("output_dir") or ""))
             report_dir = Path(str(metadata.get("report_dir") or ""))
             period = str(task.period or metadata.get("period") or "")
-            company_id = task.company_id
+            company_id = task.company_id or _get_or_create_company_id(
+                session,
+                symbol=str(task.symbol or metadata.get("symbol") or ""),
+                name=str(metadata.get("company_name") or task.symbol or ""),
+                market=str(metadata.get("market") or ""),
+            )
 
             artifacts = self._import_artifacts(session, task_id, output_dir, report_dir)
             evidence_by_external_id = self._import_evidence(
@@ -97,6 +104,15 @@ class ArtifactImporter:
                 evidence_by_external_id=evidence_by_external_id,
                 warnings=warnings,
             )
+            financial_fact_count = self._import_financial_facts(
+                session,
+                task_id=task_id,
+                company_id=company_id,
+                period=period,
+                output_dir=output_dir,
+                evidence_by_external_id=evidence_by_external_id,
+                warnings=warnings,
+            )
 
             result = ArtifactImportResult(
                 task_id=task_id,
@@ -104,6 +120,7 @@ class ArtifactImporter:
                 evidence_count=len(evidence_by_external_id),
                 claim_count=claim_count,
                 claim_evidence_count=link_count,
+                financial_fact_count=financial_fact_count,
                 warnings=warnings,
             )
             session.add(
@@ -218,7 +235,19 @@ class ArtifactImporter:
             metadata = _metadata(record, task_id=task_id, period=period, missing_fields=missing)
             metadata["original_claim_id"] = external_claim_id
             metadata["evidence_ids"] = evidence_ids
-            metadata["verification_summary"] = _claim_verification_summary(verification, external_claim_id)
+            verification_summary = _claim_verification_summary(verification, external_claim_id)
+            metadata["verification_summary"] = verification_summary
+            linked_evidence = [evidence_by_external_id[evidence_id] for evidence_id in evidence_ids if evidence_id in evidence_by_external_id]
+            verification_status = _claim_verification_status(record, verification_summary, linked_evidence)
+            numeric_check_status = _claim_numeric_check_status(record, linked_evidence)
+            citation_check_status = _claim_citation_check_status(evidence_ids, linked_evidence)
+            metadata["import_checks"] = {
+                "linked_evidence_count": len(linked_evidence),
+                "missing_evidence_ids": [evidence_id for evidence_id in evidence_ids if evidence_id not in evidence_by_external_id],
+                "verification_status": verification_status,
+                "numeric_check_status": numeric_check_status,
+                "citation_check_status": citation_check_status,
+            }
 
             claim = ReportClaim(
                 task_id=task_id,
@@ -227,9 +256,9 @@ class ArtifactImporter:
                 claim_type=_string_or_none(record.get("claim_type") or record.get("type")),
                 is_critical=bool(record.get("is_critical", record.get("critical", False))),
                 critical_claim_type=_string_or_none(record.get("critical_claim_type")),
-                verification_status=_string(record.get("verification_status") or record.get("status") or "pending"),
-                numeric_check_status=_string_or_none(record.get("numeric_check_status")),
-                citation_check_status=_string_or_none(record.get("citation_check_status")),
+                verification_status=verification_status,
+                numeric_check_status=numeric_check_status,
+                citation_check_status=citation_check_status,
                 confidence=_optional_float(record.get("confidence")),
                 review_status=_string(record.get("review_status") or "pending"),
                 metadata_json=metadata,
@@ -250,6 +279,65 @@ class ArtifactImporter:
                 )
                 link_count += 1
         return len(claims), link_count
+
+    def _import_financial_facts(
+        self,
+        session: Session,
+        *,
+        task_id: str,
+        company_id: int | None,
+        period: str,
+        output_dir: Path,
+        evidence_by_external_id: dict[str, EvidenceItem],
+        warnings: list[str],
+    ) -> int:
+        existing_ids = list(
+            session.scalars(
+                select(FinancialFact.id).where(FinancialFact.metadata_json["task_id"].as_string() == task_id)
+            ).all()
+        )
+        if existing_ids:
+            session.execute(delete(FinancialFact).where(FinancialFact.id.in_(existing_ids)))
+
+        fact_records = _extract_fact_records(output_dir, task_id=task_id, period=period, warnings=warnings)
+        rows: list[FinancialFact] = []
+        seen: set[tuple[str, str, float, str | None]] = set()
+        for record in fact_records:
+            metric_name = _string_or_none(record.get("metric_name") or record.get("metric"))
+            value = _optional_float(record.get("value"))
+            fact_period = _string_or_none(record.get("period")) or period
+            if not metric_name or value is None or not fact_period:
+                warnings.append(f"financial fact skipped due to missing metric/value/period: {metric_name or '<unknown>'}")
+                continue
+            evidence_id = _fact_evidence_id(record)
+            evidence = evidence_by_external_id.get(evidence_id) if evidence_id else None
+            dedupe_key = (metric_name, fact_period, value, evidence_id)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            metadata = _metadata(record, task_id=task_id, period=fact_period, missing_fields=[])
+            rows.append(
+                FinancialFact(
+                    company_id=_optional_int(record.get("company_id")) or company_id,
+                    evidence_item_id=evidence.id if evidence is not None else None,
+                    metric_name=metric_name,
+                    metric_type=_string_or_none(record.get("metric_type")) or _infer_metric_type(metric_name, record),
+                    value=value,
+                    unit=_fact_unit(record),
+                    currency=_fact_currency(record),
+                    scale=_string_or_none(record.get("scale")),
+                    period=fact_period,
+                    fiscal_year=_optional_int(record.get("fiscal_year")) or _fiscal_year_from_period(fact_period),
+                    source_url=_string_or_none(record.get("source_url")) or _string_or_none(record.get("url")) or (evidence.source_url if evidence else None),
+                    confidence=_optional_float(record.get("confidence")),
+                    review_status=_string(record.get("review_status") or "pending"),
+                    metadata_json=metadata,
+                )
+            )
+        if rows:
+            session.add_all(rows)
+            session.flush()
+        return len(rows)
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -319,6 +407,74 @@ def _claim_verification_summary(verification: Any, claim_id: str) -> dict[str, A
     return {"passed": verification.get("passed")} if "passed" in verification else {}
 
 
+def _claim_verification_status(
+    record: dict[str, Any],
+    verification_summary: dict[str, Any],
+    linked_evidence: list[EvidenceItem],
+) -> str:
+    explicit = _string_or_none(record.get("verification_status") or record.get("status"))
+    if explicit and explicit not in {"pending", "unknown"}:
+        return explicit
+    if verification_summary.get("passed") is True:
+        return "supported" if linked_evidence else "failed"
+    if verification_summary.get("passed") is False:
+        return "failed"
+    if linked_evidence and not _extract_numeric_values(record):
+        return "supported"
+    return explicit or "pending"
+
+
+def _claim_numeric_check_status(record: dict[str, Any], linked_evidence: list[EvidenceItem]) -> str | None:
+    explicit = _string_or_none(record.get("numeric_check_status"))
+    if explicit:
+        return explicit
+    numeric_values = _extract_numeric_values(record)
+    if not numeric_values:
+        return None
+    searchable = " ".join([item.content or "" for item in linked_evidence])
+    if not searchable:
+        return "failed"
+    missing = [
+        value
+        for value in numeric_values.values()
+        if not _numeric_value_appears_in_text(value, searchable)
+    ]
+    return "failed" if missing else "passed"
+
+
+def _claim_citation_check_status(evidence_ids: list[str], linked_evidence: list[EvidenceItem]) -> str:
+    if not evidence_ids:
+        return "failed"
+    return "passed" if len(evidence_ids) == len(linked_evidence) else "failed"
+
+
+def _extract_numeric_values(record: dict[str, Any]) -> dict[str, Any]:
+    numeric_values = record.get("numeric_values")
+    return numeric_values if isinstance(numeric_values, dict) else {}
+
+
+def _numeric_value_appears_in_text(value: Any, text: str) -> bool:
+    number = _optional_float(value)
+    if number is None:
+        return False
+    candidates = {
+        str(value),
+        f"{number}",
+        f"{number:.0f}",
+        f"{number:.1f}",
+        f"{number:.2f}",
+    }
+    if abs(number) >= 1_000_000_000:
+        candidates.add(f"{number / 1_000_000_000:.2f}B")
+        candidates.add(f"{number / 1_000_000_000:.1f}B")
+        candidates.add(f"{number / 1_000_000_000:.2f} billion")
+    if abs(number) >= 1_000_000:
+        candidates.add(f"{number / 1_000_000:.2f}M")
+        candidates.add(f"{number / 1_000_000:.1f}M")
+    compact_text = text.replace(",", "")
+    return any(candidate.replace(",", "") in compact_text for candidate in candidates if candidate)
+
+
 def _metadata(record: dict[str, Any], *, task_id: str, period: str, missing_fields: list[str]) -> dict[str, Any]:
     metadata = dict(record.get("metadata", {})) if isinstance(record.get("metadata"), dict) else {}
     metadata["raw_artifact_record"] = dict(record)
@@ -362,3 +518,161 @@ def _optional_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _extract_fact_records(output_dir: Path, *, task_id: str, period: str, warnings: list[str]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    records.extend(_extract_fact_records_from_claims(output_dir / "claims.json", task_id=task_id, period=period, warnings=warnings))
+    records.extend(_extract_fact_records_from_financial_metrics(output_dir / "financial_metrics.json", task_id=task_id, period=period))
+    return records
+
+
+def _extract_fact_records_from_claims(path: Path, *, task_id: str, period: str, warnings: list[str]) -> list[dict[str, Any]]:
+    rows = _read_records(path, preferred_key="claims", warnings=warnings)
+    facts: list[dict[str, Any]] = []
+    for row in rows:
+        numeric_values = row.get("numeric_values")
+        if not isinstance(numeric_values, dict):
+            continue
+        evidence_ids = _extract_evidence_ids(row)
+        evidence_id = evidence_ids[0] if evidence_ids else None
+        claim_id = _string_or_none(row.get("claim_id") or row.get("id"))
+        for metric_name, value in numeric_values.items():
+            if _optional_float(value) is None:
+                continue
+            facts.append(
+                {
+                    "metric_name": metric_name,
+                    "value": value,
+                    "period": row.get("period") or period,
+                    "evidence_id": evidence_id,
+                    "confidence": row.get("confidence"),
+                    "source": "claims.numeric_values",
+                    "claim_id": claim_id,
+                    "review_status": "pending",
+                    "metadata": {
+                        "task_id": task_id,
+                        "claim_id": claim_id,
+                        "source": "claims.numeric_values",
+                        "evidence_ids": evidence_ids,
+                    },
+                }
+            )
+    return facts
+
+
+def _extract_fact_records_from_financial_metrics(path: Path, *, task_id: str, period: str) -> list[dict[str, Any]]:
+    payload = _read_json(path, default={})
+    if not payload:
+        return []
+    raw_rows: list[Any]
+    if isinstance(payload, list):
+        raw_rows = payload
+    elif isinstance(payload, dict):
+        for key in ("facts", "items", "records", "metrics"):
+            if isinstance(payload.get(key), list):
+                raw_rows = payload[key]
+                break
+        else:
+            raw_rows = [{"metric_name": key, "value": value} for key, value in payload.items() if _optional_float(value) is not None]
+    else:
+        raw_rows = []
+
+    records: list[dict[str, Any]] = []
+    for row in raw_rows:
+        if not isinstance(row, dict):
+            continue
+        metric_name = row.get("metric_name") or row.get("metric") or row.get("metric_key") or row.get("name")
+        value = row.get("value")
+        if metric_name is None or _optional_float(value) is None:
+            continue
+        record = dict(row)
+        record["metric_name"] = metric_name
+        record["value"] = value
+        record["period"] = row.get("period") or period
+        metadata = dict(row.get("metadata", {})) if isinstance(row.get("metadata"), dict) else {}
+        metadata.setdefault("task_id", task_id)
+        metadata.setdefault("source", "financial_metrics")
+        record["metadata"] = metadata
+        records.append(record)
+    return records
+
+
+def _infer_metric_type(metric_name: str, record: dict[str, Any]) -> str:
+    unit = _string(record.get("unit") or "").lower()
+    if unit in {"pct", "%", "percent", "percentage"}:
+        return "ratio"
+    currency = _fact_currency(record)
+    lower = metric_name.lower()
+    if "margin" in lower or "rate" in lower or "ratio" in lower or "率" in metric_name:
+        return "ratio"
+    if currency or any(token in lower for token in ("revenue", "income", "profit", "cash", "asset", "liabilit", "equity", "capex", "fcf")):
+        return "money"
+    return "number"
+
+
+def _fact_unit(record: dict[str, Any]) -> str | None:
+    unit = _string_or_none(record.get("unit"))
+    if unit and unit.lower() in {"pct", "percent", "percentage"}:
+        return "%"
+    if unit and unit.lower() not in {"unknown"}:
+        return unit
+    currency = _fact_currency(record)
+    if currency:
+        return "raw"
+    metric_name = _string(record.get("metric_name") or record.get("metric"))
+    if _infer_metric_type(metric_name, record) == "ratio":
+        return "%"
+    return None
+
+
+def _fact_currency(record: dict[str, Any]) -> str | None:
+    currency = _optional_upper(record.get("currency"))
+    if currency and currency not in {"UNKNOWN", "N/A", "NA"}:
+        return currency
+    metric_name = _string(record.get("metric_name") or record.get("metric"))
+    lower = metric_name.lower()
+    if "margin" in lower or "rate" in lower or "ratio" in lower or "率" in metric_name:
+        return None
+    return "USD" if any(token in lower for token in ("revenue", "income", "profit", "cash", "asset", "liabilit", "equity", "capex", "fcf")) else None
+
+
+def _fact_evidence_id(record: dict[str, Any]) -> str | None:
+    for key in ("evidence_id", "source_evidence_id", "source_id"):
+        value = _string_or_none(record.get(key))
+        if value:
+            return value
+    return None
+
+
+def _optional_upper(value: Any) -> str | None:
+    text = _string_or_none(value)
+    return text.upper() if text else None
+
+
+def _fiscal_year_from_period(period: str) -> int | None:
+    text = str(period or "").upper()
+    if text.startswith("FY"):
+        return _optional_int(text.removeprefix("FY"))
+    return None
+
+
+def _get_or_create_company_id(session: Session, *, symbol: str, name: str, market: str) -> int | None:
+    normalized_symbol = symbol.strip().upper()
+    normalized_market = market.strip().upper() or None
+    normalized_name = name.strip() or normalized_symbol
+    if not normalized_symbol and not normalized_name:
+        return None
+    if normalized_symbol:
+        company = session.scalar(select(Company).where(Company.symbol == normalized_symbol, Company.market == normalized_market))
+        if company is not None:
+            return company.id
+    company = Company(
+        name=normalized_name or normalized_symbol or "未知公司",
+        symbol=normalized_symbol or None,
+        market=normalized_market,
+        aliases=[item for item in [normalized_name, normalized_symbol] if item],
+    )
+    session.add(company)
+    session.flush()
+    return company.id

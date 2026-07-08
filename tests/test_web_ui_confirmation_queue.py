@@ -59,6 +59,32 @@ def _seed_completed_run(output_root, report_root, symbol, period):
     return run_paths
 
 
+def _seed_quality_failed_run(output_root, report_root, symbol, period):
+    """Create a fake failed-gate run for latest visibility tests."""
+    from src.app.web_ui import _create_run_dirs, _finalize_run_dirs
+    run_paths = _create_run_dirs(output_root, report_root, symbol, period, "collaborative", job_id="job_failed_gate")
+    (run_paths["output_dir"] / "run_summary.json").write_text(
+        json.dumps({"symbol": symbol, "period": period, "verification_passed": False}),
+        encoding="utf-8",
+    )
+    (run_paths["report_dir"] / "report.html").write_text(f"<html><body><h1>{symbol}</h1></body></html>", encoding="utf-8")
+    (run_paths["report_dir"] / "report.md").write_text(f"# {symbol}\n\nThin report.", encoding="utf-8")
+    (run_paths["output_dir"] / "job_id.txt").write_text("job_failed_gate", encoding="utf-8")
+    _finalize_run_dirs(
+        run_paths, output_root, report_root, symbol, period, "collaborative",
+        {
+            "delivery_gate": {
+                "delivery_pass": False,
+                "objective_pass": False,
+                "llm_review_pass": False,
+                "top_issues": [{"severity": "blocker", "message": "执行摘要深度不足"}],
+            },
+            "top_quality_issues": [{"severity": "blocker", "message": "执行摘要深度不足"}],
+        },
+    )
+    return run_paths
+
+
 # ── Test 1: User mode forces confirmation for known aliases ──────────────
 
 def test_user_mode_tencent_requires_confirmation(monkeypatch, tmp_path):
@@ -357,6 +383,63 @@ def test_latest_api_returns_queue_fields(monkeypatch, tmp_path):
         assert "queue_position" in data, f"Missing queue_position in {list(data.keys())}"
         assert "queue_length" in data
         assert "active_job_id" in data
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=2)
+    pending_report_tasks.clear(); active_report_runs.clear()
+
+
+def test_latest_api_hides_quality_failed_global_report_links(tmp_path):
+    """Global /api/latest must not advertise failed-gate reports as usable reports."""
+    config = _write_model_config(tmp_path)
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    output_root.mkdir(); report_root.mkdir()
+    _seed_quality_failed_run(output_root, report_root, "AAPL", "FY2024")
+
+    server, url = run_ui_server(
+        port=0, output_dir=str(output_root), report_dir=str(report_root),
+        config_path=str(config), memory_root=str(tmp_path / "memory"), mode="user",
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with request.urlopen(f"{url}/api/latest?session_id=local", timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        assert data["status"] == "quality_failed"
+        assert data["found"] is False
+        assert data["report_links"] == {}
+        assert data["report_html_url"] == ""
+        assert data["report_markdown"] == ""
+        assert data["delivery_gate"]["delivery_pass"] is False
+        assert "质量门禁未通过" in data["error"]
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=2)
+    pending_report_tasks.clear(); active_report_runs.clear()
+
+
+def test_latest_api_keeps_current_failed_job_diagnostics_visible(tmp_path):
+    """A specific job_id can still inspect failed artifacts for debugging/review."""
+    config = _write_model_config(tmp_path)
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    output_root.mkdir(); report_root.mkdir()
+    _seed_quality_failed_run(output_root, report_root, "AAPL", "FY2024")
+
+    server, url = run_ui_server(
+        port=0, output_dir=str(output_root), report_dir=str(report_root),
+        config_path=str(config), memory_root=str(tmp_path / "memory"), mode="user",
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with request.urlopen(f"{url}/api/latest?session_id=local&job_id=job_failed_gate", timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        assert data["status"] == "completed"
+        assert data["found"] is True
+        assert data["is_current_request"] is True
+        assert data["report_links"]["html_web_url"]
+        assert data["report_markdown"].startswith("# AAPL")
+        assert data["delivery_gate"]["delivery_pass"] is False
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=2)
     pending_report_tasks.clear(); active_report_runs.clear()
