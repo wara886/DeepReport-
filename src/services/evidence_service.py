@@ -186,6 +186,14 @@ class EvidenceService:
             "components": ["关键词召回", "来源可信度/公司/期间匹配"],
             "retrieval_available": bool(candidates),
         }
+        meta["coverage"] = _retrieval_coverage(
+            candidates=candidates,
+            items=items,
+            company=company,
+            period=period,
+            source_type=source_type,
+            mode_effective=str(meta["mode_effective"]),
+        )
         return {"items": items, "total": len(items), "search_meta": meta}
 
     def get_evidence(self, evidence_ref: str | int) -> dict[str, Any]:
@@ -562,6 +570,112 @@ def _mode_effective(*, bm25_hits: list[dict[str, Any]], rule_hits: list[dict[str
     if rule_hits:
         return "quality_rule_only"
     return "no_hits"
+
+
+def _retrieval_coverage(
+    *,
+    candidates: list[EvidenceItem],
+    items: list[dict[str, Any]],
+    company: str | None,
+    period: str | None,
+    source_type: str | None,
+    mode_effective: str,
+) -> dict[str, Any]:
+    returned_sources = sorted({str(item.get("source_type") or "") for item in items if item.get("source_type")})
+    candidate_sources = sorted({str(item.source_type or "") for item in candidates if item.source_type})
+    required_sources = _required_sources_for_query(company=company, source_type=source_type)
+    missing_sources = [source for source in required_sources if source not in returned_sources]
+    gaps: list[dict[str, Any]] = []
+    if not candidates:
+        gaps.append(
+            {
+                "type": "no_candidates",
+                "label": "没有候选证据",
+                "description": "当前筛选条件下没有可检索证据，请先补充采集或手动导入资料。",
+                "next_view": "ingestion",
+            }
+        )
+    elif not items:
+        gaps.append(
+            {
+                "type": "no_hits",
+                "label": "没有命中证据",
+                "description": "已有候选证据，但查询词、公司或期间没有形成有效命中。",
+                "next_view": "evidence",
+            }
+        )
+    if missing_sources:
+        gaps.append(
+            {
+                "type": "source_gap",
+                "label": "来源覆盖不足",
+                "description": "当前结果缺少：" + "、".join(missing_sources),
+                "sources": missing_sources,
+                "next_view": "datasources",
+            }
+        )
+    if mode_effective in {"keyword_only", "quality_rule_only"}:
+        gaps.append(
+            {
+                "type": "fusion_degraded",
+                "label": "融合信号不足",
+                "description": "当前检索只命中了单一路径，建议补充更多证据或更具体的查询词。",
+                "next_view": "manual",
+            }
+        )
+    if mode_effective == "no_hits":
+        gaps.append(
+            {
+                "type": "retrieval_failed",
+                "label": "检索未命中",
+                "description": "没有可用于支持研报主张的召回结果，正式研报不应引用该查询结果。",
+                "next_view": "ingestion",
+            }
+        )
+    return {
+        "candidate_count": len(candidates),
+        "returned_count": len(items),
+        "candidate_sources": candidate_sources,
+        "returned_sources": returned_sources,
+        "required_sources": required_sources,
+        "missing_sources": missing_sources,
+        "evidence_ready": bool(items),
+        "quality_ready": bool(items) and not missing_sources,
+        "gaps": gaps,
+        "summary": _coverage_summary(
+            candidate_count=len(candidates),
+            returned_count=len(items),
+            missing_sources=missing_sources,
+            mode_effective=mode_effective,
+        ),
+    }
+
+
+def _required_sources_for_query(*, company: str | None, source_type: str | None) -> list[str]:
+    if source_type:
+        return [source_type]
+    normalized = _norm(company)
+    if not normalized:
+        return []
+    if any(token in normalized for token in ["nvda", "nvidia", "aapl", "apple", "msft", "tesla", "tsla", "baba"]):
+        return ["sec_edgar"]
+    if any(token in normalized for token in ["0700", "tencent", "9988"]):
+        return ["hkex"]
+    if any(token in normalized for token in ["600", "300", "002", "贵州", "宁德", "比亚迪"]):
+        return ["cninfo"]
+    return []
+
+
+def _coverage_summary(*, candidate_count: int, returned_count: int, missing_sources: list[str], mode_effective: str) -> str:
+    if returned_count <= 0:
+        return "未召回可用证据，需要补充来源或调整查询。"
+    if missing_sources:
+        return "已召回证据，但来源覆盖仍需补齐。"
+    if mode_effective in {"keyword_quality_fusion"}:
+        return "关键词和证据质量信号同时命中，可进入证据复核。"
+    if candidate_count > returned_count:
+        return "已从候选证据中筛出相关结果，建议继续核对原文。"
+    return "已召回可复核证据。"
 
 
 def _round_optional(value: Any) -> float | None:

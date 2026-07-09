@@ -1303,6 +1303,7 @@ def render_workbench_html() -> str:
       exchange_announcements: "交易所公告", hkex: "港交所公告", hkex_announcements: "港交所公告",
       eastmoney: "东方财富行情", eastmoney_financials: "东方财富财务", sina_finance: "新浪财经行情",
       hk_financials: "港股财务数据", serper: "Serper 搜索", tavily: "Tavily 搜索",
+      yahoo_finance: "雅虎财经",
       sec_filing: "SEC 披露文件", cninfo_announcement: "巨潮公告", hkex_announcement: "港交所公告",
       hkex_annual_report: "港交所年报", yahoo_profile: "雅虎公司画像", yahoo_financials: "雅虎财务数据",
       eastmoney_quote: "东方财富行情", news: "新闻",
@@ -3550,23 +3551,46 @@ def render_workbench_html() -> str:
       try {
         const payload = await getJson("/api/evidence" + suffix);
         const rows = payload.items || [];
+        const searchMetaRow = renderEvidenceSearchMetaRow(payload.search_meta || null);
         evidenceSearchContext = new Map(rows.map((item) => [item.evidence_id, item.search]).filter(([, info]) => info));
         $("evidenceRows").innerHTML = rows.length
-          ? rows.map((item) => `<tr data-selectable="true">
+          ? `${searchMetaRow}${rows.map((item) => `<tr data-selectable="true">
               <td><button class="btn" data-evidence-detail="${esc(item.evidence_id)}">${esc(evidenceDisplayTitle(item))}</button><br>${esc(item.snippet || "")}</td>
               <td>${renderEvidenceSearchSummary(item)}</td>
               <td>${esc(sourceText(item.source_type))}<br><span class="label">${esc(fmt(item.source_url))}</span></td>
               <td><span class="status ${esc(item.trust_level)}">${esc(statusText(item.trust_level))}</span></td>
               <td>${esc(item.document?.title || "-")}<br><span class="label">${esc(item.document?.report_period || "")}</span></td>
               <td>${esc(number(item.claim_count))}</td>
-            </tr>`).join("")
-          : `<tr><td colspan="6"><div class="empty">暂无证据</div></td></tr>`;
+            </tr>`).join("")}`
+          : `${searchMetaRow}<tr><td colspan="6"><div class="empty">暂无证据</div></td></tr>`;
         document.querySelectorAll("[data-evidence-detail]").forEach((btn) => {
           btn.addEventListener("click", () => loadEvidenceDetail(btn.dataset.evidenceDetail));
         });
       } catch (error) {
         showLoadError("evidenceRows", 6);
       }
+    }
+
+    function renderEvidenceSearchMetaRow(meta) {
+      if (!meta || meta.mode !== "hybrid") return "";
+      const coverage = meta.coverage || {};
+      const gaps = coverage.gaps || [];
+      const components = (meta.components || []).join("、") || "关键词与证据质量";
+      const missingSources = (coverage.missing_sources || []).map(sourceText).join("、");
+      return `<tr><td colspan="6">
+        <div class="chain-summary" style="margin-bottom:0">
+          <strong>证据召回诊断</strong><br>
+          ${esc(coverage.summary || "已完成智能检索。")}
+          <div class="diagnostic-meta" style="margin-top:6px">
+            <span>候选证据：${esc(number(coverage.candidate_count || meta.candidate_count || 0))}</span>
+            <span>返回结果：${esc(number(coverage.returned_count || meta.returned_hit_count || 0))}</span>
+            <span>检索路径：${esc(components)}</span>
+            <span>降级：${esc(meta.fallback_used ? "已启用" : "未启用")}</span>
+          </div>
+          ${missingSources ? `<div class="score-note">待补来源：${esc(missingSources)}</div>` : ""}
+          ${gaps.length ? `<div class="reason-list">${gaps.slice(0, 3).map((gap) => `<span class="reason-pill">${esc(gap.label || gap.type)}</span>`).join("")}</div>` : ""}
+        </div>
+      </td></tr>`;
     }
 
     async function loadDictionary() {

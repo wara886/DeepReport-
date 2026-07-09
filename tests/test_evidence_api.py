@@ -185,6 +185,10 @@ def test_hybrid_evidence_search_prioritizes_official_company_period_match(temp_d
     assert body["search_meta"]["mode"] == "hybrid"
     assert body["search_meta"]["fallback_used"] is True
     assert body["search_meta"]["dense"]["available"] is False
+    assert body["search_meta"]["coverage"]["evidence_ready"] is True
+    assert body["search_meta"]["coverage"]["quality_ready"] is True
+    assert "sec_edgar" in body["search_meta"]["coverage"]["returned_sources"]
+    assert body["search_meta"]["coverage"]["summary"]
     first = body["items"][0]["search"]
     assert first["company_match"] is True
     assert first["period_match"] is True
@@ -206,3 +210,5 @@ def test_hybrid_evidence_search_returns_empty_without_fabricated_evidence(temp_d
     body = response.json()
     assert body["items"] == []
     assert body["search_meta"]["mode_effective"] == "no_hits"
+    assert body["search_meta"]["coverage"]["evidence_ready"] is False
+    assert any(gap["type"] == "retrieval_failed" for gap in body["search_meta"]["coverage"]["gaps"])
