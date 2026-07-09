@@ -10,6 +10,7 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from src.db.models import ClaimEvidence, LLMRun, ReportClaim, ReportTask
+from src.services.report_task_service import ReportTaskNotFound
 
 
 VERIFIED_CLAIM_STATUSES = {"supported", "verified", "passed"}
@@ -145,6 +146,76 @@ class EvaluationService:
                 "recent_llm_runs": [_llm_run_row(run) for run in recent_llm_runs],
                 "notes": _notes(metrics),
             }
+
+    def task_diagnostics(self, task_id: str) -> dict[str, Any]:
+        """Return a task-scoped diagnosis that explains where the user should fix quality issues."""
+
+        with self.session_factory() as session:
+            task = session.scalar(
+                select(ReportTask)
+                .where(ReportTask.task_id == task_id)
+                .options(selectinload(ReportTask.claims).selectinload(ReportClaim.evidence_links).selectinload(ClaimEvidence.evidence_item))
+            )
+            if task is None:
+                raise ReportTaskNotFound(task_id)
+            claims = list(task.claims or [])
+            runs = list(
+                session.scalars(
+                    select(LLMRun)
+                    .where(LLMRun.task_id == task_id)
+                    .order_by(LLMRun.created_at.desc(), LLMRun.id.desc())
+                    .limit(50)
+                ).all()
+            )
+
+        quality_result = (task.metadata_json or {}).get("quality_result")
+        quality_result = quality_result if isinstance(quality_result, dict) else {}
+        delivery_gate = quality_result.get("delivery_gate") if isinstance(quality_result.get("delivery_gate"), dict) else {}
+        quality_issues = _top_quality_issues(quality_result)
+        issue_groups = _task_claim_issue_groups(claims)
+        model_issues = _task_model_issues(runs)
+        counters = {
+            "claim_count": len(claims),
+            "missing_evidence_count": len(issue_groups["missing_evidence"]),
+            "unsupported_claim_count": len(issue_groups["unsupported_claims"]),
+            "numeric_conflict_count": len(issue_groups["numeric_conflicts"]),
+            "citation_gap_count": len(issue_groups["citation_gaps"]),
+            "pending_review_count": len(issue_groups["pending_review"]),
+            "model_issue_count": len(model_issues),
+            "quality_issue_count": len(quality_issues),
+        }
+        blockers = _task_blockers(
+            task=task,
+            delivery_gate=delivery_gate,
+            quality_issues=quality_issues,
+            issue_groups=issue_groups,
+            model_issues=model_issues,
+        )
+        return {
+            "task": _task_diagnostic_header(task, delivery_gate),
+            "summary": {
+                **counters,
+                "delivery_pass": delivery_gate.get("delivery_pass"),
+                "quality_score": task.quality_score,
+                "traceable_claim_rate": _ratio(
+                    len(claims) - counters["missing_evidence_count"],
+                    len(claims),
+                ),
+                "verified_claim_rate": _ratio(
+                    sum(1 for claim in claims if claim.verification_status in VERIFIED_CLAIM_STATUSES),
+                    len(claims),
+                ),
+            },
+            "quality_gates": _task_quality_checks(task=task, delivery_gate=delivery_gate, counters=counters),
+            "blockers": blockers,
+            "claim_issues": {
+                key: [_claim_issue_row(claim) for claim in values[:12]]
+                for key, values in issue_groups.items()
+            },
+            "model_issues": model_issues,
+            "recommended_actions": _task_recommended_actions(counters=counters, blockers=blockers),
+            "quality_issues": [_quality_issue_row(item) for item in quality_issues[:10]],
+        }
 
 
 def _build_failure_counter(
@@ -318,6 +389,266 @@ def _notes(metrics: dict[str, Any]) -> list[str]:
     if metrics["llm_run_count"] == 0:
         notes.append("暂无模型运行记录，PromptOps 和质量门禁接入后会展示结构化输出有效率。")
     return notes
+
+
+def _task_diagnostic_header(task: ReportTask, delivery_gate: dict[str, Any]) -> dict[str, Any]:
+    metadata = task.metadata_json or {}
+    return {
+        "task_id": task.task_id,
+        "symbol": task.symbol,
+        "company_name": metadata.get("company_name") or task.symbol,
+        "period": task.period,
+        "report_type": task.report_type,
+        "status": task.status,
+        "quality_score": task.quality_score,
+        "delivery_pass": delivery_gate.get("delivery_pass"),
+        "updated_at": _dt(task.finished_at or task.started_at or task.created_at),
+    }
+
+
+def _task_claim_issue_groups(claims: list[ReportClaim]) -> dict[str, list[ReportClaim]]:
+    return {
+        "missing_evidence": [claim for claim in claims if not claim.evidence_links],
+        "unsupported_claims": [
+            claim for claim in claims if claim.verification_status in FAILED_CLAIM_STATUSES
+        ],
+        "numeric_conflicts": [claim for claim in claims if _is_failed_check(claim.numeric_check_status)],
+        "citation_gaps": [claim for claim in claims if _is_failed_check(claim.citation_check_status) or not claim.evidence_links],
+        "pending_review": [claim for claim in claims if claim.review_status == "pending"],
+    }
+
+
+def _task_model_issues(runs: list[LLMRun]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    for run in runs:
+        if run.status == "success" and run.schema_valid is not False and not run.fallback_used:
+            continue
+        if run.status != "success":
+            severity = "high"
+            reason = "模型运行失败"
+        elif run.schema_valid is False:
+            severity = "high"
+            reason = "结构化输出未通过校验"
+        else:
+            severity = "medium"
+            reason = "模型降级运行"
+        issues.append(
+            {
+                "run_id": run.run_id,
+                "label": _run_label(run),
+                "status": run.status,
+                "reason": reason,
+                "severity": severity,
+                "schema_valid": run.schema_valid,
+                "fallback_used": run.fallback_used,
+                "latency_ms": run.latency_ms,
+                "error_message": run.error_message,
+                "created_at": _dt(run.created_at),
+                "next_view": "promptops",
+            }
+        )
+    return issues[:12]
+
+
+def _task_blockers(
+    *,
+    task: ReportTask,
+    delivery_gate: dict[str, Any],
+    quality_issues: list[dict[str, Any]],
+    issue_groups: dict[str, list[ReportClaim]],
+    model_issues: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    blockers: list[dict[str, Any]] = []
+    if delivery_gate.get("delivery_pass") is False or task.status == "quality_failed":
+        blockers.append(
+            {
+                "key": "quality_gate_blocker",
+                "label": "质量门禁未通过",
+                "severity": "high",
+                "count": 1,
+                "description": "当前研报未达到正式交付条件，需要先处理下方主张、引用、数字或模型运行问题。",
+                "next_view": "tasks",
+            }
+        )
+    for key, label, description, next_view in [
+        ("missing_evidence", "证据链缺口", "部分主张没有绑定证据，正式报告可信度不足。", "claims"),
+        ("unsupported_claims", "主张未获支持", "部分主张未通过校验，需要补证据、改写或驳回。", "claims"),
+        ("numeric_conflicts", "数字不一致", "财务数字存在冲突，需要回到财务事实和原文证据修正。", "facts"),
+        ("citation_gaps", "引用缺失", "引用无法支撑主张，需补充来源或降低表述强度。", "claims"),
+        ("pending_review", "待人工复核", "仍有主张等待人工确认，正式导出前需要处理。", "claims"),
+    ]:
+        count = len(issue_groups.get(key) or [])
+        if count:
+            blockers.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "severity": "high" if key in {"unsupported_claims", "numeric_conflicts", "citation_gaps"} else "medium",
+                    "count": count,
+                    "description": description,
+                    "next_view": next_view,
+                }
+            )
+    if model_issues:
+        blockers.append(
+            {
+                "key": "model_issues",
+                "label": "模型运行问题",
+                "severity": "high" if any(item["severity"] == "high" for item in model_issues) else "medium",
+                "count": len(model_issues),
+                "description": "智能体调用存在失败、结构化输出无效或降级运行，需要到提示词运营查看调用细节。",
+                "next_view": "promptops",
+            }
+        )
+    for issue in quality_issues:
+        category = str(issue.get("category") or "quality_issue")
+        if any(item["key"] == category for item in blockers):
+            continue
+        blockers.append(
+            {
+                "key": category,
+                "label": _failure_label(category),
+                "severity": _failure_severity(category),
+                "count": 1,
+                "description": str(issue.get("message") or "质量检查发现问题。"),
+                "next_view": _failure_next_view(category),
+            }
+        )
+    return blockers[:12]
+
+
+def _task_quality_checks(*, task: ReportTask, delivery_gate: dict[str, Any], counters: dict[str, int]) -> list[dict[str, Any]]:
+    return [
+        _task_check(
+            "delivery_gate",
+            "交付门禁",
+            delivery_gate.get("delivery_pass"),
+            "报告是否达到正式交付条件。",
+        ),
+        _task_check(
+            "evidence_binding",
+            "证据绑定",
+            counters["missing_evidence_count"] == 0,
+            "每条关键主张都需要绑定可追溯证据。",
+            value=counters["missing_evidence_count"],
+        ),
+        _task_check(
+            "claim_verification",
+            "主张校验",
+            counters["unsupported_claim_count"] == 0,
+            "主张需要通过证据、数字和引用校验。",
+            value=counters["unsupported_claim_count"],
+        ),
+        _task_check(
+            "numeric_consistency",
+            "数字一致性",
+            counters["numeric_conflict_count"] == 0,
+            "研报中的财务数字不能与事实库或原文证据冲突。",
+            value=counters["numeric_conflict_count"],
+        ),
+        _task_check(
+            "citation_support",
+            "引用支持",
+            counters["citation_gap_count"] == 0,
+            "引用应能支撑对应主张。",
+            value=counters["citation_gap_count"],
+        ),
+        _task_check(
+            "model_health",
+            "模型运行",
+            counters["model_issue_count"] == 0,
+            "智能体调用和结构化输出应稳定可追踪。",
+            value=counters["model_issue_count"],
+        ),
+    ]
+
+
+def _task_check(key: str, label: str, passed: bool | None, description: str, *, value: Any = None) -> dict[str, Any]:
+    status = "pending" if passed is None else ("passed" if passed else "failed")
+    return {"key": key, "label": label, "passed": passed, "status": status, "value": value, "description": description}
+
+
+def _claim_issue_row(claim: ReportClaim) -> dict[str, Any]:
+    evidence_count = len(claim.evidence_links or [])
+    return {
+        "id": claim.id,
+        "task_id": claim.task_id,
+        "section_name": claim.section_name,
+        "claim_type": claim.claim_type,
+        "claim_text": claim.claim_text,
+        "review_status": claim.review_status,
+        "verification_status": claim.verification_status,
+        "numeric_check_status": claim.numeric_check_status,
+        "citation_check_status": claim.citation_check_status,
+        "evidence_count": evidence_count,
+        "evidence_titles": [
+            link.evidence_item.title or link.evidence_item.evidence_id
+            for link in claim.evidence_links[:3]
+            if link.evidence_item is not None
+        ],
+    }
+
+
+def _task_recommended_actions(*, counters: dict[str, int], blockers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    if counters["pending_review_count"] or counters["unsupported_claim_count"] or counters["citation_gap_count"]:
+        actions.append(
+            {
+                "label": "进入主张复核",
+                "view": "claims",
+                "reason": "处理待复核、未获支持和引用缺失的主张。",
+                "priority": "high",
+            }
+        )
+    if counters["numeric_conflict_count"]:
+        actions.append(
+            {
+                "label": "核对财务事实",
+                "view": "facts",
+                "reason": "修正数字冲突或补充原始财务事实来源。",
+                "priority": "high",
+            }
+        )
+    if counters["missing_evidence_count"]:
+        actions.append(
+            {
+                "label": "补充证据",
+                "view": "evidence",
+                "reason": "为无证据主张补充官方公告、年报或一手来源。",
+                "priority": "medium",
+            }
+        )
+    if counters["model_issue_count"]:
+        actions.append(
+            {
+                "label": "查看模型调用",
+                "view": "promptops",
+                "reason": "定位模型失败、结构化输出无效或降级运行。",
+                "priority": "medium",
+            }
+        )
+    if not actions and not blockers:
+        actions.append(
+            {
+                "label": "查看导出状态",
+                "view": "export",
+                "reason": "当前未发现明显质量阻塞，可检查正式导出条件。",
+                "priority": "low",
+            }
+        )
+    return actions
+
+
+def _quality_issue_row(issue: dict[str, Any]) -> dict[str, Any]:
+    category = str(issue.get("category") or "quality_issue")
+    severity = str(issue.get("severity") or _failure_severity(category))
+    return {
+        "category": category,
+        "label": _failure_label(category),
+        "severity": severity,
+        "message": str(issue.get("message") or issue.get("detail") or issue.get("reason") or "质量检查发现问题。"),
+        "next_view": _failure_next_view(category),
+    }
 
 
 def _gate(key: str, label: str, value: float | None, target: float, description: str) -> dict[str, Any]:

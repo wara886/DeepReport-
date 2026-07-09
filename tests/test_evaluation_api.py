@@ -170,3 +170,39 @@ def test_evaluation_summary_handles_empty_state(tmp_path):
     assert body["metrics"]["delivery_pass_rate"] == 0.0
     assert body["failure_categories"] == []
     assert "暂无研报任务" in body["notes"][0]
+
+
+def test_evaluation_task_diagnostics_explains_local_quality_blockers(tmp_path):
+    client, service = build_client(tmp_path)
+    seed_evaluation_state(service)
+
+    with client:
+        response = client.get("/api/evaluation/report-tasks/task-eval-bad/diagnostics")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["task"]["task_id"] == "task-eval-bad"
+    assert body["summary"]["delivery_pass"] is False
+    assert body["summary"]["missing_evidence_count"] == 1
+    assert body["summary"]["unsupported_claim_count"] == 1
+    assert body["summary"]["numeric_conflict_count"] == 1
+    assert body["summary"]["citation_gap_count"] == 1
+    assert body["summary"]["pending_review_count"] == 1
+    blocker_labels = {item["label"] for item in body["blockers"]}
+    assert "质量门禁未通过" in blocker_labels
+    assert "主张未获支持" in blocker_labels
+    assert "数字不一致" in blocker_labels
+    assert "引用缺失" in blocker_labels
+    assert body["claim_issues"]["numeric_conflicts"][0]["claim_text"] == "Tesla margin pressure will continue."
+    assert body["model_issues"][0]["reason"] == "模型运行失败"
+    action_views = {item["view"] for item in body["recommended_actions"]}
+    assert {"claims", "facts", "evidence", "promptops"}.issubset(action_views)
+
+
+def test_evaluation_task_diagnostics_returns_404_for_missing_task(tmp_path):
+    client, _service = build_client(tmp_path)
+
+    with client:
+        response = client.get("/api/evaluation/report-tasks/not-found/diagnostics")
+
+    assert response.status_code == 404

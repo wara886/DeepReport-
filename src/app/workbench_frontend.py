@@ -1132,6 +1132,13 @@ def render_workbench_html() -> str:
               </section>
             </div>
           </section>
+          <section class="panel dashboard-bottom" id="evaluationDiagnosticPanel">
+            <div class="panel-head">
+              <h2>单任务诊断</h2>
+              <button class="btn" data-jump="tasks">查看任务详情</button>
+            </div>
+            <div id="evaluationTaskDiagnostic"><div class="empty">从“最近研报质量”选择一个任务，查看质量问题、主张阻塞和处理入口。</div></div>
+          </section>
           <section class="panel dashboard-bottom">
             <div class="panel-head">
               <h2>最近模型与智能体运行</h2>
@@ -2750,6 +2757,7 @@ def render_workbench_html() -> str:
       renderEvaluationNotes(payload);
       bindJumpHandlers($("evaluation"));
       bindRecentTaskButtons($("evaluation"));
+      bindEvaluationDiagnosticButtons($("evaluation"));
     }
 
     function renderEvaluationGates(gates) {
@@ -2821,9 +2829,120 @@ def render_workbench_html() -> str:
             <td>${esc(percentText(task.traceable_claim_rate))}</td>
             <td>${esc(percentText(task.verified_claim_rate))}</td>
             <td>${esc(number(Number(task.issue_count || 0) + Number(task.citation_failed_count || 0) + Number(task.numeric_failed_count || 0) + Number(task.pending_review_count || 0)))}</td>
-            <td><button class="btn" data-task-detail-jump="${esc(task.task_id)}">查看分析包</button></td>
+            <td><div class="links"><button class="btn primary" data-evaluation-diagnostic="${esc(task.task_id)}">诊断</button><button class="btn" data-task-detail-jump="${esc(task.task_id)}">分析包</button></div></td>
           </tr>`).join("")
         : `<tr><td colspan="7">${emptyBox("暂无研报质量记录", [{ label: "创建研报任务", view: "tasks", className: "primary" }])}</td></tr>`;
+    }
+
+    function bindEvaluationDiagnosticButtons(root = document) {
+      root.querySelectorAll("[data-evaluation-diagnostic]").forEach((btn) => {
+        if (btn.dataset.boundEvaluationDiagnostic === "true") return;
+        btn.dataset.boundEvaluationDiagnostic = "true";
+        btn.addEventListener("click", () => loadEvaluationTaskDiagnostic(btn.dataset.evaluationDiagnostic));
+      });
+    }
+
+    async function loadEvaluationTaskDiagnostic(taskId) {
+      $("evaluationTaskDiagnostic").innerHTML = `<div class="empty">正在生成单任务诊断...</div>`;
+      try {
+        const payload = await getJson(`/api/evaluation/report-tasks/${encodeURIComponent(taskId)}/diagnostics`);
+        renderEvaluationTaskDiagnostic(payload);
+        $("evaluationDiagnosticPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (error) {
+        $("evaluationTaskDiagnostic").innerHTML = `<div class="error">诊断加载失败，请刷新后重试。</div>`;
+      }
+    }
+
+    function renderEvaluationTaskDiagnostic(payload) {
+      const task = payload.task || {};
+      const summary = payload.summary || {};
+      const blockers = payload.blockers || [];
+      const actions = payload.recommended_actions || [];
+      const claimIssues = payload.claim_issues || {};
+      const modelIssues = payload.model_issues || [];
+      const qualityIssues = payload.quality_issues || [];
+      $("evaluationTaskDiagnostic").innerHTML = `<div class="detail-section" style="border-top:0;margin-top:0;padding-top:0">
+          <div class="diagnostic-head">
+            <div>
+              <h3>${esc(task.company_name || task.symbol || "研报任务")} · ${esc(task.period || "-")}</h3>
+              <div class="score-note">${esc(task.symbol || "-")} · ${esc(reportTypeText(task.report_type))} · ${esc(fmt(task.updated_at))}</div>
+            </div>
+            <span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span>
+          </div>
+          <div class="analysis-stats" style="margin-top:10px">
+            <div class="analysis-stat"><span class="label">质量分</span><strong>${esc(scoreText(summary.quality_score))}</strong><span class="score-note">门禁：${esc(passText(summary.delivery_pass))}</span></div>
+            <div class="analysis-stat"><span class="label">证据覆盖</span><strong>${esc(percentText(summary.traceable_claim_rate))}</strong><span class="score-note">缺证据 ${esc(number(summary.missing_evidence_count))} 条</span></div>
+            <div class="analysis-stat"><span class="label">主张校验</span><strong>${esc(percentText(summary.verified_claim_rate))}</strong><span class="score-note">未支持 ${esc(number(summary.unsupported_claim_count))} 条</span></div>
+            <div class="analysis-stat"><span class="label">模型问题</span><strong>${esc(number(summary.model_issue_count))}</strong><span class="score-note">结构化、降级或失败运行</span></div>
+          </div>
+        </div>
+        <div class="detail-section"><h3>诊断结论</h3>${renderDiagnosticBlockers(blockers)}</div>
+        <div class="detail-section"><h3>建议动作</h3>${renderDiagnosticActions(actions)}</div>
+        <div class="detail-section"><h3>主张问题</h3>${renderDiagnosticClaimGroups(claimIssues)}</div>
+        <div class="detail-section"><h3>模型运行问题</h3>${renderDiagnosticModelIssues(modelIssues)}</div>
+        <div class="detail-section"><h3>质量检查原始问题</h3>${renderDiagnosticQualityIssues(qualityIssues)}</div>
+        ${systemInfoBlock("系统信息", [["任务编号", task.task_id]])}`;
+      bindJumpHandlers($("evaluationTaskDiagnostic"));
+    }
+
+    function renderDiagnosticBlockers(blockers) {
+      return blockers.length
+        ? `<div class="diagnostic-list">${blockers.map((item) => `<div class="diagnostic-issue ${esc(item.severity)}">
+            <div class="diagnostic-head"><strong>${esc(item.label)}</strong><span class="status ${esc(item.severity)}">${esc(signalSeverityText(item.severity))}</span></div>
+            <div>${esc(item.description || "")}</div>
+            <div class="score-note">${esc(number(item.count))} 项 · <button class="btn" data-jump="${esc(item.next_view || "evaluation")}">去处理</button></div>
+          </div>`).join("")}</div>`
+        : `<div class="empty">当前没有明显质量阻塞。</div>`;
+    }
+
+    function renderDiagnosticActions(actions) {
+      return actions.length
+        ? `<div class="action-list">${actions.map((item) => `<div class="action-item">
+            <div class="diagnostic-head"><strong>${esc(item.label)}</strong><span class="status ${esc(item.priority || "medium")}">${esc(signalSeverityText(item.priority || "medium"))}</span></div>
+            <div class="score-note">${esc(item.reason || "")}</div>
+            <div><button class="btn primary" data-jump="${esc(item.view || "tasks")}">前往处理</button></div>
+          </div>`).join("")}</div>`
+        : `<div class="empty">暂无建议动作。</div>`;
+    }
+
+    function renderDiagnosticClaimGroups(groups) {
+      const definitions = [
+        ["missing_evidence", "缺少证据"],
+        ["unsupported_claims", "未获支持"],
+        ["numeric_conflicts", "数字冲突"],
+        ["citation_gaps", "引用缺失"],
+        ["pending_review", "待人工复核"],
+      ];
+      const sections = definitions.map(([key, label]) => {
+        const items = groups[key] || [];
+        if (!items.length) return "";
+        return `<details class="detail-section" open><summary>${esc(label)} · ${esc(number(items.length))} 条</summary>
+          <div class="mini-list">${items.map((claim) => `<div class="mini-item">
+            <strong>主张 ${esc(claim.id)}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span>
+            <div>${esc(claim.claim_text || "")}</div>
+            <div class="score-note">校验：${esc(statusText(claim.verification_status))} · 数字：${esc(statusText(claim.numeric_check_status))} · 引用：${esc(statusText(claim.citation_check_status))} · 证据 ${esc(number(claim.evidence_count))} 条</div>
+          </div>`).join("")}</div>
+        </details>`;
+      }).filter(Boolean);
+      return sections.length ? sections.join("") : `<div class="empty">暂无主张级问题。</div>`;
+    }
+
+    function renderDiagnosticModelIssues(items) {
+      return items.length
+        ? `<div class="mini-list">${items.map((item) => `<div class="mini-item">
+            <div class="mini-title"><strong>${esc(item.label)}</strong><span class="status ${esc(item.severity)}">${esc(item.reason)}</span></div>
+            <div class="mini-meta">状态：${esc(statusText(item.status))} · 结构化输出：${esc(passText(item.schema_valid))} · ${esc(item.latency_ms == null ? "-" : item.latency_ms + " ms")} · ${esc(fmt(item.created_at))}</div>
+            ${item.error_message ? `<div class="text-block">${esc(item.error_message)}</div>` : ""}
+          </div>`).join("")}</div>`
+        : `<div class="empty">暂无模型运行问题。</div>`;
+    }
+
+    function renderDiagnosticQualityIssues(items) {
+      return items.length
+        ? `<div class="diagnostic-list">${items.map((item) => `<div class="diagnostic-issue ${esc(item.severity)}">
+            <span class="label">${esc(item.label)}</span><br>${esc(item.message)}
+          </div>`).join("")}</div>`
+        : `<div class="empty">暂无额外质量检查问题。</div>`;
     }
 
     function renderEvaluationRuns(runs) {

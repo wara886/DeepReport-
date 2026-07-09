@@ -225,6 +225,15 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/evaluation/report-tasks/{task_id}/diagnostics")
+    def evaluation_task_diagnostics(task_id: str) -> Response:
+        try:
+            return JSONResponse(content=_evaluation_service(app).task_diagnostics(task_id))
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.get("/api/workspaces")
     def list_workspaces(market: str | None = None, active_only: bool = False, limit: int = 50) -> Response:
         try:

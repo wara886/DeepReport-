@@ -12,5 +12,9 @@ def test_workbench_evaluation_center_is_productized_and_loads_api():
     assert "引用支持率" in html
     assert "模型运行成功率" in html
     assert "最近研报质量" in html
+    assert "单任务诊断" in html
+    assert "data-evaluation-diagnostic" in html
+    assert "/api/evaluation/report-tasks/" in html
+    assert "loadEvaluationTaskDiagnostic" in html
     assert "loadEvaluation" in html
     assert 'data-view="evaluation"><span>评测中心</span><span class="tag preview">预览</span></button>' in html
