@@ -52,3 +52,6 @@ def test_hybrid_retriever_falls_back_to_bm25_when_vector_unavailable(tmp_path):
     assert meta["dense"]["error"] == "vector unavailable"
     assert meta["mode_effective"] == "bm25"
     assert meta["fallback_used"] is True
+    assert meta["coverage"]["evidence_ready"] is True
+    assert meta["coverage"]["returned_sources"] == ["financials"]
+    assert any(gap["type"] == "fusion_degraded" for gap in meta["coverage"]["gaps"])

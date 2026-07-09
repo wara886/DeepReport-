@@ -8,6 +8,7 @@ from src.rag.bm25_retriever import BM25Retriever
 from src.rag.dense_retriever import DenseRetriever
 from src.rag.graph_retriever import GraphRetriever
 from src.rag.reranker_adapter import RerankerAdapter
+from src.rag.retrieval_diagnostics import build_retrieval_coverage
 from src.rag.rrf_fusion import reciprocal_rank_fusion
 from src.retrieval.chunking import chunk_records
 from src.retrieval.evidence_store import EvidenceStore
@@ -109,6 +110,12 @@ class HybridRetriever:
             "load_errors": store_meta.get("load_errors", []),
             "failure_reason": _failure_reason(records=records, returned=returned, symbol=symbol, period=period),
         }
+        meta["coverage"] = build_retrieval_coverage(
+            candidates=[record.to_dict() for record in records],
+            returned=returned,
+            company=symbol,
+            mode_effective=mode_effective,
+        )
         return returned, meta
 
 

@@ -55,6 +55,10 @@ def test_hybrid_retriever_contract_returns_hits_and_meta(tmp_path):
     assert meta["bm25_hit_count"] >= 1
     assert meta["returned_hit_count"] >= 1
     assert meta["retrieval_available"] is True
+    assert meta["coverage"]["evidence_ready"] is True
+    assert meta["coverage"]["returned_count"] == meta["returned_hit_count"]
+    assert "financials" in meta["coverage"]["returned_sources"]
+    assert meta["coverage"]["summary"]
 
 
 def test_legacy_retrieve_evidence_with_mode_uses_hybrid_layer(tmp_path):
@@ -74,3 +78,4 @@ def test_legacy_retrieve_evidence_with_mode_uses_hybrid_layer(tmp_path):
     assert meta["mode"] == "hybrid"
     assert "dense_hit_count" in meta
     assert "vector_hit_count" in meta
+    assert meta["coverage"]["evidence_ready"] is True
