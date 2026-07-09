@@ -616,6 +616,7 @@ def _task_data_source_health(*, session: Session, task: ReportTask, claims: list
         batch = batches_by_source.get(source_key)
         evidence_count = int(evidence_counter.get(source_key, 0))
         row = _source_health_row(
+            task=task,
             source_key=source_key,
             source=source,
             batch=batch,
@@ -737,6 +738,7 @@ def _latest_task_batch(*, session: Session, source_key: str, task: ReportTask) -
 
 def _source_health_row(
     *,
+    task: ReportTask,
     source_key: str,
     source: DataSource | None,
     batch: IngestionBatch | None,
@@ -772,6 +774,7 @@ def _source_health_row(
         "health_status": health_status,
         "reason": reason,
         "next_view": next_view,
+        "remediation_batch": _remediation_batch_payload(task=task, source_key=source_key, source_name=source_name),
     }
 
 
@@ -823,6 +826,35 @@ def _batch_row(batch: IngestionBatch | None) -> dict[str, Any] | None:
         "created_at": _dt(batch.created_at),
         "finished_at": _dt(batch.finished_at),
     }
+
+
+def _remediation_batch_payload(*, task: ReportTask, source_key: str, source_name: str) -> dict[str, Any]:
+    company_name = str((task.metadata_json or {}).get("company_name") or task.symbol)
+    query = " ".join(part for part in [task.symbol, company_name, task.period, _source_catalog_name(source_key)] if part)
+    return {
+        "name": f"{company_name} {task.period} {source_name} 补采集",
+        "source_key": source_key,
+        "target_type": _source_target_type(source_key),
+        "symbol": task.symbol,
+        "period": task.period,
+        "query": query,
+        "metadata": {
+            "source": "evaluation_diagnostic_remediation",
+            "task_id": task.task_id,
+            "company_name": company_name,
+            "reason": "补齐评测诊断中的证据缺口",
+        },
+    }
+
+
+def _source_target_type(source_key: str) -> str:
+    if source_key in {"sec_edgar", "cninfo_announcements", "hkex_announcements", "exchange_announcements"}:
+        return "filings"
+    if source_key in {"yahoo_finance", "eastmoney", "sina_finance"}:
+        return "market_data"
+    if source_key in {"serper", "tavily"}:
+        return "news"
+    return "documents"
 
 
 def _source_catalog_name(source_key: str) -> str:

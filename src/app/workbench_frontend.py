@@ -2903,6 +2903,7 @@ def render_workbench_html() -> str:
         ${systemInfoBlock("系统信息", [["任务编号", task.task_id]])}`;
       bindJumpHandlers($("evaluationTaskDiagnostic"));
       bindRecentTaskButtons($("evaluationTaskDiagnostic"));
+      bindRemediationBatchButtons($("evaluationTaskDiagnostic"));
     }
 
     function renderDiagnosticBlockers(blockers) {
@@ -2944,6 +2945,9 @@ def render_workbench_html() -> str:
         `<button class="btn" data-jump="datasources" data-datasource-query="${esc(item.source_key)}">配置来源</button>`,
         `<button class="btn" data-jump="ingestion" data-ingestion-source="${esc(item.source_key)}">查看采集</button>`,
       ];
+      if (canCreateRemediationBatch(item)) {
+        buttons.unshift(`<button class="btn primary" data-remediation-batch='${esc(JSON.stringify(item.remediation_batch || {}))}'>创建补采集批次</button>`);
+      }
       if (item.evidence_count > 0) buttons.push(`<button class="btn" data-jump="evidence">查看证据</button>`);
       return `<div class="mini-item source-health-row">
         <div class="mini-title">
@@ -2976,6 +2980,42 @@ def render_workbench_html() -> str:
         market_mismatch: "市场不匹配",
       };
       return textOf(map, value);
+    }
+
+    function canCreateRemediationBatch(item) {
+      return item?.remediation_batch && ["failed", "not_collected", "ready"].includes(String(item.health_status || ""));
+    }
+
+    function bindRemediationBatchButtons(root = document) {
+      root.querySelectorAll("[data-remediation-batch]").forEach((btn) => {
+        if (btn.dataset.boundRemediationBatch === "true") return;
+        btn.dataset.boundRemediationBatch = "true";
+        btn.addEventListener("click", () => createRemediationBatch(btn));
+      });
+    }
+
+    async function createRemediationBatch(btn) {
+      let payload = {};
+      try { payload = JSON.parse(btn.dataset.remediationBatch || "{}"); }
+      catch (error) { payload = {}; }
+      if (!payload.name || !payload.source_key) {
+        $("evaluationTaskDiagnostic").insertAdjacentHTML("afterbegin", `<div class="error">补采集参数缺失，请先查看采集任务或数据源配置。</div>`);
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "正在创建...";
+      try {
+        const created = await postJson("/api/ingestion-batches", payload);
+        $("evaluationTaskDiagnostic").insertAdjacentHTML("afterbegin", `<div class="empty">已创建补采集批次：${esc(created.name || created.batch_id)}</div>`);
+        activateView("ingestion");
+        $("ingestionSource").value = sourceText(created.source_key);
+        await loadIngestionBatches();
+        await loadIngestionDetail(created.batch_id);
+      } catch (error) {
+        btn.disabled = false;
+        btn.textContent = "创建补采集批次";
+        $("evaluationTaskDiagnostic").insertAdjacentHTML("afterbegin", `<div class="error">补采集批次创建失败，请检查数据源配置或稍后重试。</div>`);
+      }
     }
 
     function renderDiagnosticActions(actions) {

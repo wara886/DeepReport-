@@ -287,6 +287,13 @@ def test_evaluation_task_diagnostics_links_source_gaps_to_ingestion_and_datasour
     assert rows["sec_edgar"]["health_status"] == "failed"
     assert rows["sec_edgar"]["latest_batch"]["batch_id"] == "ing-sec-failed"
     assert rows["sec_edgar"]["latest_batch"]["error_message"] == "SEC timeout"
+    remediation = rows["sec_edgar"]["remediation_batch"]
+    assert remediation["source_key"] == "sec_edgar"
+    assert remediation["target_type"] == "filings"
+    assert remediation["symbol"] == "NVDA"
+    assert remediation["period"] == "FY2024"
+    assert remediation["metadata"]["task_id"] == "task-eval-source-gap"
+    assert remediation["metadata"]["source"] == "evaluation_diagnostic_remediation"
     assert rows["serper"]["health_status"] == "credential_required"
     assert rows["local_evidence"]["health_status"] == "not_configured"
     assert any(item["next_view"] == "ingestion" and item["source_key"] == "sec_edgar" for item in health["gaps"])

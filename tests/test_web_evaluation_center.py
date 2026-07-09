@@ -24,5 +24,8 @@ def test_workbench_evaluation_center_is_productized_and_loads_api():
     assert "renderDiagnosticDataSourceHealth" in html
     assert "data-datasource-query" in html
     assert "data-ingestion-source" in html
+    assert "创建补采集批次" in html
+    assert "data-remediation-batch" in html
+    assert "createRemediationBatch" in html
     assert "loadEvaluation" in html
     assert 'data-view="evaluation"><span>评测中心</span><span class="tag preview">预览</span></button>' in html
