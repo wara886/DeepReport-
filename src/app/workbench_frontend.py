@@ -269,6 +269,15 @@ def render_workbench_html() -> str:
     .chain-node-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
     .chain-edge { margin: 6px 0 6px 14px; color: var(--muted); font-size: 12px; }
     .chain-summary { border: 1px solid #cfe2f3; background: #f4f9ff; color: #18436b; border-radius: 8px; padding: 10px; font-size: 13px; line-height: 1.5; margin-bottom: 10px; }
+    .logic-flow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 10px 0; }
+    .logic-stage { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 10px; min-height: 118px; font-size: 12px; display: grid; align-content: start; gap: 6px; }
+    .logic-stage.done { border-color: rgba(22,128,60,.32); background: #f5fbf7; }
+    .logic-stage.missing { border-color: rgba(181,106,0,.34); background: #fffaf0; }
+    .logic-stage strong { font-size: 13px; overflow-wrap: anywhere; }
+    .logic-stage .count { font-size: 18px; font-weight: 700; }
+    .risk-path { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 10px; display: grid; gap: 8px; }
+    .transmission { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 12px; }
+    .transmission span { border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; background: #fff; }
     .action-list { display: grid; gap: 7px; }
     .action-item { border: 1px solid var(--line); border-radius: 8px; padding: 9px; background: #fbfcfd; display: grid; gap: 6px; font-size: 13px; }
     .reason-list { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
@@ -300,6 +309,7 @@ def render_workbench_html() -> str:
       .sidebar { position: static; height: auto; display: block; }
       .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .work-layout, .dashboard-layout, .dashboard-charts, .cards, .placeholder-grid { grid-template-columns: 1fr; }
+      .logic-flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .detail { position: static; max-height: none; }
     }
     @media (max-width: 760px) {
@@ -307,6 +317,7 @@ def render_workbench_html() -> str:
       .content { padding: 14px 16px 22px; }
       .nav { grid-template-columns: 1fr; }
       .form-grid { grid-template-columns: 1fr; }
+      .logic-flow { grid-template-columns: 1fr; }
       .filters input, .filters select { width: 100%; }
       table { min-width: 820px; }
       .table-scroll { overflow-x: auto; }
@@ -3843,11 +3854,19 @@ def render_workbench_html() -> str:
     function renderArgumentChain(chain) {
       const nodes = chain.nodes || [];
       const edges = chain.edges || [];
+      const flow = chain.flow || [];
+      const gaps = chain.gaps || [];
+      const readiness = chain.readiness || {};
+      const actions = chain.recommended_actions || [];
       return `<div class="detail-section"><h3>投资逻辑链</h3>
         <div class="chain-summary">${esc(chain.summary || "尚未形成投资逻辑链。")}</div>
+        ${readiness.summary ? `<div class="diagnostic-meta"><span>闭环进度：${esc(number(readiness.completed_stage_count || 0))} / ${esc(number(readiness.total_stage_count || 0))}</span><span>缺口：${esc(number(readiness.gap_count || 0))}</span></div>` : ""}
+        ${renderArgumentFlow(flow)}
+        ${renderChainGaps(gaps, actions)}
         <div class="chain-list">${nodes.length ? nodes.slice(0, 8).map((node) => {
           const outgoing = edges.filter((edge) => edge.from === node.id).slice(0, 2);
-          return `<div class="chain-node"><div class="chain-node-head"><strong>${esc(node.title || node.id)}</strong><span class="status ${esc(node.type || "neutral")}">${esc(chainNodeTypeText(node.type))}</span></div>${outgoing.map((edge) => `<div class="chain-edge">→ ${esc(edge.label || "关联")} → ${esc(chainTargetTitle(edge.to, nodes))}</div>`).join("")}</div>`;
+          const evidenceText = renderEvidenceIds(node.evidence_ids || []);
+          return `<div class="chain-node"><div class="chain-node-head"><strong>${esc(node.title || node.id)}</strong><span class="status ${esc(node.type || "neutral")}">${esc(node.stage_label || chainNodeTypeText(node.type))}</span></div><div class="score-note">${esc(node.description || "")}</div>${evidenceText}${outgoing.map((edge) => `<div class="chain-edge">→ ${esc(edge.label || "关联")} → ${esc(chainTargetTitle(edge.to, nodes))}</div>`).join("")}</div>`;
         }).join("") : `<div class="empty">暂无可展示链路。导入证据、财务事实和投资线索后会自动补全。</div>`}</div>
       </div>`;
     }
@@ -3855,10 +3874,68 @@ def render_workbench_html() -> str:
     function renderRiskChain(chain) {
       const nodes = chain.nodes || [];
       const risks = nodes.filter((node) => node.type === "risk");
+      const paths = chain.exposure_paths || [];
+      const gaps = chain.gaps || [];
+      const readiness = chain.readiness || {};
+      const actions = chain.recommended_actions || [];
       return `<div class="detail-section"><h3>风险传导链</h3>
         <div class="chain-summary">${esc(chain.summary || "尚未识别风险传导节点。")}</div>
-        <div class="mini-list">${risks.length ? risks.slice(0, 5).map((node) => `<div class="mini-item"><strong>${esc(node.title || "风险线索")}</strong><br><span class="label">${esc(signalSeverityText(node.payload?.severity || ""))} · ${esc(signalDirectionText(node.payload?.direction || ""))}</span><br>${esc(node.payload?.summary || "")}</div>`).join("") : `<div class="empty">暂无风险线索，可先在投资线索页生成。</div>`}</div>
+        ${readiness.summary ? `<div class="diagnostic-meta"><span>支撑绑定 ${esc(number(readiness.support_bound_count ?? readiness.evidence_bound_count ?? 0))} / ${esc(number(readiness.risk_count || 0))}</span><span>缺口 ${esc(number(readiness.gap_count || 0))}</span></div>` : ""}
+        ${renderRiskPaths(paths)}
+        ${renderChainGaps(gaps, actions)}
+        <div class="mini-list">${risks.length ? risks.slice(0, 5).map((node) => `<div class="mini-item"><strong>${esc(node.title || "风险线索")}</strong><br><span class="label">${esc(signalSeverityText(node.payload?.severity || ""))} · ${esc(signalDirectionText(node.payload?.direction || ""))}</span><br>${esc(node.payload?.summary || "")}${renderEvidenceIds(node.evidence_ids || [])}</div>`).join("") : `<div class="empty">暂无风险线索，可先在投资线索页生成。</div>`}</div>
       </div>`;
+    }
+
+    function renderArgumentFlow(flow) {
+      if (!flow.length) return "";
+      return `<div class="logic-flow">${flow.map((stage) => `<div class="logic-stage ${esc(stage.status || "missing")}">
+        <span class="label">${esc(stage.label || stage.key)}</span>
+        <span class="count">${esc(number(stage.count || 0))}</span>
+        <strong>${esc(stage.title || stage.label || "")}</strong>
+        <span class="score-note">${esc(stage.description || "")}</span>
+        ${renderEvidenceIds(stage.evidence_ids || [])}
+      </div>`).join("")}</div>`;
+    }
+
+    function renderChainGaps(gaps, actions) {
+      if (!gaps.length && !actions.length) return "";
+      const gapHtml = gaps.length
+        ? `<div class="mini-list">${gaps.slice(0, 4).map((gap) => `<div class="mini-item"><strong>${esc(gap.label || "待补齐")}</strong><br>${esc(gap.description || "")}</div>`).join("")}</div>`
+        : `<div class="empty">当前链路没有明显缺口。</div>`;
+      const actionHtml = actions.length
+        ? `<div class="links" style="margin-top:10px">${actions.slice(0, 4).map((action) => `<button class="btn" data-jump="${esc(action.view || "tasks")}">${esc(action.label || "处理")}</button>`).join("")}</div>`
+        : "";
+      return `<div class="chain-node"><div class="chain-node-head"><strong>链路缺口</strong><span class="status ${gaps.length ? "pending" : "passed"}">${esc(gaps.length ? "需处理" : "已闭环")}</span></div>${gapHtml}${actionHtml}</div>`;
+    }
+
+    function renderRiskPaths(paths) {
+      if (!paths.length) return "";
+      return `<div class="mini-list">${paths.slice(0, 4).map((path) => {
+        const claims = path.affected_claims || [];
+        const binding = path.evidence_binding || {};
+        const transmission = path.transmission || [];
+        return `<div class="risk-path">
+          <div class="diagnostic-head"><strong>${esc(path.title || "风险线索")}</strong><span class="status ${binding.ready ? "passed" : "failed"}">${esc(riskBindingText(binding))}</span></div>
+          <div class="score-note">${esc(path.summary || "")}</div>
+          ${renderEvidenceIds(binding.evidence_ids || [])}
+          ${binding.source_fact_id && !(binding.evidence_ids || []).length ? `<div class="reason-list"><span class="reason-pill">财务事实 ${esc(binding.source_fact_id)}</span></div>` : ""}
+          <div class="transmission">${transmission.map((item) => `<span>${esc(item.stage || "")}：${esc(item.text || "")}</span>`).join("")}</div>
+          ${claims.length ? `<div class="mini-list">${claims.slice(0, 3).map((claim) => `<div class="mini-item"><strong>${esc(claim.section_name || "报告章节")}</strong><br>${esc(claim.claim_text || "")}<br><span class="label">校验：${esc(statusText(claim.verification_status))}</span></div>`).join("")}</div>` : `<div class="empty">该风险还没有承接到研报主张。</div>`}
+        </div>`;
+      }).join("")}</div>`;
+    }
+
+    function renderEvidenceIds(ids) {
+      const values = (ids || []).filter(Boolean);
+      if (!values.length) return "";
+      return `<div class="reason-list">${values.slice(0, 4).map((id) => `<span class="reason-pill">证据 ${esc(id)}</span>`).join("")}${values.length > 4 ? `<span class="reason-pill">+${esc(number(values.length - 4))}</span>` : ""}</div>`;
+    }
+
+    function riskBindingText(binding) {
+      if (!binding?.ready) return "支撑待补齐";
+      if (binding.support_type === "financial_fact") return "已绑定财务事实";
+      return "证据已绑定";
     }
 
     function renderRecommendedActions(actions) {
@@ -3878,7 +3955,7 @@ def render_workbench_html() -> str:
     }
 
     function chainNodeTypeText(value) {
-      const map = { evidence: "证据", fact: "事实", signal: "线索", claim: "主张", company: "公司", risk: "风险" };
+      const map = { evidence: "事件", fact: "财务事实", signal: "投资线索", claim: "Claim", company: "实体", risk: "风险线索", report_section: "报告章节" };
       return textOf(map, value);
     }
 

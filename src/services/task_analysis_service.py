@@ -119,6 +119,7 @@ class TaskAnalysisService:
             company_name=company_name,
             symbol=symbol,
             period=period,
+            facts=fact_payloads,
             signals=signal_payloads,
             claims=claim_payloads,
             evidence=evidence_payloads,
@@ -273,7 +274,7 @@ def _signals_for_task(
 
 
 def _serialize_evidence(item: EvidenceItem) -> dict[str, Any]:
-    claims = [link.claim for link in item.claim_links]
+    claims = [link.claim for link in item.claim_links if link.claim is not None]
     metadata = item.metadata_json or {}
     return {
         "id": item.id,
@@ -603,15 +604,16 @@ def _build_argument_chain(
     signal_nodes = _top_signals(signals)
     claim_nodes = _top_claims(claims)
     evidence_nodes = _top_evidence(evidence)
+    fact_evidence_by_id = _fact_evidence_lookup(fact_nodes)
     for item in evidence_nodes:
-        nodes.append({"id": f"evidence:{item['evidence_id']}", "type": "evidence", "title": item.get("title") or item["evidence_id"], "payload": item})
+        nodes.append(_chain_node("evidence", f"evidence:{item['evidence_id']}", item.get("title") or item["evidence_id"], item, evidence_ids=[item.get("evidence_id")]))
     for item in fact_nodes:
-        nodes.append({"id": f"fact:{item['id']}", "type": "fact", "title": _fact_title(item), "payload": item})
+        nodes.append(_chain_node("fact", f"fact:{item['id']}", _fact_title(item), item, evidence_ids=_fact_evidence_ids(item)))
         ev = (item.get("evidence") or {}).get("evidence_id")
         if ev:
             edges.append({"from": f"evidence:{ev}", "to": f"fact:{item['id']}", "label": "支持事实"})
     for item in signal_nodes:
-        nodes.append({"id": f"signal:{item['id']}", "type": "signal", "title": item.get("title") or item.get("signal_id"), "payload": item})
+        nodes.append(_chain_node("signal", f"signal:{item['id']}", item.get("title") or item.get("signal_id"), item, evidence_ids=_signal_evidence_ids(item, fact_evidence_by_id=fact_evidence_by_id)))
         fact = item.get("source_fact") or {}
         if fact.get("id"):
             edges.append({"from": f"fact:{fact['id']}", "to": f"signal:{item['id']}", "label": "触发线索"})
@@ -619,25 +621,49 @@ def _build_argument_chain(
         if ev:
             edges.append({"from": f"evidence:{ev}", "to": f"signal:{item['id']}", "label": "提供证据"})
     for item in claim_nodes:
-        nodes.append({"id": f"claim:{item['id']}", "type": "claim", "title": item.get("claim_text") or f"主张 {item['id']}", "payload": item})
+        nodes.append(_chain_node("claim", f"claim:{item['id']}", item.get("claim_text") or f"主张 {item['id']}", item, evidence_ids=_claim_evidence_ids(item)))
         for ev in item.get("evidence") or []:
             evidence_id = ev.get("evidence_id")
             if evidence_id:
                 edges.append({"from": f"evidence:{evidence_id}", "to": f"claim:{item['id']}", "label": "支撑主张"})
         if signal_nodes:
             edges.append({"from": f"signal:{signal_nodes[0]['id']}", "to": f"claim:{item['id']}", "label": "进入研报观点"})
+    report_sections = _report_sections_from_claims(claim_nodes)
+    for section in report_sections:
+        node_id = f"section:{section['name']}"
+        nodes.append(_chain_node("report_section", node_id, section["name"], section, evidence_ids=section["evidence_ids"]))
+        for claim_id in section["claim_ids"]:
+            edges.append({"from": f"claim:{claim_id}", "to": node_id, "label": "写入报告章节"})
     completeness = {
         "has_evidence": bool(evidence_nodes),
         "has_facts": bool(fact_nodes),
         "has_signals": bool(signal_nodes),
         "has_claims": bool(claim_nodes),
+        "has_report_sections": bool(report_sections),
         "edge_count": len(edges),
     }
+    flow = _argument_flow(
+        company_name=company_name,
+        symbol=symbol,
+        period=period,
+        evidence=evidence_nodes,
+        facts=fact_nodes,
+        signals=signal_nodes,
+        claims=claim_nodes,
+        report_sections=report_sections,
+        fact_evidence_by_id=fact_evidence_by_id,
+    )
+    gaps = _argument_gaps(flow)
+    readiness = _chain_readiness(flow, gaps=gaps)
     return {
         "title": f"{company_name or symbol} {period} 投资逻辑链",
-        "summary": _argument_summary(company_name=company_name, symbol=symbol, period=period, nodes=nodes, edges=edges),
+        "summary": _argument_summary(company_name=company_name, symbol=symbol, period=period, nodes=nodes, edges=edges, readiness=readiness),
         "nodes": nodes,
         "edges": edges,
+        "flow": flow,
+        "gaps": gaps,
+        "readiness": readiness,
+        "recommended_actions": _argument_actions(gaps),
         "completeness": completeness,
     }
 
@@ -647,10 +673,12 @@ def _build_risk_chain(
     company_name: str,
     symbol: str,
     period: str,
+    facts: list[dict[str, Any]],
     signals: list[dict[str, Any]],
     claims: list[dict[str, Any]],
     evidence: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    fact_evidence_by_id = _fact_evidence_lookup(facts)
     risk_signals = [
         item
         for item in signals
@@ -663,17 +691,17 @@ def _build_risk_chain(
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
     root_id = f"company:{symbol or company_name}"
-    nodes.append({"id": root_id, "type": "company", "title": company_name or symbol, "payload": {"symbol": symbol, "period": period}})
+    nodes.append(_chain_node("company", root_id, company_name or symbol, {"symbol": symbol, "period": period}, evidence_ids=[]))
     for signal in risk_signals[:6]:
         sid = f"risk:{signal['id']}"
-        nodes.append({"id": sid, "type": "risk", "title": signal.get("title") or signal.get("signal_id"), "payload": signal})
+        nodes.append(_chain_node("risk", sid, signal.get("title") or signal.get("signal_id"), signal, evidence_ids=_signal_evidence_ids(signal, fact_evidence_by_id=fact_evidence_by_id)))
         edges.append({"from": root_id, "to": sid, "label": "暴露风险"})
         ev = (signal.get("evidence") or {}).get("evidence_id")
         if ev:
             ev_node = f"evidence:{ev}"
             if not any(node["id"] == ev_node for node in nodes):
                 match = next((item for item in evidence if item.get("evidence_id") == ev), {"evidence_id": ev, "title": ev})
-                nodes.append({"id": ev_node, "type": "evidence", "title": match.get("title") or ev, "payload": match})
+                nodes.append(_chain_node("evidence", ev_node, match.get("title") or ev, match, evidence_ids=[ev]))
             edges.append({"from": ev_node, "to": sid, "label": "风险证据"})
     risk_claims = [
         item
@@ -684,14 +712,28 @@ def _build_risk_chain(
     ][:5]
     for claim in risk_claims:
         cid = f"claim:{claim['id']}"
-        nodes.append({"id": cid, "type": "claim", "title": claim.get("claim_text") or f"主张 {claim['id']}", "payload": claim})
+        nodes.append(_chain_node("claim", cid, claim.get("claim_text") or f"主张 {claim['id']}", claim, evidence_ids=_claim_evidence_ids(claim)))
         if risk_signals:
             edges.append({"from": f"risk:{risk_signals[0]['id']}", "to": cid, "label": "影响表述"})
+    exposure_paths = _risk_exposure_paths(risk_signals=risk_signals, claims=risk_claims, evidence=evidence, fact_evidence_by_id=fact_evidence_by_id)
+    gaps = _risk_gaps(risk_signals=risk_signals, exposure_paths=exposure_paths)
+    readiness = {
+        "ready": bool(risk_signals) and not gaps,
+        "risk_count": len(risk_signals),
+        "evidence_bound_count": len([item for item in exposure_paths if item.get("evidence_binding", {}).get("ready")]),
+        "support_bound_count": len([item for item in exposure_paths if item.get("evidence_binding", {}).get("ready")]),
+        "gap_count": len(gaps),
+        "summary": _risk_readiness_summary(risk_signals=risk_signals, gaps=gaps, exposure_paths=exposure_paths),
+    }
     return {
         "title": f"{company_name or symbol} {period} 风险传导链",
         "summary": _risk_summary(risk_signals=risk_signals, claims=risk_claims),
         "nodes": nodes,
         "edges": edges,
+        "exposure_paths": exposure_paths,
+        "gaps": gaps,
+        "readiness": readiness,
+        "recommended_actions": _risk_actions(gaps),
         "risk_count": len(risk_signals),
     }
 
@@ -1225,10 +1267,384 @@ def _fact_title(item: dict[str, Any]) -> str:
     return f"{metric} {value}{unit} {period}".strip()
 
 
-def _argument_summary(*, company_name: str, symbol: str, period: str, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> str:
+def _chain_node(
+    node_type: str,
+    node_id: str,
+    title: Any,
+    payload: dict[str, Any],
+    *,
+    evidence_ids: list[str | None],
+) -> dict[str, Any]:
+    clean_evidence_ids = [str(item) for item in evidence_ids if item]
+    return {
+        "id": node_id,
+        "type": node_type,
+        "stage": _chain_stage(node_type),
+        "stage_label": _chain_stage_label(node_type),
+        "title": str(title or _chain_stage_label(node_type)),
+        "description": _chain_node_description(node_type, payload),
+        "evidence_ids": clean_evidence_ids,
+        "evidence_bound": bool(clean_evidence_ids),
+        "payload": payload,
+    }
+
+
+def _chain_stage(node_type: str) -> str:
+    mapping = {
+        "company": "entity",
+        "evidence": "event",
+        "fact": "financial_fact",
+        "signal": "investment_signal",
+        "risk": "investment_signal",
+        "claim": "claim",
+        "report_section": "report_section",
+    }
+    return mapping.get(node_type, node_type)
+
+
+def _chain_stage_label(node_type: str) -> str:
+    mapping = {
+        "company": "实体",
+        "evidence": "事件",
+        "fact": "财务事实",
+        "signal": "投资线索",
+        "risk": "风险线索",
+        "claim": "Claim",
+        "report_section": "报告章节",
+    }
+    return mapping.get(node_type, node_type)
+
+
+def _chain_node_description(node_type: str, payload: dict[str, Any]) -> str:
+    if node_type == "evidence":
+        source = _source_label(str(payload.get("source_type") or ""))
+        doc = payload.get("document") if isinstance(payload.get("document"), dict) else {}
+        title = doc.get("title") or payload.get("title") or "证据"
+        return f"{source}：{title}"
+    if node_type == "fact":
+        return f"{payload.get('metric_name') or '指标'} 已结构化，口径为 {payload.get('period') or '未记录期间'}。"
+    if node_type in {"signal", "risk"}:
+        return str(payload.get("research_brief") or payload.get("summary") or "线索需要结合证据和人工复核使用。")
+    if node_type == "claim":
+        section = payload.get("section_name") or "未分配章节"
+        status = payload.get("verification_status") or "未校验"
+        return f"报告章节：{section}；校验状态：{status}。"
+    if node_type == "report_section":
+        return f"汇总 {payload.get('claim_count', 0)} 条主张，关联 {len(payload.get('evidence_ids') or [])} 条证据。"
+    if node_type == "company":
+        return f"{payload.get('symbol') or '目标公司'} {payload.get('period') or ''} 研报分析对象。".strip()
+    return ""
+
+
+def _fact_evidence_ids(item: dict[str, Any]) -> list[str]:
+    evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+    return [str(evidence.get("evidence_id"))] if evidence.get("evidence_id") else []
+
+
+def _fact_evidence_lookup(facts: list[dict[str, Any]]) -> dict[str, list[str]]:
+    lookup: dict[str, list[str]] = {}
+    for fact in facts:
+        fact_id = fact.get("id")
+        if fact_id is None:
+            continue
+        lookup[str(fact_id)] = _fact_evidence_ids(fact)
+    return lookup
+
+
+def _signal_evidence_ids(item: dict[str, Any], *, fact_evidence_by_id: dict[str, list[str]] | None = None) -> list[str]:
+    ids: list[str] = []
+    evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+    if evidence.get("evidence_id"):
+        ids.append(str(evidence.get("evidence_id")))
+    fact = item.get("source_fact") if isinstance(item.get("source_fact"), dict) else {}
+    for evidence_id in _fact_evidence_ids(fact):
+        if evidence_id not in ids:
+            ids.append(evidence_id)
+    fact_id = fact.get("id")
+    if fact_id is not None and fact_evidence_by_id:
+        for evidence_id in fact_evidence_by_id.get(str(fact_id), []):
+            if evidence_id not in ids:
+                ids.append(evidence_id)
+    return ids
+
+
+def _report_sections_from_claims(claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    sections: dict[str, dict[str, Any]] = {}
+    for claim in claims:
+        name = str(claim.get("section_name") or "未分配章节")
+        row = sections.setdefault(name, {"name": name, "claim_ids": [], "evidence_ids": [], "claim_count": 0})
+        row["claim_count"] += 1
+        row["claim_ids"].append(claim.get("id"))
+        for evidence_id in _claim_evidence_ids(claim):
+            if evidence_id not in row["evidence_ids"]:
+                row["evidence_ids"].append(evidence_id)
+    return list(sections.values())[:8]
+
+
+def _argument_flow(
+    *,
+    company_name: str,
+    symbol: str,
+    period: str,
+    evidence: list[dict[str, Any]],
+    facts: list[dict[str, Any]],
+    signals: list[dict[str, Any]],
+    claims: list[dict[str, Any]],
+    report_sections: list[dict[str, Any]],
+    fact_evidence_by_id: dict[str, list[str]],
+) -> list[dict[str, Any]]:
+    return [
+        _flow_stage(
+            key="entity",
+            label="实体",
+            count=1 if company_name or symbol else 0,
+            title=company_name or symbol or "未识别公司",
+            description=f"确定本次研报对象和期间：{symbol or company_name} / {period or '未记录期间'}。",
+        ),
+        _flow_stage(
+            key="event",
+            label="事件",
+            count=len(evidence),
+            title=_first_title(evidence, fallback="披露事件 / 资料来源"),
+            description="把年报、公告、披露或导入资料作为分析事件来源。",
+            evidence_ids=[item.get("evidence_id") for item in evidence],
+        ),
+        _flow_stage(
+            key="financial_fact",
+            label="财务事实",
+            count=len(facts),
+            title=_first_title(facts, title_fn=_fact_title, fallback="结构化指标"),
+            description="从证据中抽取可复核的指标、期间、单位和数值。",
+            evidence_ids=[evidence_id for item in facts for evidence_id in _fact_evidence_ids(item)],
+        ),
+        _flow_stage(
+            key="investment_signal",
+            label="投资线索",
+            count=len(signals),
+            title=_first_title(signals, fallback="风险 / 机会线索"),
+            description="用规则线索把财务事实转换为需要研究员处理的研判点。",
+            evidence_ids=[evidence_id for item in signals for evidence_id in _signal_evidence_ids(item, fact_evidence_by_id=fact_evidence_by_id)],
+        ),
+        _flow_stage(
+            key="claim",
+            label="Claim",
+            count=len(claims),
+            title=_first_title(claims, title_key="claim_text", fallback="研报主张"),
+            description="把线索落到可校验、可复核、可引用的研报主张。",
+            evidence_ids=[evidence_id for item in claims for evidence_id in _claim_evidence_ids(item)],
+        ),
+        _flow_stage(
+            key="report_section",
+            label="报告章节",
+            count=len(report_sections),
+            title=_first_title(report_sections, title_key="name", fallback="报告章节"),
+            description="主张进入报告章节后，才能形成面向交付的论证闭环。",
+            evidence_ids=[evidence_id for item in report_sections for evidence_id in item.get("evidence_ids", [])],
+        ),
+    ]
+
+
+def _flow_stage(
+    *,
+    key: str,
+    label: str,
+    count: int,
+    title: str,
+    description: str,
+    evidence_ids: list[Any] | None = None,
+) -> dict[str, Any]:
+    clean_evidence_ids = [str(item) for item in (evidence_ids or []) if item]
+    return {
+        "key": key,
+        "label": label,
+        "status": "done" if count > 0 else "missing",
+        "count": count,
+        "title": title,
+        "description": description,
+        "evidence_ids": clean_evidence_ids[:12],
+        "evidence_bound": bool(clean_evidence_ids),
+    }
+
+
+def _first_title(
+    items: list[dict[str, Any]],
+    *,
+    title_key: str = "title",
+    title_fn: Callable[[dict[str, Any]], str] | None = None,
+    fallback: str,
+) -> str:
+    if not items:
+        return fallback
+    if title_fn is not None:
+        return title_fn(items[0])
+    return str(items[0].get(title_key) or fallback)
+
+
+def _argument_gaps(flow: list[dict[str, Any]]) -> list[dict[str, str]]:
+    labels = {
+        "event": ("补充资料事件", "需要采集或导入公司、期间相关的年报、公告或一手资料。", "evidence"),
+        "financial_fact": ("抽取财务事实", "缺少结构化财务事实，无法把证据转成可计算指标。", "facts"),
+        "investment_signal": ("生成投资线索", "缺少从事实到研判点的转换，报告结论会缺少解释。", "signals"),
+        "claim": ("补齐研报主张", "缺少可校验 Claim，无法证明报告段落是否有证据支撑。", "claims"),
+        "report_section": ("落到报告章节", "主张还没有进入报告章节，交付前需要补齐章节归属和引用。", "claims"),
+    }
+    gaps: list[dict[str, str]] = []
+    for item in flow:
+        if item["key"] == "entity" or item["status"] == "done":
+            continue
+        label, description, view = labels[item["key"]]
+        gaps.append({"key": item["key"], "label": label, "description": description, "view": view})
+    return gaps
+
+
+def _chain_readiness(flow: list[dict[str, Any]], *, gaps: list[dict[str, str]]) -> dict[str, Any]:
+    done_count = len([item for item in flow if item.get("status") == "done"])
+    ready = not gaps and done_count == len(flow)
+    return {
+        "ready": ready,
+        "completed_stage_count": done_count,
+        "total_stage_count": len(flow),
+        "gap_count": len(gaps),
+        "summary": "投资逻辑链已形成完整闭环。" if ready else f"投资逻辑链已完成 {done_count} / {len(flow)} 个阶段，仍需处理 {len(gaps)} 个缺口。",
+    }
+
+
+def _argument_actions(gaps: list[dict[str, str]]) -> list[dict[str, str]]:
+    if not gaps:
+        return [{"label": "抽查论证链", "view": "claims", "reason": "证据、事实、线索、主张和章节已经形成闭环，导出前建议抽查关键段落。"}]
+    return [{"label": gap["label"], "view": gap["view"], "reason": gap["description"]} for gap in gaps[:4]]
+
+
+def _risk_exposure_paths(
+    *,
+    risk_signals: list[dict[str, Any]],
+    claims: list[dict[str, Any]],
+    evidence: list[dict[str, Any]],
+    fact_evidence_by_id: dict[str, list[str]],
+) -> list[dict[str, Any]]:
+    paths: list[dict[str, Any]] = []
+    for signal in risk_signals[:6]:
+        evidence_ids = _signal_evidence_ids(signal, fact_evidence_by_id=fact_evidence_by_id)
+        signal_claims = _claims_for_risk_signal(signal=signal, claims=claims, fact_evidence_by_id=fact_evidence_by_id)
+        fact = signal.get("source_fact") if isinstance(signal.get("source_fact"), dict) else {}
+        fact_bound = bool(fact.get("id"))
+        matched_evidence = _evidence_for_ids(evidence, evidence_ids)
+        paths.append(
+            {
+                "signal_id": signal.get("signal_id"),
+                "title": signal.get("title") or "风险线索",
+                "severity": signal.get("severity"),
+                "direction": signal.get("direction"),
+                "summary": signal.get("summary"),
+                "source_fact": {"id": fact.get("id"), "title": _fact_title(fact)} if fact else None,
+                "evidence_binding": {
+                    "ready": bool(evidence_ids) or fact_bound,
+                    "evidence_ids": evidence_ids,
+                    "source_fact_id": fact.get("id") if fact_bound else None,
+                    "support_type": "evidence" if evidence_ids else ("financial_fact" if fact_bound else "missing"),
+                    "sources": [_source_label(str(item.get("source_type") or "")) for item in matched_evidence],
+                    "summary": _risk_support_summary(evidence_ids=evidence_ids, fact_bound=fact_bound),
+                },
+                "affected_claims": [
+                    {
+                        "id": claim.get("id"),
+                        "section_name": claim.get("section_name"),
+                        "claim_text": claim.get("claim_text"),
+                        "verification_status": claim.get("verification_status"),
+                        "evidence_ids": _claim_evidence_ids(claim),
+                    }
+                    for claim in signal_claims[:4]
+                ],
+                "affected_sections": sorted({str(claim.get("section_name") or "未分配章节") for claim in signal_claims}),
+                "transmission": _risk_transmission(signal=signal, fact=fact, claims=signal_claims, evidence_ids=evidence_ids),
+            }
+        )
+    return paths
+
+
+def _claims_for_risk_signal(*, signal: dict[str, Any], claims: list[dict[str, Any]], fact_evidence_by_id: dict[str, list[str]]) -> list[dict[str, Any]]:
+    signal_evidence = set(_signal_evidence_ids(signal, fact_evidence_by_id=fact_evidence_by_id))
+    evidence_matched: list[dict[str, Any]] = []
+    thematic_matched: list[dict[str, Any]] = []
+    for claim in claims:
+        claim_evidence = set(_claim_evidence_ids(claim))
+        if signal_evidence and claim_evidence.intersection(signal_evidence):
+            evidence_matched.append(claim)
+            continue
+        if "risk" in str(claim.get("claim_type") or "").lower() or "风险" in str(claim.get("claim_text") or ""):
+            thematic_matched.append(claim)
+    matched = evidence_matched + thematic_matched
+    return _dedupe_dicts(matched, key_fn=lambda item: str(item.get("id") or item.get("claim_text") or ""))[:4]
+
+
+def _evidence_for_ids(evidence: list[dict[str, Any]], evidence_ids: list[str]) -> list[dict[str, Any]]:
+    wanted = set(evidence_ids)
+    return [item for item in evidence if str(item.get("evidence_id")) in wanted]
+
+
+def _risk_transmission(
+    *,
+    signal: dict[str, Any],
+    fact: dict[str, Any],
+    claims: list[dict[str, Any]],
+    evidence_ids: list[str],
+) -> list[dict[str, str]]:
+    return [
+        {"stage": "证据", "text": "、".join(evidence_ids) if evidence_ids else "证据待补齐"},
+        {"stage": "财务事实", "text": _fact_title(fact) if fact else "事实待抽取"},
+        {"stage": "投资线索", "text": str(signal.get("title") or "风险线索")},
+        {"stage": "Claim", "text": str(claims[0].get("claim_text") if claims else "待生成或待复核主张")},
+        {"stage": "报告章节", "text": str(claims[0].get("section_name") if claims else "待落入章节")},
+    ]
+
+
+def _risk_gaps(*, risk_signals: list[dict[str, Any]], exposure_paths: list[dict[str, Any]]) -> list[dict[str, str]]:
+    gaps: list[dict[str, str]] = []
+    if not risk_signals:
+        gaps.append({"key": "no_risk_signal", "label": "生成风险线索", "description": "当前任务还没有识别风险线索。", "view": "signals"})
+    if any(not item.get("evidence_binding", {}).get("ready") for item in exposure_paths):
+        gaps.append({"key": "risk_evidence_gap", "label": "补齐风险支撑", "description": "部分风险线索缺少可追溯证据或结构化财务事实，不能直接写入风险结论。", "view": "evidence"})
+    if any(not item.get("affected_claims") for item in exposure_paths):
+        gaps.append({"key": "risk_claim_gap", "label": "补齐风险主张", "description": "部分风险线索尚未映射到研报 Claim 或报告章节。", "view": "claims"})
+    return gaps
+
+
+def _risk_readiness_summary(*, risk_signals: list[dict[str, Any]], gaps: list[dict[str, str]], exposure_paths: list[dict[str, Any]]) -> str:
+    if not risk_signals:
+        return "当前任务尚未形成风险传导链。"
+    evidence_bound = len([item for item in exposure_paths if item.get("evidence_binding", {}).get("ready")])
+    if not gaps:
+        return f"已形成 {len(risk_signals)} 条风险传导路径，且均有证据或财务事实和主张承接。"
+    return f"已识别 {len(risk_signals)} 条风险线索，其中 {evidence_bound} 条已绑定证据或财务事实；仍有 {len(gaps)} 个传导缺口。"
+
+
+def _risk_actions(gaps: list[dict[str, str]]) -> list[dict[str, str]]:
+    if not gaps:
+        return [{"label": "抽查风险章节", "view": "claims", "reason": "风险线索已绑定证据并映射到主张，建议导出前抽查风险提示章节。"}]
+    return [{"label": gap["label"], "view": gap["view"], "reason": gap["description"]} for gap in gaps[:4]]
+
+
+def _risk_support_summary(*, evidence_ids: list[str], fact_bound: bool) -> str:
+    if evidence_ids:
+        return "已绑定风险证据。"
+    if fact_bound:
+        return "已绑定结构化财务事实，原始证据仍建议补齐。"
+    return "风险线索尚未绑定可追溯证据或财务事实。"
+
+
+def _argument_summary(
+    *,
+    company_name: str,
+    symbol: str,
+    period: str,
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    readiness: dict[str, Any],
+) -> str:
     if not nodes:
         return f"{company_name or symbol} {period} 尚未形成投资论证链。"
-    return f"已将证据、财务事实、投资线索和研报主张组织为 {len(nodes)} 个节点、{len(edges)} 条关系，用于解释报告结论来源。"
+    prefix = str(readiness.get("summary") or "")
+    return f"{prefix} 已将证据、财务事实、投资线索、研报主张和报告章节组织为 {len(nodes)} 个节点、{len(edges)} 条关系，用于解释报告结论来源。"
 
 
 def _risk_summary(*, risk_signals: list[dict[str, Any]], claims: list[dict[str, Any]]) -> str:

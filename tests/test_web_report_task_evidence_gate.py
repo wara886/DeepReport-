@@ -80,3 +80,25 @@ def test_workbench_report_task_signal_closure_is_productized():
     assert "activeSignalTaskScope" in html
     assert "data-signal-task-id" in html
     assert "当前仅查看该研报任务的线索" in html
+
+
+def test_workbench_report_task_argument_and_risk_chain_are_productized():
+    html = render_workbench_html()
+
+    assert "renderArgumentFlow" in html
+    assert "renderRiskPaths" in html
+    assert "投资逻辑链" in html
+    assert "风险传导链" in html
+    assert "实体" in html
+    assert "事件" in html
+    assert "财务事实" in html
+    assert "投资线索" in html
+    assert "Claim" in html
+    assert "报告章节" in html
+    assert "链路缺口" in html
+    assert "证据已绑定" in html
+    assert "支撑待补齐" in html
+    assert "已绑定财务事实" in html
+    assert "闭环进度" in html
+    assert "支撑绑定" in html
+    assert "该风险还没有承接到研报主张" in html

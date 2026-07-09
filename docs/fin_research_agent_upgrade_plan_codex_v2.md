@@ -1156,6 +1156,18 @@ P2.4 收尾进度：
 - 测试：`tests/test_argument_chain_api.py`、`tests/test_risk_chain_evidence_binding.py`。
 - 提交：`feat(p2.5): add investment argument chain`。
 
+P2.5 收尾进度：
+
+- 已在 `/api/report-tasks/{task_id}/analysis` 中增强 `argument_chain`：保留原有 `nodes` / `edges`，新增 `flow`、`readiness`、`gaps`、`recommended_actions`，按“实体 → 事件 → 财务事实 → 投资线索 → Claim → 报告章节”展示研报论证闭环。
+- 已增强 `risk_chain`：新增 `exposure_paths`、`readiness`、`gaps`、`recommended_actions`，每条风险线索展示“证据/财务事实 → 投资线索 → Claim → 报告章节”的传导路径。
+- 风险链口径统一为“支撑绑定”：有原始证据时显示证据，有结构化财务事实时显示财务事实；避免真实任务中线索已绑定事实、风险链却误报 0 的体验问题。
+- 任务详情页新增六段式投资逻辑链和风险传导路径展示，避免直接暴露后端变量名，优先展示中文阶段、缺口和下一步动作。
+- 已补健壮性：证据序列化会过滤孤立 Claim 关联，避免脏数据导致任务分析页 500。
+- 已补测试：`tests/test_argument_chain_api.py`、`tests/test_risk_chain_evidence_binding.py`，并扩展 `tests/test_web_report_task_evidence_gate.py` 覆盖前端产品化文案。
+- 最新验收命令：`pytest -q tests/test_argument_chain_api.py tests/test_risk_chain_evidence_binding.py tests/test_task_analysis_api.py tests/test_workbench_frontend_script.py tests/test_web_report_task_evidence_gate.py`。
+- P2 回归命令：`pytest -q tests/test_entity_relation_upsert.py tests/test_task_analysis_api.py tests/test_signal_rules.py tests/test_signal_evidence_binding.py tests/test_signal_to_report_context.py tests/test_workbench_frontend_script.py tests/test_web_report_task_evidence_gate.py tests/test_web_evaluation_center.py tests/test_web_evidence_center.py tests/test_hybrid_retriever_contract.py tests/test_report_task_evidence_gate.py tests/test_evidence_api.py tests/test_argument_chain_api.py tests/test_risk_chain_evidence_binding.py`。
+- 浏览器走查：系统 Chrome 打开 `http://127.0.0.1:7862/workbench`，进入研报任务详情，确认投资逻辑链六段可见，风险传导链显示“支撑绑定 5 / 13”，并能区分“已绑定财务事实”和“支撑待补齐”。截图：`tmp/p25_task_detail_final.png`。
+
 ### P2 阶段提交
 
 ```bash
