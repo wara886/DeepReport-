@@ -237,10 +237,11 @@ def render_workbench_html() -> str:
     tr[data-selectable="true"]:hover td { background: #f8fbff; }
     .status { display: inline-block; border-radius: 999px; padding: 3px 8px; font-size: 12px; background: var(--panel-2); color: var(--muted); white-space: nowrap; }
     .status.completed, .status.supported, .status.approved, .status.official, .status.success, .status.verified, .status.passed, .status.positive { color: var(--good); background: #e9f7ef; }
-    .status.failed, .status.rejected, .status.quality_failed, .status.negative, .status.high { color: var(--bad); background: #fff0ed; }
-    .status.running, .status.queued, .status.pending, .status.secondary, .status.regenerate_requested, .status.medium { color: var(--warn); background: #fff6e6; }
-    .status.neutral, .status.low, .status.in_context { color: var(--muted); background: #eef2f5; }
-    .status.cancelled, .status.archived { color: var(--muted); background: #eef2f5; }
+    .status.covered { color: var(--good); background: #e9f7ef; }
+    .status.failed, .status.rejected, .status.quality_failed, .status.negative, .status.high, .status.credential_required { color: var(--bad); background: #fff0ed; }
+    .status.running, .status.queued, .status.pending, .status.secondary, .status.regenerate_requested, .status.medium, .status.not_collected { color: var(--warn); background: #fff6e6; }
+    .status.neutral, .status.low, .status.in_context, .status.ready { color: var(--muted); background: #eef2f5; }
+    .status.cancelled, .status.archived, .status.disabled, .status.not_configured, .status.market_mismatch { color: var(--muted); background: #eef2f5; }
     .links { display: flex; gap: 6px; flex-wrap: wrap; }
     .detail { position: sticky; top: 82px; max-height: calc(100vh - 104px); overflow-y: auto; }
     .detail-section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
@@ -1421,6 +1422,13 @@ def render_workbench_html() -> str:
       return map[text] || text;
     }
 
+    function sourceKeyValue(value) {
+      const text = String(value || "").trim();
+      if (!text) return "";
+      const direct = Object.entries(sourceMap).find(([, label]) => label === text);
+      return direct ? direct[0] : text;
+    }
+
     function promptModuleText(value) {
       const map = {
         verifier: "主张校验",
@@ -1727,6 +1735,11 @@ def render_workbench_html() -> str:
         if (options.claimVerification && $("claimVerification")) $("claimVerification").value = options.claimVerification;
       }
       if (view === "documents" && options.documentStep && $("documentStep")) $("documentStep").value = options.documentStep;
+      if (view === "datasources" && options.datasourceQuery && $("datasourceQuery")) $("datasourceQuery").value = sourceText(options.datasourceQuery);
+      if (view === "ingestion") {
+        if (options.ingestionSource && $("ingestionSource")) $("ingestionSource").value = sourceText(options.ingestionSource);
+        if (options.ingestionQuery && $("ingestionQuery")) $("ingestionQuery").value = options.ingestionQuery;
+      }
       activateView(view);
     }
 
@@ -2038,7 +2051,7 @@ def render_workbench_html() -> str:
       const params = new URLSearchParams();
       const q = $("datasourceQuery").value.trim();
       const enabled = $("datasourceEnabled").value;
-      if (q) params.set("q", q);
+      if (q) params.set("q", sourceKeyValue(q));
       if (enabled) params.set("enabled", enabled);
       const suffix = params.toString() ? `?${params.toString()}` : "";
       try {
@@ -2176,7 +2189,7 @@ def render_workbench_html() -> str:
       const source = $("ingestionSource").value.trim();
       if (q) params.set("q", q);
       if (status) params.set("status", status);
-      if (source) params.set("source_key", source);
+      if (source) params.set("source_key", sourceKeyValue(source));
       const suffix = params.toString() ? `?${params.toString()}` : "";
       try {
         const payload = await getJson("/api/ingestion-batches" + suffix);
@@ -2864,6 +2877,7 @@ def render_workbench_html() -> str:
       const claimIssues = payload.claim_issues || {};
       const modelIssues = payload.model_issues || [];
       const qualityIssues = payload.quality_issues || [];
+      const dataSourceHealth = payload.data_source_health || {};
       $("evaluationTaskDiagnostic").innerHTML = `<div class="detail-section" style="border-top:0;margin-top:0;padding-top:0">
           <div class="diagnostic-head">
             <div>
@@ -2880,6 +2894,7 @@ def render_workbench_html() -> str:
           </div>
         </div>
         <div class="detail-section"><h3>诊断结论</h3>${renderDiagnosticBlockers(blockers)}</div>
+        <div class="detail-section"><h3>数据源与采集健康</h3>${renderDiagnosticDataSourceHealth(dataSourceHealth)}</div>
         <div class="detail-section"><h3>建议动作</h3>${renderDiagnosticActions(actions)}</div>
         <div class="detail-section"><h3>主张问题</h3>${renderDiagnosticClaimGroups(claimIssues)}</div>
         <div class="detail-section"><h3>模型运行问题</h3>${renderDiagnosticModelIssues(modelIssues)}</div>
@@ -2900,12 +2915,75 @@ def render_workbench_html() -> str:
         : `<div class="empty">当前没有明显质量阻塞。</div>`;
     }
 
+    function renderDiagnosticDataSourceHealth(health) {
+      const rows = health.source_rows || [];
+      const distribution = health.evidence_source_distribution || [];
+      if (!rows.length) return `<div class="empty">暂无数据源诊断。完成任务或补充证据后会展示来源覆盖、采集状态和缺口原因。</div>`;
+      const gapCount = (health.gaps || []).length;
+      return `<div class="analysis-stats">
+          <div class="analysis-stat"><span class="label">覆盖市场</span><strong>${esc(marketText(health.market))}</strong><span class="score-note">按任务公司和股票代码判断</span></div>
+          <div class="analysis-stat"><span class="label">需要来源</span><strong>${esc(number(health.required_source_count || rows.length))}</strong><span class="score-note">${esc(renderSourceList(health.required_sources))}</span></div>
+          <div class="analysis-stat"><span class="label">健康来源</span><strong>${esc(number(health.healthy_source_count))}</strong><span class="score-note">可用、运行中或已覆盖</span></div>
+          <div class="analysis-stat"><span class="label">证据命中来源</span><strong>${esc(number(health.covered_source_count))}</strong><span class="score-note">缺口 ${esc(number(gapCount))} 个</span></div>
+        </div>
+        <div class="mini-list">${rows.map(renderDiagnosticSourceRow).join("")}</div>
+        <div class="detail-section"><h3>证据来源分布</h3>${
+          distribution.length
+            ? `<div class="dist-list">${distribution.map((item) => `<div class="dist-row"><span>${esc(item.label || sourceText(item.source_key))}</span><strong>${esc(number(item.count))}</strong></div>`).join("")}</div>`
+            : `<div class="empty">当前任务尚未命中可追溯证据来源。</div>`
+        }</div>`;
+    }
+
+    function renderDiagnosticSourceRow(item) {
+      const latestBatch = item.latest_batch || null;
+      const batchText = latestBatch
+        ? `${statusText(latestBatch.status)} · ${latestBatch.symbol || "-"} · ${latestBatch.period || "-"}`
+        : "暂无匹配采集批次";
+      const errorText = latestBatch?.error_message || item.last_error || "";
+      const buttons = [
+        `<button class="btn" data-jump="datasources" data-datasource-query="${esc(item.source_key)}">配置来源</button>`,
+        `<button class="btn" data-jump="ingestion" data-ingestion-source="${esc(item.source_key)}">查看采集</button>`,
+      ];
+      if (item.evidence_count > 0) buttons.push(`<button class="btn" data-jump="evidence">查看证据</button>`);
+      return `<div class="mini-item source-health-row">
+        <div class="mini-title">
+          <strong>${esc(item.name || sourceText(item.source_key))}</strong>
+          <span class="status ${esc(item.health_status || "pending")}">${esc(sourceHealthText(item.health_status))}</span>
+        </div>
+        <div>${esc(item.purpose || sourcePurposeText(item))}</div>
+        <div class="mini-meta">
+          <span>证据 ${esc(number(item.evidence_count))} 条</span>
+          <span>市场：${esc(item.market_supported ? "覆盖" : "不覆盖")}</span>
+          <span>凭证：${esc(credentialText(item.credential_status))}</span>
+          <span>最近采集：${esc(batchText)}</span>
+        </div>
+        <div class="score-note">${esc(item.reason || "")}</div>
+        ${errorText ? `<div class="error">${esc(errorText)}</div>` : ""}
+        <div class="links">${buttons.join("")}</div>
+      </div>`;
+    }
+
+    function sourceHealthText(value) {
+      const map = {
+        covered: "已覆盖",
+        ready: "可用待命中",
+        running: "采集中",
+        not_collected: "待采集",
+        failed: "采集失败",
+        credential_required: "凭证缺失",
+        disabled: "已停用",
+        not_configured: "未配置",
+        market_mismatch: "市场不匹配",
+      };
+      return textOf(map, value);
+    }
+
     function renderDiagnosticActions(actions) {
       return actions.length
         ? `<div class="action-list">${actions.map((item) => `<div class="action-item">
             <div class="diagnostic-head"><strong>${esc(item.label)}</strong><span class="status ${esc(item.priority || "medium")}">${esc(signalSeverityText(item.priority || "medium"))}</span></div>
             <div class="score-note">${esc(item.reason || "")}</div>
-            <div><button class="btn primary" data-jump="${esc(item.view || "tasks")}">前往处理</button></div>
+            <div><button class="btn primary" data-jump="${esc(item.view || "tasks")}"${item.datasource_query ? ` data-datasource-query="${esc(item.datasource_query)}"` : ""}${item.ingestion_source ? ` data-ingestion-source="${esc(item.ingestion_source)}"` : ""}${item.ingestion_query ? ` data-ingestion-query="${esc(item.ingestion_query)}"` : ""}>前往处理</button></div>
           </div>`).join("")}</div>`
         : `<div class="empty">暂无建议动作。</div>`;
     }

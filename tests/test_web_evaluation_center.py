@@ -20,5 +20,9 @@ def test_workbench_evaluation_center_is_productized_and_loads_api():
     assert "分析链路摘要" in html
     assert "打开完整分析包" in html
     assert "renderEvaluationAnalysisLinkage" in html
+    assert "数据源与采集健康" in html
+    assert "renderDiagnosticDataSourceHealth" in html
+    assert "data-datasource-query" in html
+    assert "data-ingestion-source" in html
     assert "loadEvaluation" in html
     assert 'data-view="evaluation"><span>评测中心</span><span class="tag preview">预览</span></button>' in html

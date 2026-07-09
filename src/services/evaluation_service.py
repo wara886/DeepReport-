@@ -9,7 +9,8 @@ from typing import Any
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from src.db.models import ClaimEvidence, LLMRun, ReportClaim, ReportTask
+from src.db.models import ClaimEvidence, DataSource, IngestionBatch, LLMRun, ReportClaim, ReportTask
+from src.services.datasource_service import DEFAULT_SOURCE_CATALOG
 from src.services.report_task_service import ReportTaskNotFound
 
 
@@ -167,6 +168,7 @@ class EvaluationService:
                     .limit(50)
                 ).all()
             )
+            data_source_health = _task_data_source_health(session=session, task=task, claims=claims)
 
         quality_result = (task.metadata_json or {}).get("quality_result")
         quality_result = quality_result if isinstance(quality_result, dict) else {}
@@ -213,7 +215,12 @@ class EvaluationService:
                 for key, values in issue_groups.items()
             },
             "model_issues": model_issues,
-            "recommended_actions": _task_recommended_actions(counters=counters, blockers=blockers),
+            "data_source_health": data_source_health,
+            "recommended_actions": _task_recommended_actions(
+                counters=counters,
+                blockers=blockers,
+                data_source_health=data_source_health,
+            ),
             "quality_issues": [_quality_issue_row(item) for item in quality_issues[:10]],
         }
 
@@ -589,7 +596,265 @@ def _claim_issue_row(claim: ReportClaim) -> dict[str, Any]:
     }
 
 
-def _task_recommended_actions(*, counters: dict[str, int], blockers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _task_data_source_health(*, session: Session, task: ReportTask, claims: list[ReportClaim]) -> dict[str, Any]:
+    market = _infer_task_market(task)
+    required_sources = _required_sources_for_market(market)
+    evidence_counter = _task_evidence_source_counter(claims)
+    sources = {
+        item.source_key: item
+        for item in session.scalars(select(DataSource).where(DataSource.source_key.in_(required_sources))).all()
+    }
+    batches_by_source = {
+        source_key: _latest_task_batch(session=session, source_key=source_key, task=task)
+        for source_key in required_sources
+    }
+
+    rows: list[dict[str, Any]] = []
+    gaps: list[dict[str, Any]] = []
+    for source_key in required_sources:
+        source = sources.get(source_key)
+        batch = batches_by_source.get(source_key)
+        evidence_count = int(evidence_counter.get(source_key, 0))
+        row = _source_health_row(
+            source_key=source_key,
+            source=source,
+            batch=batch,
+            market=market,
+            evidence_count=evidence_count,
+        )
+        rows.append(row)
+        if row["health_status"] in {"not_configured", "disabled", "credential_required", "failed", "not_collected"}:
+            gaps.append(
+                {
+                    "label": row["reason"],
+                    "source_key": source_key,
+                    "source_name": row["name"],
+                    "health_status": row["health_status"],
+                    "next_view": row["next_view"],
+                }
+            )
+
+    return {
+        "market": market,
+        "required_sources": required_sources,
+        "required_source_count": len(required_sources),
+        "covered_source_count": sum(1 for row in rows if row["evidence_count"] > 0),
+        "healthy_source_count": sum(1 for row in rows if row["health_status"] in {"covered", "ready", "running"}),
+        "evidence_source_distribution": [
+            {"source_key": source_key, "label": _source_catalog_name(source_key), "count": count}
+            for source_key, count in evidence_counter.most_common()
+        ],
+        "source_rows": rows,
+        "gaps": gaps,
+    }
+
+
+def _infer_task_market(task: ReportTask) -> str:
+    metadata = task.metadata_json or {}
+    raw_market = str(metadata.get("market") or metadata.get("company_market") or "").strip().upper()
+    if raw_market in {"US", "CN", "HK"}:
+        return raw_market
+    symbol = str(task.symbol or "").strip().upper()
+    if symbol.endswith(".HK") or (symbol.isdigit() and len(symbol) == 4):
+        return "HK"
+    if symbol.endswith((".SZ", ".SS", ".SH")) or (symbol.isdigit() and len(symbol) == 6):
+        return "CN"
+    return "US"
+
+
+def _required_sources_for_market(market: str) -> list[str]:
+    mapping = {
+        "US": ["sec_edgar", "yahoo_finance", "serper", "local_evidence"],
+        "CN": ["cninfo_announcements", "eastmoney_financials", "eastmoney", "local_evidence"],
+        "HK": ["hkex_announcements", "hk_financials", "yahoo_finance", "local_evidence"],
+    }
+    return mapping.get(market, ["local_evidence", "serper", "tavily"])
+
+
+def _task_evidence_source_counter(claims: list[ReportClaim]) -> Counter[str]:
+    counter: Counter[str] = Counter()
+    seen: set[int] = set()
+    for claim in claims:
+        for link in claim.evidence_links or []:
+            evidence = link.evidence_item
+            if evidence is None or evidence.id in seen:
+                continue
+            seen.add(evidence.id)
+            counter[_normalize_source_key(evidence.source_type)] += 1
+    return counter
+
+
+def _normalize_source_key(source_type: str | None) -> str:
+    value = str(source_type or "local_evidence").strip().lower()
+    aliases = {
+        "sec_filing": "sec_edgar",
+        "filing": "sec_edgar",
+        "filings": "sec_edgar",
+        "official_filing": "sec_edgar",
+        "cninfo": "cninfo_announcements",
+        "cninfo_announcement": "cninfo_announcements",
+        "hkex": "hkex_announcements",
+        "hkex_announcement": "hkex_announcements",
+        "hkex_annual_report": "hkex_announcements",
+        "yahoo_profile": "yahoo_finance",
+        "yahoo_financials": "yahoo_finance",
+        "eastmoney_quote": "eastmoney",
+        "local_pdf": "local_evidence",
+        "manual_text": "local_evidence",
+        "manual_pdf": "local_evidence",
+    }
+    return aliases.get(value, value or "local_evidence")
+
+
+def _latest_task_batch(*, session: Session, source_key: str, task: ReportTask) -> IngestionBatch | None:
+    exact = session.scalar(
+        select(IngestionBatch)
+        .where(
+            IngestionBatch.source_key == source_key,
+            IngestionBatch.symbol == task.symbol,
+            IngestionBatch.period == task.period,
+        )
+        .order_by(IngestionBatch.created_at.desc(), IngestionBatch.id.desc())
+        .limit(1)
+    )
+    if exact is not None:
+        return exact
+    symbol_match = session.scalar(
+        select(IngestionBatch)
+        .where(IngestionBatch.source_key == source_key, IngestionBatch.symbol == task.symbol)
+        .order_by(IngestionBatch.created_at.desc(), IngestionBatch.id.desc())
+        .limit(1)
+    )
+    if symbol_match is not None:
+        return symbol_match
+    return session.scalar(
+        select(IngestionBatch)
+        .where(IngestionBatch.source_key == source_key)
+        .order_by(IngestionBatch.created_at.desc(), IngestionBatch.id.desc())
+        .limit(1)
+    )
+
+
+def _source_health_row(
+    *,
+    source_key: str,
+    source: DataSource | None,
+    batch: IngestionBatch | None,
+    market: str,
+    evidence_count: int,
+) -> dict[str, Any]:
+    source_name = source.name if source is not None else _source_catalog_name(source_key)
+    market_scope = source.market_scope if source is not None else list(DEFAULT_SOURCE_CATALOG.get(source_key, {}).get("market_scope") or [])
+    market_supported = not market_scope or market in market_scope
+    credential_status = source.credential_status if source is not None else _catalog_credential_status(source_key)
+    last_status = source.last_status if source is not None else None
+    health_status, reason, next_view = _source_health_status(
+        source=source,
+        batch=batch,
+        credential_status=credential_status,
+        last_status=last_status,
+        market_supported=market_supported,
+        evidence_count=evidence_count,
+    )
+    return {
+        "source_key": source_key,
+        "name": source_name,
+        "purpose": _source_catalog_purpose(source_key),
+        "market_supported": market_supported,
+        "market_scope": market_scope,
+        "enabled": bool(source.enabled) if source is not None else False,
+        "credential_status": credential_status,
+        "last_status": last_status,
+        "last_sync_at": _dt(source.last_sync_at) if source is not None else None,
+        "last_error": source.last_error if source is not None else None,
+        "evidence_count": evidence_count,
+        "latest_batch": _batch_row(batch),
+        "health_status": health_status,
+        "reason": reason,
+        "next_view": next_view,
+    }
+
+
+def _source_health_status(
+    *,
+    source: DataSource | None,
+    batch: IngestionBatch | None,
+    credential_status: str | None,
+    last_status: str | None,
+    market_supported: bool,
+    evidence_count: int,
+) -> tuple[str, str, str]:
+    if source is None:
+        return "not_configured", "数据源尚未配置，无法补齐该市场的关键证据。", "datasources"
+    if not market_supported:
+        return "market_mismatch", "当前来源不覆盖该任务市场。", "datasources"
+    if not source.enabled:
+        return "disabled", "数据源已停用，采集链路不会使用该来源。", "datasources"
+    if str(credential_status or "") in {"required", "expired"}:
+        return "credential_required", "需要先配置或更新访问凭证。", "datasources"
+    if evidence_count > 0:
+        return "covered", "已有证据命中该来源，可用于主张追溯。", "evidence"
+    if batch is not None and batch.status == "failed":
+        return "failed", f"最近采集失败：{batch.error_message or '请查看采集日志'}", "ingestion"
+    if str(last_status or "") in {"failed", "timeout"}:
+        return "failed", f"最近来源同步失败：{source.last_error or '请查看来源健康状态'}", "ingestion"
+    if batch is not None and batch.status in {"queued", "running"}:
+        return "running", "采集批次正在排队或运行，完成后再复查证据覆盖。", "ingestion"
+    if batch is None:
+        return "not_collected", "尚未看到匹配该任务的采集批次。", "ingestion"
+    if batch.status == "completed" and evidence_count == 0:
+        return "not_collected", "采集已完成但未形成可用证据，需要检查解析或证据化。", "documents"
+    return "ready", "来源可用，但当前任务尚未命中证据。", "evidence"
+
+
+def _batch_row(batch: IngestionBatch | None) -> dict[str, Any] | None:
+    if batch is None:
+        return None
+    return {
+        "batch_id": batch.batch_id,
+        "name": batch.name,
+        "status": batch.status,
+        "symbol": batch.symbol,
+        "period": batch.period,
+        "item_count": batch.item_count,
+        "success_count": batch.success_count,
+        "failed_count": batch.failed_count,
+        "error_message": batch.error_message,
+        "created_at": _dt(batch.created_at),
+        "finished_at": _dt(batch.finished_at),
+    }
+
+
+def _source_catalog_name(source_key: str) -> str:
+    return str(DEFAULT_SOURCE_CATALOG.get(source_key, {}).get("name") or source_key)
+
+
+def _source_catalog_purpose(source_key: str) -> str:
+    mapping = {
+        "sec_edgar": "官方披露、年报和 XBRL 财务事实核验",
+        "yahoo_finance": "行情、估值、公司画像和财务摘要补充",
+        "cninfo_announcements": "A 股公告、年报和官方披露核验",
+        "eastmoney_financials": "A 股结构化三表和关键财务指标",
+        "eastmoney": "A 股行情、估值和交易数据补充",
+        "hkex_announcements": "港股公告、年报和官方披露核验",
+        "hk_financials": "港股结构化财务数据补充",
+        "local_evidence": "本地文档和人工导入资料兜底",
+        "serper": "公开网页搜索和新闻补充",
+        "tavily": "公开网页搜索和新闻补充",
+    }
+    return mapping.get(source_key, "补充该市场研报所需证据。")
+
+
+def _catalog_credential_status(source_key: str) -> str:
+    return "required" if source_key in {"serper", "tavily"} else "not_required"
+
+
+def _task_recommended_actions(
+    *,
+    counters: dict[str, int],
+    blockers: list[dict[str, Any]],
+    data_source_health: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
     if counters["pending_review_count"] or counters["unsupported_claim_count"] or counters["citation_gap_count"]:
         actions.append(
@@ -618,6 +883,38 @@ def _task_recommended_actions(*, counters: dict[str, int], blockers: list[dict[s
                 "priority": "medium",
             }
         )
+        datasource_gaps = [
+            item
+            for item in (data_source_health or {}).get("gaps", [])
+            if item.get("health_status") in {"not_configured", "disabled", "credential_required"}
+        ]
+        ingestion_gaps = [
+            item
+            for item in (data_source_health or {}).get("gaps", [])
+            if item.get("health_status") in {"failed", "not_collected"}
+        ]
+        if datasource_gaps:
+            first_gap = datasource_gaps[0]
+            actions.append(
+                {
+                    "label": "配置缺口来源",
+                    "view": "datasources",
+                    "reason": f"{first_gap.get('source_name') or '关键来源'}不可用，先恢复来源配置再补证据。",
+                    "priority": "high",
+                    "datasource_query": first_gap.get("source_key"),
+                }
+            )
+        if ingestion_gaps:
+            first_gap = ingestion_gaps[0]
+            actions.append(
+                {
+                    "label": "查看采集链路",
+                    "view": "ingestion",
+                    "reason": f"{first_gap.get('source_name') or '关键来源'}需要重新采集或检查失败日志。",
+                    "priority": "high",
+                    "ingestion_source": first_gap.get("source_key"),
+                }
+            )
     if counters["model_issue_count"]:
         actions.append(
             {

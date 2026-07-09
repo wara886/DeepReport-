@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from src.app.api_fastapi import create_fastapi_app
-from src.db.models import ClaimEvidence, EvidenceItem, LLMRun, ReportClaim, ReportTask
+from src.db.models import ClaimEvidence, DataSource, EvidenceItem, IngestionBatch, LLMRun, ReportClaim, ReportTask
 from src.services.report_task_service import ReportTaskService
 
 
@@ -53,6 +53,23 @@ def seed_evaluation_state(service):
                 },
             },
         )
+        task_source_gap = ReportTask(
+            task_id="task-eval-source-gap",
+            symbol="NVDA",
+            period="FY2024",
+            status="quality_failed",
+            quality_score=0.58,
+            metadata_json={
+                "company_name": "NVIDIA",
+                "market": "US",
+                "quality_result": {
+                    "delivery_gate": {"delivery_pass": False},
+                    "top_quality_issues": [
+                        {"category": "citation_missing", "severity": "blocker", "message": "缺少官方年报证据。"}
+                    ],
+                },
+            },
+        )
         task_archived = ReportTask(
             task_id="task-eval-archived",
             symbol="AAPL",
@@ -60,7 +77,7 @@ def seed_evaluation_state(service):
             status="archived",
             quality_score=0.1,
         )
-        session.add_all([task_ok, task_bad, task_archived])
+        session.add_all([task_ok, task_bad, task_source_gap, task_archived])
         session.flush()
         evidence = EvidenceItem(
             evidence_id="ev-eval-1",
@@ -86,15 +103,70 @@ def seed_evaluation_state(service):
             citation_check_status="failed",
             review_status="pending",
         )
+        source_gap_claim = ReportClaim(
+            task_id="task-eval-source-gap",
+            claim_text="NVIDIA data center demand accelerated materially.",
+            verification_status="failed",
+            numeric_check_status="passed",
+            citation_check_status="failed",
+            review_status="pending",
+        )
         archived_claim = ReportClaim(
             task_id="task-eval-archived",
             claim_text="Archived claim should not affect metrics.",
             verification_status="supported",
             review_status="approved",
         )
-        session.add_all([supported_claim, weak_claim, archived_claim])
+        session.add_all([supported_claim, weak_claim, source_gap_claim, archived_claim])
         session.flush()
         session.add(ClaimEvidence(claim_id=supported_claim.id, evidence_item_id=evidence.id, support_type="supporting"))
+        session.add_all(
+            [
+                DataSource(
+                    name="美国证监会年报",
+                    source_key="sec_edgar",
+                    source_type="official_filing",
+                    market_scope=["US"],
+                    trust_level="official",
+                    enabled=True,
+                    credential_status="not_required",
+                    last_status="failed",
+                    last_error="SEC timeout",
+                ),
+                DataSource(
+                    name="雅虎财经",
+                    source_key="yahoo_finance",
+                    source_type="market_data",
+                    market_scope=["US", "HK"],
+                    trust_level="secondary",
+                    enabled=True,
+                    credential_status="not_required",
+                    last_status="success",
+                ),
+                DataSource(
+                    name="Serper 搜索",
+                    source_key="serper",
+                    source_type="web_search",
+                    market_scope=["US", "CN", "HK"],
+                    trust_level="secondary",
+                    enabled=True,
+                    credential_status="required",
+                    last_status="not_run",
+                ),
+                IngestionBatch(
+                    batch_id="ing-sec-failed",
+                    source_key="sec_edgar",
+                    name="NVDA FY2024 SEC 采集",
+                    target_type="filings",
+                    symbol="NVDA",
+                    period="FY2024",
+                    status="failed",
+                    item_count=1,
+                    failed_count=1,
+                    error_message="SEC timeout",
+                ),
+            ]
+        )
         session.add_all(
             [
                 LLMRun(
@@ -133,18 +205,18 @@ def test_evaluation_summary_aggregates_quality_and_harness_metrics(tmp_path):
     assert response.status_code == 200
     body = response.json()
     metrics = body["metrics"]
-    assert metrics["active_task_count"] == 2
+    assert metrics["active_task_count"] == 3
     assert metrics["completed_task_count"] == 1
-    assert metrics["delivery_pass_rate"] == 0.5
-    assert metrics["average_quality_score"] == 0.77
-    assert metrics["claim_count"] == 2
+    assert metrics["delivery_pass_rate"] == 0.3333
+    assert metrics["average_quality_score"] == 0.7067
+    assert metrics["claim_count"] == 3
     assert metrics["traceable_claim_count"] == 1
-    assert metrics["traceable_claim_rate"] == 0.5
+    assert metrics["traceable_claim_rate"] == 0.3333
     assert metrics["verified_claim_count"] == 1
     assert metrics["numeric_failed_count"] == 1
-    assert metrics["numeric_consistency_rate"] == 0.5
-    assert metrics["citation_failed_count"] == 1
-    assert metrics["citation_support_rate"] == 0.5
+    assert metrics["numeric_consistency_rate"] == 0.6667
+    assert metrics["citation_failed_count"] == 2
+    assert metrics["citation_support_rate"] == 0.3333
     assert metrics["schema_valid_rate"] == 0.5
     assert metrics["llm_success_rate"] == 0.5
     assert metrics["average_llm_latency_ms"] == 200
@@ -154,7 +226,7 @@ def test_evaluation_summary_aggregates_quality_and_harness_metrics(tmp_path):
     assert "引用缺失或不支持" in failure_labels
     assert "模型运行失败" in failure_labels
     assert len(body["quality_gates"]) >= 7
-    assert body["recent_tasks"][0]["task_id"] in {"task-eval-ok", "task-eval-bad"}
+    assert body["recent_tasks"][0]["task_id"] in {"task-eval-ok", "task-eval-bad", "task-eval-source-gap"}
     assert body["model_health"]["fallback_count"] == 1
 
 
@@ -197,6 +269,31 @@ def test_evaluation_task_diagnostics_explains_local_quality_blockers(tmp_path):
     assert body["model_issues"][0]["reason"] == "模型运行失败"
     action_views = {item["view"] for item in body["recommended_actions"]}
     assert {"claims", "facts", "evidence", "promptops"}.issubset(action_views)
+
+
+def test_evaluation_task_diagnostics_links_source_gaps_to_ingestion_and_datasources(tmp_path):
+    client, service = build_client(tmp_path)
+    seed_evaluation_state(service)
+
+    with client:
+        response = client.get("/api/evaluation/report-tasks/task-eval-source-gap/diagnostics")
+
+    assert response.status_code == 200
+    body = response.json()
+    health = body["data_source_health"]
+    assert health["market"] == "US"
+    assert health["required_sources"] == ["sec_edgar", "yahoo_finance", "serper", "local_evidence"]
+    rows = {item["source_key"]: item for item in health["source_rows"]}
+    assert rows["sec_edgar"]["health_status"] == "failed"
+    assert rows["sec_edgar"]["latest_batch"]["batch_id"] == "ing-sec-failed"
+    assert rows["sec_edgar"]["latest_batch"]["error_message"] == "SEC timeout"
+    assert rows["serper"]["health_status"] == "credential_required"
+    assert rows["local_evidence"]["health_status"] == "not_configured"
+    assert any(item["next_view"] == "ingestion" and item["source_key"] == "sec_edgar" for item in health["gaps"])
+    assert any(item["next_view"] == "datasources" and item["source_key"] == "serper" for item in health["gaps"])
+    action_by_view = {item["view"]: item for item in body["recommended_actions"]}
+    assert action_by_view["ingestion"]["ingestion_source"] == "sec_edgar"
+    assert action_by_view["datasources"]["datasource_query"] in {"serper", "local_evidence"}
 
 
 def test_evaluation_task_diagnostics_returns_404_for_missing_task(tmp_path):
