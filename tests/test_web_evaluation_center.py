@@ -50,7 +50,7 @@ def test_workbench_p1_closure_copy_and_task_linkage_are_productized():
     html = render_workbench_html()
 
     assert "分析链路总览" in html
-    assert "数据进入、结构化处理、线索发现、主张复核、报告输出" in html
+    assert "数据进入、记忆沉淀、结构化处理、线索发现、主张复核、报告输出" in html
     assert "为什么是这个质量分" in html
     assert "还差什么" in html
     assert "查看主张复核" in html

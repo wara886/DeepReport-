@@ -1116,11 +1116,19 @@ P2 暂不做：
 ### P2.3 实体库和关系图谱
 
 - 先用 PostgreSQL 存 `entities`、`entity_relations`。
-- 后接 Neo4j。
+- Neo4j 暂不作为 P2.3 阻塞项；先把 PostgreSQL 实体关系、证据绑定、任务级记忆沉淀和前端可解释链路做稳定。
 - 实体类型：公司、股票代码、行业、产品、客户、供应商、高管、财务指标、文档、风险事件、新闻事件、同行公司。
 - 关系类型：`BELONGS_TO`、`PUBLISHED`、`HAS_PRODUCT`、`HAS_METRIC`、`HAS_EVENT`、`PEER_OF`、`SUPPLIES_TO`、`MENTIONED_IN`。
 - 测试：`tests/test_entity_extraction_schema.py`、`tests/test_entity_relation_upsert.py`。
 - 提交：`feat(p2.3): add entity and relation store`。
+
+#### P2.3 补强进度（2026-07-09）
+
+- 已完成任务级结构化记忆沉淀：新增 `POST /api/entities/extract-from-task`，从任务证据池、Claim 证据绑定和文档批次中收集证据，复用现有实体/关系 upsert 规则，保证重复执行幂等。
+- 已完成任务分析包记忆摘要：`/api/report-tasks/{task_id}/analysis` 新增 `entity_memory`，展示来源证据数、实体数、关系数、实体类型分布、关系类型分布和样例。
+- 任务详情新增“结构化记忆”卡片，支持一键“沉淀当前任务证据”，并提供实体库、关系图谱跳转；分析链路从五步升级为“数据进入 → 记忆沉淀 → 结构化处理 → 线索发现 → 主张复核 → 报告输出”。
+- 已补测试：`tests/test_entity_relation_upsert.py` 覆盖任务级沉淀 API 幂等性，`tests/test_task_analysis_api.py` 覆盖 `entity_memory`，`tests/test_web_report_task_evidence_gate.py` 覆盖前端卡片和接口路径。
+- 最新验收命令：`pytest -q tests/test_entity_relation_upsert.py tests/test_task_analysis_api.py tests/test_workbench_frontend_script.py tests/test_web_report_task_evidence_gate.py tests/test_web_evaluation_center.py`；P2 回归命令见 P2.1/P2.2 补强进度。
 
 ### P2.4 投资线索中心
 

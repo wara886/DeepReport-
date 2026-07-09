@@ -3419,6 +3419,7 @@ def render_workbench_html() -> str:
           ${renderTaskLinkageOverview(analysis)}
           ${renderTaskNarrative(analysis)}
           ${renderTaskAnalysisStats(analysis.stats || {})}
+          ${renderTaskEntityMemory(analysis.entity_memory || {}, task)}
           ${renderRetrievalCoverage(analysis.retrieval_coverage || analysis.quality_proof?.retrieval_coverage || {})}
           ${renderRetrievalDiagnostics(analysis.retrieval_diagnostics || {})}
           ${renderCitationUsage(analysis.citation_usage || {})}
@@ -3433,6 +3434,7 @@ def render_workbench_html() -> str:
             events.length ? events.map((event) => `<div class="event"><strong>${esc(stepText(event.stage))}</strong> <span class="status ${esc(event.status)}">${esc(statusText(event.status))}</span><br><span class="label">${esc(fmt(event.created_at))}</span><br>${esc(fmt(event.message))}</div>`).join("") : `<div class="empty">暂无事件</div>`
           }</div></div>`;
         bindTaskActionButtons($("taskDetail"));
+        bindTaskEntityMemoryButtons($("taskDetail"));
         bindJumpHandlers($("taskDetail"));
         bindCreateTaskButtons($("taskDetail"));
       } catch (error) {
@@ -3498,6 +3500,8 @@ def render_workbench_html() -> str:
       const stats = analysis.stats || {};
       const task = analysis.task || {};
       const hasEvidence = Number(stats.evidence_count || 0) > 0;
+      const entityMemory = analysis.entity_memory || {};
+      const hasMemory = entityMemory.ready === true;
       const hasFacts = Number(stats.financial_fact_count || 0) > 0;
       const hasSignals = Number(stats.investment_signal_count || 0) > 0;
       const claimCount = Number(stats.claim_count || 0);
@@ -3510,6 +3514,13 @@ def render_workbench_html() -> str:
           passed: hasEvidence,
           note: hasEvidence ? `已沉淀 ${number(stats.evidence_count)} 条证据` : "还没有可复用证据",
           action: { label: "查看证据库", view: "evidence" },
+        },
+        {
+          title: "记忆沉淀",
+          passed: hasMemory,
+          partial: hasEvidence && !hasMemory,
+          note: hasMemory ? `已沉淀 ${number(entityMemory.entity_count)} 个实体、${number(entityMemory.relation_count)} 条关系` : "任务证据尚未形成长期结构化记忆",
+          action: { label: hasMemory ? "查看关系图谱" : "沉淀任务证据", view: hasMemory ? "graph" : "tasks" },
         },
         {
           title: "结构化处理",
@@ -3539,13 +3550,53 @@ def render_workbench_html() -> str:
         },
       ];
       return `<div class="detail-section"><h3>分析链路总览</h3>
-        <div class="chain-summary">按视频中的情报后台叙事，这里把当前研报任务串成“数据进入、结构化处理、线索发现、主张复核、报告输出”五步，便于判断任务卡在哪一环。</div>
+        <div class="chain-summary">按视频中的情报后台叙事，这里把当前研报任务串成“数据进入、记忆沉淀、结构化处理、线索发现、主张复核、报告输出”六步，便于判断任务卡在哪一环。</div>
         <div class="check-grid">${steps.map((step) => {
           const cls = step.passed ? "passed" : "failed";
           const status = step.passed ? "已完成" : (step.partial ? "需处理" : "未完成");
           return `<div class="check-item ${cls}"><div class="diagnostic-head"><strong>${esc(step.title)}</strong><span class="status ${cls}">${esc(status)}</span></div><div class="score-note">${esc(step.note)}</div><div style="margin-top:8px"><button class="btn" data-jump="${esc(step.action.view)}">${esc(step.action.label)}</button></div></div>`;
         }).join("")}</div>
       </div>`;
+    }
+
+    function renderTaskEntityMemory(memory, task) {
+      const hasMemory = memory && Object.keys(memory).length > 0;
+      if (!hasMemory) {
+        return `<div class="detail-section"><h3>结构化记忆</h3><div class="empty">暂无记忆诊断。任务关联证据后，可以将公司、文档、指标和风险事件沉淀到实体库。</div></div>`;
+      }
+      const ready = memory.ready === true;
+      const typeDist = memory.type_distribution || [];
+      const relationDist = memory.relation_distribution || [];
+      const sampleEntities = memory.sample_entities || [];
+      const sampleRelations = memory.sample_relations || [];
+      return `<div class="detail-section"><h3>结构化记忆</h3>
+        <div class="chain-summary">${esc(memory.summary || "暂无结构化记忆说明。")}</div>
+        <div class="analysis-stats">
+          <div class="analysis-stat"><span class="label">记忆状态</span><strong><span class="status ${ready ? "passed" : "pending"}">${esc(ready ? "已形成" : "待沉淀")}</span></strong><span class="score-note">${esc(ready ? "可用于关系分析" : "先沉淀当前任务证据")}</span></div>
+          <div class="analysis-stat"><span class="label">来源证据</span><strong>${esc(number(memory.source_evidence_count || 0))}</strong><span class="score-note">当前任务证据池</span></div>
+          <div class="analysis-stat"><span class="label">已沉淀实体</span><strong>${esc(number(memory.entity_count || 0))}</strong><span class="score-note">${memoryDistributionText(typeDist, entityTypeText)}</span></div>
+          <div class="analysis-stat"><span class="label">已形成关系</span><strong>${esc(number(memory.relation_count || 0))}</strong><span class="score-note">${memoryDistributionText(relationDist, relationTypeText)}</span></div>
+        </div>
+        <div class="check-grid">
+          <div class="check-item ${sampleEntities.length ? "passed" : "failed"}"><div class="diagnostic-head"><strong>实体样例</strong><span class="status ${sampleEntities.length ? "passed" : "pending"}">${esc(sampleEntities.length ? "已有记忆" : "待沉淀")}</span></div>
+            ${sampleEntities.length ? `<div class="mini-list">${sampleEntities.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(item.canonical_name || "实体")}${item.symbol ? ` / ${esc(item.symbol)}` : ""}</strong><br><span class="label">${esc(entityTypeText(item.entity_type))} · 来源证据 ${esc(item.source_evidence_id || "-")}</span></div>`).join("")}</div>` : `<div class="empty">还没有从当前任务证据沉淀出实体。</div>`}
+          </div>
+          <div class="check-item ${sampleRelations.length ? "passed" : "failed"}"><div class="diagnostic-head"><strong>关系样例</strong><span class="status ${sampleRelations.length ? "passed" : "pending"}">${esc(sampleRelations.length ? "已有关系" : "待沉淀")}</span></div>
+            ${sampleRelations.length ? `<div class="mini-list">${sampleRelations.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(item.source || "实体")} → ${esc(relationTypeText(item.relation_type))} → ${esc(item.target || "实体")}</strong><br><span class="label">来源证据 ${esc(item.source_evidence_id || "-")}</span></div>`).join("")}</div>` : `<div class="empty">还没有从当前任务证据形成实体关系。</div>`}
+          </div>
+        </div>
+        <div class="links" style="margin-top:10px">
+          <button class="btn primary" data-extract-task-entities="${esc(task.task_id)}">沉淀当前任务证据</button>
+          <button class="btn" data-jump="entities">查看实体库</button>
+          <button class="btn" data-jump="graph">查看关系图谱</button>
+        </div>
+        <div id="taskEntityExtractResult"></div>
+      </div>`;
+    }
+
+    function memoryDistributionText(items, labelFn) {
+      const rows = Array.isArray(items) ? items : [];
+      return rows.length ? rows.slice(0, 3).map((item) => `${labelFn(item.name)} ${number(item.count)}`).join("、") : "暂无分布";
     }
 
     function renderTaskNarrative(analysis) {
@@ -3779,6 +3830,32 @@ def render_workbench_html() -> str:
     function chainTargetTitle(id, nodes) {
       const node = nodes.find((item) => item.id === id);
       return node?.title || id;
+    }
+
+    function bindTaskEntityMemoryButtons(root = document) {
+      root.querySelectorAll("[data-extract-task-entities]").forEach((btn) => {
+        if (btn.dataset.boundExtractTaskEntities === "true") return;
+        btn.dataset.boundExtractTaskEntities = "true";
+        btn.addEventListener("click", () => extractEntitiesFromTask(btn.dataset.extractTaskEntities));
+      });
+    }
+
+    async function extractEntitiesFromTask(taskId) {
+      const resultBox = $("taskEntityExtractResult");
+      if (resultBox) resultBox.innerHTML = `<div class="empty">正在沉淀当前任务证据...</div>`;
+      try {
+        const result = await postJson("/api/entities/extract-from-task", { task_id: taskId });
+        if (resultBox) {
+          resultBox.innerHTML = `<div class="empty">已从 ${esc(number(result.evidence_count))} 条证据沉淀 ${esc(number(result.entity_count))} 个实体、${esc(number(result.relation_count))} 条关系。</div>
+            <div class="links"><button class="btn primary" data-jump="entities">查看实体库</button><button class="btn" data-jump="graph">查看关系图谱</button></div>`;
+          bindJumpHandlers(resultBox);
+        }
+        await loadTaskDetail(taskId);
+        if (activeState.view === "entities") await loadEntities();
+        if (activeState.view === "graph") await loadRelations();
+      } catch (error) {
+        if (resultBox) resultBox.innerHTML = `<div class="error">沉淀失败，请先确认该任务已经关联证据。</div>`;
+      }
     }
 
     async function loadEvidence() {

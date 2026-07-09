@@ -160,8 +160,10 @@ def test_report_task_analysis_package_connects_quality_chain_and_risk(tmp_path):
     _attach_citation_artifacts(service, tmp_path, used=True)
 
     with client:
+        extracted = client.post("/api/entities/extract-from-task", json={"task_id": "task-analysis"})
         response = client.get("/api/report-tasks/task-analysis/analysis")
 
+    assert extracted.status_code == 201
     assert response.status_code == 200
     body = response.json()
     assert body["scope"]["symbol"] == "NVDA"
@@ -186,6 +188,12 @@ def test_report_task_analysis_package_connects_quality_chain_and_risk(tmp_path):
     assert body["citation_usage"]["status"] == "ready"
     assert body["citation_usage"]["used_claim_count"] == 1
     assert body["citation_usage"]["traceable_claim_count"] == 1
+    assert body["entity_memory"]["ready"] is True
+    assert body["entity_memory"]["source_evidence_count"] == 1
+    assert body["entity_memory"]["entity_count"] >= 4
+    assert body["entity_memory"]["relation_count"] >= 4
+    assert any(item["name"] == "metric" for item in body["entity_memory"]["type_distribution"])
+    assert any(item["name"] == "HAS_METRIC" for item in body["entity_memory"]["relation_distribution"])
     assert body["quality_proof"]["retrieval_coverage"]["summary"]
     assert {item["key"]: item for item in body["quality_proof"]["checks"]}["citation_usage"]["passed"] is True
     assert body["quality_proof"]["failed_claims"][0]["citation_check_status"] == "failed"

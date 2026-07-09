@@ -10,7 +10,7 @@ from sqlalchemy import Select, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from src.db.models import Document, Entity, EntityRelation, EvidenceItem, Workspace
+from src.db.models import ClaimEvidence, Document, Entity, EntityRelation, EvidenceItem, ReportClaim, ReportTask, Workspace
 
 
 class EntityNotFound(LookupError):
@@ -160,6 +160,41 @@ class EntityService:
                 "relations": [self.serialize_relation(relation) for relation in relations],
                 "entity_count": len(entities),
                 "relation_count": len(relations),
+            }
+
+    def extract_from_task(self, task_id: str) -> dict[str, Any]:
+        task_key = _optional_string(task_id)
+        if not task_key:
+            raise EntityConflict("task_id is required")
+        with self.session_factory() as session:
+            task = session.scalar(select(ReportTask).where(ReportTask.task_id == task_key))
+            if task is None:
+                raise EntityConflict(f"Report task not found: {task_key}")
+            evidence_items = _evidence_for_task(session, task_key)
+            entity_by_key: dict[str, Entity] = {}
+            relation_payloads: list[dict[str, Any]] = []
+            for evidence in evidence_items:
+                entity_payloads, evidence_relation_payloads = _entity_payloads_from_evidence(evidence)
+                for payload in entity_payloads:
+                    entity = _upsert_entity(session, payload)
+                    entity_by_key[entity.entity_key] = entity
+                relation_payloads.extend(evidence_relation_payloads)
+
+            relations: list[EntityRelation] = []
+            for payload in relation_payloads:
+                if payload.get("source_entity_key") not in entity_by_key or payload.get("target_entity_key") not in entity_by_key:
+                    continue
+                relations.append(_upsert_relation(session, _resolve_relation_payload(payload, entity_by_key)))
+            session.commit()
+            entities = sorted(entity_by_key.values(), key=lambda item: (item.entity_type, item.canonical_name))
+            return {
+                "task_id": task_key,
+                "evidence_count": len(evidence_items),
+                "entity_count": len(entities),
+                "relation_count": len(relations),
+                "entities": [self.serialize_entity(entity) for entity in entities],
+                "relations": [self.serialize_relation(relation) for relation in relations],
+                "skipped_evidence_count": 0,
             }
 
     def graph_summary(self, *, limit: int = 100) -> dict[str, Any]:
@@ -343,6 +378,27 @@ def _get_evidence_optional(session: Session, evidence_ref: Any) -> EvidenceItem 
         .where(condition)
         .options(selectinload(EvidenceItem.company), selectinload(EvidenceItem.document))
     )
+
+
+def _evidence_for_task(session: Session, task_id: str) -> list[EvidenceItem]:
+    stmt = (
+        select(EvidenceItem)
+        .options(
+            selectinload(EvidenceItem.company),
+            selectinload(EvidenceItem.document),
+            selectinload(EvidenceItem.claim_links).selectinload(ClaimEvidence.claim),
+        )
+        .where(
+            or_(
+                EvidenceItem.metadata_json["task_id"].as_string() == task_id,
+                EvidenceItem.claim_links.any(ClaimEvidence.claim.has(ReportClaim.task_id == task_id)),
+                EvidenceItem.document.has(Document.batch_id == task_id),
+            )
+        )
+        .order_by(EvidenceItem.created_at.desc(), EvidenceItem.id.desc())
+        .limit(300)
+    )
+    return list(session.scalars(stmt).unique().all())
 
 
 def _entity_payloads_from_evidence(evidence: EvidenceItem) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

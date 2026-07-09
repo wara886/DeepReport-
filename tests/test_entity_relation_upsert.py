@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from src.app.api_fastapi import create_fastapi_app
-from src.db.models import Company, Document, EvidenceItem
+from src.db.models import Company, Document, EvidenceItem, ReportTask
 from src.services.report_task_service import ReportTaskService
 
 
@@ -115,3 +115,60 @@ def test_extract_entities_from_evidence_api_builds_graph(temp_db_engine, tmp_pat
     assert extracted.json()["relation_count"] >= 4
     assert graph.json()["node_count"] == extracted.json()["entity_count"]
     assert graph.json()["edge_count"] == extracted.json()["relation_count"]
+
+
+def test_extract_entities_from_task_api_is_idempotent(temp_db_engine, tmp_path):
+    service, client = build_client(temp_db_engine, tmp_path)
+    with service.session() as session:
+        company = Company(name="NVIDIA Corporation", symbol="NVDA", market="US", industry="Semiconductors")
+        session.add(company)
+        session.flush()
+        task = ReportTask(
+            task_id="task-entity-memory",
+            company_id=company.id,
+            symbol="NVDA",
+            period="FY2024",
+            report_type="annual_review",
+            status="completed",
+            current_stage="completed",
+            metadata_json={"company_name": "NVIDIA"},
+        )
+        document = Document(
+            company_id=company.id,
+            batch_id="task-entity-memory",
+            title="NVIDIA FY2024 Form 10-K",
+            doc_type="10-K",
+            report_period="FY2024",
+            parse_status="parsed",
+        )
+        session.add_all([task, document])
+        session.flush()
+        session.add(
+            EvidenceItem(
+                evidence_id="ev_task_entity_memory",
+                company_id=company.id,
+                document_id=document.id,
+                source_type="sec_edgar",
+                trust_level="official",
+                title="Revenue, gross margin, and supply chain risk disclosure",
+                content="NVIDIA revenue increased, gross margin expanded, and supplier concentration created supply chain risk.",
+                metadata_json={"period": "FY2024", "task_id": "task-entity-memory"},
+            )
+        )
+        session.commit()
+
+    with client:
+        first = client.post("/api/entities/extract-from-task", json={"task_id": "task-entity-memory"})
+        second = client.post("/api/entities/extract-from-task", json={"task_id": "task-entity-memory"})
+        graph = client.get("/api/graph/summary")
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["task_id"] == "task-entity-memory"
+    assert first.json()["evidence_count"] == 1
+    assert first.json()["entity_count"] >= 5
+    assert first.json()["relation_count"] >= 5
+    assert second.json()["entity_count"] == first.json()["entity_count"]
+    assert second.json()["relation_count"] == first.json()["relation_count"]
+    assert graph.json()["node_count"] == first.json()["entity_count"]
+    assert graph.json()["edge_count"] == first.json()["relation_count"]

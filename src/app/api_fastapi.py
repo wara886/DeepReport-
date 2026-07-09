@@ -760,6 +760,17 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.post("/api/entities/extract-from-task")
+    async def extract_entities_from_task(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        task_id = payload.get("task_id") or payload.get("id")
+        try:
+            return JSONResponse(status_code=201, content=_entity_service(app).extract_from_task(task_id))
+        except EntityConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.get("/api/entity-relations")
     def list_entity_relations(
         relation_type: str | None = None,

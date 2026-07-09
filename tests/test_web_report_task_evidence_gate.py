@@ -46,3 +46,19 @@ def test_workbench_report_task_citation_usage_is_productized():
     assert "缺引用主张" in html
     assert "未进入正文的引用" in html
     assert "查看报告产物" in html
+
+
+def test_workbench_report_task_entity_memory_is_productized():
+    html = render_workbench_html()
+
+    assert "renderTaskEntityMemory" in html
+    assert "bindTaskEntityMemoryButtons" in html
+    assert "extractEntitiesFromTask" in html
+    assert "/api/entities/extract-from-task" in html
+    assert "结构化记忆" in html
+    assert "沉淀当前任务证据" in html
+    assert "已沉淀实体" in html
+    assert "已形成关系" in html
+    assert "实体样例" in html
+    assert "关系样例" in html
+    assert "数据进入、记忆沉淀、结构化处理、线索发现、主张复核、报告输出" in html

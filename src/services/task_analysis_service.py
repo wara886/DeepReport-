@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session, selectinload
 from src.db.models import (
     ClaimEvidence,
     Company,
+    Entity,
+    EntityRelation,
     EvidenceItem,
     FinancialFact,
     InvestmentSignal,
@@ -59,6 +61,7 @@ class TaskAnalysisService:
             claims = _claims_for_task(session, task_id)
             evidence_candidates = _evidence_candidates_for_task(session, task_id=task_id, symbol=symbol, company_id=company_id)
             evidence_items = _filter_evidence_by_period(evidence_candidates, period=period)
+            entity_memory = _build_entity_memory(session, task_id=task_id, evidence_items=evidence_items)
             facts = _facts_for_task(session, symbol=symbol, company_id=company_id, period=period)
             signals = _signals_for_task(session, task_id=task_id, symbol=symbol, company_id=company_id, period=period)
 
@@ -119,10 +122,11 @@ class TaskAnalysisService:
             claims=claim_payloads,
             evidence=evidence_payloads,
         )
-        narrative = _build_narrative(task_payload=task_payload, stats=stats)
+        narrative = _build_narrative(task_payload=task_payload, stats=stats, entity_memory=entity_memory)
         recommended_actions = _recommended_actions(
             task_payload=task_payload,
             stats=stats,
+            entity_memory=entity_memory,
             quality_proof=quality_proof,
             retrieval_coverage=retrieval_coverage,
             argument_chain=argument_chain,
@@ -141,6 +145,7 @@ class TaskAnalysisService:
             "retrieval_coverage": retrieval_coverage,
             "retrieval_diagnostics": retrieval_diagnostics,
             "citation_usage": citation_usage,
+            "entity_memory": entity_memory,
             "narrative": narrative,
             "quality_proof": quality_proof,
             "argument_chain": argument_chain,
@@ -299,6 +304,91 @@ def _serialize_evidence(item: EvidenceItem) -> dict[str, Any]:
         "metadata": metadata,
         "claim_count": len(claims),
         "claim_ids": [claim.id for claim in claims],
+    }
+
+
+def _build_entity_memory(session: Session, *, task_id: str, evidence_items: list[EvidenceItem]) -> dict[str, Any]:
+    evidence_ids = [item.id for item in evidence_items]
+    if not evidence_ids:
+        return {
+            "task_id": task_id,
+            "ready": False,
+            "source_evidence_count": 0,
+            "entity_count": 0,
+            "relation_count": 0,
+            "type_distribution": [],
+            "relation_distribution": [],
+            "sample_entities": [],
+            "sample_relations": [],
+            "summary": "当前任务还没有可沉淀的证据，先补充或导入任务资料。",
+            "recommended_actions": [{"label": "补充证据", "view": "evidence", "reason": "结构化记忆需要先有任务证据池。"}],
+        }
+
+    entities = list(
+        session.scalars(
+            select(Entity)
+            .where(Entity.source_evidence_item_id.in_(evidence_ids))
+            .options(selectinload(Entity.source_evidence_item))
+            .order_by(Entity.updated_at.desc(), Entity.id.desc())
+            .limit(120)
+        )
+        .unique()
+        .all()
+    )
+    relations = list(
+        session.scalars(
+            select(EntityRelation)
+            .where(EntityRelation.source_evidence_item_id.in_(evidence_ids))
+            .options(
+                selectinload(EntityRelation.source_entity),
+                selectinload(EntityRelation.target_entity),
+                selectinload(EntityRelation.source_evidence_item),
+            )
+            .order_by(EntityRelation.updated_at.desc(), EntityRelation.id.desc())
+            .limit(200)
+        )
+        .unique()
+        .all()
+    )
+    type_counter = Counter(entity.entity_type for entity in entities)
+    relation_counter = Counter(relation.relation_type for relation in relations)
+    ready = bool(entities and relations)
+    if ready:
+        summary = f"已从当前任务证据沉淀 {len(entities)} 个实体、{len(relations)} 条关系，可进入实体库和关系图谱复用。"
+        actions = [{"label": "查看关系图谱", "view": "graph", "reason": "检查公司、文档、指标和风险事件之间的证据化关系。"}]
+    else:
+        summary = "任务证据已就绪，但尚未沉淀为实体关系记忆。建议先执行任务级沉淀，再进入关系分析。"
+        actions = [{"label": "沉淀任务证据", "view": "tasks", "reason": "把任务证据池转成可复用的实体和关系记忆。"}]
+    return {
+        "task_id": task_id,
+        "ready": ready,
+        "source_evidence_count": len(evidence_items),
+        "entity_count": len(entities),
+        "relation_count": len(relations),
+        "type_distribution": [{"name": key, "count": value} for key, value in type_counter.most_common()],
+        "relation_distribution": [{"name": key, "count": value} for key, value in relation_counter.most_common()],
+        "sample_entities": [
+            {
+                "id": entity.id,
+                "entity_type": entity.entity_type,
+                "canonical_name": entity.canonical_name,
+                "symbol": entity.symbol,
+                "source_evidence_id": entity.source_evidence_item.evidence_id if entity.source_evidence_item else None,
+            }
+            for entity in entities[:8]
+        ],
+        "sample_relations": [
+            {
+                "id": relation.id,
+                "relation_type": relation.relation_type,
+                "source": relation.source_entity.canonical_name,
+                "target": relation.target_entity.canonical_name,
+                "source_evidence_id": relation.source_evidence_item.evidence_id if relation.source_evidence_item else None,
+            }
+            for relation in relations[:8]
+        ],
+        "summary": summary,
+        "recommended_actions": actions,
     }
 
 
@@ -538,13 +628,18 @@ def _build_risk_chain(
     }
 
 
-def _build_narrative(*, task_payload: dict[str, Any], stats: dict[str, Any]) -> list[dict[str, Any]]:
+def _build_narrative(*, task_payload: dict[str, Any], stats: dict[str, Any], entity_memory: dict[str, Any]) -> list[dict[str, Any]]:
     status = str(task_payload.get("status") or "")
     return [
         {
             "stage": "数据进入",
             "status": "done" if stats["evidence_count"] > 0 else "pending",
             "description": f"已关联 {stats['evidence_count']} 条证据，其中官方或一手证据 {stats['official_evidence_count']} 条。",
+        },
+        {
+            "stage": "记忆沉淀",
+            "status": "done" if entity_memory.get("ready") else "pending",
+            "description": f"已沉淀 {entity_memory.get('entity_count', 0)} 个实体、{entity_memory.get('relation_count', 0)} 条关系，来源证据 {entity_memory.get('source_evidence_count', 0)} 条。",
         },
         {
             "stage": "结构化处理",
@@ -573,6 +668,7 @@ def _recommended_actions(
     *,
     task_payload: dict[str, Any],
     stats: dict[str, Any],
+    entity_memory: dict[str, Any],
     quality_proof: dict[str, Any],
     retrieval_coverage: dict[str, Any],
     argument_chain: dict[str, Any],
@@ -592,6 +688,8 @@ def _recommended_actions(
         )
     if stats["financial_fact_count"] == 0:
         actions.append({"label": "导入财务事实", "view": "facts", "reason": "缺少结构化财务事实会影响数字分析。"})
+    if stats["evidence_count"] > 0 and not entity_memory.get("ready"):
+        actions.append({"label": "沉淀结构化记忆", "view": "tasks", "reason": "任务证据尚未形成可复用的实体关系记忆。"})
     if stats["investment_signal_count"] == 0:
         actions.append({"label": "生成投资线索", "view": "signals", "reason": "尚未形成风险或机会线索。"})
     if stats["pending_review_count"] > 0:
