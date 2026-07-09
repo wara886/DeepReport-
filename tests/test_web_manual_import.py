@@ -29,7 +29,8 @@ def test_workbench_manual_import_page_contract(tmp_path):
     assert 'id="submitManualImport"' in html
     assert 'postJson("/api/manual-import", payload)' in html
     assert 'activateView("documents")' in html
-    assert 'loadDocuments();\n          if (doc.id) loadDocumentDetail(doc.id);' in html
+    assert "async function openDocumentsForBatch" in html
+    assert 'openDocumentsForBatch(result.batch_id || "", doc.id || null);' in html
     assert 'activateView("ingestion")' in html
 
     with build_client(tmp_path) as client:

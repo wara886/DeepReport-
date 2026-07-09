@@ -360,6 +360,7 @@ def render_workbench_html() -> str:
       </header>
 
       <main class="content">
+        <div id="workbenchNotice"></div>
         <section id="dashboard" class="view active">
           <section class="grid cards" id="metricCards"></section>
           <section class="grid dashboard-layout">
@@ -1743,6 +1744,12 @@ def render_workbench_html() -> str:
       activateView(view);
     }
 
+    function showNotice(message, type = "empty") {
+      const notice = $("workbenchNotice");
+      if (!notice) return;
+      notice.innerHTML = message ? `<div class="${esc(type)}">${esc(message)}</div>` : "";
+    }
+
     function activateView(view) {
       activeState.view = view;
       document.querySelectorAll(".nav button").forEach((item) => item.classList.toggle("active", item.dataset.view === view));
@@ -1769,6 +1776,13 @@ def render_workbench_html() -> str:
       else if (view === "evaluation") loadEvaluation();
       else if (view === "export") loadExports();
       else renderPlaceholder(view);
+    }
+
+    async function openDocumentsForBatch(batchId, documentId = null) {
+      activateView("documents");
+      if ($("documentBatch")) $("documentBatch").value = batchId || "";
+      await loadDocuments();
+      if (documentId) await loadDocumentDetail(documentId);
     }
 
     async function getJson(url) {
@@ -1875,6 +1889,7 @@ def render_workbench_html() -> str:
         activateView("tasks");
         await loadTasks();
         loadTaskDetail(task.task_id);
+        showNotice(`研报任务已创建：${task.company_name || task.symbol || "新任务"} · ${task.period || ""}`);
         loadDashboard();
       } catch (error) {
         $("createTaskMessage").innerHTML = `<div class="error">创建失败，请检查服务配置或稍后重试。</div>`;
@@ -2227,11 +2242,7 @@ def render_workbench_html() -> str:
       root.querySelectorAll("[data-ingestion-documents]").forEach((btn) => {
         if (btn.dataset.boundIngestionDocuments === "true") return;
         btn.dataset.boundIngestionDocuments = "true";
-        btn.addEventListener("click", () => {
-          $("documentBatch").value = btn.dataset.ingestionDocuments || "";
-          activateView("documents");
-          loadDocuments();
-        });
+        btn.addEventListener("click", () => openDocumentsForBatch(btn.dataset.ingestionDocuments || ""));
       });
       root.querySelectorAll("[data-ingestion-create]").forEach((btn) => {
         if (btn.dataset.boundIngestionCreate === "true") return;
@@ -2360,10 +2371,7 @@ def render_workbench_html() -> str:
           </div>
           ${result.duplicate ? `<div class="detail-section"><div class="empty">检测到相同内容，未重复创建文档。</div></div>` : ""}`;
         $("manualViewDocument").addEventListener("click", () => {
-          if ($("documentBatch")) $("documentBatch").value = result.batch_id || "";
-          activateView("documents");
-          loadDocuments();
-          if (doc.id) loadDocumentDetail(doc.id);
+          openDocumentsForBatch(result.batch_id || "", doc.id || null);
         });
         $("manualViewBatch").addEventListener("click", () => {
           activateView("ingestion");
