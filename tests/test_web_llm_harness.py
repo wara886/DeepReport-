@@ -10,6 +10,10 @@ def test_workbench_llm_run_detail_exposes_harness_metadata():
     assert "Token / 成本" in html
     assert "attempt_count" in html
     assert "fallback_used" in html
+    assert "设为活动" in html
+    assert "停用模板" in html
+    assert "activatePromptVersion" in html
+    assert "setPromptTemplateActive" in html
     assert "<summary>运行诊断</summary>" in html
     assert "/api/llm-runs/" in html
     assert "bindPromptTestButtons" in html

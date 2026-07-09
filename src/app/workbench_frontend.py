@@ -983,7 +983,7 @@ def render_workbench_html() -> str:
               <div class="table-scroll">
                 <table>
                   <thead>
-                    <tr><th>提示词</th><th>模块</th><th>活动版本</th><th>结构化输出</th><th>操作</th></tr>
+                    <tr><th>提示词</th><th>模块</th><th>状态</th><th>活动版本</th><th>结构化输出</th><th>操作</th></tr>
                   </thead>
                   <tbody id="promptRows"></tbody>
                 </table>
@@ -3620,16 +3620,17 @@ def render_workbench_html() -> str:
           ? rows.map((item) => `<tr data-selectable="true">
               <td><button class="btn" data-prompt-detail="${esc(item.prompt_key)}">${esc(item.name || promptKeyText(item.prompt_key))}</button><br><span class="label">${esc(item.description || promptKeyText(item.prompt_key))}</span></td>
               <td>${esc(promptModuleText(item.module))}</td>
+              <td><span class="status ${item.is_active ? "completed" : "archived"}">${esc(item.is_active ? "启用中" : "已停用")}</span></td>
               <td>${esc(item.active_version ? "v" + item.active_version : "-")}</td>
               <td>${Object.keys(item.schema || {}).length ? `<span class="status completed">已配置</span>` : `<span class="status pending">未配置</span>`}</td>
               <td><button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button></td>
             </tr>`).join("")
-          : `<tr><td colspan="5"><div class="empty">暂无提示词模板</div></td></tr>`;
+          : `<tr><td colspan="6"><div class="empty">暂无提示词模板</div></td></tr>`;
         document.querySelectorAll("[data-prompt-detail]").forEach((btn) => btn.addEventListener("click", () => loadPromptDetail(btn.dataset.promptDetail)));
         bindPromptTestButtons($("promptRows"));
         renderLlmRuns(runs.items || []);
       } catch (error) {
-        showLoadError("promptRows", 5);
+        showLoadError("promptRows", 6);
       }
     }
 
@@ -3663,15 +3664,17 @@ def render_workbench_html() -> str:
         $("promptDetail").innerHTML = `<h2>提示词详情</h2>
           <div class="kv"><span class="label">名称</span><span>${esc(item.name || promptKeyText(item.prompt_key))}</span></div>
           <div class="kv"><span class="label">模块</span><span>${esc(promptModuleText(item.module))}</span></div>
+          <div class="kv"><span class="label">状态</span><span><span class="status ${item.is_active ? "completed" : "archived"}">${esc(item.is_active ? "启用中" : "已停用")}</span></span></div>
           <div class="kv"><span class="label">活动版本</span><span>${esc(item.active_version ? "v" + item.active_version : "-")}</span></div>
           <div class="detail-section"><h3>内容</h3><div class="text-block">${esc(active?.content || "-")}</div></div>
           <details class="detail-section"><summary>结构化输出要求</summary><div class="text-block">${esc(JSON.stringify(item.schema || {}, null, 2))}</div></details>
           <div class="detail-section"><h3>版本</h3>${
-            (item.versions || []).length ? item.versions.map((version) => `<div class="event"><strong>v${esc(version.version)}</strong> ${version.is_active ? `<span class="status completed">活动</span>` : ""}<br>${esc(version.changelog || "-")}</div>`).join("") : `<div class="empty">暂无版本</div>`
+            (item.versions || []).length ? item.versions.map((version) => `<div class="event"><strong>v${esc(version.version)}</strong> ${version.is_active ? `<span class="status completed">活动</span>` : `<button class="btn" data-prompt-activate-version="${esc(version.id)}" data-prompt-key="${esc(item.prompt_key)}">设为活动</button>`}<br>${esc(version.changelog || "-")}</div>`).join("") : `<div class="empty">暂无版本</div>`
           }</div>
           ${systemInfoBlock("系统信息", [["提示词标识", item.prompt_key]])}
-          <div class="links"><button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button></div>`;
+          <div class="links"><button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button><button class="btn" data-prompt-active="${esc(item.prompt_key)}" data-active="${item.is_active ? "false" : "true"}">${item.is_active ? "停用模板" : "启用模板"}</button></div>`;
         bindPromptTestButtons($("promptDetail"));
+        bindPromptManagementButtons($("promptDetail"));
       } catch (error) {
         showLoadError("promptDetail");
       }
@@ -3682,6 +3685,19 @@ def render_workbench_html() -> str:
         if (btn.dataset.boundPromptTest === "true") return;
         btn.dataset.boundPromptTest = "true";
         btn.addEventListener("click", () => testPrompt(btn.dataset.promptTest));
+      });
+    }
+
+    function bindPromptManagementButtons(root = document) {
+      root.querySelectorAll("[data-prompt-activate-version]").forEach((btn) => {
+        if (btn.dataset.boundPromptActivateVersion === "true") return;
+        btn.dataset.boundPromptActivateVersion = "true";
+        btn.addEventListener("click", () => activatePromptVersion(btn.dataset.promptKey, btn.dataset.promptActivateVersion));
+      });
+      root.querySelectorAll("[data-prompt-active]").forEach((btn) => {
+        if (btn.dataset.boundPromptActive === "true") return;
+        btn.dataset.boundPromptActive = "true";
+        btn.addEventListener("click", () => setPromptTemplateActive(btn.dataset.promptActive, btn.dataset.active === "true"));
       });
     }
 
@@ -3713,6 +3729,28 @@ def render_workbench_html() -> str:
         loadPromptDetail(item.prompt_key);
       } catch (error) {
         $("promptMessage").innerHTML = `<div class="error">创建失败，模板标识可能已存在。</div>`;
+      }
+    }
+
+    async function activatePromptVersion(promptKey, versionId) {
+      try {
+        await postJson(`/api/promptops/templates/${encodeURIComponent(promptKey)}/versions/${encodeURIComponent(versionId)}/activate`, {});
+        await loadPromptOps();
+        await loadPromptDetail(promptKey);
+        $("promptDetail").insertAdjacentHTML("afterbegin", `<div class="empty">活动版本已切换。</div>`);
+      } catch (error) {
+        $("promptDetail").insertAdjacentHTML("afterbegin", `<div class="error">活动版本切换失败，请刷新后重试。</div>`);
+      }
+    }
+
+    async function setPromptTemplateActive(promptKey, active) {
+      try {
+        await postJson(`/api/promptops/templates/${encodeURIComponent(promptKey)}/active`, { active });
+        await loadPromptOps();
+        await loadPromptDetail(promptKey);
+        $("promptDetail").insertAdjacentHTML("afterbegin", `<div class="empty">${active ? "模板已启用。" : "模板已停用。"}</div>`);
+      } catch (error) {
+        $("promptDetail").insertAdjacentHTML("afterbegin", `<div class="error">模板状态更新失败，请刷新后重试。</div>`);
       }
     }
 

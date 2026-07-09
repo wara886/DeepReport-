@@ -624,6 +624,25 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.post("/api/promptops/templates/{template_ref}/versions/{version_ref}/activate")
+    async def activate_prompt_version(template_ref: str, version_ref: str) -> Response:
+        try:
+            return JSONResponse(content=_promptops_service(app).set_active_version(template_ref, version_ref))
+        except PromptTemplateNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Prompt version not found: {version_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/promptops/templates/{template_ref}/active")
+    async def set_prompt_template_active(template_ref: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(content=_promptops_service(app).set_template_active(template_ref, bool(payload.get("active", True))))
+        except PromptTemplateNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Prompt template not found: {template_ref}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.get("/api/promptops/templates/{prompt_key}/active")
     def resolve_prompt_active_version(prompt_key: str) -> Response:
         try:

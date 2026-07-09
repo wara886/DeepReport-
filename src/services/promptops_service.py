@@ -112,6 +112,22 @@ class PromptOpsService:
             session.commit()
             return self.serialize_version(version)
 
+    def set_active_version(self, template_ref: int | str, version_ref: int | str) -> dict[str, Any]:
+        with self.session_factory() as session:
+            template = _get_template(session, template_ref)
+            version = _get_version(template, version_ref)
+            for item in template.versions:
+                item.is_active = item.id == version.id
+            session.commit()
+            return self.serialize_template(template)
+
+    def set_template_active(self, template_ref: int | str, active: bool) -> dict[str, Any]:
+        with self.session_factory() as session:
+            template = _get_template(session, template_ref)
+            template.is_active = bool(active)
+            session.commit()
+            return self.serialize_template(template)
+
     def resolve_active_version(self, prompt_key: str) -> dict[str, Any]:
         with self.session_factory() as session:
             template = _get_template(session, prompt_key)
@@ -234,6 +250,14 @@ def _active_version(template: PromptTemplate) -> PromptVersion | None:
     if active:
         return sorted(active, key=lambda item: item.version, reverse=True)[0]
     return sorted(template.versions, key=lambda item: item.version, reverse=True)[0] if template.versions else None
+
+
+def _get_version(template: PromptTemplate, version_ref: int | str) -> PromptVersion:
+    text = str(version_ref).strip()
+    for version in template.versions:
+        if str(version.id) == text or str(version.version) == text:
+            return version
+    raise PromptTemplateNotFound(f"Prompt version not found: {version_ref}")
 
 
 def _module_backend(*, prompt_key: str, module: str | None, input_payload: dict[str, Any]) -> Any | None:

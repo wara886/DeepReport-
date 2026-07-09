@@ -54,3 +54,37 @@ def test_promptops_api_crud_active_version_and_test_run(tmp_path):
     assert test_run.json()["schema_valid"] is True
     assert llm_runs.status_code == 200
     assert llm_runs.json()["total"] == 1
+
+
+def test_promptops_api_can_activate_version_and_disable_template(tmp_path):
+    with build_client(tmp_path) as client:
+        created = client.post(
+            "/api/promptops/templates",
+            json={
+                "prompt_key": "fact_extractor",
+                "name": "事实抽取",
+                "module": "fact_extractor",
+                "content": "v1 {{text}}",
+                "schema": {"type": "object", "required": ["text"], "properties": {"text": {"type": "string"}}},
+            },
+        )
+        version = client.post(
+            "/api/promptops/templates/fact_extractor/versions",
+            json={"content": "v2 {{text}}", "is_active": False},
+        )
+        still_v1 = client.get("/api/promptops/templates/fact_extractor/active")
+        activated = client.post(f"/api/promptops/templates/fact_extractor/versions/{version.json()['id']}/activate")
+        active = client.get("/api/promptops/templates/fact_extractor/active")
+        disabled = client.post("/api/promptops/templates/fact_extractor/active", json={"active": False})
+        active_only = client.get("/api/promptops/templates", params={"active_only": True})
+
+    assert created.status_code == 201
+    assert version.status_code == 201
+    assert still_v1.json()["version"] == 1
+    assert activated.status_code == 200
+    assert activated.json()["active_version"] == 2
+    assert active.json()["version"] == 2
+    assert disabled.status_code == 200
+    assert disabled.json()["is_active"] is False
+    assert active_only.status_code == 200
+    assert active_only.json()["total"] == 0
