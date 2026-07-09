@@ -88,6 +88,7 @@ git push origin main
    - `src/evaluation/multi_agent_harness.py`
    - 当前 quality gates、official-source routing、evidence/claims/report artifacts 相关代码。
 2. **确认无用的旧代码可以删除**，但删除前必须全仓搜索引用，确保测试通过。
+
 3. **不确定是否仍有复用价值的旧代码，集中归档**：
 
 ```text
@@ -109,6 +110,45 @@ docs/implementation_notes/legacy_cleanup.md
 说明内容：移动了什么、为什么移动、新路径是什么、有没有影响测试、如何恢复。
 
 ---
+
+### 1.3 当前执行状态（2026-07-09 更新）
+
+当前仓库实际推进状态如下，后续 Codex 继续执行时必须以本节为准，避免重复实现已经完成的 P0/P1 功能。
+
+| 阶段 | 当前状态 | 说明 |
+| --- | --- | --- |
+| P0 最小可演示投研工作台 | 已完成并提交 | 已具备工作台外壳、投研首页、任务创建/取消、文档处理、证据库、Claim 复核、导出入口、严格漏斗和基础用户流。 |
+| P1 投研空间、数据源、采集、手动导入、词典、PromptOps、Harness、财务事实 | 已完成核心闭环，已做收尾提交 | 已补齐数据源健康、补采集闭环、PromptOps 版本管理、Harness 观测、质量证明解释、任务分析链路总览、文档空状态引导。 |
+| P2 Hybrid RAG、实体库、关系图谱、投资线索 | 可进入，但必须先做 RAG 质量闭环 | 目前已有实体、关系、线索、逻辑链雏形；进入 P2 后优先补检索质量、证据召回和评测闭环，不要先做炫酷图谱。 |
+| P3 评测中心、导出中心与生产化 | 暂不进入 | 等 P2 的 RAG/证据链稳定后，再做正式导出包、回归评测矩阵和生产部署增强。 |
+
+最近关键提交：
+
+- `fc93229 fix(p0): stabilize workbench task and import feedback`
+- `ce2b39e fix(p1): tighten workbench quality and remediation flows`
+- `09abf38 fix(p1): polish workbench closure experience`
+
+P1 收尾验收已运行：
+
+```bash
+pytest -q tests/test_workbench_frontend_script.py tests/test_web_evaluation_center.py tests/test_task_analysis_api.py
+pytest -q tests/test_report_task_status_lifecycle.py tests/test_evaluation_api.py tests/test_promptops_api.py tests/test_ingestion_batch_lifecycle.py tests/test_web_promptops.py
+python tmp/current_workbench_user_walkthrough.py
+```
+
+验收结果：
+
+- 单元 / 前端静态 / API 回归：通过。
+- 浏览器模拟用户走查：`ok: True`，无控制台错误，无评测页后端变量名裸露。
+- 运行产物 `tmp/`、`data/vector_db/` 不进入提交。
+
+进入 P2 前的产品边界：
+
+1. 继续沿用参考视频的叙事：数据源采集 → 结构化处理 → 记忆沉淀 → 关系分析 → 风险/线索发现 → 人工复核 → 报告输出。
+2. 前端必须保持产品化中文表达，不能把后端字段名、调试 token、内部 key 直接展示给用户。
+3. P2 首要目标是证明“生成研报为什么可信”：证据召回质量、引用覆盖、检索失败降级、质量评测闭环。
+4. P2 不优先做复杂 Neo4j/Milvus 迁移；可以保留 PostgreSQL + Chroma 的渐进方案，先把接口契约和测试打稳。
+5. 每完成一个 P2.x 小模块，必须先做单元测试和一次真实用户浏览器走查，再提交。
 
 ## 2. 参考视频二次复核结果：不能遗漏的产品能力
 
@@ -979,9 +1019,67 @@ git commit -m "chore(p1): finish datasource promptops and harness layer"
 git push origin feat/fin-research-agent-workbench-v2
 ```
 
+### P1 收尾验收记录（已完成）
+
+P1 当前不是“再补更多功能”，而是已经完成核心闭环后的收尾状态。实际完成内容包括：
+
+- 投研空间 / 股票池 / 公司别名：已具备页面入口、配置能力和任务创建时的公司名称 / 股票代码解析。
+- 数据源管理：已具备启用状态、凭证/健康状态、最近批次、失败诊断、补采集入口。
+- 采集任务中心：已具备批次创建、状态展示、失败诊断和补采集回流入口。
+- 手动导入：已支持文本、URL、PDF 路径导入，导入后进入文档处理链路。
+- 金融词典：已覆盖公司别名、财务指标、行业术语、风险词等结构化记忆入口。
+- LLM Harness：已具备调用记录、超时、重试、fallback、schema 校验、token/成本/时延观测基础。
+- PromptOps：已具备 Prompt 版本管理、活动版本解析、运行记录查看，且不是纯前端文本框。
+- 财务事实中心：已支持事实导入、证据绑定、期间/币种/单位展示。
+- P1 收尾体验：任务详情新增分析链路总览，研报质量证明新增“为什么是这个质量分 / 还差什么”，文档详情空状态新增业务解释和下一步按钮。
+
+P1 已验证命令：
+
+```bash
+pytest -q tests/test_workbench_frontend_script.py tests/test_web_evaluation_center.py tests/test_task_analysis_api.py
+pytest -q tests/test_report_task_status_lifecycle.py tests/test_evaluation_api.py tests/test_promptops_api.py tests/test_ingestion_batch_lifecycle.py tests/test_web_promptops.py
+python tmp/current_workbench_user_walkthrough.py
+```
+
+当前 P1 剩余风险不应阻塞进入 P2，但要在 P2 中持续观察：
+
+1. 部分数据源仍是“配置 / 诊断 / 补采集”闭环，真实外部采集稳定性还需要更多真实样本验证。
+2. Harness 已有观测能力，但复杂多模型路由和大规模回放还属于 P3 生产化增强。
+3. 研报质量证明已能解释质量分，但质量本身仍依赖 P2 的证据召回和引用覆盖率提升。
+
 ---
 
 ## P2：Hybrid RAG、实体库、关系图谱与投资线索
+
+### P2 进入原则（2026-07-09 更新）
+
+P2 的第一目标不是“看起来更复杂”，而是让研报质量可验证、证据召回可评测、分析链路可追溯。参考视频里的关系链和记忆系统要映射为金融场景的证据链、事实链、投资逻辑链和风险传导链。
+
+进入 P2 后的优先级：
+
+1. **P2.1 Hybrid RAG / 证据召回质量闭环**
+   - 先做 dense + BM25 + RRF 融合的统一检索接口。
+   - 保留现有 `retrieve_evidence_with_mode` 兼容，避免破坏已完成前端和任务分析包。
+   - 必须增加检索回退测试、RRF 融合测试、引用覆盖率测试。
+   - 判断标准：同一个研报任务能展示“召回了哪些证据、为什么选这些、缺哪些来源、召回失败如何降级”。
+
+2. **P2.2 实体库 / 关系存储收口**
+   - 不急于接 Neo4j，先把 PostgreSQL 的实体和关系抽取、去重、upsert、证据绑定做稳定。
+   - 判断标准：用户点进公司、证据或线索时，能看到实体记忆如何由文档/证据沉淀而来。
+
+3. **P2.3 投资线索中心增强**
+   - 在线索页补“为什么出现这个线索”：关联事实、证据、阈值、影响方向。
+   - 判断标准：线索能进入研报任务上下文，并在质量证明或任务分析链路里被追踪。
+
+4. **P2.4 投资逻辑链 / 风险传导链**
+   - 在已有链路雏形上补证据绑定和节点详情，不做纯视觉大图优先。
+   - 判断标准：用户能从风险线索追溯到财务事实、来源证据、Claim 和报告章节。
+
+P2 暂不做：
+
+- 不优先迁移到 Neo4j。
+- 不优先迁移到 Milvus / OpenSearch，除非 Chroma / 当前检索层无法满足接口测试。
+- 不新增脱离研报质量目标的大屏、动画图谱或无业务闭环的可视化。
 
 ### P2.1 Hybrid RAG 迁移
 
