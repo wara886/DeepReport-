@@ -3128,6 +3128,7 @@ def render_workbench_html() -> str:
       const argumentChain = analysis.argument_chain || {};
       const riskChain = analysis.risk_chain || {};
       const narrative = analysis.narrative || [];
+      const retrievalCoverage = analysis.retrieval_coverage || qualityProof.retrieval_coverage || {};
       const narrativeHtml = narrative.length
         ? `<div class="timeline">${narrative.slice(0, 5).map((item) => `<div class="event"><strong>${esc(item.stage)}</strong> <span class="status ${esc(item.status || "pending")}">${esc(statusText(item.status || "pending"))}</span><br>${esc(item.description || "")}</div>`).join("")}</div>`
         : `<div class="empty">暂无业务链路。</div>`;
@@ -3141,6 +3142,7 @@ def render_workbench_html() -> str:
           <div class="analysis-stat"><span class="label">逻辑链节点</span><strong>${esc(number(chainNodes.length))}</strong><span class="score-note">风险节点 ${esc(number(riskNodes.length))} 个</span></div>
         </div>
         <div class="detail-section"><h3>业务链路</h3>${narrativeHtml}</div>
+        ${renderRetrievalCoverage(retrievalCoverage)}
         <div class="detail-section"><h3>研报质量证明</h3>
           <div class="chain-summary">${esc(qualityProof.explanation || "暂无质量解释。")}</div>
           <div class="check-grid">${proofChecks.length ? proofChecks.slice(0, 4).map((item) => `<div class="check-item ${item.passed ? "passed" : "failed"}"><div class="diagnostic-head"><strong>${esc(item.title)}</strong><span class="status ${item.passed ? "passed" : "failed"}">${esc(item.passed ? "通过" : "需处理")}</span></div><div class="score-note">${esc(item.description || "")}</div></div>`).join("") : `<div class="empty">暂无质量检查项。</div>`}</div>
@@ -3359,6 +3361,7 @@ def render_workbench_html() -> str:
           ${renderTaskLinkageOverview(analysis)}
           ${renderTaskNarrative(analysis)}
           ${renderTaskAnalysisStats(analysis.stats || {})}
+          ${renderRetrievalCoverage(analysis.retrieval_coverage || analysis.quality_proof?.retrieval_coverage || {})}
           ${renderQualityProof(analysis.quality_proof || {}, task)}
           ${renderArgumentChain(analysis.argument_chain || {})}
           ${renderRiskChain(analysis.risk_chain || {})}
@@ -3481,6 +3484,30 @@ def render_workbench_html() -> str:
           <button class="btn" data-jump="evidence">查看证据库</button>
           <button class="btn" data-jump="evaluation">进入评测中心</button>
         </div>
+      </div>`;
+    }
+
+    function renderRetrievalCoverage(coverage) {
+      const candidateCount = Number(coverage.candidate_count || 0);
+      const returnedCount = Number(coverage.returned_count || 0);
+      const returnedSources = coverage.returned_sources || [];
+      const missingSources = coverage.missing_sources || [];
+      const gaps = coverage.gaps || [];
+      if (!candidateCount && !returnedCount && !gaps.length) {
+        return `<div class="detail-section"><h3>证据召回准备度</h3><div class="empty">暂无召回诊断。完成证据导入或研报任务后会展示来源覆盖和缺口。</div></div>`;
+      }
+      return `<div class="detail-section"><h3>证据召回准备度</h3>
+        <div class="analysis-stats">
+          <div class="analysis-stat"><span class="label">候选证据</span><strong>${esc(number(candidateCount))}</strong><span class="score-note">进入任务证据池</span></div>
+          <div class="analysis-stat"><span class="label">可用证据</span><strong>${esc(number(returnedCount))}</strong><span class="score-note">${esc(coverage.evidence_ready ? "已可复核" : "需要补证据")}</span></div>
+          <div class="analysis-stat"><span class="label">命中来源</span><strong>${esc(number(returnedSources.length))}</strong><span class="score-note">${renderSourceList(returnedSources)}</span></div>
+          <div class="analysis-stat"><span class="label">来源缺口</span><strong>${esc(number(missingSources.length))}</strong><span class="score-note">${missingSources.length ? renderSourceList(missingSources) : "无关键缺口"}</span></div>
+        </div>
+        <div class="chain-summary">${esc(coverage.summary || "暂无召回说明。")}</div>
+        ${gaps.length ? `<div class="diagnostic-list">${gaps.map((gap) => `<div class="diagnostic-issue ${esc(gap.type || "")}">
+          <div class="diagnostic-head"><strong>${esc(gap.label || "证据缺口")}</strong><button class="btn" data-jump="${esc(gap.next_view || "evidence")}">去处理</button></div>
+          <div class="score-note">${esc(gap.description || "")}</div>
+        </div>`).join("")}</div>` : `<div class="empty">当前未发现明显召回缺口。</div>`}
       </div>`;
     }
 

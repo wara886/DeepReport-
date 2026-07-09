@@ -18,6 +18,7 @@ from src.db.models import (
     ReportClaim,
     ReportTask,
 )
+from src.rag.retrieval_diagnostics import build_retrieval_coverage
 from src.services.claim_review_service import ClaimReviewService
 from src.services.financial_fact_service import FinancialFactService
 from src.services.investment_signal_service import InvestmentSignalService
@@ -69,7 +70,18 @@ class TaskAnalysisService:
             signals=signal_payloads,
             claims=claim_payloads,
         )
-        quality_proof = _build_quality_proof(task_payload=task_payload, stats=stats, claims=claim_payloads)
+        retrieval_coverage = build_retrieval_coverage(
+            candidates=evidence_payloads,
+            returned=evidence_payloads,
+            company=symbol,
+            mode_effective="task_evidence" if evidence_payloads else "no_hits",
+        )
+        quality_proof = _build_quality_proof(
+            task_payload=task_payload,
+            stats=stats,
+            claims=claim_payloads,
+            retrieval_coverage=retrieval_coverage,
+        )
         argument_chain = _build_argument_chain(
             company_name=company_name,
             symbol=symbol,
@@ -92,6 +104,7 @@ class TaskAnalysisService:
             task_payload=task_payload,
             stats=stats,
             quality_proof=quality_proof,
+            retrieval_coverage=retrieval_coverage,
             argument_chain=argument_chain,
             risk_chain=risk_chain,
         )
@@ -105,6 +118,7 @@ class TaskAnalysisService:
                 "report_type": task_payload.get("report_type"),
             },
             "stats": stats,
+            "retrieval_coverage": retrieval_coverage,
             "narrative": narrative,
             "quality_proof": quality_proof,
             "argument_chain": argument_chain,
@@ -314,6 +328,7 @@ def _build_quality_proof(
     task_payload: dict[str, Any],
     stats: dict[str, Any],
     claims: list[dict[str, Any]],
+    retrieval_coverage: dict[str, Any],
 ) -> dict[str, Any]:
     diagnostics = task_payload.get("quality_diagnostics") if isinstance(task_payload.get("quality_diagnostics"), dict) else {}
     failed_claims = [
@@ -360,6 +375,13 @@ def _build_quality_proof(
             value=stats["citation_failed_count"],
             description="引用缺失或引用无法命中证据时，需要补证据或降级表述。",
         ),
+        _check_item(
+            key="source_coverage",
+            title="来源覆盖",
+            passed=bool(retrieval_coverage.get("quality_ready")),
+            value=retrieval_coverage.get("returned_count", 0),
+            description=str(retrieval_coverage.get("summary") or "检查任务是否已命中必要官方或一手来源。"),
+        ),
     ]
     return {
         "delivery_pass": diagnostics.get("delivery_pass"),
@@ -370,6 +392,7 @@ def _build_quality_proof(
         "failure_categories": diagnostics.get("failure_categories") or {},
         "checks": checks,
         "failed_claims": failed_claims,
+        "retrieval_coverage": retrieval_coverage,
         "explanation": _quality_explanation(diagnostics=diagnostics, stats=stats, checks=checks),
     }
 
@@ -519,12 +542,22 @@ def _recommended_actions(
     task_payload: dict[str, Any],
     stats: dict[str, Any],
     quality_proof: dict[str, Any],
+    retrieval_coverage: dict[str, Any],
     argument_chain: dict[str, Any],
     risk_chain: dict[str, Any],
 ) -> list[dict[str, str]]:
     actions: list[dict[str, str]] = []
+    missing_sources = list(retrieval_coverage.get("missing_sources") or [])
     if stats["evidence_count"] == 0:
         actions.append({"label": "补充证据", "view": "evidence", "reason": "当前任务没有可追溯证据。"})
+    elif missing_sources:
+        actions.append(
+            {
+                "label": "补齐关键来源",
+                "view": "datasources",
+                "reason": "当前任务证据已命中，但缺少必要官方或一手来源：" + "、".join(_source_label(item) for item in missing_sources) + "。",
+            }
+        )
     if stats["financial_fact_count"] == 0:
         actions.append({"label": "导入财务事实", "view": "facts", "reason": "缺少结构化财务事实会影响数字分析。"})
     if stats["investment_signal_count"] == 0:
@@ -544,6 +577,17 @@ def _recommended_actions(
 
 def _check_item(*, key: str, title: str, passed: bool, value: Any, description: str) -> dict[str, Any]:
     return {"key": key, "title": title, "passed": passed, "value": value, "description": description}
+
+
+def _source_label(source_key: str) -> str:
+    mapping = {
+        "sec_edgar": "美国证监会披露",
+        "cninfo": "巨潮资讯公告",
+        "hkex": "港交所披露",
+        "yahoo_finance": "雅虎财经",
+        "local_pdf": "本地文档",
+    }
+    return mapping.get(str(source_key or ""), str(source_key or "关键来源"))
 
 
 def _quality_explanation(*, diagnostics: dict[str, Any], stats: dict[str, Any], checks: list[dict[str, Any]]) -> str:

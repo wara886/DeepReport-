@@ -170,6 +170,11 @@ def test_report_task_analysis_package_connects_quality_chain_and_risk(tmp_path):
     checks = {item["key"]: item for item in body["quality_proof"]["checks"]}
     assert checks["evidence_binding"]["passed"] is False
     assert checks["citation_consistency"]["passed"] is False
+    assert checks["source_coverage"]["passed"] is True
+    assert body["retrieval_coverage"]["quality_ready"] is True
+    assert body["retrieval_coverage"]["required_sources"] == ["sec_edgar"]
+    assert body["retrieval_coverage"]["returned_sources"] == ["sec_edgar"]
+    assert body["quality_proof"]["retrieval_coverage"]["summary"]
     assert body["quality_proof"]["failed_claims"][0]["citation_check_status"] == "failed"
     assert body["argument_chain"]["nodes"]
     assert body["argument_chain"]["edges"]
