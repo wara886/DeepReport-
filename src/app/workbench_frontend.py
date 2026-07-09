@@ -2845,15 +2845,18 @@ def render_workbench_html() -> str:
     async function loadEvaluationTaskDiagnostic(taskId) {
       $("evaluationTaskDiagnostic").innerHTML = `<div class="empty">正在生成单任务诊断...</div>`;
       try {
-        const payload = await getJson(`/api/evaluation/report-tasks/${encodeURIComponent(taskId)}/diagnostics`);
-        renderEvaluationTaskDiagnostic(payload);
+        const [payload, analysis] = await Promise.all([
+          getJson(`/api/evaluation/report-tasks/${encodeURIComponent(taskId)}/diagnostics`),
+          getJson(`/api/report-tasks/${encodeURIComponent(taskId)}/analysis`).catch(() => null),
+        ]);
+        renderEvaluationTaskDiagnostic(payload, analysis);
         $("evaluationDiagnosticPanel").scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (error) {
         $("evaluationTaskDiagnostic").innerHTML = `<div class="error">诊断加载失败，请刷新后重试。</div>`;
       }
     }
 
-    function renderEvaluationTaskDiagnostic(payload) {
+    function renderEvaluationTaskDiagnostic(payload, analysis = null) {
       const task = payload.task || {};
       const summary = payload.summary || {};
       const blockers = payload.blockers || [];
@@ -2880,9 +2883,11 @@ def render_workbench_html() -> str:
         <div class="detail-section"><h3>建议动作</h3>${renderDiagnosticActions(actions)}</div>
         <div class="detail-section"><h3>主张问题</h3>${renderDiagnosticClaimGroups(claimIssues)}</div>
         <div class="detail-section"><h3>模型运行问题</h3>${renderDiagnosticModelIssues(modelIssues)}</div>
+        <div class="detail-section"><h3>分析链路摘要</h3>${renderEvaluationAnalysisLinkage(analysis)}</div>
         <div class="detail-section"><h3>质量检查原始问题</h3>${renderDiagnosticQualityIssues(qualityIssues)}</div>
         ${systemInfoBlock("系统信息", [["任务编号", task.task_id]])}`;
       bindJumpHandlers($("evaluationTaskDiagnostic"));
+      bindRecentTaskButtons($("evaluationTaskDiagnostic"));
     }
 
     function renderDiagnosticBlockers(blockers) {
@@ -2943,6 +2948,56 @@ def render_workbench_html() -> str:
             <span class="label">${esc(item.label)}</span><br>${esc(item.message)}
           </div>`).join("")}</div>`
         : `<div class="empty">暂无额外质量检查问题。</div>`;
+    }
+
+    function renderEvaluationAnalysisLinkage(analysis) {
+      if (!analysis) {
+        return `<div class="empty">分析包暂不可用，可进入研报任务详情查看已有产物。</div>`;
+      }
+      const task = analysis.task || {};
+      const stats = analysis.stats || {};
+      const qualityProof = analysis.quality_proof || {};
+      const argumentChain = analysis.argument_chain || {};
+      const riskChain = analysis.risk_chain || {};
+      const narrative = analysis.narrative || [];
+      const narrativeHtml = narrative.length
+        ? `<div class="timeline">${narrative.slice(0, 5).map((item) => `<div class="event"><strong>${esc(item.stage)}</strong> <span class="status ${esc(item.status || "pending")}">${esc(statusText(item.status || "pending"))}</span><br>${esc(item.description || "")}</div>`).join("")}</div>`
+        : `<div class="empty">暂无业务链路。</div>`;
+      const proofChecks = qualityProof.checks || [];
+      const chainNodes = argumentChain.nodes || [];
+      const riskNodes = (riskChain.nodes || []).filter((node) => node.type === "risk");
+      return `<div class="analysis-stats">
+          <div class="analysis-stat"><span class="label">证据</span><strong>${esc(number(stats.evidence_count))}</strong><span class="score-note">官方/一手 ${esc(number(stats.official_evidence_count))} 条</span></div>
+          <div class="analysis-stat"><span class="label">财务事实</span><strong>${esc(number(stats.financial_fact_count))}</strong><span class="score-note">结构化指标和口径</span></div>
+          <div class="analysis-stat"><span class="label">投资线索</span><strong>${esc(number(stats.investment_signal_count))}</strong><span class="score-note">高优先级 ${esc(number(stats.high_severity_signal_count))} 条</span></div>
+          <div class="analysis-stat"><span class="label">逻辑链节点</span><strong>${esc(number(chainNodes.length))}</strong><span class="score-note">风险节点 ${esc(number(riskNodes.length))} 个</span></div>
+        </div>
+        <div class="detail-section"><h3>业务链路</h3>${narrativeHtml}</div>
+        <div class="detail-section"><h3>研报质量证明</h3>
+          <div class="chain-summary">${esc(qualityProof.explanation || "暂无质量解释。")}</div>
+          <div class="check-grid">${proofChecks.length ? proofChecks.slice(0, 4).map((item) => `<div class="check-item ${item.passed ? "passed" : "failed"}"><div class="diagnostic-head"><strong>${esc(item.title)}</strong><span class="status ${item.passed ? "passed" : "failed"}">${esc(item.passed ? "通过" : "需处理")}</span></div><div class="score-note">${esc(item.description || "")}</div></div>`).join("") : `<div class="empty">暂无质量检查项。</div>`}</div>
+        </div>
+        <div class="detail-section"><h3>投资逻辑链</h3>
+          <div class="chain-summary">${esc(argumentChain.summary || "尚未形成投资逻辑链。")}</div>
+          ${renderAnalysisNodeList(chainNodes, argumentChain.edges || [])}
+        </div>
+        <div class="detail-section"><h3>风险传导链</h3>
+          <div class="chain-summary">${esc(riskChain.summary || "尚未识别风险传导节点。")}</div>
+          <div class="mini-list">${riskNodes.length ? riskNodes.slice(0, 5).map((node) => `<div class="mini-item"><strong>${esc(node.title || "风险线索")}</strong><br><span class="label">${esc(signalSeverityText(node.payload?.severity || ""))} · ${esc(signalDirectionText(node.payload?.direction || ""))}</span><br>${esc(node.payload?.summary || "")}</div>`).join("") : `<div class="empty">暂无风险节点。</div>`}</div>
+        </div>
+        <div class="links" style="margin-top:10px">
+          <button class="btn primary" data-task-detail-jump="${esc(task.task_id)}">打开完整分析包</button>
+          <button class="btn" data-jump="signals">查看投资线索</button>
+          <button class="btn" data-jump="graph">查看关系图谱</button>
+        </div>`;
+    }
+
+    function renderAnalysisNodeList(nodes, edges) {
+      if (!nodes.length) return `<div class="empty">暂无可展示链路。导入证据、财务事实和投资线索后会自动补全。</div>`;
+      return `<div class="chain-list">${nodes.slice(0, 6).map((node) => {
+        const outgoing = edges.filter((edge) => edge.from === node.id).slice(0, 2);
+        return `<div class="chain-node"><div class="chain-node-head"><strong>${esc(node.title || node.id)}</strong><span class="status ${esc(node.type || "neutral")}">${esc(chainNodeTypeText(node.type))}</span></div>${outgoing.map((edge) => `<div class="chain-edge">→ ${esc(edge.label || "关联")} → ${esc(chainTargetTitle(edge.to, nodes))}</div>`).join("")}</div>`;
+      }).join("")}</div>`;
     }
 
     function renderEvaluationRuns(runs) {

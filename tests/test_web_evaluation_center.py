@@ -15,6 +15,10 @@ def test_workbench_evaluation_center_is_productized_and_loads_api():
     assert "单任务诊断" in html
     assert "data-evaluation-diagnostic" in html
     assert "/api/evaluation/report-tasks/" in html
+    assert "/api/report-tasks/${encodeURIComponent(taskId)}/analysis" in html
     assert "loadEvaluationTaskDiagnostic" in html
+    assert "分析链路摘要" in html
+    assert "打开完整分析包" in html
+    assert "renderEvaluationAnalysisLinkage" in html
     assert "loadEvaluation" in html
     assert 'data-view="evaluation"><span>评测中心</span><span class="tag preview">预览</span></button>' in html
