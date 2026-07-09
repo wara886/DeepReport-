@@ -11,5 +11,6 @@ def test_workbench_ingestion_center_exposes_operable_batch_controls():
     assert "查看同批次文档" in html
     assert "data-ingestion-create" in html
     assert "新建采集批次" in html
+    assert 'source_key: sourceKeyValue($("ingestionCreateSource").value.trim())' in html
     assert 'activateView("documents")' in html
     assert "loadDocuments()" in html

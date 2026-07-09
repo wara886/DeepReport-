@@ -2293,7 +2293,7 @@ def render_workbench_html() -> str:
     async function createIngestionBatch() {
       const payload = {
         name: $("ingestionName").value.trim(),
-        source_key: $("ingestionCreateSource").value.trim(),
+        source_key: sourceKeyValue($("ingestionCreateSource").value.trim()),
         target_type: $("ingestionTargetType").value,
         symbol: $("ingestionSymbol").value.trim(),
         period: $("ingestionPeriod").value.trim(),
