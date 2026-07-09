@@ -18,6 +18,7 @@ VERIFIED_CLAIM_STATUSES = {"supported", "verified", "passed"}
 FAILED_CLAIM_STATUSES = {"failed", "unsupported", "missing_evidence", "numeric_mismatch"}
 PASS_CHECK_STATUSES = {"passed", "supported", "verified", "ok", "success", "not_required"}
 FAIL_CHECK_STATUSES = {"failed", "unsupported", "mismatch", "numeric_mismatch", "citation_missing"}
+QUALITY_EVALUATED_TASK_STATUSES = {"completed", "quality_failed"}
 
 
 class EvaluationService:
@@ -46,10 +47,33 @@ class EvaluationService:
                 session.scalar(select(func.count(ReportTask.id)).where(active_task_condition, ReportTask.status == "completed"))
                 or 0
             )
+            quality_evaluated_tasks = list(
+                session.scalars(
+                    select(ReportTask).where(
+                        active_task_condition,
+                        ReportTask.status.in_(QUALITY_EVALUATED_TASK_STATUSES),
+                    )
+                    .order_by(ReportTask.created_at.desc(), ReportTask.id.desc())
+                ).all()
+            )
+            quality_evaluated_task_count = int(
+                session.scalar(
+                    select(func.count(ReportTask.id)).where(
+                        active_task_condition,
+                        ReportTask.status.in_(QUALITY_EVALUATED_TASK_STATUSES),
+                    )
+                )
+                or 0
+            )
+            delivery_pass_count = sum(1 for task in quality_evaluated_tasks if _task_delivery_passed(task))
             quality_scores = [
                 float(value)
                 for value in session.scalars(
-                    select(ReportTask.quality_score).where(active_task_condition, ReportTask.quality_score.is_not(None))
+                    select(ReportTask.quality_score).where(
+                        active_task_condition,
+                        ReportTask.status.in_(QUALITY_EVALUATED_TASK_STATUSES),
+                        ReportTask.quality_score.is_not(None),
+                    )
                 ).all()
                 if isinstance(value, int | float)
             ]
@@ -108,7 +132,9 @@ class EvaluationService:
             metrics = {
                 "active_task_count": active_task_count,
                 "completed_task_count": completed_task_count,
-                "delivery_pass_rate": _ratio(completed_task_count, active_task_count),
+                "quality_evaluated_task_count": quality_evaluated_task_count,
+                "delivery_pass_count": delivery_pass_count,
+                "delivery_pass_rate": _ratio(delivery_pass_count, quality_evaluated_task_count),
                 "average_quality_score": round(sum(quality_scores) / len(quality_scores), 4) if quality_scores else None,
                 "claim_count": claim_count,
                 "traceable_claim_count": traceable_claim_count,
@@ -143,7 +169,7 @@ class EvaluationService:
                 "claim_quality": _claim_quality(metrics),
                 "model_health": _model_health(metrics, recent_llm_runs),
                 "failure_categories": _failure_categories(failure_counter),
-                "recent_tasks": [_task_quality_row(task) for task in active_tasks[:limit]],
+                "recent_tasks": [_task_quality_row(task) for task in quality_evaluated_tasks[:limit]],
                 "recent_llm_runs": [_llm_run_row(run) for run in recent_llm_runs],
                 "notes": _notes(metrics),
             }
@@ -279,6 +305,15 @@ def _top_quality_issues(quality_result: dict[str, Any]) -> list[dict[str, Any]]:
         elif isinstance(item, str):
             issues.append({"message": item, "category": "quality_issue", "severity": "warning"})
     return issues
+
+
+def _task_delivery_passed(task: ReportTask) -> bool:
+    quality_result = (task.metadata_json or {}).get("quality_result")
+    if isinstance(quality_result, dict):
+        delivery_gate = quality_result.get("delivery_gate")
+        if isinstance(delivery_gate, dict) and delivery_gate.get("delivery_pass") is not None:
+            return bool(delivery_gate.get("delivery_pass"))
+    return task.status == "completed"
 
 
 def _quality_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:

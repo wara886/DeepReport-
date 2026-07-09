@@ -77,7 +77,21 @@ def seed_evaluation_state(service):
             status="archived",
             quality_score=0.1,
         )
-        session.add_all([task_ok, task_bad, task_source_gap, task_archived])
+        task_cancelled = ReportTask(
+            task_id="task-eval-cancelled",
+            symbol="MSFT",
+            period="FY2024",
+            status="cancelled",
+            quality_score=0.05,
+        )
+        task_queued = ReportTask(
+            task_id="task-eval-queued",
+            symbol="AAPL",
+            period="FY2024",
+            status="queued",
+            quality_score=0.02,
+        )
+        session.add_all([task_ok, task_bad, task_source_gap, task_archived, task_cancelled, task_queued])
         session.flush()
         evidence = EvidenceItem(
             evidence_id="ev-eval-1",
@@ -205,8 +219,10 @@ def test_evaluation_summary_aggregates_quality_and_harness_metrics(tmp_path):
     assert response.status_code == 200
     body = response.json()
     metrics = body["metrics"]
-    assert metrics["active_task_count"] == 3
+    assert metrics["active_task_count"] == 5
     assert metrics["completed_task_count"] == 1
+    assert metrics["quality_evaluated_task_count"] == 3
+    assert metrics["delivery_pass_count"] == 1
     assert metrics["delivery_pass_rate"] == 0.3333
     assert metrics["average_quality_score"] == 0.7067
     assert metrics["claim_count"] == 3
@@ -301,6 +317,28 @@ def test_evaluation_task_diagnostics_links_source_gaps_to_ingestion_and_datasour
     action_by_view = {item["view"]: item for item in body["recommended_actions"]}
     assert action_by_view["ingestion"]["ingestion_source"] == "sec_edgar"
     assert action_by_view["datasources"]["datasource_query"] in {"serper", "local_evidence"}
+
+
+def test_evaluation_remediation_batch_payload_creates_traceable_unique_batch(tmp_path):
+    client, service = build_client(tmp_path)
+    seed_evaluation_state(service)
+
+    with client:
+        diagnostic = client.get("/api/evaluation/report-tasks/task-eval-source-gap/diagnostics")
+        payload = {
+            item["source_key"]: item["remediation_batch"]
+            for item in diagnostic.json()["data_source_health"]["source_rows"]
+        }["sec_edgar"]
+        first = client.post("/api/ingestion-batches", json=payload)
+        second = client.post("/api/ingestion-batches", json=payload)
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["batch_id"] != second.json()["batch_id"]
+    assert first.json()["batch_id"].startswith("rem-sec-edgar-nvda-fy2024-")
+    assert first.json()["source_key"] == "sec_edgar"
+    assert first.json()["metadata"]["task_id"] == "task-eval-source-gap"
+    assert first.json()["metadata"]["source"] == "evaluation_diagnostic_remediation"
 
 
 def test_evaluation_task_diagnostics_returns_404_for_missing_task(tmp_path):

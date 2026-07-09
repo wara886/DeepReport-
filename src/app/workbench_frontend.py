@@ -1426,6 +1426,8 @@ def render_workbench_html() -> str:
     function sourceKeyValue(value) {
       const text = String(value || "").trim();
       if (!text) return "";
+      const sourceInput = $("ingestionSource");
+      if (sourceInput && sourceInput.value.trim() === text && sourceInput.dataset.sourceKey) return sourceInput.dataset.sourceKey;
       const direct = Object.entries(sourceMap).find(([, label]) => label === text);
       return direct ? direct[0] : text;
     }
@@ -1573,9 +1575,43 @@ def render_workbench_html() -> str:
     function systemInfoBlock(title, rows) {
       const validRows = rows.filter(([, value]) => value != null && value !== "");
       if (!validRows.length) return "";
-      return `<details class="detail-section"><summary>${esc(title)}</summary>${
-        validRows.map(([label, value]) => `<div class="kv"><span class="label">${esc(label)}</span><span class="mono">${esc(fmt(value))}</span></div>`).join("")
+      return `<details class="detail-section"><summary>${esc(systemInfoTitle(title))}</summary>${
+        validRows.map(([label, value]) => `<div class="kv"><span class="label">${esc(systemLabelText(label))}</span><span class="mono">${esc(systemValueText(label, value))}</span></div>`).join("")
       }</details>`;
+    }
+
+    function systemInfoTitle(title) {
+      return title === "文件信息" ? "文件追踪信息" : "技术追踪信息";
+    }
+
+    function systemLabelText(label) {
+      const map = {
+        任务编号: "任务追踪号",
+        数据源标识: "来源追踪号",
+        空间编号: "投研空间号",
+        批次编号: "采集批次号",
+        文件路径: "本地文件位置",
+        提示词标识: "提示词追踪号",
+        运行编号: "运行追踪号",
+        证据编号: "证据追踪号",
+        实体编号: "实体追踪号",
+        实体键: "实体索引键",
+        来源证据: "来源证据号",
+        关系编号: "关系追踪号",
+        关系键: "关系索引键",
+        事实编号: "事实追踪号",
+        线索编号: "线索追踪号",
+        规则: "线索类型",
+        来源规则: "触发规则",
+        主张编号: "主张追踪号",
+      };
+      return map[label] || label;
+    }
+
+    function systemValueText(label, value) {
+      if (label === "数据源标识") return `${sourceText(value)} (${fmt(value)})`;
+      if (label === "规则" || label === "来源规则") return signalTypeText(value);
+      return fmt(value);
     }
 
     function evidenceDisplayTitle(item) {
@@ -1738,7 +1774,10 @@ def render_workbench_html() -> str:
       if (view === "documents" && options.documentStep && $("documentStep")) $("documentStep").value = options.documentStep;
       if (view === "datasources" && options.datasourceQuery && $("datasourceQuery")) $("datasourceQuery").value = sourceText(options.datasourceQuery);
       if (view === "ingestion") {
-        if (options.ingestionSource && $("ingestionSource")) $("ingestionSource").value = sourceText(options.ingestionSource);
+        if (options.ingestionSource && $("ingestionSource")) {
+          $("ingestionSource").value = sourceText(options.ingestionSource);
+          $("ingestionSource").dataset.sourceKey = options.ingestionSource;
+        }
         if (options.ingestionQuery && $("ingestionQuery")) $("ingestionQuery").value = options.ingestionQuery;
       }
       activateView(view);
@@ -2755,8 +2794,8 @@ def render_workbench_html() -> str:
     function renderEvaluation(payload) {
       const metrics = payload.metrics || {};
       const cards = [
-        { label: "交付通过率", value: percentText(metrics.delivery_pass_rate), note: `${number(metrics.completed_task_count)} / ${number(metrics.active_task_count)} 个任务`, view: "tasks" },
-        { label: "平均质量分", value: scoreText(metrics.average_quality_score), note: "已评分研报均值", view: "tasks" },
+        { label: "交付通过率", value: percentText(metrics.delivery_pass_rate), note: `${number(metrics.delivery_pass_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务`, view: "tasks" },
+        { label: "平均质量分", value: scoreText(metrics.average_quality_score), note: "已进入质检任务均值", view: "tasks" },
         { label: "可追溯主张率", value: percentText(metrics.traceable_claim_rate), note: `${number(metrics.traceable_claim_count)} / ${number(metrics.claim_count)} 条主张`, view: "claims" },
         { label: "引用支持率", value: percentText(metrics.citation_support_rate), note: `${number(metrics.citation_supported_count)} 条有证据或引用`, view: "claims" },
         { label: "数值一致性", value: percentText(metrics.numeric_consistency_rate), note: `${number(metrics.numeric_checked_count)} 条已检查`, view: "facts" },
@@ -3015,8 +3054,10 @@ def render_workbench_html() -> str:
       try {
         const created = await postJson("/api/ingestion-batches", payload);
         $("evaluationTaskDiagnostic").insertAdjacentHTML("afterbegin", `<div class="empty">已创建补采集批次：${esc(created.name || created.batch_id)}</div>`);
+        showNotice(`已创建补采集批次：${created.name || created.batch_id}`);
         activateView("ingestion");
         $("ingestionSource").value = sourceText(created.source_key);
+        $("ingestionSource").dataset.sourceKey = created.source_key || "";
         await loadIngestionBatches();
         await loadIngestionDetail(created.batch_id);
       } catch (error) {
@@ -3679,6 +3720,7 @@ def render_workbench_html() -> str:
           <div class="detail-section"><h3>版本</h3>${
             (item.versions || []).length ? item.versions.map((version) => `<div class="event"><strong>v${esc(version.version)}</strong> ${version.is_active ? `<span class="status completed">活动</span>` : `<button class="btn" data-prompt-activate-version="${esc(version.id)}" data-prompt-key="${esc(item.prompt_key)}">设为活动</button>`}<br>${esc(version.changelog || "-")}</div>`).join("") : `<div class="empty">暂无版本</div>`
           }</div>
+          ${renderPromptTestPanel(item)}
           ${systemInfoBlock("系统信息", [["提示词标识", item.prompt_key]])}
           <div class="links"><button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button><button class="btn" data-prompt-active="${esc(item.prompt_key)}" data-active="${item.is_active ? "false" : "true"}">${item.is_active ? "停用模板" : "启用模板"}</button></div>`;
         bindPromptTestButtons($("promptDetail"));
@@ -3686,6 +3728,23 @@ def render_workbench_html() -> str:
       } catch (error) {
         showLoadError("promptDetail");
       }
+    }
+
+    function renderPromptTestPanel(item) {
+      const promptKey = String(item?.prompt_key || "");
+      const defaultClaim = promptKey.includes("verifier") ? "公司收入增长是否被证据支持？" : "请基于证据提取关键事实。";
+      const defaultEvidence = promptKey.includes("verifier") ? "公司披露收入同比增长，来源为官方公告。" : "公司公告显示收入、利润和现金流数据。";
+      return `<div class="detail-section">
+        <h3>测试输入</h3>
+        <div class="form-grid">
+          <div class="field"><label for="promptTestTaskId">任务追踪号</label><input id="promptTestTaskId" placeholder="可选，如 task-xxx" /></div>
+          <div class="field"><label for="promptTestSymbol">公司代码</label><input id="promptTestSymbol" placeholder="NVDA" value="NVDA" /></div>
+          <div class="field"><label for="promptTestPeriod">分析期间</label><input id="promptTestPeriod" placeholder="FY2024" value="FY2024" /></div>
+          <div class="field"><label for="promptTestRole">运行角色</label><input id="promptTestRole" placeholder="主张校验 / 事实抽取" value="${esc(promptModuleText(item?.module || item?.prompt_key))}" /></div>
+          <div class="field full"><label for="promptTestClaim">测试主张</label><textarea id="promptTestClaim" rows="3">${esc(defaultClaim)}</textarea></div>
+          <div class="field full"><label for="promptTestEvidence">证据文本</label><textarea id="promptTestEvidence" rows="3">${esc(defaultEvidence)}</textarea></div>
+        </div>
+      </div>`;
     }
 
     function bindPromptTestButtons(root = document) {
@@ -3764,15 +3823,44 @@ def render_workbench_html() -> str:
 
     async function testPrompt(promptKey) {
       try {
+        const symbol = $("promptTestSymbol")?.value.trim() || "NVDA";
+        const period = $("promptTestPeriod")?.value.trim() || "FY2024";
+        const claim = $("promptTestClaim")?.value.trim() || "收入增长是否被证据支持？";
+        const evidenceText = $("promptTestEvidence")?.value.trim() || "revenue increased";
+        const roleText = $("promptTestRole")?.value.trim() || "verifier";
+        const taskId = $("promptTestTaskId")?.value.trim() || `promptops-${String(promptKey || "test").replace(/[^a-zA-Z0-9_-]/g, "-")}`;
         const result = await postJson(`/api/promptops/templates/${encodeURIComponent(promptKey)}/test-run`, {
-          input: { claim: "收入增长是否被证据支持？", text: "revenue increased" },
-          model_role: "verifier",
+          input: promptTestInput({ symbol, period, claim, evidenceText }),
+          model_role: promptModuleValue(roleText) || "verifier",
+          task_id: taskId,
         });
         $("promptDetail").insertAdjacentHTML("afterbegin", `<div class="empty">测试完成，已记录一条智能体运行。</div>`);
         await loadPromptOps();
       } catch (error) {
         $("promptDetail").insertAdjacentHTML("afterbegin", `<div class="error">测试运行失败，请检查结构化输出要求和提示词内容。</div>`);
       }
+    }
+
+    function promptTestInput({ symbol, period, claim, evidenceText }) {
+      return {
+        expected_symbol: symbol,
+        claim,
+        text: evidenceText,
+        claims: [{
+          claim_id: "manual_test_claim",
+          section_name: "promptops_test",
+          claim_text: `${claim} [manual_test_evidence]`,
+          evidence_ids: ["manual_test_evidence"],
+          confidence: 0.8,
+        }],
+        markdown: `# PromptOps 测试\\n\\n${claim} [manual_test_evidence]`,
+        evidence_records: [{
+          evidence_id: "manual_test_evidence",
+          source_type: "manual_text",
+          content: evidenceText,
+          metadata: { symbol, period },
+        }],
+      };
     }
 
     async function loadLlmRunDetail(runId) {

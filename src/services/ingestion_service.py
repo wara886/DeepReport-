@@ -35,7 +35,7 @@ class IngestionService:
 
     def create_batch(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = _required_string(payload.get("name"), "name")
-        batch_id = _optional_string(payload.get("batch_id")) or f"ing-{uuid4().hex[:12]}"
+        batch_id = _optional_string(payload.get("batch_id")) or _generated_batch_id(payload)
         with self.session_factory() as session:
             workspace = _get_workspace_optional(session, payload.get("workspace_id") or payload.get("workspace"))
             datasource = _get_datasource_optional(session, payload.get("data_source_id") or payload.get("source_key"))
@@ -328,6 +328,25 @@ def _optional_string(value: Any) -> str | None:
 
 def _dict_or_none(value: Any) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
+
+
+def _generated_batch_id(payload: dict[str, Any]) -> str:
+    metadata = _dict_or_none(payload.get("metadata")) or {}
+    if metadata.get("source") == "evaluation_diagnostic_remediation":
+        source_key = _safe_slug(payload.get("source_key") or "source")
+        symbol = _safe_slug(payload.get("symbol") or "symbol")
+        period = _safe_slug(payload.get("period") or "period")
+        return f"rem-{source_key}-{symbol}-{period}-{uuid4().hex[:8]}"
+    return f"ing-{uuid4().hex[:12]}"
+
+
+def _safe_slug(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    chars = [ch if ch.isalnum() else "-" for ch in text]
+    slug = "".join(chars).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug[:32] or "unknown"
 
 
 def _utc_now() -> datetime:
