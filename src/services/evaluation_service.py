@@ -10,6 +10,7 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from src.db.models import ClaimEvidence, DataSource, IngestionBatch, LLMRun, ReportClaim, ReportTask
+from src.rag.retrieval_diagnostics import build_retrieval_coverage
 from src.services.datasource_service import DEFAULT_SOURCE_CATALOG
 from src.services.report_task_service import ReportTaskNotFound
 
@@ -53,6 +54,7 @@ class EvaluationService:
                         active_task_condition,
                         ReportTask.status.in_(QUALITY_EVALUATED_TASK_STATUSES),
                     )
+                    .options(selectinload(ReportTask.claims).selectinload(ReportClaim.evidence_links).selectinload(ClaimEvidence.evidence_item))
                     .order_by(ReportTask.created_at.desc(), ReportTask.id.desc())
                 ).all()
             )
@@ -66,6 +68,11 @@ class EvaluationService:
                 or 0
             )
             delivery_pass_count = sum(1 for task in quality_evaluated_tasks if _task_delivery_passed(task))
+            retrieval_coverages = [_task_retrieval_coverage(task) for task in quality_evaluated_tasks]
+            evidence_ready_task_count = sum(1 for item in retrieval_coverages if item["evidence_ready"])
+            source_quality_ready_task_count = sum(1 for item in retrieval_coverages if item["quality_ready"])
+            retrieval_gap_task_count = sum(1 for item in retrieval_coverages if not item["evidence_ready"])
+            source_gap_task_count = sum(1 for item in retrieval_coverages if item["missing_sources"])
             quality_scores = [
                 float(value)
                 for value in session.scalars(
@@ -128,6 +135,10 @@ class EvaluationService:
                 pending_review_count=pending_review_count,
                 failed_claim_count=failed_claim_count,
             )
+            if retrieval_gap_task_count:
+                failure_counter["retrieval_gap"] += retrieval_gap_task_count
+            if source_gap_task_count:
+                failure_counter["source_gap"] += source_gap_task_count
 
             metrics = {
                 "active_task_count": active_task_count,
@@ -135,6 +146,12 @@ class EvaluationService:
                 "quality_evaluated_task_count": quality_evaluated_task_count,
                 "delivery_pass_count": delivery_pass_count,
                 "delivery_pass_rate": _ratio(delivery_pass_count, quality_evaluated_task_count),
+                "evidence_ready_task_count": evidence_ready_task_count,
+                "evidence_ready_task_rate": _ratio(evidence_ready_task_count, quality_evaluated_task_count),
+                "source_quality_ready_task_count": source_quality_ready_task_count,
+                "source_quality_ready_task_rate": _ratio(source_quality_ready_task_count, quality_evaluated_task_count),
+                "retrieval_gap_task_count": retrieval_gap_task_count,
+                "source_gap_task_count": source_gap_task_count,
                 "average_quality_score": round(sum(quality_scores) / len(quality_scores), 4) if quality_scores else None,
                 "claim_count": claim_count,
                 "traceable_claim_count": traceable_claim_count,
@@ -167,6 +184,7 @@ class EvaluationService:
                 "metrics": metrics,
                 "quality_gates": _quality_gates(metrics),
                 "claim_quality": _claim_quality(metrics),
+                "retrieval_quality": _retrieval_quality(metrics, retrieval_coverages),
                 "model_health": _model_health(metrics, recent_llm_runs),
                 "failure_categories": _failure_categories(failure_counter),
                 "recent_tasks": [_task_quality_row(task) for task in quality_evaluated_tasks[:limit]],
@@ -320,6 +338,8 @@ def _quality_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         _gate("delivery_pass_rate", "交付通过率", metrics["delivery_pass_rate"], 0.8, "完成且通过质量门禁的研报任务占比。"),
         _gate("average_quality_score", "平均质量分", metrics["average_quality_score"], 0.8, "已评分研报的客观质量均值。"),
+        _gate("evidence_ready_task_rate", "证据召回可用率", metrics["evidence_ready_task_rate"], 0.8, "已质检任务中具备可复核证据链的占比。"),
+        _gate("source_quality_ready_task_rate", "关键来源覆盖率", metrics["source_quality_ready_task_rate"], 0.8, "已质检任务中必要官方或一手来源覆盖充足的占比。"),
         _gate("traceable_claim_rate", "可追溯主张率", metrics["traceable_claim_rate"], 0.8, "绑定证据的主张占比。"),
         _gate("citation_support_rate", "引用支持率", metrics["citation_support_rate"], 0.8, "有引用支持或证据绑定的主张占比。"),
         _gate("numeric_consistency_rate", "数值一致性", metrics["numeric_consistency_rate"], 0.95, "已检查数字中未发现冲突的占比。"),
@@ -342,6 +362,29 @@ def _claim_quality(metrics: dict[str, Any]) -> dict[str, Any]:
             {"label": "引用支持", "value": metrics["citation_support_rate"], "count": metrics["citation_supported_count"]},
             {"label": "数值一致", "value": metrics["numeric_consistency_rate"], "count": metrics["numeric_pass_count"]},
         ],
+    }
+
+
+def _retrieval_quality(metrics: dict[str, Any], coverages: list[dict[str, Any]]) -> dict[str, Any]:
+    source_counter: Counter[str] = Counter()
+    missing_counter: Counter[str] = Counter()
+    gap_counter: Counter[str] = Counter()
+    for coverage in coverages:
+        source_counter.update(str(item) for item in coverage.get("returned_sources", []))
+        missing_counter.update(str(item) for item in coverage.get("missing_sources", []))
+        gap_counter.update(str(gap.get("type") or "gap") for gap in coverage.get("gaps", []) if isinstance(gap, dict))
+    return {
+        "task_count": metrics["quality_evaluated_task_count"],
+        "evidence_ready_task_count": metrics["evidence_ready_task_count"],
+        "evidence_ready_task_rate": metrics["evidence_ready_task_rate"],
+        "source_quality_ready_task_count": metrics["source_quality_ready_task_count"],
+        "source_quality_ready_task_rate": metrics["source_quality_ready_task_rate"],
+        "retrieval_gap_task_count": metrics["retrieval_gap_task_count"],
+        "source_gap_task_count": metrics["source_gap_task_count"],
+        "returned_sources": [{"source_key": key, "count": value, "label": _source_label(key)} for key, value in source_counter.most_common()],
+        "missing_sources": [{"source_key": key, "count": value, "label": _source_label(key)} for key, value in missing_counter.most_common()],
+        "gap_types": [{"type": key, "count": value, "label": _retrieval_gap_label(key)} for key, value in gap_counter.most_common()],
+        "summary": _retrieval_quality_summary(metrics),
     }
 
 
@@ -388,6 +431,7 @@ def _task_quality_row(task: ReportTask) -> dict[str, Any]:
         delivery_gate = quality_result.get("delivery_gate") if isinstance(quality_result.get("delivery_gate"), dict) else {}
         delivery_pass = delivery_gate.get("delivery_pass")
         issue_count = len(_top_quality_issues(quality_result))
+    retrieval_coverage = _task_retrieval_coverage(task)
     return {
         "task_id": task.task_id,
         "symbol": task.symbol,
@@ -404,8 +448,35 @@ def _task_quality_row(task: ReportTask) -> dict[str, Any]:
         "citation_failed_count": citation_failed,
         "numeric_failed_count": numeric_failed,
         "pending_review_count": pending_review,
+        "retrieval_coverage": {
+            "evidence_ready": retrieval_coverage["evidence_ready"],
+            "quality_ready": retrieval_coverage["quality_ready"],
+            "returned_count": retrieval_coverage["returned_count"],
+            "missing_sources": retrieval_coverage["missing_sources"],
+            "summary": retrieval_coverage["summary"],
+        },
         "updated_at": _dt(task.finished_at or task.started_at or task.created_at),
     }
+
+
+def _task_retrieval_coverage(task: ReportTask) -> dict[str, Any]:
+    evidence_by_id: dict[int, dict[str, Any]] = {}
+    for claim in list(task.claims or []):
+        for link in list(claim.evidence_links or []):
+            evidence = link.evidence_item
+            if evidence is None:
+                continue
+            evidence_by_id[evidence.id] = {
+                "evidence_id": evidence.evidence_id,
+                "source_type": evidence.source_type,
+            }
+    evidence_rows = list(evidence_by_id.values())
+    return build_retrieval_coverage(
+        candidates=evidence_rows,
+        returned=evidence_rows,
+        company=str(task.symbol or ""),
+        mode_effective="task_evidence" if evidence_rows else "no_hits",
+    )
 
 
 def _llm_run_row(run: LLMRun) -> dict[str, Any]:
@@ -1027,6 +1098,43 @@ def _gate(key: str, label: str, value: float | None, target: float, description:
     return {"key": key, "label": label, "value": value, "target": target, "status": status, "description": description}
 
 
+def _retrieval_quality_summary(metrics: dict[str, Any]) -> str:
+    task_count = int(metrics.get("quality_evaluated_task_count") or 0)
+    if task_count <= 0:
+        return "暂无已质检任务，完成研报生成后会统计证据召回质量。"
+    if int(metrics.get("retrieval_gap_task_count") or 0):
+        return "部分已质检任务没有可复核证据，需先补采集或补导入。"
+    if int(metrics.get("source_gap_task_count") or 0):
+        return "证据已召回，但部分任务缺少必要官方或一手来源。"
+    return "已质检任务均具备可复核证据链，可继续检查主张和数字一致性。"
+
+
+def _source_label(source_key: str) -> str:
+    mapping = {
+        "sec_edgar": "美国证监会披露",
+        "sec_filing": "美国证监会披露",
+        "cninfo": "巨潮资讯公告",
+        "cninfo_announcement": "巨潮资讯公告",
+        "hkex": "港交所披露",
+        "hkex_announcement": "港交所披露",
+        "financials": "结构化财务数据",
+        "news": "新闻资料",
+        "local_pdf": "本地文档",
+    }
+    return mapping.get(str(source_key or ""), str(source_key or "未知来源"))
+
+
+def _retrieval_gap_label(key: str) -> str:
+    mapping = {
+        "no_candidates": "没有候选证据",
+        "no_hits": "没有命中证据",
+        "source_gap": "来源覆盖不足",
+        "fusion_degraded": "融合信号不足",
+        "retrieval_failed": "检索未命中",
+    }
+    return mapping.get(str(key or ""), str(key or "召回缺口"))
+
+
 def _failure_label(key: str) -> str:
     mapping = {
         "quality_gate_blocker": "质量门禁阻塞",
@@ -1036,6 +1144,8 @@ def _failure_label(key: str) -> str:
         "numeric_mismatch": "数字不一致",
         "pending_claim_review": "待人工复核",
         "evidence_gap": "证据链缺口",
+        "retrieval_gap": "证据召回缺口",
+        "source_gap": "关键来源缺口",
         "model_run_failure": "模型运行失败",
         "schema_invalid": "结构化输出无效",
         "model_fallback": "模型降级运行",
@@ -1053,9 +1163,9 @@ def _failure_label(key: str) -> str:
 
 
 def _failure_severity(key: str) -> str:
-    if key in {"quality_gate_blocker", "task_runtime_failure", "claim_not_supported", "citation_missing", "numeric_mismatch", "schema_invalid", "model_run_failure"}:
+    if key in {"quality_gate_blocker", "task_runtime_failure", "claim_not_supported", "citation_missing", "numeric_mismatch", "schema_invalid", "model_run_failure", "retrieval_gap"}:
         return "high"
-    if key in {"pending_claim_review", "evidence_gap", "model_fallback"}:
+    if key in {"pending_claim_review", "evidence_gap", "source_gap", "model_fallback"}:
         return "medium"
     return "low"
 
@@ -1063,6 +1173,10 @@ def _failure_severity(key: str) -> str:
 def _failure_next_view(key: str) -> str:
     if key in {"claim_not_supported", "citation_missing", "numeric_mismatch", "pending_claim_review", "evidence_gap"}:
         return "claims"
+    if key == "retrieval_gap":
+        return "evidence"
+    if key == "source_gap":
+        return "datasources"
     if key in {"model_run_failure", "schema_invalid", "model_fallback"}:
         return "promptops"
     if key in {"task_runtime_failure", "quality_gate_blocker"}:

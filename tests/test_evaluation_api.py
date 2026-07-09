@@ -224,6 +224,12 @@ def test_evaluation_summary_aggregates_quality_and_harness_metrics(tmp_path):
     assert metrics["quality_evaluated_task_count"] == 3
     assert metrics["delivery_pass_count"] == 1
     assert metrics["delivery_pass_rate"] == 0.3333
+    assert metrics["evidence_ready_task_count"] == 1
+    assert metrics["evidence_ready_task_rate"] == 0.3333
+    assert metrics["source_quality_ready_task_count"] == 1
+    assert metrics["source_quality_ready_task_rate"] == 0.3333
+    assert metrics["retrieval_gap_task_count"] == 2
+    assert metrics["source_gap_task_count"] == 2
     assert metrics["average_quality_score"] == 0.7067
     assert metrics["claim_count"] == 3
     assert metrics["traceable_claim_count"] == 1
@@ -244,6 +250,11 @@ def test_evaluation_summary_aggregates_quality_and_harness_metrics(tmp_path):
     assert len(body["quality_gates"]) >= 7
     assert body["recent_tasks"][0]["task_id"] in {"task-eval-ok", "task-eval-bad", "task-eval-source-gap"}
     assert body["model_health"]["fallback_count"] == 1
+    assert body["retrieval_quality"]["evidence_ready_task_count"] == 1
+    assert body["retrieval_quality"]["source_gap_task_count"] == 2
+    assert body["retrieval_quality"]["returned_sources"][0]["label"] == "美国证监会披露"
+    assert any(item["label"] == "证据召回可用率" for item in body["quality_gates"])
+    assert any(item["label"] == "关键来源覆盖率" for item in body["quality_gates"])
 
 
 def test_evaluation_summary_handles_empty_state(tmp_path):

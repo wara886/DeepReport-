@@ -1120,6 +1120,13 @@ def render_workbench_html() -> str:
               </section>
               <section class="panel">
                 <div class="panel-head">
+                  <h2>证据召回质量</h2>
+                  <button class="btn" data-jump="evidence">查看证据库</button>
+                </div>
+                <div id="evaluationRetrievalQuality" class="mini-list"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head">
                   <h2>模型运行健康</h2>
                   <button class="btn" data-jump="promptops">查看调用</button>
                 </div>
@@ -1265,6 +1272,8 @@ def render_workbench_html() -> str:
       average_quality_score: "平均质量分",
       traceable_claim_rate: "可追溯主张率",
       evidence_coverage_rate: "证据覆盖率",
+      evidence_ready_task_rate: "证据召回可用率",
+      source_quality_ready_task_rate: "关键来源覆盖率",
       verified_claim_rate: "主张校验通过率",
       numeric_consistency_rate: "数值一致性",
       citation_support_rate: "引用支持率",
@@ -2798,6 +2807,8 @@ def render_workbench_html() -> str:
         { label: "交付通过率", value: percentText(metrics.delivery_pass_rate), note: `${number(metrics.delivery_pass_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务`, view: "tasks" },
         { label: "平均质量分", value: scoreText(metrics.average_quality_score), note: "已进入质检任务均值", view: "tasks" },
         { label: "可追溯主张率", value: percentText(metrics.traceable_claim_rate), note: `${number(metrics.traceable_claim_count)} / ${number(metrics.claim_count)} 条主张`, view: "claims" },
+        { label: "证据召回可用率", value: percentText(metrics.evidence_ready_task_rate), note: `${number(metrics.evidence_ready_task_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务`, view: "evidence" },
+        { label: "关键来源覆盖率", value: percentText(metrics.source_quality_ready_task_rate), note: `${number(metrics.source_quality_ready_task_count)} 个任务来源充分`, view: "datasources" },
         { label: "引用支持率", value: percentText(metrics.citation_support_rate), note: `${number(metrics.citation_supported_count)} 条有证据或引用`, view: "claims" },
         { label: "数值一致性", value: percentText(metrics.numeric_consistency_rate), note: `${number(metrics.numeric_checked_count)} 条已检查`, view: "facts" },
         { label: "模型运行成功率", value: percentText(metrics.llm_success_rate), note: `${number(metrics.llm_success_count)} / ${number(metrics.llm_run_count)} 次运行`, view: "promptops" },
@@ -2811,6 +2822,7 @@ def render_workbench_html() -> str:
       </button>`).join("");
       renderEvaluationGates(payload.quality_gates || []);
       renderEvaluationClaimQuality(payload.claim_quality || {});
+      renderEvaluationRetrievalQuality(payload.retrieval_quality || {});
       renderEvaluationModelHealth(payload.model_health || {});
       renderEvaluationFailures(payload.failure_categories || []);
       renderEvaluationTaskRows(payload.recent_tasks || []);
@@ -2853,6 +2865,34 @@ def render_workbench_html() -> str:
             { label: "生成新研报", view: "tasks", className: "primary" },
             { label: "导入报告产物", view: "manual" },
           ]);
+    }
+
+    function renderEvaluationRetrievalQuality(quality) {
+      const returnedSources = quality.returned_sources || [];
+      const missingSources = quality.missing_sources || [];
+      const gapTypes = quality.gap_types || [];
+      const rows = [
+        ["证据可用任务", `${number(quality.evidence_ready_task_count)} / ${number(quality.task_count)}`, percentText(quality.evidence_ready_task_rate)],
+        ["关键来源充分", `${number(quality.source_quality_ready_task_count)} / ${number(quality.task_count)}`, percentText(quality.source_quality_ready_task_rate)],
+        ["无证据任务", number(quality.retrieval_gap_task_count), "需补采集或导入"],
+        ["来源缺口任务", number(quality.source_gap_task_count), "需补官方或一手来源"],
+      ];
+      const sourceHtml = returnedSources.length
+        ? `<div class="dist-list">${returnedSources.slice(0, 5).map((item) => `<div class="dist-row"><span>${esc(item.label || sourceText(item.source_key))}</span><strong>${esc(number(item.count))}</strong></div>`).join("")}</div>`
+        : `<div class="empty">暂无命中来源统计。</div>`;
+      const missingHtml = missingSources.length
+        ? `<div class="dist-list">${missingSources.slice(0, 5).map((item) => `<div class="dist-row"><span>${esc(item.label || sourceText(item.source_key))}</span><strong>${esc(number(item.count))}</strong></div>`).join("")}</div>`
+        : `<div class="empty">暂无关键来源缺口。</div>`;
+      const gapHtml = gapTypes.length
+        ? `<div class="mini-list">${gapTypes.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(item.label || item.type)}</strong><br><span class="label">影响任务：${esc(number(item.count))}</span></div>`).join("")}</div>`
+        : `<div class="empty">暂无召回缺口。</div>`;
+      $("evaluationRetrievalQuality").innerHTML = Number(quality.task_count || 0)
+        ? `<div class="chain-summary">${esc(quality.summary || "")}</div>
+          <div class="dist">${rows.map(([label, value, note]) => `<div class="dist-row"><span>${esc(label)}</span><strong>${esc(value)}</strong><span class="label">${esc(note)}</span></div>`).join("")}</div>
+          <div class="detail-section"><h3>命中来源</h3>${sourceHtml}</div>
+          <div class="detail-section"><h3>来源缺口</h3>${missingHtml}</div>
+          <div class="detail-section"><h3>召回缺口类型</h3>${gapHtml}</div>`
+        : emptyBox("暂无召回质量数据", [{ label: "创建研报任务", view: "tasks", className: "primary" }]);
     }
 
     function renderEvaluationModelHealth(health) {

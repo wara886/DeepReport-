@@ -24,6 +24,10 @@ def test_workbench_evaluation_center_is_productized_and_loads_api():
     assert "renderEvaluationAnalysisLinkage" in html
     assert "证据召回准备度" in html
     assert "renderRetrievalCoverage" in html
+    assert "证据召回质量" in html
+    assert "证据召回可用率" in html
+    assert "关键来源覆盖率" in html
+    assert "renderEvaluationRetrievalQuality" in html
     assert "数据源与采集健康" in html
     assert "renderDiagnosticDataSourceHealth" in html
     assert "data-datasource-query" in html
