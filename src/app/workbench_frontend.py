@@ -1210,6 +1210,15 @@ def render_workbench_html() -> str:
               </select>
             </div>
             <div class="field">
+              <label for="taskEvidenceGateInput">生成前证据门禁</label>
+              <select id="taskEvidenceGateInput">
+                <option value="enforce">证据不足时暂停生成</option>
+                <option value="allow_weak">证据不足时继续并标记风险</option>
+                <option value="skip">跳过生成前证据检查</option>
+              </select>
+              <div class="form-note">正式研报建议先补齐权威来源，再进入生成。</div>
+            </div>
+            <div class="field">
               <label for="taskRunModeInput">运行方式</label>
               <select id="taskRunModeInput">
                 <option value="queue">只创建任务</option>
@@ -1289,6 +1298,8 @@ def render_workbench_html() -> str:
       pending: "待复核", approved: "已通过", rejected: "已驳回", regenerate_requested: "已请求重生成",
       in_context: "已加入任务", dismissed: "已忽略",
       supported: "已支持", verified: "已验证", passed: "通过", success: "成功", done: "已完成", parsed: "已解析",
+      warning: "需关注",
+      blocked: "已阻断",
       official: "官方", primary: "一手", secondary: "二手", medium: "中可信", low: "低可信", high: "高可信", unknown: "未知",
       not_required: "无需凭证", required: "需配置", configured: "已配置", expired: "已过期",
       not_run: "未运行",
@@ -1318,10 +1329,12 @@ def render_workbench_html() -> str:
       eastmoney_quote: "东方财富行情", news: "新闻",
       company_profile: "公司画像", market_api: "行情接口", market_data: "行情数据",
       financials: "财务数据", filing: "公告文件", filings: "公告文件", local_pdf: "本地文档",
+      annual_report: "年报资料", quarterly_report: "季报资料", earnings_release: "业绩公告",
     };
     const stepMap = {
       ingest: "入库", parse: "解析", table_extract: "表格抽取", chunk: "切分", chunk_vectorize: "切分向量化",
       evidence: "证据化", claim_bind: "绑定主张", verify: "校验",
+      evidence_gate: "生成前证据检查", evidence_gate_failed: "证据不足，已暂停生成",
       orchestrator: "多智能体执行", artifact_import: "产物导入", quality_gate: "质量门禁", completed: "完成",
       queued: "待启动", retry: "重试", failed: "失败", quality_failed: "质量未通过", cancelled: "已取消", archived: "已归档", claim_review: "主张复核",
       manual_import: "手动导入",
@@ -1918,12 +1931,16 @@ def render_workbench_html() -> str:
         return;
       }
       const runMode = $("taskRunModeInput").value;
+      const evidenceGateMode = $("taskEvidenceGateInput").value;
       const payload = {
         symbol: resolved.symbol,
         period: $("taskPeriodInput").value,
         report_type: $("taskReportTypeInput").value,
         research_topic: $("taskTopicInput").value.trim(),
         data_source_scope: $("taskDataSourceInput").value,
+        enforce_evidence_gate: evidenceGateMode === "enforce",
+        allow_weak_evidence: evidenceGateMode === "allow_weak",
+        skip_evidence_gate: evidenceGateMode === "skip",
         company_name: resolved.name,
         workspace_id: resolved.workspace_id || undefined,
         company_id: resolved.company_id || undefined,
@@ -3398,10 +3415,12 @@ def render_workbench_html() -> str:
           <div class="detail-section"><h3>研究问题</h3><div class="text-block">${esc(metadata.research_topic || "-")}</div></div>
           <div class="detail-section"><h3>任务操作</h3>${taskActionButtons(task)}</div>
           ${task.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(task.error_message)}</div></div>` : ""}
+          ${renderPreGenerationEvidenceGate(metadata.pre_generation_evidence_gate || {})}
           ${renderTaskLinkageOverview(analysis)}
           ${renderTaskNarrative(analysis)}
           ${renderTaskAnalysisStats(analysis.stats || {})}
           ${renderRetrievalCoverage(analysis.retrieval_coverage || analysis.quality_proof?.retrieval_coverage || {})}
+          ${renderRetrievalDiagnostics(analysis.retrieval_diagnostics || {})}
           ${renderQualityProof(analysis.quality_proof || {}, task)}
           ${renderArgumentChain(analysis.argument_chain || {})}
           ${renderRiskChain(analysis.risk_chain || {})}
@@ -3418,6 +3437,60 @@ def render_workbench_html() -> str:
       } catch (error) {
         showLoadError("taskDetail");
       }
+    }
+
+    function evidenceGateStatusText(gate) {
+      if (gate.blocked) return "未通过，已暂停生成";
+      const map = {
+        success: "通过",
+        warning: "有缺口，继续生成",
+        failed: "未通过",
+        skipped: "已跳过",
+      };
+      return textOf(map, gate.status);
+    }
+
+    function evidenceGateStatusClass(gate) {
+      if (gate.blocked || gate.status === "failed") return "failed";
+      if (gate.status === "success") return "passed";
+      if (gate.status === "skipped") return "skipped";
+      return "warning";
+    }
+
+    function evidenceReasonText(reason) {
+      const sources = Array.isArray(reason?.sources) ? reason.sources : [];
+      if (sources.length) return `${fmt(reason.description || reason.label || "证据来源缺口").split("：")[0]}：${sources.map(sourceText).join("、")}`;
+      return fmt(reason?.description || reason?.label || "证据覆盖不足");
+    }
+
+    function renderPreGenerationEvidenceGate(gate) {
+      const hasGate = gate && Object.keys(gate).length > 0;
+      if (!hasGate) {
+        return `<div class="detail-section"><h3>生成前证据门禁</h3><div class="empty">该任务尚未运行生成前证据检查。启动任务后会展示权威来源覆盖、拦截原因和补证据入口。</div></div>`;
+      }
+      const coverage = gate.coverage || {};
+      const blockingReasons = gate.blocking_reasons || [];
+      const actions = gate.recommended_actions || [];
+      const requiredSources = coverage.required_sources || [];
+      const missingSources = coverage.missing_sources || [];
+      const returnedSources = coverage.returned_sources || [];
+      const statusClass = evidenceGateStatusClass(gate);
+      return `<div class="detail-section"><h3>生成前证据门禁</h3>
+        <div class="chain-summary">${esc(gate.summary || "暂无门禁说明。")}</div>
+        <div class="analysis-stats">
+          <div class="analysis-stat"><span class="label">门禁结论</span><strong><span class="status ${esc(statusClass)}">${esc(evidenceGateStatusText(gate))}</span></strong><span class="score-note">${esc(gate.enforced ? "严格模式" : (gate.allow_weak_evidence ? "弱证据可继续" : "提示模式"))}</span></div>
+          <div class="analysis-stat"><span class="label">候选证据</span><strong>${esc(number(coverage.candidate_count || 0))}</strong><span class="score-note">进入生成前检查</span></div>
+          <div class="analysis-stat"><span class="label">已命中来源</span><strong>${esc(number(returnedSources.length))}</strong><span class="score-note">${renderSourceList(returnedSources)}</span></div>
+          <div class="analysis-stat"><span class="label">缺失来源</span><strong>${esc(number(missingSources.length))}</strong><span class="score-note">${missingSources.length ? renderSourceList(missingSources) : "无关键缺口"}</span></div>
+        </div>
+        <div class="kv"><span class="label">建议来源</span><span>${requiredSources.length ? renderSourceList(requiredSources) : "未限定"}</span></div>
+        ${blockingReasons.length ? `<div class="diagnostic-list">${blockingReasons.map((reason) => `<div class="diagnostic-issue ${esc(reason.type || "warning")}"><div class="diagnostic-head"><strong>${esc(reason.label || "证据缺口")}</strong><span class="status failed">需处理</span></div><div class="score-note">${esc(evidenceReasonText(reason))}</div></div>`).join("")}</div>` : `<div class="empty">当前没有阻塞生成的证据缺口。</div>`}
+        <div class="links" style="margin-top:10px">
+          ${actions.length ? actions.map((action) => `<button class="btn" data-jump="${esc(action.view || "evidence")}">${esc(action.label || "处理证据")}</button>`).join("") : `<button class="btn" data-jump="evidence">查看证据库</button>`}
+          <button class="btn" data-jump="datasources">检查数据源</button>
+          <button class="btn" data-jump="ingestion">补采集批次</button>
+        </div>
+      </div>`;
     }
 
     function renderTaskLinkageOverview(analysis) {
@@ -3548,6 +3621,64 @@ def render_workbench_html() -> str:
           <div class="diagnostic-head"><strong>${esc(gap.label || "证据缺口")}</strong><button class="btn" data-jump="${esc(gap.next_view || "evidence")}">去处理</button></div>
           <div class="score-note">${esc(gap.description || "")}</div>
         </div>`).join("")}</div>` : `<div class="empty">当前未发现明显召回缺口。</div>`}
+      </div>`;
+    }
+
+    function retrievalStageText(value) {
+      const map = {
+        ready: "证据可用",
+        source_gap: "来源待补齐",
+        no_hits: "资料未命中",
+        no_data: "暂无候选资料",
+      };
+      return textOf(map, value);
+    }
+
+    function retrievalReasonText(value) {
+      const map = {
+        no_candidates: "没有候选证据",
+        period_or_query_mismatch: "期间或查询条件未命中",
+        missing_required_source: "缺少必要权威来源",
+        retrieval_gap: "证据召回缺口",
+      };
+      return value ? textOf(map, value) : "无阻塞原因";
+    }
+
+    function renderEvidenceExamples(items) {
+      const rows = Array.isArray(items) ? items : [];
+      if (!rows.length) return `<div class="empty">暂无样例</div>`;
+      return `<div class="mini-list">${rows.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(item.title || item.evidence_id || "证据")}</strong><br><span class="label">${esc(sourceText(item.source_type))} · ${esc(statusText(item.trust_level))} · ${esc(item.report_period || "未标期间")}</span></div>`).join("")}</div>`;
+    }
+
+    function renderRetrievalDiagnostics(diagnostics) {
+      const hasDiagnostics = diagnostics && Object.keys(diagnostics).length > 0;
+      if (!hasDiagnostics) {
+        return `<div class="detail-section"><h3>证据召回诊断</h3><div class="empty">暂无召回诊断。完成证据导入或任务运行后会展示候选资料、命中结果和缺口原因。</div></div>`;
+      }
+      const query = diagnostics.query || {};
+      const actions = diagnostics.recommended_actions || [];
+      const candidateExamples = diagnostics.candidate_examples || [];
+      const returnedExamples = diagnostics.returned_examples || [];
+      const missingSources = diagnostics.missing_sources || [];
+      const returnedSources = diagnostics.returned_sources || [];
+      const stage = diagnostics.stage || "";
+      const stageClass = stage === "ready" ? "passed" : (stage === "source_gap" ? "warning" : "failed");
+      return `<div class="detail-section"><h3>证据召回诊断</h3>
+        <div class="chain-summary">${esc(diagnostics.summary || "暂无诊断说明。")}</div>
+        <div class="analysis-stats">
+          <div class="analysis-stat"><span class="label">诊断阶段</span><strong><span class="status ${esc(stageClass)}">${esc(retrievalStageText(stage))}</span></strong><span class="score-note">${esc(retrievalReasonText(diagnostics.failure_reason))}</span></div>
+          <div class="analysis-stat"><span class="label">候选资料</span><strong>${esc(number(diagnostics.candidate_count || 0))}</strong><span class="score-note">公司/任务相关资料池</span></div>
+          <div class="analysis-stat"><span class="label">命中证据</span><strong>${esc(number(diagnostics.returned_count || 0))}</strong><span class="score-note">${renderSourceList(returnedSources)}</span></div>
+          <div class="analysis-stat"><span class="label">来源缺口</span><strong>${esc(number(missingSources.length))}</strong><span class="score-note">${missingSources.length ? renderSourceList(missingSources) : "无关键缺口"}</span></div>
+        </div>
+        <div class="kv"><span class="label">查询口径</span><span>${esc(query.company_name || query.symbol || "-")} · ${esc(query.period || "-")} · ${esc(dataSourceScopeText(query.data_source_scope))}</span></div>
+        <div class="check-grid">
+          <div class="check-item ${candidateExamples.length ? "passed" : "failed"}"><div class="diagnostic-head"><strong>候选资料样例</strong><span class="status ${candidateExamples.length ? "passed" : "failed"}">${esc(candidateExamples.length ? "有资料" : "需补资料")}</span></div>${renderEvidenceExamples(candidateExamples)}</div>
+          <div class="check-item ${returnedExamples.length ? "passed" : "failed"}"><div class="diagnostic-head"><strong>已命中证据</strong><span class="status ${returnedExamples.length ? "passed" : "failed"}">${esc(returnedExamples.length ? "已命中" : "未命中")}</span></div>${renderEvidenceExamples(returnedExamples)}</div>
+        </div>
+        <div class="links" style="margin-top:10px">
+          ${actions.length ? actions.map((action) => `<button class="btn" data-jump="${esc(action.view || "evidence")}">${esc(action.label || "处理证据")}</button>`).join("") : `<button class="btn" data-jump="evidence">查看证据库</button>`}
+        </div>
       </div>`;
     }
 

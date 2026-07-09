@@ -1063,15 +1063,20 @@ P2 的第一目标不是“看起来更复杂”，而是让研报质量可验�
    - 必须增加检索回退测试、RRF 融合测试、引用覆盖率测试。
    - 判断标准：同一个研报任务能展示“召回了哪些证据、为什么选这些、缺哪些来源、召回失败如何降级”。
 
-2. **P2.2 实体库 / 关系存储收口**
+2. **P2.2 生成前证据门禁**
+   - 把 P2.1 的证据召回覆盖率接入研报任务运行前置检查。
+   - 证据不足时必须给出来源缺口、推荐动作和可审计事件；强制门禁开启时不应继续生成看似完整的研报。
+   - 判断标准：用户创建任务后，系统能解释“是否有足够证据进入生成、缺哪些权威来源、下一步该补采集还是去证据库复核”。
+
+3. **P2.3 实体库 / 关系存储收口**
    - 不急于接 Neo4j，先把 PostgreSQL 的实体和关系抽取、去重、upsert、证据绑定做稳定。
    - 判断标准：用户点进公司、证据或线索时，能看到实体记忆如何由文档/证据沉淀而来。
 
-3. **P2.3 投资线索中心增强**
+4. **P2.4 投资线索中心增强**
    - 在线索页补“为什么出现这个线索”：关联事实、证据、阈值、影响方向。
    - 判断标准：线索能进入研报任务上下文，并在质量证明或任务分析链路里被追踪。
 
-4. **P2.4 投资逻辑链 / 风险传导链**
+5. **P2.5 投资逻辑链 / 风险传导链**
    - 在已有链路雏形上补证据绑定和节点详情，不做纯视觉大图优先。
    - 判断标准：用户能从风险线索追溯到财务事实、来源证据、Claim 和报告章节。
 
@@ -1089,30 +1094,46 @@ P2 暂不做：
 - 测试：`tests/test_rrf_fusion.py`、`tests/test_hybrid_retriever_contract.py`、`tests/test_retrieval_fallback_when_vector_unavailable.py`。
 - 提交：`feat(p2.1): add hybrid rag retrieval layer`。
 
-### P2.2 实体库和关系图谱
+### P2.2 生成前证据门禁
+
+- 在 `ReportTaskService.run_task()` 中先执行生成前证据门禁，再进入多智能体生成。
+- 门禁复用 P2.1 的 `build_retrieval_coverage` 合同，输出候选证据数、命中证据数、必需来源、缺口和推荐动作。
+- 支持 `enforce_evidence_gate` 强制拦截、`allow_weak_evidence` 弱证据放行、`skip_evidence_gate` 明确跳过。
+- 测试：`tests/test_report_task_evidence_gate.py`、`tests/test_report_task_status_lifecycle.py`。
+- 提交：`feat(p2.2): add pre-generation evidence gate`。
+
+#### P2.1/P2.2 补强进度（2026-07-09）
+
+- 已完成 P2.2 前端承接：创建研报任务弹窗新增“生成前证据门禁”策略；任务表和任务详情不再显示 `evidence_gate_failed` 这类后端阶段名，改为产品化中文阶段。
+- 任务详情已新增“生成前证据门禁”卡片，展示门禁结论、候选证据、命中来源、缺失来源、建议来源、阻塞原因和推荐动作。
+- 已完成证据召回诊断补强：`/api/report-tasks/{task_id}/analysis` 新增 `retrieval_diagnostics`，区分“暂无候选资料”“有资料但期间/查询未命中”“缺少必要权威来源”“证据可用”。
+- 任务详情已新增“证据召回诊断”卡片，展示查询口径、候选资料池、命中证据、来源缺口、候选/命中样例和处理入口。
+- 验收命令：`pytest -q tests/test_workbench_frontend_script.py tests/test_web_report_task_evidence_gate.py tests/test_task_analysis_api.py`；`pytest -q tests/test_report_task_evidence_gate.py tests/test_report_task_status_lifecycle.py tests/test_report_task_api.py tests/test_report_task_quality_gate.py tests/test_task_analysis_api.py tests/test_evidence_api.py tests/test_hybrid_retriever_contract.py tests/test_web_evaluation_center.py tests/test_web_report_task_links.py tests/test_web_report_task_evidence_gate.py`；`python tmp/deep_p2_workbench_walkthrough.py`。
+
+### P2.3 实体库和关系图谱
 
 - 先用 PostgreSQL 存 `entities`、`entity_relations`。
 - 后接 Neo4j。
 - 实体类型：公司、股票代码、行业、产品、客户、供应商、高管、财务指标、文档、风险事件、新闻事件、同行公司。
 - 关系类型：`BELONGS_TO`、`PUBLISHED`、`HAS_PRODUCT`、`HAS_METRIC`、`HAS_EVENT`、`PEER_OF`、`SUPPLIES_TO`、`MENTIONED_IN`。
 - 测试：`tests/test_entity_extraction_schema.py`、`tests/test_entity_relation_upsert.py`。
-- 提交：`feat(p2.2): add entity and relation store`。
+- 提交：`feat(p2.3): add entity and relation store`。
 
-### P2.3 投资线索中心
+### P2.4 投资线索中心
 
 - 规则线索 + LLM 摘要。
 - 规则线索先实现：`margin_decline`、`cashflow_gap`、`official_source_missing`、`currency_mismatch`、`valuation_blocked`、`revenue_growth_acceleration`。
 - 线索可以进入研报任务上下文。
 - 测试：`tests/test_signal_rules.py`、`tests/test_signal_evidence_binding.py`、`tests/test_signal_to_report_context.py`。
-- 提交：`feat(p2.3): add investment signal center`。
+- 提交：`feat(p2.4): add investment signal center`。
 
-### P2.4 投资逻辑链 / 风险传导链
+### P2.5 投资逻辑链 / 风险传导链
 
 - 对应视频中的“剧本对抗”，但金融项目不要使用黑灰产命名。
 - 页面展示：实体 → 事件 → 财务事实 → 投资线索 → Claim → 报告章节。
 - 重点是证据链与论证链，不是炫酷大图。
 - 测试：`tests/test_argument_chain_api.py`、`tests/test_risk_chain_evidence_binding.py`。
-- 提交：`feat(p2.4): add investment argument chain`。
+- 提交：`feat(p2.5): add investment argument chain`。
 
 ### P2 阶段提交
 

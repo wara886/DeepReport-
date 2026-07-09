@@ -55,11 +55,13 @@ class TaskAnalysisService:
             company_name = str((task.metadata_json or {}).get("company_name") or symbol)
 
             claims = _claims_for_task(session, task_id)
-            evidence_items = _evidence_for_task(session, task_id=task_id, symbol=symbol, company_id=company_id, period=period)
+            evidence_candidates = _evidence_candidates_for_task(session, task_id=task_id, symbol=symbol, company_id=company_id)
+            evidence_items = _filter_evidence_by_period(evidence_candidates, period=period)
             facts = _facts_for_task(session, symbol=symbol, company_id=company_id, period=period)
             signals = _signals_for_task(session, task_id=task_id, symbol=symbol, company_id=company_id, period=period)
 
         evidence_payloads = [_serialize_evidence(item) for item in evidence_items[:40]]
+        candidate_payloads = [_serialize_evidence(item) for item in evidence_candidates[:80]]
         fact_payloads = [self.fact_service.serialize_fact(item) for item in facts[:40]]
         signal_payloads = [self.signal_service.serialize_signal(item) for item in signals[:30]]
         claim_payloads = [self.claim_service.serialize_claim(item, include_evidence=True) for item in claims[:50]]
@@ -71,10 +73,19 @@ class TaskAnalysisService:
             claims=claim_payloads,
         )
         retrieval_coverage = build_retrieval_coverage(
-            candidates=evidence_payloads,
+            candidates=candidate_payloads,
             returned=evidence_payloads,
             company=symbol,
-            mode_effective="task_evidence" if evidence_payloads else "no_hits",
+            mode_effective=_retrieval_mode(candidate_payloads=candidate_payloads, evidence_payloads=evidence_payloads),
+        )
+        retrieval_diagnostics = _build_retrieval_diagnostics(
+            task_payload=task_payload,
+            company_name=company_name,
+            symbol=symbol,
+            period=period,
+            candidate_payloads=candidate_payloads,
+            evidence_payloads=evidence_payloads,
+            retrieval_coverage=retrieval_coverage,
         )
         quality_proof = _build_quality_proof(
             task_payload=task_payload,
@@ -119,6 +130,7 @@ class TaskAnalysisService:
             },
             "stats": stats,
             "retrieval_coverage": retrieval_coverage,
+            "retrieval_diagnostics": retrieval_diagnostics,
             "narrative": narrative,
             "quality_proof": quality_proof,
             "argument_chain": argument_chain,
@@ -151,13 +163,12 @@ def _claims_for_task(session: Session, task_id: str) -> list[ReportClaim]:
     )
 
 
-def _evidence_for_task(
+def _evidence_candidates_for_task(
     session: Session,
     *,
     task_id: str,
     symbol: str,
     company_id: int | None,
-    period: str,
 ) -> list[EvidenceItem]:
     clauses: list[Any] = [
         EvidenceItem.claim_links.any(ClaimEvidence.claim.has(ReportClaim.task_id == task_id)),
@@ -178,7 +189,10 @@ def _evidence_for_task(
         .order_by(EvidenceItem.created_at.desc(), EvidenceItem.id.desc())
         .limit(200)
     )
-    items = list(session.scalars(stmt).unique().all())
+    return list(session.scalars(stmt).unique().all())
+
+
+def _filter_evidence_by_period(items: list[EvidenceItem], *, period: str) -> list[EvidenceItem]:
     if not period:
         return items
     scoped: list[EvidenceItem] = []
@@ -573,6 +587,158 @@ def _recommended_actions(
     if str(task_payload.get("status")) == "queued":
         actions.insert(0, {"label": "启动任务", "view": "tasks", "reason": "任务仍在排队，可以启动生成。"})
     return actions[:6]
+
+
+def _retrieval_mode(*, candidate_payloads: list[dict[str, Any]], evidence_payloads: list[dict[str, Any]]) -> str:
+    if not candidate_payloads:
+        return "no_candidates"
+    if not evidence_payloads:
+        return "no_hits"
+    return "task_evidence"
+
+
+def _build_retrieval_diagnostics(
+    *,
+    task_payload: dict[str, Any],
+    company_name: str,
+    symbol: str,
+    period: str,
+    candidate_payloads: list[dict[str, Any]],
+    evidence_payloads: list[dict[str, Any]],
+    retrieval_coverage: dict[str, Any],
+) -> dict[str, Any]:
+    metadata = task_payload.get("metadata") if isinstance(task_payload.get("metadata"), dict) else {}
+    gate = metadata.get("pre_generation_evidence_gate") if isinstance(metadata.get("pre_generation_evidence_gate"), dict) else {}
+    gaps = list(retrieval_coverage.get("gaps") or [])
+    failure_reason = _retrieval_failure_reason(retrieval_coverage)
+    stage = _retrieval_stage(retrieval_coverage)
+    actions = _retrieval_diagnostic_actions(retrieval_coverage)
+    query = {
+        "company_name": company_name,
+        "symbol": symbol,
+        "period": period,
+        "data_source_scope": metadata.get("data_source_scope") or "official_first",
+        "required_sources": retrieval_coverage.get("required_sources") or [],
+    }
+    return {
+        "stage": stage,
+        "failure_reason": failure_reason,
+        "summary": _retrieval_diagnostic_summary(
+            stage=stage,
+            failure_reason=failure_reason,
+            retrieval_coverage=retrieval_coverage,
+            gate=gate,
+        ),
+        "query": query,
+        "candidate_count": len(candidate_payloads),
+        "returned_count": len(evidence_payloads),
+        "candidate_sources": retrieval_coverage.get("candidate_sources") or [],
+        "returned_sources": retrieval_coverage.get("returned_sources") or [],
+        "required_sources": retrieval_coverage.get("required_sources") or [],
+        "missing_sources": retrieval_coverage.get("missing_sources") or [],
+        "candidate_examples": _evidence_examples(candidate_payloads),
+        "returned_examples": _evidence_examples(evidence_payloads),
+        "gaps": gaps,
+        "recommended_actions": actions,
+        "pre_generation_gate": {
+            "status": gate.get("status"),
+            "blocked": bool(gate.get("blocked")) if gate else False,
+            "summary": gate.get("summary"),
+        }
+        if gate
+        else None,
+    }
+
+
+def _retrieval_stage(coverage: dict[str, Any]) -> str:
+    if int(coverage.get("candidate_count") or 0) <= 0:
+        return "no_data"
+    if int(coverage.get("returned_count") or 0) <= 0:
+        return "no_hits"
+    if coverage.get("missing_sources"):
+        return "source_gap"
+    return "ready"
+
+
+def _retrieval_failure_reason(coverage: dict[str, Any]) -> str:
+    stage = _retrieval_stage(coverage)
+    if stage == "ready":
+        return ""
+    if stage == "no_data":
+        return "no_candidates"
+    if stage == "no_hits":
+        return "period_or_query_mismatch"
+    if stage == "source_gap":
+        return "missing_required_source"
+    return "retrieval_gap"
+
+
+def _retrieval_diagnostic_summary(
+    *,
+    stage: str,
+    failure_reason: str,
+    retrieval_coverage: dict[str, Any],
+    gate: dict[str, Any],
+) -> str:
+    if gate.get("blocked"):
+        return str(gate.get("summary") or "生成已暂停：证据覆盖不足。")
+    if stage == "ready":
+        return "当前任务已命中必要证据来源，可以进入主张复核和质量检查。"
+    if failure_reason == "no_candidates":
+        return "当前任务没有公司或任务相关的候选证据，需要先采集或手动导入资料。"
+    if failure_reason == "period_or_query_mismatch":
+        return "已有公司相关资料，但与当前查询期间或任务条件没有形成有效命中。"
+    if failure_reason == "missing_required_source":
+        missing = "、".join(_source_label(item) for item in retrieval_coverage.get("missing_sources") or [])
+        return f"已有可用证据，但仍缺少关键权威来源：{missing}。"
+    return str(retrieval_coverage.get("summary") or "证据召回存在缺口。")
+
+
+def _retrieval_diagnostic_actions(coverage: dict[str, Any]) -> list[dict[str, str]]:
+    actions: list[dict[str, str]] = []
+    for gap in coverage.get("gaps") or []:
+        gap_type = str(gap.get("type") or "")
+        if gap_type == "no_candidates":
+            actions.append({"label": "创建采集批次", "view": "ingestion", "reason": str(gap.get("description") or "")})
+            actions.append({"label": "手动导入资料", "view": "manual", "reason": "如果已有年报或公告文件，可先手动导入形成证据。"})
+        elif gap_type == "no_hits":
+            actions.append({"label": "核对证据库", "view": "evidence", "reason": str(gap.get("description") or "")})
+        elif gap_type == "source_gap":
+            actions.append({"label": "检查数据源配置", "view": "datasources", "reason": str(gap.get("description") or "")})
+            actions.append({"label": "补采集权威来源", "view": "ingestion", "reason": "为缺失来源创建采集批次，完成后回到任务重新检查。"})
+        elif gap_type == "fusion_degraded":
+            actions.append({"label": "补充更具体资料", "view": "manual", "reason": str(gap.get("description") or "")})
+    if not actions:
+        actions.append({"label": "查看证据库", "view": "evidence", "reason": "证据已命中，建议抽查原文和引用链。"})
+    return _dedupe_actions(actions)[:4]
+
+
+def _evidence_examples(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    examples: list[dict[str, Any]] = []
+    for item in items[:5]:
+        doc = item.get("document") if isinstance(item.get("document"), dict) else {}
+        examples.append(
+            {
+                "evidence_id": item.get("evidence_id"),
+                "title": item.get("title"),
+                "source_type": item.get("source_type"),
+                "trust_level": item.get("trust_level"),
+                "report_period": doc.get("report_period") or item.get("metadata", {}).get("period"),
+            }
+        )
+    return examples
+
+
+def _dedupe_actions(actions: list[dict[str, str]]) -> list[dict[str, str]]:
+    seen: set[tuple[str, str]] = set()
+    output: list[dict[str, str]] = []
+    for item in actions:
+        key = (str(item.get("label") or ""), str(item.get("view") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(item)
+    return output
 
 
 def _check_item(*, key: str, title: str, passed: bool, value: Any, description: str) -> dict[str, Any]:

@@ -174,12 +174,75 @@ def test_report_task_analysis_package_connects_quality_chain_and_risk(tmp_path):
     assert body["retrieval_coverage"]["quality_ready"] is True
     assert body["retrieval_coverage"]["required_sources"] == ["sec_edgar"]
     assert body["retrieval_coverage"]["returned_sources"] == ["sec_edgar"]
+    assert body["retrieval_diagnostics"]["stage"] == "ready"
+    assert body["retrieval_diagnostics"]["failure_reason"] == ""
+    assert body["retrieval_diagnostics"]["query"]["period"] == "FY2024"
+    assert body["retrieval_diagnostics"]["candidate_count"] == 1
+    assert body["retrieval_diagnostics"]["returned_count"] == 1
+    assert body["retrieval_diagnostics"]["returned_examples"][0]["source_type"] == "sec_edgar"
     assert body["quality_proof"]["retrieval_coverage"]["summary"]
     assert body["quality_proof"]["failed_claims"][0]["citation_check_status"] == "failed"
     assert body["argument_chain"]["nodes"]
     assert body["argument_chain"]["edges"]
     assert body["risk_chain"]["risk_count"] == 1
     assert any(action["view"] == "claims" for action in body["recommended_actions"])
+
+
+def test_report_task_analysis_retrieval_diagnostics_separates_pool_from_period_hits(tmp_path):
+    client, service = build_client(tmp_path)
+    with service.session() as session:
+        company = Company(name="NVIDIA Corporation", symbol="NVDA", market="US", industry="Semiconductors")
+        session.add(company)
+        session.flush()
+        task = ReportTask(
+            task_id="task-analysis-period-gap",
+            company_id=company.id,
+            symbol="NVDA",
+            period="FY2024",
+            report_type="annual_review",
+            status="quality_failed",
+            current_stage="evidence_gate_failed",
+            metadata_json={"company_name": "NVIDIA", "data_source_scope": "official_first"},
+        )
+        session.add(task)
+        document = Document(
+            company_id=company.id,
+            batch_id="batch-old",
+            title="NVIDIA FY2023 Form 10-K",
+            doc_type="10-K",
+            report_period="FY2023",
+            source_url="https://example.com/nvda-fy2023",
+            parse_status="parsed",
+        )
+        session.add(document)
+        session.flush()
+        session.add(
+            EvidenceItem(
+                evidence_id="ev-old-period",
+                company_id=company.id,
+                document_id=document.id,
+                source_type="sec_edgar",
+                trust_level="official",
+                title="FY2023 disclosure",
+                content="NVIDIA FY2023 filing content.",
+                metadata_json={"period": "FY2023"},
+            )
+        )
+        session.commit()
+
+    with client:
+        response = client.get("/api/report-tasks/task-analysis-period-gap/analysis")
+
+    assert response.status_code == 200
+    body = response.json()
+    diagnostics = body["retrieval_diagnostics"]
+    assert body["retrieval_coverage"]["candidate_count"] == 1
+    assert body["retrieval_coverage"]["returned_count"] == 0
+    assert diagnostics["stage"] == "no_hits"
+    assert diagnostics["failure_reason"] == "period_or_query_mismatch"
+    assert diagnostics["candidate_examples"][0]["report_period"] == "FY2023"
+    assert diagnostics["returned_examples"] == []
+    assert any(action["view"] == "evidence" for action in diagnostics["recommended_actions"])
 
 
 def test_report_task_analysis_returns_404_for_missing_task(tmp_path):

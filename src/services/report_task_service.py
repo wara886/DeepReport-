@@ -19,10 +19,19 @@ from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.app.chat_task_parser import latest_completed_period
 from src.app.web_ui import run_delivery_quality_pipeline
 from src.db.init_db import init_db
-from src.db.models import LLMRun, PromptTemplate, ReportArtifact, ReportTask, ReportTaskEvent
+from src.db.models import (
+    ClaimEvidence,
+    EvidenceItem,
+    LLMRun,
+    PromptTemplate,
+    ReportArtifact,
+    ReportTask,
+    ReportTaskEvent,
+)
 from src.db.session import create_engine_for_url
 from src.llm.harness import serialize_llm_run
 from src.llm.harness import LLMHarness
+from src.rag.retrieval_diagnostics import build_retrieval_coverage
 from src.services.artifact_importer import ArtifactImporter
 
 
@@ -104,15 +113,15 @@ class ReportTaskService:
                 return self.serialize_task(task)
 
             task.status = "running"
-            task.current_stage = "orchestrator"
+            task.current_stage = "evidence_gate"
             task.started_at = task.started_at or _utc_now()
             task.error_message = None
             session.add(
                 ReportTaskEvent(
                     task_id=task.task_id,
-                    stage="orchestrator",
+                    stage="evidence_gate",
                     status="running",
-                    message="MultiAgentOrchestrator.run started",
+                    message="生成前证据门禁开始",
                     metadata_json=None,
                 )
             )
@@ -120,6 +129,22 @@ class ReportTaskService:
             metadata = dict(task.metadata_json or {})
 
         try:
+            evidence_gate = self.run_evidence_gate(task_id)
+            if evidence_gate.get("blocked") is True:
+                return self.get_task(task_id)
+            with self.session() as session:
+                task = self._get_task_for_update(session, task_id)
+                task.current_stage = "orchestrator"
+                session.add(
+                    ReportTaskEvent(
+                        task_id=task.task_id,
+                        stage="orchestrator",
+                        status="running",
+                        message="研报生成流程开始",
+                        metadata_json={"evidence_gate_status": evidence_gate.get("status")},
+                    )
+                )
+                session.commit()
             self._run_orchestrator(task_id=task_id, metadata=metadata)
             artifacts = self.import_artifacts(task_id)
             quality_result = self.run_quality_gate(task_id)
@@ -325,6 +350,83 @@ class ReportTaskService:
             session.commit()
         return result
 
+    def run_evidence_gate(self, task_id: str) -> dict[str, Any]:
+        """Check whether a task has enough persisted evidence before generation."""
+
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            metadata = dict(task.metadata_json or {})
+            if _truthy(metadata.get("skip_evidence_gate")):
+                gate = {
+                    "status": "skipped",
+                    "blocked": False,
+                    "summary": "已跳过生成前证据门禁。",
+                    "coverage": {},
+                    "recommended_actions": [],
+                }
+                metadata["pre_generation_evidence_gate"] = gate
+                task.metadata_json = metadata
+                session.add(
+                    ReportTaskEvent(
+                        task_id=task.task_id,
+                        stage="evidence_gate",
+                        status="skipped",
+                        message=gate["summary"],
+                        metadata_json=gate,
+                    )
+                )
+                session.commit()
+                return gate
+
+            candidates = self._evidence_candidates_for_gate(session, task=task, metadata=metadata)
+            returned = [_evidence_gate_row(item) for item in candidates]
+            company_label = str(metadata.get("company_name") or task.symbol or "")
+            coverage = build_retrieval_coverage(
+                candidates=candidates,
+                returned=returned,
+                company=company_label,
+                source_type=None,
+                mode_effective="pre_generation_gate",
+            )
+            blocking_reasons = _evidence_gate_blocking_reasons(coverage)
+            enforced = _truthy(metadata.get("enforce_evidence_gate"))
+            allow_weak = _truthy(metadata.get("allow_weak_evidence"))
+            blocked = bool(blocking_reasons) and enforced and not allow_weak
+            status = "failed" if blocked else ("warning" if blocking_reasons else "success")
+            gate = {
+                "status": status,
+                "blocked": blocked,
+                "enforced": enforced,
+                "allow_weak_evidence": allow_weak,
+                "summary": _evidence_gate_summary(coverage=coverage, blocking_reasons=blocking_reasons, blocked=blocked),
+                "blocking_reasons": blocking_reasons,
+                "coverage": coverage,
+                "recommended_actions": _evidence_gate_actions(coverage),
+            }
+            metadata["pre_generation_evidence_gate"] = gate
+            task.metadata_json = metadata
+            if blocked:
+                task.status = "quality_failed"
+                task.current_stage = "evidence_gate_failed"
+                task.finished_at = _utc_now()
+                task.error_message = gate["summary"]
+            session.add(
+                ReportTaskEvent(
+                    task_id=task.task_id,
+                    stage="evidence_gate",
+                    status=status,
+                    message=gate["summary"],
+                    metadata_json={
+                        "blocked": blocked,
+                        "enforced": enforced,
+                        "coverage": coverage,
+                        "recommended_actions": gate["recommended_actions"],
+                    },
+                )
+            )
+            session.commit()
+            return gate
+
     def _record_quality_gate_harness_run(
         self,
         task_id: str,
@@ -523,6 +625,9 @@ class ReportTaskService:
             "data_source_config_path": str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
             "memory_enabled": bool(payload.get("memory_enabled", False)),
             "execution_tier": str(payload.get("execution_tier") or ("user_fast" if self.mode == "user" else "developer_fast")),
+            "enforce_evidence_gate": _truthy(payload.get("enforce_evidence_gate", False)),
+            "allow_weak_evidence": _truthy(payload.get("allow_weak_evidence", False)),
+            "skip_evidence_gate": _truthy(payload.get("skip_evidence_gate", False)),
         }
 
     def _run_orchestrator(self, *, task_id: str, metadata: dict[str, Any]) -> Any:
@@ -570,6 +675,145 @@ class ReportTaskService:
         if task is None:
             raise ReportTaskNotFound(task_id)
         return task
+
+    def _evidence_candidates_for_gate(
+        self,
+        session: Session,
+        *,
+        task: ReportTask,
+        metadata: dict[str, Any],
+    ) -> list[EvidenceItem]:
+        stmt = (
+            select(EvidenceItem)
+            .options(
+                selectinload(EvidenceItem.company),
+                selectinload(EvidenceItem.document),
+                selectinload(EvidenceItem.claim_links).selectinload(ClaimEvidence.claim),
+            )
+            .order_by(EvidenceItem.created_at.desc(), EvidenceItem.id.desc())
+            .limit(1000)
+        )
+        items = list(session.scalars(stmt).unique().all())
+        return [item for item in items if _evidence_matches_task_gate(item, task=task, metadata=metadata)]
+
+
+def _evidence_matches_task_gate(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> bool:
+    item_metadata = item.metadata_json or {}
+    task_id = str(task.task_id or "")
+    if _norm(item_metadata.get("task_id")) == _norm(task_id):
+        return True
+    if item.document is not None and _norm(item.document.batch_id) == _norm(task_id):
+        return True
+    for link in item.claim_links:
+        if link.claim is not None and _norm(link.claim.task_id) == _norm(task_id):
+            return True
+
+    company_match = _evidence_company_matches(item, task=task, metadata=metadata)
+    period_match = _evidence_period_matches(item, task=task, metadata=metadata)
+    if _norm(task.period or metadata.get("period")):
+        return company_match and period_match
+    return company_match
+
+
+def _evidence_company_matches(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> bool:
+    expected_values = [
+        task.symbol,
+        metadata.get("symbol"),
+        metadata.get("company_name"),
+        metadata.get("company_symbol"),
+    ]
+    if task.company_id is not None and item.company_id == task.company_id:
+        return True
+    company = item.company
+    item_values = [
+        company.name if company else "",
+        company.symbol if company else "",
+        *((company.aliases or []) if company else []),
+        (item.metadata_json or {}).get("symbol"),
+        (item.metadata_json or {}).get("company_name"),
+        (item.metadata_json or {}).get("company_symbol"),
+    ]
+    normalized_expected = [_norm(value) for value in expected_values if _norm(value)]
+    normalized_items = [_norm(value) for value in item_values if _norm(value)]
+    return any(
+        expected in item_value or item_value in expected
+        for expected in normalized_expected
+        for item_value in normalized_items
+    )
+
+
+def _evidence_period_matches(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> bool:
+    expected = _norm(task.period or metadata.get("period"))
+    if not expected:
+        return True
+    item_metadata = item.metadata_json or {}
+    values = [
+        item.document.report_period if item.document else "",
+        item_metadata.get("period"),
+        item_metadata.get("report_period"),
+        item_metadata.get("fiscal_period"),
+    ]
+    return any(_norm(value) == expected for value in values if _norm(value))
+
+
+def _evidence_gate_row(item: EvidenceItem) -> dict[str, Any]:
+    return {
+        "evidence_id": item.evidence_id,
+        "source_type": item.source_type,
+        "trust_level": item.trust_level,
+        "title": item.title,
+    }
+
+
+def _evidence_gate_blocking_reasons(coverage: dict[str, Any]) -> list[dict[str, Any]]:
+    reasons: list[dict[str, Any]] = []
+    if not coverage.get("evidence_ready"):
+        reasons.append(
+            {
+                "type": "no_evidence",
+                "label": "缺少可用证据",
+                "description": "当前任务没有命中公司和期间匹配的证据，不能生成正式研报。",
+            }
+        )
+    missing_sources = list(coverage.get("missing_sources") or [])
+    if missing_sources:
+        reasons.append(
+            {
+                "type": "missing_required_source",
+                "label": "权威来源缺口",
+                "description": "当前任务缺少权威来源：" + "、".join(missing_sources),
+                "sources": missing_sources,
+            }
+        )
+    return reasons
+
+
+def _evidence_gate_summary(
+    *,
+    coverage: dict[str, Any],
+    blocking_reasons: list[dict[str, Any]],
+    blocked: bool,
+) -> str:
+    if blocked:
+        return "生成已暂停：证据覆盖不足，请先补充采集或导入权威资料。"
+    if blocking_reasons:
+        return "证据覆盖存在缺口，当前未强制拦截，任务继续生成；请在复核页补齐证据。"
+    return coverage.get("summary") or "生成前证据门禁通过。"
+
+
+def _evidence_gate_actions(coverage: dict[str, Any]) -> list[dict[str, str]]:
+    actions: list[dict[str, str]] = []
+    for gap in coverage.get("gaps") or []:
+        gap_type = str(gap.get("type") or "")
+        if gap_type == "no_candidates":
+            actions.append({"label": "创建采集批次", "view": "ingestion", "reason": str(gap.get("description") or "")})
+        elif gap_type == "source_gap":
+            actions.append({"label": "检查数据源配置", "view": "datasources", "reason": str(gap.get("description") or "")})
+        elif gap_type in {"no_hits", "retrieval_failed"}:
+            actions.append({"label": "去证据库核对", "view": "evidence", "reason": str(gap.get("description") or "")})
+    if not actions:
+        actions.append({"label": "进入证据复核", "view": "evidence", "reason": "证据已命中，建议生成前核对原文。"})
+    return actions
 
 
 def serialize_event(event: ReportTaskEvent) -> dict[str, Any]:
@@ -784,6 +1028,18 @@ def _normalize_search_engines(value: Any) -> list[str]:
     if value:
         return [part.strip() for part in str(value).split(",") if part.strip()]
     return []
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _norm(value: Any) -> str:
+    return "".join(str(value or "").strip().lower().split())
 
 
 def _dict_path(payload: dict[str, Any], key: str) -> dict[str, Any]:

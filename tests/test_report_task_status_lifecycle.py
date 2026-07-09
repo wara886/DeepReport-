@@ -68,7 +68,8 @@ def test_report_task_status_lifecycle_records_events(tmp_path):
     assert body["started_at"]
     assert body["finished_at"]
     stages = [event["stage"] for event in body["events"]]
-    assert stages[:4] == ["queued", "orchestrator", "orchestrator", "artifact_import"]
+    assert stages[:5] == ["queued", "evidence_gate", "evidence_gate", "orchestrator", "orchestrator"]
+    assert "artifact_import" in stages
     assert "quality_gate" in stages
     assert stages[-1] == "completed"
     assert [event["status"] for event in body["events"]][-1] == "completed"
