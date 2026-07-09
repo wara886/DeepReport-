@@ -79,5 +79,9 @@ def test_signal_api_generates_and_returns_evidence_binding(tmp_path):
     signal = next(item for item in listed.json()["items"] if item["signal_type"] == "margin_decline")
     assert signal["signal_type"] == "margin_decline"
     assert signal["evidence"]["evidence_id"] == "ev-nvda-margin"
+    assert signal["priority_label"] == "优先复核"
+    assert "复核毛利率" in signal["recommended_action"]
+    assert "风险提示" in signal["decision_use"]
+    assert "不构成投资建议" in signal["research_brief"]
     assert detail.status_code == 200
     assert detail.json()["source_fact"]["metric_name"] == "毛利率"

@@ -194,6 +194,14 @@ def test_report_task_analysis_package_connects_quality_chain_and_risk(tmp_path):
     assert body["entity_memory"]["relation_count"] >= 4
     assert any(item["name"] == "metric" for item in body["entity_memory"]["type_distribution"])
     assert any(item["name"] == "HAS_METRIC" for item in body["entity_memory"]["relation_distribution"])
+    assert body["signal_summary"]["ready"] is True
+    assert body["signal_summary"]["signal_count"] == 1
+    assert body["signal_summary"]["high_priority_count"] == 1
+    assert body["signal_summary"]["in_context_count"] == 1
+    assert body["signal_summary"]["negative_count"] == 1
+    assert body["signal_summary"]["top_signals"][0]["priority_label"] == "已进入研报上下文"
+    assert body["signal_summary"]["top_signals"][0]["recommended_action"]
+    assert "不构成投资建议" in body["signal_summary"]["top_signals"][0]["decision_use"]
     assert body["quality_proof"]["retrieval_coverage"]["summary"]
     assert {item["key"]: item for item in body["quality_proof"]["checks"]}["citation_usage"]["passed"] is True
     assert body["quality_proof"]["failed_claims"][0]["citation_check_status"] == "failed"

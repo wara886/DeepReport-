@@ -143,6 +143,8 @@ class InvestmentSignalService:
 
     def serialize_signal(self, signal: InvestmentSignal) -> dict[str, Any]:
         evidence = signal.evidence_item or (signal.source_fact.evidence_item if signal.source_fact else None)
+        recommended_action = _recommended_action(signal)
+        decision_use = _decision_use(signal)
         return {
             "id": signal.id,
             "signal_id": signal.signal_id,
@@ -156,6 +158,10 @@ class InvestmentSignalService:
             "severity": signal.severity,
             "direction": signal.direction,
             "confidence": signal.confidence,
+            "priority_label": _priority_label(signal),
+            "recommended_action": recommended_action,
+            "decision_use": decision_use,
+            "research_brief": _research_brief(signal, recommended_action=recommended_action, decision_use=decision_use),
             "status": signal.status,
             "period": signal.period,
             "source_rule": signal.source_rule,
@@ -195,6 +201,45 @@ def _apply_filters(
         needle = f"%{q.strip()}%"
         stmt = stmt.where(or_(InvestmentSignal.title.ilike(needle), InvestmentSignal.summary.ilike(needle)))
     return stmt
+
+
+def _priority_label(signal: InvestmentSignal) -> str:
+    if signal.status == "in_context":
+        return "已进入研报上下文"
+    if signal.severity == "high":
+        return "优先复核"
+    if signal.direction == "positive":
+        return "机会跟踪"
+    if signal.signal_type in {"official_source_missing", "currency_mismatch", "valuation_blocked"}:
+        return "生成前处理"
+    return "持续观察"
+
+
+def _recommended_action(signal: InvestmentSignal) -> str:
+    mapping = {
+        "margin_decline": "复核毛利率、费用率和产品结构变化，并绑定官方披露证据。",
+        "cashflow_gap": "核对经营现金流、回款、库存和资本开支，避免仅用利润口径下结论。",
+        "official_source_missing": "补齐公告、年报、交易所披露或一手来源后再进入正式研报。",
+        "currency_mismatch": "统一币种、单位和折算口径，处理后再进入估值或横向对比。",
+        "valuation_blocked": "补充市值、股价、估值倍数或可比公司口径，估值章节保持阻塞说明。",
+        "revenue_growth_acceleration": "继续核对收入拆分、订单和可持续性证据，避免把短期改善直接写成结论。",
+    }
+    return mapping.get(signal.signal_type, "补齐证据、复核口径后再写入研报主张。")
+
+
+def _decision_use(signal: InvestmentSignal) -> str:
+    if signal.signal_type in {"official_source_missing", "currency_mismatch", "valuation_blocked"}:
+        return "用于判断研报生成是否需要暂停、降级或补充资料，不构成投资建议。"
+    if signal.direction == "negative":
+        return "用于风险提示、关键假设压力测试和人工复核优先级排序，不构成投资建议。"
+    if signal.direction == "positive":
+        return "用于机会线索跟踪和增长假设复核，不能直接作为投资建议。"
+    return "用于研究流程分流和证据补齐，不构成投资建议。"
+
+
+def _research_brief(signal: InvestmentSignal, *, recommended_action: str, decision_use: str) -> str:
+    evidence_text = "已有证据绑定" if signal.evidence_item_id or signal.source_fact_id else "证据仍需补齐"
+    return f"{signal.title}：{signal.summary} 当前优先级为{_priority_label(signal)}，{evidence_text}。建议动作：{recommended_action} {decision_use}"
 
 
 def _upsert_signal(session: Session, payload: dict[str, Any]) -> InvestmentSignal:

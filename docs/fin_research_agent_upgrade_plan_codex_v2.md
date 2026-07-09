@@ -1138,6 +1138,16 @@ P2 暂不做：
 - 测试：`tests/test_signal_rules.py`、`tests/test_signal_evidence_binding.py`、`tests/test_signal_to_report_context.py`。
 - 提交：`feat(p2.4): add investment signal center`。
 
+P2.4 收尾进度：
+
+- 已复用现有规则线索中心，不重建新模块；`/api/investment-signals/generate`、`/api/investment-signals`、`/api/investment-signals/{id}/add-to-task` 已形成基础闭环。
+- 线索序列化新增产品化字段：`priority_label`、`recommended_action`、`decision_use`、`research_brief`，前端不直接暴露后端规则变量名作为主要解释。
+- `/api/report-tasks/{task_id}/analysis` 新增 `signal_summary`，展示线索总数、高优先级、已进入上下文、风险/机会分布、证据绑定、重点线索和推荐动作。
+- 任务详情新增“投资线索闭环”卡片，可一键“生成当前任务线索”，并跳转到投资线索、财务事实和主张复核。
+- 投资线索详情页新增“线索研判摘要”“建议动作”“研报用途”，统一保留“仅供研究，不构成投资建议”边界。
+- 这里的“LLM 摘要”先落为可测试的规则研判摘要；真实 LLM 生成应等 PromptOps / Harness 质量追踪稳定后再接入。
+- 最新验收命令：`pytest -q tests/test_signal_rules.py tests/test_signal_evidence_binding.py tests/test_signal_to_report_context.py tests/test_task_analysis_api.py tests/test_workbench_frontend_script.py tests/test_web_report_task_evidence_gate.py tests/test_web_evidence_center.py`。
+
 ### P2.5 投资逻辑链 / 风险传导链
 
 - 对应视频中的“剧本对抗”，但金融项目不要使用黑灰产命名。

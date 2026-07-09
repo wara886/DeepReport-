@@ -77,6 +77,7 @@ class TaskAnalysisService:
             signals=signal_payloads,
             claims=claim_payloads,
         )
+        signal_summary = _build_signal_summary(signal_payloads)
         citation_artifacts = _load_citation_artifacts(task_payload)
         citation_usage = _build_citation_usage(
             claims=claim_payloads,
@@ -146,6 +147,7 @@ class TaskAnalysisService:
             "retrieval_diagnostics": retrieval_diagnostics,
             "citation_usage": citation_usage,
             "entity_memory": entity_memory,
+            "signal_summary": signal_summary,
             "narrative": narrative,
             "quality_proof": quality_proof,
             "argument_chain": argument_chain,
@@ -434,6 +436,72 @@ def _build_stats(
         "official_evidence_rate": _ratio(len(official_evidence), len(evidence)),
         "source_distribution": [{"name": key, "count": value} for key, value in source_counter.most_common()],
         "signal_distribution": [{"name": key, "count": value} for key, value in signal_counter.most_common()],
+    }
+
+
+def _build_signal_summary(signals: list[dict[str, Any]]) -> dict[str, Any]:
+    top_signals = _top_signals(signals)[:5]
+    high_priority = [item for item in signals if str(item.get("severity")) == "high"]
+    in_context = [item for item in signals if str(item.get("status")) == "in_context"]
+    positive = [item for item in signals if str(item.get("direction")) == "positive"]
+    negative = [item for item in signals if str(item.get("direction")) == "negative"]
+    neutral = [item for item in signals if str(item.get("direction")) not in {"positive", "negative"}]
+    evidence_bound = [item for item in signals if item.get("evidence") or item.get("source_fact")]
+    if not signals:
+        return {
+            "ready": False,
+            "signal_count": 0,
+            "high_priority_count": 0,
+            "in_context_count": 0,
+            "positive_count": 0,
+            "negative_count": 0,
+            "neutral_count": 0,
+            "evidence_bound_count": 0,
+            "brief": "当前任务还没有形成投资线索。建议先导入财务事实，并补齐官方或一手证据。",
+            "top_signals": [],
+            "recommended_actions": [
+                {"label": "生成当前任务线索", "view": "tasks", "reason": "根据当前任务公司、期间、财务事实和证据缺口运行规则线索。"},
+                {"label": "导入财务事实", "view": "facts", "reason": "线索规则依赖结构化指标、口径和证据绑定。"},
+            ],
+        }
+    action_texts = [str(item.get("recommended_action") or "") for item in top_signals if item.get("recommended_action")]
+    if high_priority:
+        brief = f"已识别 {len(signals)} 条投资线索，其中 {len(high_priority)} 条需要优先复核；重点处理 {top_signals[0].get('title') or '高优先级线索'}。"
+    elif positive and not negative:
+        brief = f"已识别 {len(signals)} 条线索，当前以机会跟踪为主，仍需证据和主张复核后才能进入研报结论。"
+    else:
+        brief = f"已识别 {len(signals)} 条线索，建议按证据绑定、优先级和是否进入任务上下文逐条复核。"
+    return {
+        "ready": True,
+        "signal_count": len(signals),
+        "high_priority_count": len(high_priority),
+        "in_context_count": len(in_context),
+        "positive_count": len(positive),
+        "negative_count": len(negative),
+        "neutral_count": len(neutral),
+        "evidence_bound_count": len(evidence_bound),
+        "brief": brief,
+        "top_signals": [
+            {
+                "id": item.get("id"),
+                "signal_id": item.get("signal_id"),
+                "title": item.get("title"),
+                "summary": item.get("summary"),
+                "severity": item.get("severity"),
+                "direction": item.get("direction"),
+                "status": item.get("status"),
+                "priority_label": item.get("priority_label"),
+                "recommended_action": item.get("recommended_action"),
+                "decision_use": item.get("decision_use"),
+                "evidence": item.get("evidence"),
+                "source_fact": item.get("source_fact"),
+            }
+            for item in top_signals
+        ],
+        "recommended_actions": [
+            {"label": "加入研报上下文", "view": "signals", "reason": "把已复核线索写入任务上下文，后续报告生成才能引用。"},
+            {"label": "补齐线索证据", "view": "evidence", "reason": action_texts[0] if action_texts else "高优先级线索需要绑定可追溯证据。"},
+        ],
     }
 
 

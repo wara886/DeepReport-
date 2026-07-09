@@ -62,3 +62,21 @@ def test_workbench_report_task_entity_memory_is_productized():
     assert "实体样例" in html
     assert "关系样例" in html
     assert "数据进入、记忆沉淀、结构化处理、线索发现、主张复核、报告输出" in html
+
+
+def test_workbench_report_task_signal_closure_is_productized():
+    html = render_workbench_html()
+
+    assert "renderTaskSignalSummary" in html
+    assert "bindTaskSignalButtons" in html
+    assert "generateSignalsForTask" in html
+    assert "/api/investment-signals/generate" in html
+    assert "投资线索闭环" in html
+    assert "生成当前任务线索" in html
+    assert "线索研判摘要" in html
+    assert "研判优先级" in html
+    assert "建议动作" in html
+    assert "仅供研究，不构成投资建议" in html
+    assert "activeSignalTaskScope" in html
+    assert "data-signal-task-id" in html
+    assert "当前仅查看该研报任务的线索" in html

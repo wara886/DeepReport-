@@ -888,6 +888,7 @@ def render_workbench_html() -> str:
                   <button class="btn" id="refreshSignals">刷新</button>
                 </div>
               </div>
+              <div id="signalScopeNotice"></div>
               <div class="table-scroll">
                 <table>
                   <thead>
@@ -1254,6 +1255,7 @@ def render_workbench_html() -> str:
     let evidenceSearchContext = new Map();
     let entityContext = new Map();
     let relationContext = new Map();
+    let activeSignalTaskScope = null;
 
     const viewMeta = {
       dashboard: ["投研首页", "任务、证据、主张与处理漏斗"],
@@ -1802,6 +1804,19 @@ def render_workbench_html() -> str:
           $("ingestionSource").dataset.sourceKey = options.ingestionSource;
         }
         if (options.ingestionQuery && $("ingestionQuery")) $("ingestionQuery").value = options.ingestionQuery;
+      }
+      if (view === "signals") {
+        if (options.signalTaskId) {
+          activeSignalTaskScope = {
+            taskId: options.signalTaskId,
+            company: options.signalCompany || "",
+            period: options.signalPeriod || "",
+          };
+          if ($("signalCompany")) $("signalCompany").value = activeSignalTaskScope.company;
+          if ($("signalPeriod")) $("signalPeriod").value = activeSignalTaskScope.period;
+        } else {
+          activeSignalTaskScope = null;
+        }
       }
       activateView(view);
     }
@@ -3214,7 +3229,7 @@ def render_workbench_html() -> str:
         </div>
         <div class="links" style="margin-top:10px">
           <button class="btn primary" data-task-detail-jump="${esc(task.task_id)}">打开完整分析包</button>
-          <button class="btn" data-jump="signals">查看投资线索</button>
+          <button class="btn" data-jump="signals" data-signal-task-id="${esc(task.task_id)}" data-signal-company="${esc(task.symbol || "")}" data-signal-period="${esc(task.period || "")}">查看投资线索</button>
           <button class="btn" data-jump="graph">查看关系图谱</button>
         </div>`;
     }
@@ -3420,6 +3435,7 @@ def render_workbench_html() -> str:
           ${renderTaskNarrative(analysis)}
           ${renderTaskAnalysisStats(analysis.stats || {})}
           ${renderTaskEntityMemory(analysis.entity_memory || {}, task)}
+          ${renderTaskSignalSummary(analysis.signal_summary || {}, task)}
           ${renderRetrievalCoverage(analysis.retrieval_coverage || analysis.quality_proof?.retrieval_coverage || {})}
           ${renderRetrievalDiagnostics(analysis.retrieval_diagnostics || {})}
           ${renderCitationUsage(analysis.citation_usage || {})}
@@ -3435,6 +3451,7 @@ def render_workbench_html() -> str:
           }</div></div>`;
         bindTaskActionButtons($("taskDetail"));
         bindTaskEntityMemoryButtons($("taskDetail"));
+        bindTaskSignalButtons($("taskDetail"));
         bindJumpHandlers($("taskDetail"));
         bindCreateTaskButtons($("taskDetail"));
       } catch (error) {
@@ -3597,6 +3614,44 @@ def render_workbench_html() -> str:
     function memoryDistributionText(items, labelFn) {
       const rows = Array.isArray(items) ? items : [];
       return rows.length ? rows.slice(0, 3).map((item) => `${labelFn(item.name)} ${number(item.count)}`).join("、") : "暂无分布";
+    }
+
+    function renderTaskSignalSummary(summary, task) {
+      const hasSummary = summary && Object.keys(summary).length > 0;
+      if (!hasSummary) {
+        return `<div class="detail-section"><h3>投资线索闭环</h3><div class="empty">暂无线索诊断。导入财务事实和证据后，可以按当前任务生成风险/机会线索。</div></div>`;
+      }
+      const topSignals = summary.top_signals || [];
+      const ready = summary.ready === true;
+      return `<div class="detail-section"><h3>投资线索闭环</h3>
+        <div class="chain-summary">${esc(summary.brief || "暂无线索研判摘要。")}</div>
+        <div class="analysis-stats">
+          <div class="analysis-stat"><span class="label">线索状态</span><strong><span class="status ${ready ? "passed" : "pending"}">${esc(ready ? "已识别" : "待生成")}</span></strong><span class="score-note">仅供研究，不构成投资建议</span></div>
+          <div class="analysis-stat"><span class="label">线索总数</span><strong>${esc(number(summary.signal_count || 0))}</strong><span class="score-note">高优先级 ${esc(number(summary.high_priority_count || 0))} 条</span></div>
+          <div class="analysis-stat"><span class="label">已进上下文</span><strong>${esc(number(summary.in_context_count || 0))}</strong><span class="score-note">可被研报任务引用</span></div>
+          <div class="analysis-stat"><span class="label">方向分布</span><strong>${esc(number(summary.negative_count || 0))} / ${esc(number(summary.positive_count || 0))}</strong><span class="score-note">风险 / 机会</span></div>
+        </div>
+        <div class="check-grid">
+          <div class="check-item ${topSignals.length ? "passed" : "failed"}"><div class="diagnostic-head"><strong>重点线索</strong><span class="status ${topSignals.length ? "passed" : "pending"}">${esc(topSignals.length ? "待研判" : "待生成")}</span></div>
+            ${topSignals.length ? `<div class="mini-list">${topSignals.slice(0, 4).map((signal) => `<div class="mini-item">
+              <strong>${esc(signal.title || "投资线索")}</strong> <span class="status ${esc(signal.severity || "medium")}">${esc(signalSeverityText(signal.severity || "medium"))}</span><br>
+              <span class="label">${esc(signalDirectionText(signal.direction || "neutral"))} · ${esc(signal.priority_label || "持续观察")}</span><br>
+              ${esc(signal.summary || "")}
+              ${signal.recommended_action ? `<div class="score-note">建议：${esc(signal.recommended_action)}</div>` : ""}
+            </div>`).join("")}</div>` : `<div class="empty">当前任务还没有线索，可先运行规则生成。</div>`}
+          </div>
+          <div class="check-item ${Number(summary.evidence_bound_count || 0) ? "passed" : "failed"}"><div class="diagnostic-head"><strong>证据绑定</strong><span class="status ${Number(summary.evidence_bound_count || 0) ? "passed" : "pending"}">${esc(Number(summary.evidence_bound_count || 0) ? "已有证据" : "待补证据")}</span></div>
+            <div class="score-note">已有 ${esc(number(summary.evidence_bound_count || 0))} 条线索绑定证据或财务事实。高优先级线索必须可追溯后再进入正式研报。</div>
+            <div id="taskSignalGenerateResult"></div>
+          </div>
+        </div>
+        <div class="links" style="margin-top:10px">
+          <button class="btn primary" data-generate-task-signals="${esc(task.task_id)}">生成当前任务线索</button>
+          <button class="btn" data-jump="signals" data-signal-task-id="${esc(task.task_id)}" data-signal-company="${esc(task.symbol || "")}" data-signal-period="${esc(task.period || "")}">查看投资线索</button>
+          <button class="btn" data-jump="facts">查看财务事实</button>
+          <button class="btn" data-jump="claims">进入主张复核</button>
+        </div>
+      </div>`;
     }
 
     function renderTaskNarrative(analysis) {
@@ -3840,6 +3895,14 @@ def render_workbench_html() -> str:
       });
     }
 
+    function bindTaskSignalButtons(root = document) {
+      root.querySelectorAll("[data-generate-task-signals]").forEach((btn) => {
+        if (btn.dataset.boundGenerateTaskSignals === "true") return;
+        btn.dataset.boundGenerateTaskSignals = "true";
+        btn.addEventListener("click", () => generateSignalsForTask(btn.dataset.generateTaskSignals));
+      });
+    }
+
     async function extractEntitiesFromTask(taskId) {
       const resultBox = $("taskEntityExtractResult");
       if (resultBox) resultBox.innerHTML = `<div class="empty">正在沉淀当前任务证据...</div>`;
@@ -3855,6 +3918,24 @@ def render_workbench_html() -> str:
         if (activeState.view === "graph") await loadRelations();
       } catch (error) {
         if (resultBox) resultBox.innerHTML = `<div class="error">沉淀失败，请先确认该任务已经关联证据。</div>`;
+      }
+    }
+
+    async function generateSignalsForTask(taskId) {
+      const resultBox = $("taskSignalGenerateResult");
+      if (resultBox) resultBox.innerHTML = `<div class="empty">正在根据当前任务证据和财务事实生成线索...</div>`;
+      try {
+        const result = await postJson("/api/investment-signals/generate", { task_id: taskId });
+        if (resultBox) {
+          resultBox.innerHTML = `<div class="empty">已生成或更新 ${esc(number(result.generated))} 条线索。规则线索仅供研究，不构成投资建议。</div>
+            <div class="links"><button class="btn primary" data-jump="signals" data-signal-task-id="${esc(taskId)}">查看当前任务线索</button><button class="btn" data-jump="claims">进入主张复核</button></div>`;
+          bindJumpHandlers(resultBox);
+        }
+        await loadTaskDetail(taskId);
+        if (activeState.view === "signals") await loadSignals();
+        loadDashboard();
+      } catch (error) {
+        if (resultBox) resultBox.innerHTML = `<div class="error">生成失败，请先确认该任务有公司、期间或可用财务事实。</div>`;
       }
     }
 
@@ -4638,6 +4719,8 @@ def render_workbench_html() -> str:
       const period = $("signalPeriod").value.trim();
       const type = $("signalType").value;
       const status = $("signalStatus").value;
+      renderSignalScopeNotice();
+      if (activeSignalTaskScope?.taskId) params.set("task_id", activeSignalTaskScope.taskId);
       if (company) params.set("company", company);
       if (period) params.set("period", period);
       if (type) params.set("signal_type", type);
@@ -4652,7 +4735,7 @@ def render_workbench_html() -> str:
               <td>${esc(signal.company?.name || "-")}<br><span class="label mono">${esc(signal.company?.symbol || "")}</span></td>
               <td>${esc(fmt(signal.period))}</td>
               <td><span class="status ${esc(signal.direction)}">${esc(signalDirectionText(signal.direction))}</span></td>
-              <td><span class="status ${esc(signal.severity)}">${esc(signalSeverityText(signal.severity))}</span><br><span class="label">置信度 ${esc(fmt(signal.confidence))}</span></td>
+              <td><span class="status ${esc(signal.severity)}">${esc(signal.priority_label || signalSeverityText(signal.severity))}</span><br><span class="label">置信度 ${esc(fmt(signal.confidence))}</span></td>
               <td>${esc(signalEvidenceText(signal))}</td>
               <td><span class="status ${esc(signalStatusClass(signal))}">${esc(statusText(signal.status))}</span></td>
             </tr>`).join("")
@@ -4664,6 +4747,27 @@ def render_workbench_html() -> str:
       } catch (error) {
         showLoadError("signalRows", 7);
       }
+    }
+
+    function renderSignalScopeNotice() {
+      const box = $("signalScopeNotice");
+      if (!box) return;
+      if (!activeSignalTaskScope?.taskId) {
+        box.innerHTML = "";
+        return;
+      }
+      box.innerHTML = `<div class="chain-summary" style="margin-bottom:10px">
+        <strong>当前仅查看该研报任务的线索</strong><br>
+        ${esc(activeSignalTaskScope.company || "当前任务")} · ${esc(activeSignalTaskScope.period || "-")} · ${esc(activeSignalTaskScope.taskId)}
+        <div class="links" style="margin-top:8px"><button class="btn" id="clearSignalTaskScope">查看全部线索</button></div>
+      </div>`;
+      const clear = $("clearSignalTaskScope");
+      if (clear) clear.addEventListener("click", () => {
+        activeSignalTaskScope = null;
+        if ($("signalCompany")) $("signalCompany").value = "";
+        if ($("signalPeriod")) $("signalPeriod").value = "";
+        loadSignals();
+      });
     }
 
     function bindSignalButtons(root = document) {
@@ -4679,6 +4783,7 @@ def render_workbench_html() -> str:
         company: $("signalCompany").value.trim(),
         period: $("signalPeriod").value.trim(),
       };
+      if (activeSignalTaskScope?.taskId) payload.task_id = activeSignalTaskScope.taskId;
       $("signalDetail").innerHTML = `<h2>生成规则线索</h2><div class="empty">正在根据财务事实、证据来源和任务上下文生成线索...</div>`;
       try {
         const result = await postJson("/api/investment-signals/generate", payload);
@@ -4708,9 +4813,12 @@ def render_workbench_html() -> str:
         <div class="kv"><span class="label">类型</span><span>${esc(signalTypeText(signal.signal_type))} · ${esc(signalCategoryText(signal.category))}</span></div>
         <div class="kv"><span class="label">期间</span><span>${esc(fmt(signal.period))}</span></div>
         <div class="kv"><span class="label">方向</span><span><span class="status ${esc(signal.direction)}">${esc(signalDirectionText(signal.direction))}</span></span></div>
-        <div class="kv"><span class="label">强度</span><span><span class="status ${esc(signal.severity)}">${esc(signalSeverityText(signal.severity))}</span> · 置信度 ${esc(fmt(signal.confidence))}</span></div>
+        <div class="kv"><span class="label">研判优先级</span><span><span class="status ${esc(signal.severity)}">${esc(signal.priority_label || signalSeverityText(signal.severity))}</span> · 置信度 ${esc(fmt(signal.confidence))}</span></div>
         <div class="kv"><span class="label">状态</span><span><span class="status ${esc(signalStatusClass(signal))}">${esc(statusText(signal.status))}</span></span></div>
-        <div class="detail-section"><h3>研究摘要</h3><div class="text-block">${esc(signal.summary)}</div><div class="score-note">仅供研究，不构成投资建议；进入正式研报仍需要证据和主张复核。</div></div>
+        <div class="detail-section"><h3>线索研判摘要</h3><div class="text-block">${esc(signal.research_brief || signal.summary)}</div><div class="score-note">仅供研究，不构成投资建议；进入正式研报仍需要证据和主张复核。</div></div>
+        <div class="detail-section"><h3>建议动作</h3>
+          <div class="chain-summary"><strong>下一步</strong><br>${esc(signal.recommended_action || "补齐证据、复核口径后再写入研报主张。")}<br><strong>研报用途</strong><br>${esc(signal.decision_use || "用于研究流程分流和证据补齐，不构成投资建议。")}</div>
+        </div>
         <div class="detail-section"><h3>来源事实</h3>${
           fact.id ? `<div class="event"><strong>${esc(fact.metric_name || "财务事实")}</strong><br>${esc(number(fact.value))} ${esc([fact.currency, fact.unit, fact.scale].filter(Boolean).join(" / "))}<br><span class="label">${esc(fmt(fact.period))} · ${esc(metricTypeText(fact.metric_type))}</span></div>` : `<div class="empty">暂无来源事实绑定</div>`
         }</div>
