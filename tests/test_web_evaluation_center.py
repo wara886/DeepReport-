@@ -38,3 +38,20 @@ def test_workbench_evaluation_center_is_productized_and_loads_api():
     assert "来源追踪号" in html
     assert "loadEvaluation" in html
     assert 'data-view="evaluation"><span>评测中心</span><span class="tag preview">预览</span></button>' in html
+
+
+def test_workbench_p1_closure_copy_and_task_linkage_are_productized():
+    html = render_workbench_html()
+
+    assert "分析链路总览" in html
+    assert "数据进入、结构化处理、线索发现、主张复核、报告输出" in html
+    assert "为什么是这个质量分" in html
+    assert "还差什么" in html
+    assert "查看主张复核" in html
+    assert "进入评测中心" in html
+    assert "尚未沉淀证据" in html
+    assert "主张通常来自研报产物导入" in html
+    assert "示意分布不代表当前空间真实数据" in html
+    assert "带有黄色提示的图表不计入真实 KPI" in html
+    assert "renderTaskLinkageOverview" in html
+    assert "documentEvidenceEmptyState" in html

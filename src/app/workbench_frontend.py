@@ -2464,10 +2464,10 @@ def render_workbench_html() -> str:
 
     function funnelNoteHtml(hasRealCounts, hasConsistentFunnel) {
       if (!hasRealCounts) {
-        return `<div class="funnel-demo-note">当前暂无真实处理数据，以下为流程示意。创建研报任务或导入文档后将展示真实统计。</div>`;
+        return `<div class="funnel-demo-note">当前暂无真实处理数据，以下为流程示意。创建研报任务或导入文档后将展示真实统计；带有黄色提示的图表不计入真实 KPI。</div>`;
       }
       if (!hasConsistentFunnel) {
-        return `<div class="funnel-demo-note">当前真实统计尚未形成完整累计漏斗，以下展示流程示意；请切换到“处理链路”查看真实阶段计数。</div>`;
+        return `<div class="funnel-demo-note">当前真实统计尚未形成完整累计漏斗，以下展示流程示意；请切换到“处理链路”查看真实阶段计数。带有黄色提示的图表不计入真实 KPI。</div>`;
       }
       return "";
     }
@@ -2605,7 +2605,7 @@ def render_workbench_html() -> str:
       renderDonutChart("dataSourceChart", sourceRows, {
         centerLabel: "来源",
         emptyText: "暂无数据源统计",
-        demoNote: "暂无真实数据源统计，当前显示示意分布。",
+        demoNote: "暂无真实数据源统计，当前显示示意分布；示意分布不代表当前空间真实数据。",
         actions: [{ label: "配置数据源", view: "datasources", className: "primary" }],
         demoRows: [
           { label: "美国证监会年报", value: 35, color: chartColors[0] },
@@ -2627,7 +2627,7 @@ def render_workbench_html() -> str:
       ], {
         centerLabel: "主张",
         emptyText: "暂无主张统计",
-        demoNote: "暂无真实主张统计，当前显示示意分布。",
+        demoNote: "暂无真实主张统计，当前显示示意分布；示意分布不代表当前空间真实数据。",
         actions: [{ label: "生成新研报", view: "tasks", className: "primary" }],
         demoRows: [
           { label: "已校验", value: 58, color: chartColors[1] },
@@ -3355,6 +3355,7 @@ def render_workbench_html() -> str:
           <div class="detail-section"><h3>研究问题</h3><div class="text-block">${esc(metadata.research_topic || "-")}</div></div>
           <div class="detail-section"><h3>任务操作</h3>${taskActionButtons(task)}</div>
           ${task.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(task.error_message)}</div></div>` : ""}
+          ${renderTaskLinkageOverview(analysis)}
           ${renderTaskNarrative(analysis)}
           ${renderTaskAnalysisStats(analysis.stats || {})}
           ${renderQualityProof(analysis.quality_proof || {}, task)}
@@ -3369,9 +3370,64 @@ def render_workbench_html() -> str:
           }</div></div>`;
         bindTaskActionButtons($("taskDetail"));
         bindJumpHandlers($("taskDetail"));
+        bindCreateTaskButtons($("taskDetail"));
       } catch (error) {
         showLoadError("taskDetail");
       }
+    }
+
+    function renderTaskLinkageOverview(analysis) {
+      const stats = analysis.stats || {};
+      const task = analysis.task || {};
+      const hasEvidence = Number(stats.evidence_count || 0) > 0;
+      const hasFacts = Number(stats.financial_fact_count || 0) > 0;
+      const hasSignals = Number(stats.investment_signal_count || 0) > 0;
+      const claimCount = Number(stats.claim_count || 0);
+      const verifiedClaims = Number(stats.verified_claim_count || 0);
+      const hasClaims = claimCount > 0;
+      const hasReport = ["completed", "done", "exported"].includes(String(task.status || ""));
+      const steps = [
+        {
+          title: "数据进入",
+          passed: hasEvidence,
+          note: hasEvidence ? `已沉淀 ${number(stats.evidence_count)} 条证据` : "还没有可复用证据",
+          action: { label: "查看证据库", view: "evidence" },
+        },
+        {
+          title: "结构化处理",
+          passed: hasFacts,
+          note: hasFacts ? `已提取 ${number(stats.financial_fact_count)} 条财务事实` : "财务事实尚未形成",
+          action: { label: "查看事实中心", view: "facts" },
+        },
+        {
+          title: "线索发现",
+          passed: hasSignals,
+          note: hasSignals ? `已识别 ${number(stats.investment_signal_count)} 条投资线索` : "线索仍需由事实和证据触发",
+          action: { label: "查看投资线索", view: "signals" },
+        },
+        {
+          title: "主张复核",
+          passed: hasClaims && verifiedClaims === claimCount,
+          partial: hasClaims && verifiedClaims < claimCount,
+          note: hasClaims ? `${number(verifiedClaims)} / ${number(claimCount)} 条主张已通过` : "研报主张尚未生成",
+          action: { label: "进入主张复核", view: "claims" },
+        },
+        {
+          title: "报告输出",
+          passed: hasReport || analysis.quality_proof?.delivery_pass === true,
+          partial: analysis.quality_proof?.delivery_pass === false,
+          note: analysis.quality_proof?.delivery_pass === true ? "质量门禁已通过，可进入导出" : "需要完成质量门禁后再导出",
+          action: { label: "查看导出中心", view: "export" },
+        },
+      ];
+      return `<div class="detail-section"><h3>分析链路总览</h3>
+        <div class="chain-summary">按视频中的情报后台叙事，这里把当前研报任务串成“数据进入、结构化处理、线索发现、主张复核、报告输出”五步，便于判断任务卡在哪一环。</div>
+        <div class="check-grid">${steps.map((step) => {
+          const cls = step.passed ? "passed" : "failed";
+          const status = step.passed ? "已完成" : (step.partial ? "需处理" : "未完成");
+          return `<div class="check-item ${cls}"><div class="diagnostic-head"><strong>${esc(step.title)}</strong><span class="status ${cls}">${esc(status)}</span></div><div class="score-note">${esc(step.note)}</div><div style="margin-top:8px"><button class="btn" data-jump="${esc(step.action.view)}">${esc(step.action.label)}</button></div></div>`;
+        }).join("")}</div>
+      </div>`;
     }
 
     function renderTaskNarrative(analysis) {
@@ -3398,13 +3454,32 @@ def render_workbench_html() -> str:
       const checks = proof.checks || [];
       const issues = proof.top_issues || [];
       const failedClaims = proof.failed_claims || [];
+      const failedChecks = checks.filter((item) => !item.passed);
+      const passedChecks = checks.filter((item) => item.passed);
+      const score = proof.quality_score ?? task.quality_score;
+      const reasonText = proof.delivery_pass === true
+        ? `质量分 ${fmt(score)} 已满足交付门禁，主要依据是 ${number(passedChecks.length)} 项检查通过。`
+        : failedChecks.length
+          ? `质量分 ${fmt(score)} 尚未稳定达标，优先处理 ${failedChecks.slice(0, 3).map((item) => item.title).join("、")}。`
+          : `质量分 ${fmt(score)} 仍需等待证据、主张和引用检查补齐后再判断。`;
+      const gapText = failedClaims.length
+        ? `当前还有 ${number(failedClaims.length)} 条主张需要复核，重点检查数字一致性、引用是否可追溯以及是否存在过度推断。`
+        : failedChecks.length
+          ? "当前主要缺口来自质量检查项，处理后再重新生成或刷新分析包。"
+          : "当前没有主张级阻塞项，建议进入评测中心查看回归表现。";
       return `<div class="detail-section"><h3>研报质量证明</h3>
         <div class="chain-summary">${esc(proof.explanation || "暂无质量解释。")}</div>
+        <div class="chain-summary"><strong>为什么是这个质量分</strong><br>${esc(reasonText)}<br><strong>还差什么</strong><br>${esc(gapText)}</div>
         <div class="kv"><span class="label">交付门禁</span><span><span class="status ${esc(proof.delivery_pass === true ? "passed" : (proof.delivery_pass === false ? "failed" : "pending"))}">${esc(passText(proof.delivery_pass))}</span></span></div>
         <div class="kv"><span class="label">质量分</span><span>${esc(fmt(proof.quality_score ?? task.quality_score))}</span></div>
         <div class="check-grid">${checks.length ? checks.map((item) => `<div class="check-item ${item.passed ? "passed" : "failed"}"><div class="diagnostic-head"><strong>${esc(item.title)}</strong><span class="status ${item.passed ? "passed" : "failed"}">${esc(item.passed ? "通过" : "需处理")}</span></div><div class="score-note">${esc(item.description || "")}</div><div class="mono">${esc(checkValueText(item))}</div></div>`).join("") : `<div class="empty">暂无质量检查项</div>`}</div>
         ${issues.length ? `<div class="detail-section"><h3>主要问题</h3><div class="diagnostic-list">${issues.slice(0, 5).map((issue) => `<div class="diagnostic-issue ${esc(issue.severity || "")}">${esc(issue.message || issue)}</div>`).join("")}</div></div>` : ""}
         ${failedClaims.length ? `<div class="detail-section"><h3>需关注主张</h3><div class="mini-list">${failedClaims.slice(0, 5).map((claim) => `<div class="mini-item"><strong>主张 ${esc(claim.id)}</strong><br>${esc(claim.claim_text || "")}<br><span class="label">校验：${esc(statusText(claim.verification_status))} · 数字：${esc(statusText(claim.numeric_check_status))} · 引用：${esc(statusText(claim.citation_check_status))}</span></div>`).join("")}</div></div>` : ""}
+        <div class="links" style="margin-top:10px">
+          <button class="btn" data-jump="claims">查看主张复核</button>
+          <button class="btn" data-jump="evidence">查看证据库</button>
+          <button class="btn" data-jump="evaluation">进入评测中心</button>
+        </div>
       </div>`;
     }
 
@@ -4400,14 +4475,39 @@ def render_workbench_html() -> str:
             steps.length ? steps.map((step) => `<div class="event"><strong>${esc(stepText(step.step_name))}</strong> <span class="status ${esc(step.status)}">${esc(statusText(step.status))}</span><br><span class="label">${esc(fmt(step.started_at))} - ${esc(fmt(step.finished_at))}</span>${step.error_message ? `<div class="text-block">${esc(step.error_message)}</div>` : ""}<br><span class="label">${esc(stepMetadataText(step.metadata))}</span></div>`).join("") : `<div class="empty">暂无处理步骤</div>`
           }</div></div>
           <div class="detail-section"><h3>证据</h3>${
-            evidence.length ? evidence.map((item) => `<div class="event"><strong>${esc(item.title || sourceText(item.source_type) || "证据")}</strong> <span class="status ${esc(item.trust_level)}">${esc(statusText(item.trust_level))}</span><br>${esc(item.snippet || "")}</div>`).join("") : `<div class="empty">暂无证据</div>`
+            evidence.length ? evidence.map((item) => `<div class="event"><strong>${esc(item.title || sourceText(item.source_type) || "证据")}</strong> <span class="status ${esc(item.trust_level)}">${esc(statusText(item.trust_level))}</span><br>${esc(item.snippet || "")}</div>`).join("") : documentEvidenceEmptyState(doc)
           }</div>
           <div class="detail-section"><h3>主张</h3>${
-            claims.length ? claims.map((claim) => `<div class="event"><strong>主张 ${esc(claim.id)}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}</div>`).join("") : `<div class="empty">暂无主张</div>`
+            claims.length ? claims.map((claim) => `<div class="event"><strong>主张 ${esc(claim.id)}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}</div>`).join("") : documentClaimEmptyState(doc)
           }</div>`;
+        bindJumpHandlers($("documentDetail"));
+        bindCreateTaskButtons($("documentDetail"));
       } catch (error) {
         showLoadError("documentDetail");
       }
+    }
+
+    function documentEvidenceEmptyState(doc) {
+      return `<div class="empty">
+        <div>当前文档已入库或已解析，但尚未沉淀证据。可能原因：未完成切分/证据化、内容未命中抽取规则，或需要补充来源。</div>
+        <div class="score-note">文档：${esc(doc.title || "未命名文档")}</div>
+        <div class="empty-actions">
+          <button class="btn" data-jump="ingestion">查看采集任务</button>
+          <button class="btn" data-jump="manual">手动导入</button>
+          <button class="btn" data-jump="evidence">查看证据库</button>
+        </div>
+      </div>`;
+    }
+
+    function documentClaimEmptyState(doc) {
+      return `<div class="empty">
+        <div>主张通常来自研报产物导入或 Claim 生成阶段；可先生成研报任务或导入报告产物。</div>
+        <div class="score-note">当前文档：${esc(doc.title || "未命名文档")}</div>
+        <div class="empty-actions">
+          <button class="btn primary" data-open-create-task>创建研报任务</button>
+          <button class="btn" data-jump="claims">主张复核</button>
+        </div>
+      </div>`;
     }
 
     async function loadClaimDetail(claimId) {
