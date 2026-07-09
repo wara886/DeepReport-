@@ -3421,6 +3421,7 @@ def render_workbench_html() -> str:
           ${renderTaskAnalysisStats(analysis.stats || {})}
           ${renderRetrievalCoverage(analysis.retrieval_coverage || analysis.quality_proof?.retrieval_coverage || {})}
           ${renderRetrievalDiagnostics(analysis.retrieval_diagnostics || {})}
+          ${renderCitationUsage(analysis.citation_usage || {})}
           ${renderQualityProof(analysis.quality_proof || {}, task)}
           ${renderArgumentChain(analysis.argument_chain || {})}
           ${renderRiskChain(analysis.risk_chain || {})}
@@ -3678,6 +3679,57 @@ def render_workbench_html() -> str:
         </div>
         <div class="links" style="margin-top:10px">
           ${actions.length ? actions.map((action) => `<button class="btn" data-jump="${esc(action.view || "evidence")}">${esc(action.label || "处理证据")}</button>`).join("") : `<button class="btn" data-jump="evidence">查看证据库</button>`}
+        </div>
+      </div>`;
+    }
+
+    function citationUsageStatusText(value) {
+      const map = {
+        ready: "引用闭环已形成",
+        citation_gap: "正文引用待补齐",
+        no_citations: "缺少引用清单",
+        no_traceable_claims: "主张未绑定证据",
+        no_claims: "缺少研报主张",
+      };
+      return textOf(map, value);
+    }
+
+    function citationUsageStatusClass(value, ready) {
+      if (ready) return "passed";
+      if (value === "citation_gap" || value === "no_citations" || value === "no_traceable_claims") return "failed";
+      return "pending";
+    }
+
+    function renderCitationUsage(usage) {
+      const hasUsage = usage && Object.keys(usage).length > 0;
+      if (!hasUsage) {
+        return `<div class="detail-section"><h3>引用覆盖闭环</h3><div class="empty">暂无引用覆盖诊断。任务完成并导入引用产物后，会检查证据引用是否真正进入报告正文。</div></div>`;
+      }
+      const status = usage.status || "";
+      const ready = usage.ready === true;
+      const statusClass = citationUsageStatusClass(status, ready);
+      const gaps = usage.claims_without_used_citation || [];
+      const unused = usage.unused_citations || [];
+      const actions = usage.recommended_actions || [];
+      return `<div class="detail-section"><h3>引用覆盖闭环</h3>
+        <div class="chain-summary">${esc(usage.summary || "暂无引用覆盖说明。")}</div>
+        <div class="analysis-stats">
+          <div class="analysis-stat"><span class="label">闭环状态</span><strong><span class="status ${esc(statusClass)}">${esc(citationUsageStatusText(status))}</span></strong><span class="score-note">${esc(ready ? "可用于质量证明" : "需要处理后再交付")}</span></div>
+          <div class="analysis-stat"><span class="label">正文已使用引用</span><strong>${esc(number(usage.used_citation_count || 0))} / ${esc(number(usage.citation_count || 0))}</strong><span class="score-note">${esc(percentText(usage.citation_usage_rate))}</span></div>
+          <div class="analysis-stat"><span class="label">可追溯主张</span><strong>${esc(number(usage.used_claim_count || 0))} / ${esc(number(usage.traceable_claim_count || 0))}</strong><span class="score-note">${esc(percentText(usage.claim_usage_rate))}</span></div>
+          <div class="analysis-stat"><span class="label">待补齐</span><strong>${esc(number(gaps.length))}</strong><span class="score-note">未在正文找到已使用引用的主张</span></div>
+        </div>
+        <div class="check-grid">
+          <div class="check-item ${gaps.length ? "failed" : "passed"}"><div class="diagnostic-head"><strong>缺引用主张</strong><span class="status ${gaps.length ? "failed" : "passed"}">${esc(gaps.length ? "需处理" : "无缺口")}</span></div>
+            ${gaps.length ? `<div class="mini-list">${gaps.slice(0, 5).map((claim) => `<div class="mini-item"><strong>${esc(claim.section_name || "研报主张")}</strong><br>${esc(claim.claim_text || "")}<br><span class="label">关联证据：${esc((claim.evidence_ids || []).join("、") || "未记录")}</span></div>`).join("")}</div>` : `<div class="empty">所有可追溯主张都已找到正文引用。</div>`}
+          </div>
+          <div class="check-item ${unused.length ? "failed" : "passed"}"><div class="diagnostic-head"><strong>未进入正文的引用</strong><span class="status ${unused.length ? "failed" : "passed"}">${esc(unused.length ? "需核对" : "无缺口")}</span></div>
+            ${unused.length ? `<div class="mini-list">${unused.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(item.title || item.evidence_id || "证据引用")}</strong><br><span class="label">${esc(item.evidence_id || "-")} · ${esc(sourceText(item.source_type))}</span></div>`).join("")}</div>` : `<div class="empty">引用清单中的证据均已进入报告正文。</div>`}
+          </div>
+        </div>
+        <div class="links" style="margin-top:10px">
+          ${actions.length ? actions.map((action) => `<button class="btn" data-jump="${esc(action.view || "claims")}">${esc(action.label || "处理引用")}</button>`).join("") : `<button class="btn" data-jump="claims">进入主张复核</button>`}
+          <button class="btn" data-jump="export">查看报告产物</button>
         </div>
       </div>`;
     }

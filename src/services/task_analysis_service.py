@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
+import json
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import or_, select
@@ -72,6 +74,12 @@ class TaskAnalysisService:
             signals=signal_payloads,
             claims=claim_payloads,
         )
+        citation_artifacts = _load_citation_artifacts(task_payload)
+        citation_usage = _build_citation_usage(
+            claims=claim_payloads,
+            citations=citation_artifacts["citations"],
+            report_text=citation_artifacts["report_text"],
+        )
         retrieval_coverage = build_retrieval_coverage(
             candidates=candidate_payloads,
             returned=evidence_payloads,
@@ -91,6 +99,7 @@ class TaskAnalysisService:
             task_payload=task_payload,
             stats=stats,
             claims=claim_payloads,
+            citation_usage=citation_usage,
             retrieval_coverage=retrieval_coverage,
         )
         argument_chain = _build_argument_chain(
@@ -131,6 +140,7 @@ class TaskAnalysisService:
             "stats": stats,
             "retrieval_coverage": retrieval_coverage,
             "retrieval_diagnostics": retrieval_diagnostics,
+            "citation_usage": citation_usage,
             "narrative": narrative,
             "quality_proof": quality_proof,
             "argument_chain": argument_chain,
@@ -342,6 +352,7 @@ def _build_quality_proof(
     task_payload: dict[str, Any],
     stats: dict[str, Any],
     claims: list[dict[str, Any]],
+    citation_usage: dict[str, Any],
     retrieval_coverage: dict[str, Any],
 ) -> dict[str, Any]:
     diagnostics = task_payload.get("quality_diagnostics") if isinstance(task_payload.get("quality_diagnostics"), dict) else {}
@@ -388,6 +399,13 @@ def _build_quality_proof(
             passed=stats["citation_failed_count"] == 0,
             value=stats["citation_failed_count"],
             description="引用缺失或引用无法命中证据时，需要补证据或降级表述。",
+        ),
+        _check_item(
+            key="citation_usage",
+            title="报告引用使用",
+            passed=bool(citation_usage.get("ready")),
+            value=citation_usage.get("claim_usage_rate"),
+            description=str(citation_usage.get("summary") or "检查已绑定证据是否真正进入报告正文。"),
         ),
         _check_item(
             key="source_coverage",
@@ -587,6 +605,215 @@ def _recommended_actions(
     if str(task_payload.get("status")) == "queued":
         actions.insert(0, {"label": "启动任务", "view": "tasks", "reason": "任务仍在排队，可以启动生成。"})
     return actions[:6]
+
+
+def _load_citation_artifacts(task_payload: dict[str, Any]) -> dict[str, Any]:
+    metadata = task_payload.get("metadata") if isinstance(task_payload.get("metadata"), dict) else {}
+    output_dir = _path_from_metadata(metadata.get("output_dir"))
+    report_dir = _path_from_metadata(metadata.get("report_dir"))
+    citations = _read_json_list(output_dir / "citations.json") if output_dir is not None else []
+    report_text = _read_text(report_dir / "report.md") if report_dir is not None else ""
+    return {"citations": citations, "report_text": report_text}
+
+
+def _build_citation_usage(
+    *,
+    claims: list[dict[str, Any]],
+    citations: list[dict[str, Any]],
+    report_text: str,
+) -> dict[str, Any]:
+    normalized_citations = [_normalize_citation(item, report_text=report_text) for item in citations if isinstance(item, dict)]
+    used_citations = [item for item in normalized_citations if item["used"]]
+    unused_citations = [item for item in normalized_citations if not item["used"]]
+    traceable_claims = [item for item in claims if int(item.get("evidence_count") or 0) > 0]
+    claims_without_used_citation: list[dict[str, Any]] = []
+    used_claim_count = 0
+    for claim in traceable_claims:
+        if _claim_has_used_citation(claim, normalized_citations):
+            used_claim_count += 1
+            continue
+        claims_without_used_citation.append(
+            {
+                "id": claim.get("id"),
+                "section_name": claim.get("section_name"),
+                "claim_text": claim.get("claim_text"),
+                "evidence_ids": _claim_evidence_ids(claim),
+            }
+        )
+    claim_usage_rate = _ratio(used_claim_count, len(traceable_claims))
+    citation_usage_rate = _ratio(len(used_citations), len(normalized_citations))
+    status = _citation_usage_status(
+        claim_count=len(claims),
+        citation_count=len(normalized_citations),
+        traceable_claim_count=len(traceable_claims),
+        claims_without_used_citation=claims_without_used_citation,
+    )
+    recommended_actions = _citation_usage_actions(status=status, claims_without_used_citation=claims_without_used_citation)
+    ready = status == "ready" and _rate_at_least(claim_usage_rate, 0.8)
+    return {
+        "status": status,
+        "ready": ready,
+        "summary": _citation_usage_summary(
+            status=status,
+            traceable_claim_count=len(traceable_claims),
+            used_claim_count=used_claim_count,
+            unused_citation_count=len(unused_citations),
+        ),
+        "citation_count": len(normalized_citations),
+        "used_citation_count": len(used_citations),
+        "unused_citation_count": len(unused_citations),
+        "claim_count": len(claims),
+        "traceable_claim_count": len(traceable_claims),
+        "used_claim_count": used_claim_count,
+        "claim_usage_rate": claim_usage_rate,
+        "citation_usage_rate": citation_usage_rate,
+        "unused_citations": unused_citations[:8],
+        "claims_without_used_citation": claims_without_used_citation[:8],
+        "recommended_actions": recommended_actions,
+    }
+
+
+def _normalize_citation(item: dict[str, Any], *, report_text: str) -> dict[str, Any]:
+    evidence_id = str(item.get("evidence_id") or "").strip()
+    claim_ids = [str(value) for value in item.get("claim_ids", []) if str(value)] if isinstance(item.get("claim_ids"), list) else []
+    explicit_used = item.get("used_in_report") is True
+    body_used = _citation_marker_in_report(evidence_id, report_text)
+    used = explicit_used and (body_used if report_text else True)
+    return {
+        "citation_id": item.get("citation_id"),
+        "evidence_id": evidence_id,
+        "claim_ids": claim_ids,
+        "used": used,
+        "explicit_used": explicit_used,
+        "body_used": body_used,
+        "title": item.get("title") or evidence_id,
+        "source_type": item.get("source_type"),
+    }
+
+
+def _claim_has_used_citation(claim: dict[str, Any], citations: list[dict[str, Any]]) -> bool:
+    aliases = _claim_aliases(claim)
+    evidence_ids = set(_claim_evidence_ids(claim))
+    if not evidence_ids:
+        return False
+    for citation in citations:
+        if not citation.get("used") or citation.get("evidence_id") not in evidence_ids:
+            continue
+        citation_claim_ids = set(citation.get("claim_ids") or [])
+        if not citation_claim_ids or citation_claim_ids.intersection(aliases):
+            return True
+    return False
+
+
+def _claim_aliases(claim: dict[str, Any]) -> set[str]:
+    aliases = {str(claim.get("id"))}
+    metadata = claim.get("metadata") if isinstance(claim.get("metadata"), dict) else {}
+    for key in ("original_claim_id", "claim_id", "id"):
+        value = metadata.get(key)
+        if value:
+            aliases.add(str(value))
+    return {item for item in aliases if item and item != "None"}
+
+
+def _claim_evidence_ids(claim: dict[str, Any]) -> list[str]:
+    rows = claim.get("evidence") if isinstance(claim.get("evidence"), list) else []
+    ids: list[str] = []
+    for row in rows:
+        evidence = row.get("evidence") if isinstance(row, dict) and isinstance(row.get("evidence"), dict) else row
+        evidence_id = evidence.get("evidence_id") if isinstance(evidence, dict) else None
+        if evidence_id:
+            ids.append(str(evidence_id))
+    metadata = claim.get("metadata") if isinstance(claim.get("metadata"), dict) else {}
+    for evidence_id in metadata.get("evidence_ids", []) if isinstance(metadata.get("evidence_ids"), list) else []:
+        if str(evidence_id) and str(evidence_id) not in ids:
+            ids.append(str(evidence_id))
+    return ids
+
+
+def _citation_usage_status(
+    *,
+    claim_count: int,
+    citation_count: int,
+    traceable_claim_count: int,
+    claims_without_used_citation: list[dict[str, Any]],
+) -> str:
+    if claim_count <= 0:
+        return "no_claims"
+    if traceable_claim_count <= 0:
+        return "no_traceable_claims"
+    if citation_count <= 0:
+        return "no_citations"
+    if claims_without_used_citation:
+        return "citation_gap"
+    return "ready"
+
+
+def _citation_usage_summary(
+    *,
+    status: str,
+    traceable_claim_count: int,
+    used_claim_count: int,
+    unused_citation_count: int,
+) -> str:
+    if status == "ready":
+        return f"已确认 {used_claim_count} / {traceable_claim_count} 条可追溯主张的证据引用进入报告正文。"
+    if status == "no_claims":
+        return "尚未导入研报主张，无法检查报告正文是否使用了证据引用。"
+    if status == "no_traceable_claims":
+        return "当前主张未绑定证据，需要先完成 Claim-Evidence 绑定。"
+    if status == "no_citations":
+        return "未找到引用清单，无法证明报告正文使用了哪些证据。"
+    return f"仍有 {traceable_claim_count - used_claim_count} 条可追溯主张没有在报告正文找到已使用引用，另有 {unused_citation_count} 条引用未进入正文。"
+
+
+def _citation_usage_actions(*, status: str, claims_without_used_citation: list[dict[str, Any]]) -> list[dict[str, str]]:
+    if status == "ready":
+        return [{"label": "抽查报告引用", "view": "export", "reason": "引用闭环已形成，导出前建议抽查关键段落。"}]
+    if status in {"no_claims", "no_traceable_claims"}:
+        return [{"label": "进入主张复核", "view": "claims", "reason": "先补齐主张和证据绑定，再检查报告正文引用。"}]
+    if status == "no_citations":
+        return [{"label": "重新生成引用清单", "view": "tasks", "reason": "当前任务缺少引用产物，需要重新运行或导入产物。"}]
+    first = claims_without_used_citation[0] if claims_without_used_citation else {}
+    reason = str(first.get("claim_text") or "部分主张没有进入报告正文引用。")
+    return [
+        {"label": "复核缺引用主张", "view": "claims", "reason": reason},
+        {"label": "重新生成报告", "view": "tasks", "reason": "将缺失引用的主张重新写入报告正文。"},
+    ]
+
+
+def _citation_marker_in_report(evidence_id: str, report_text: str) -> bool:
+    if not evidence_id or not report_text:
+        return False
+    return f"[{evidence_id}]" in report_text or evidence_id in report_text
+
+
+def _path_from_metadata(value: Any) -> Path | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return Path(text)
+
+
+def _read_json_list(path: Path) -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        for key in ("citations", "items", "records"):
+            rows = payload.get(key)
+            if isinstance(rows, list):
+                return [item for item in rows if isinstance(item, dict)]
+    return []
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
 
 
 def _retrieval_mode(*, candidate_payloads: list[dict[str, Any]], evidence_payloads: list[dict[str, Any]]) -> str:

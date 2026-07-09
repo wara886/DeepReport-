@@ -32,3 +32,17 @@ def test_workbench_report_task_retrieval_diagnostics_is_productized():
     assert "候选资料样例" in html
     assert "期间或查询条件未命中" in html
     assert "缺少必要权威来源" in html
+
+
+def test_workbench_report_task_citation_usage_is_productized():
+    html = render_workbench_html()
+
+    assert "renderCitationUsage" in html
+    assert "引用覆盖闭环" in html
+    assert "引用闭环已形成" in html
+    assert "正文引用待补齐" in html
+    assert "正文已使用引用" in html
+    assert "可追溯主张" in html
+    assert "缺引用主张" in html
+    assert "未进入正文的引用" in html
+    assert "查看报告产物" in html

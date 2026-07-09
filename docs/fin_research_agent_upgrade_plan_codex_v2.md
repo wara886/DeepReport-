@@ -1108,7 +1108,10 @@ P2 暂不做：
 - 任务详情已新增“生成前证据门禁”卡片，展示门禁结论、候选证据、命中来源、缺失来源、建议来源、阻塞原因和推荐动作。
 - 已完成证据召回诊断补强：`/api/report-tasks/{task_id}/analysis` 新增 `retrieval_diagnostics`，区分“暂无候选资料”“有资料但期间/查询未命中”“缺少必要权威来源”“证据可用”。
 - 任务详情已新增“证据召回诊断”卡片，展示查询口径、候选资料池、命中证据、来源缺口、候选/命中样例和处理入口。
-- 验收命令：`pytest -q tests/test_workbench_frontend_script.py tests/test_web_report_task_evidence_gate.py tests/test_task_analysis_api.py`；`pytest -q tests/test_report_task_evidence_gate.py tests/test_report_task_status_lifecycle.py tests/test_report_task_api.py tests/test_report_task_quality_gate.py tests/test_task_analysis_api.py tests/test_evidence_api.py tests/test_hybrid_retriever_contract.py tests/test_web_evaluation_center.py tests/test_web_report_task_links.py tests/test_web_report_task_evidence_gate.py`；`python tmp/deep_p2_workbench_walkthrough.py`。
+- 已完成 P2.1 引用覆盖率闭环：`/api/report-tasks/{task_id}/analysis` 新增 `citation_usage`，从 `citations.json` 和 `report.md` 校验“Claim 绑定证据”是否真正进入报告正文。
+- 任务详情已新增“引用覆盖闭环”卡片，展示正文已使用引用、可追溯主张、缺引用主张、未进入正文的引用和处理入口；质量证明新增“报告引用使用”检查项。
+- 最新小块验收命令：`pytest -q tests/test_task_analysis_api.py tests/test_workbench_frontend_script.py tests/test_web_report_task_evidence_gate.py`。
+- 阶段回归命令：`pytest -q tests/test_report_task_evidence_gate.py tests/test_report_task_status_lifecycle.py tests/test_report_task_api.py tests/test_report_task_quality_gate.py tests/test_task_analysis_api.py tests/test_evidence_api.py tests/test_hybrid_retriever_contract.py tests/test_web_evaluation_center.py tests/test_web_report_task_links.py tests/test_web_report_task_evidence_gate.py`；`python tmp/deep_p2_workbench_walkthrough.py`。
 
 ### P2.3 实体库和关系图谱
 

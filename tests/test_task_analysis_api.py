@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from src.app.api_fastapi import create_fastapi_app
@@ -155,6 +157,7 @@ def seed_analysis_package(service):
 def test_report_task_analysis_package_connects_quality_chain_and_risk(tmp_path):
     client, service = build_client(tmp_path)
     seed_analysis_package(service)
+    _attach_citation_artifacts(service, tmp_path, used=True)
 
     with client:
         response = client.get("/api/report-tasks/task-analysis/analysis")
@@ -180,12 +183,38 @@ def test_report_task_analysis_package_connects_quality_chain_and_risk(tmp_path):
     assert body["retrieval_diagnostics"]["candidate_count"] == 1
     assert body["retrieval_diagnostics"]["returned_count"] == 1
     assert body["retrieval_diagnostics"]["returned_examples"][0]["source_type"] == "sec_edgar"
+    assert body["citation_usage"]["status"] == "ready"
+    assert body["citation_usage"]["used_claim_count"] == 1
+    assert body["citation_usage"]["traceable_claim_count"] == 1
     assert body["quality_proof"]["retrieval_coverage"]["summary"]
+    assert {item["key"]: item for item in body["quality_proof"]["checks"]}["citation_usage"]["passed"] is True
     assert body["quality_proof"]["failed_claims"][0]["citation_check_status"] == "failed"
     assert body["argument_chain"]["nodes"]
     assert body["argument_chain"]["edges"]
     assert body["risk_chain"]["risk_count"] == 1
     assert any(action["view"] == "claims" for action in body["recommended_actions"])
+
+
+def test_report_task_analysis_detects_report_citation_usage_gap(tmp_path):
+    client, service = build_client(tmp_path)
+    seed_analysis_package(service)
+    _attach_citation_artifacts(service, tmp_path, used=False)
+
+    with client:
+        response = client.get("/api/report-tasks/task-analysis/analysis")
+
+    assert response.status_code == 200
+    body = response.json()
+    usage = body["citation_usage"]
+    assert usage["status"] == "citation_gap"
+    assert usage["ready"] is False
+    assert usage["citation_count"] == 1
+    assert usage["used_citation_count"] == 0
+    assert usage["unused_citation_count"] == 1
+    assert usage["claims_without_used_citation"][0]["claim_text"] == "NVIDIA FY2024 毛利率存在下滑压力。"
+    checks = {item["key"]: item for item in body["quality_proof"]["checks"]}
+    assert checks["citation_usage"]["passed"] is False
+    assert checks["citation_usage"]["title"] == "报告引用使用"
 
 
 def test_report_task_analysis_retrieval_diagnostics_separates_pool_from_period_hits(tmp_path):
@@ -252,3 +281,37 @@ def test_report_task_analysis_returns_404_for_missing_task(tmp_path):
         response = client.get("/api/report-tasks/not-found/analysis")
 
     assert response.status_code == 404
+
+
+def _attach_citation_artifacts(service, tmp_path, *, used: bool) -> None:
+    output_dir = tmp_path / ("outputs_used" if used else "outputs_gap")
+    report_dir = tmp_path / ("reports_used" if used else "reports_gap")
+    output_dir.mkdir()
+    report_dir.mkdir()
+    with service.session() as session:
+        task = session.query(ReportTask).filter(ReportTask.task_id == "task-analysis").one()
+        claim = session.query(ReportClaim).filter(ReportClaim.task_id == "task-analysis", ReportClaim.citation_check_status == "passed").one()
+        metadata = dict(task.metadata_json or {})
+        metadata["output_dir"] = str(output_dir)
+        metadata["report_dir"] = str(report_dir)
+        task.metadata_json = metadata
+        session.commit()
+
+    (output_dir / "citations.json").write_text(
+        json.dumps(
+            [
+                {
+                    "citation_id": "ref_001",
+                    "evidence_id": "ev-analysis-margin",
+                    "claim_ids": [str(claim.id)],
+                    "used_in_report": used,
+                    "title": "Gross margin disclosure",
+                    "source_type": "sec_edgar",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    report_text = "NVIDIA FY2024 毛利率存在下滑压力。[ev-analysis-margin]" if used else "NVIDIA FY2024 毛利率存在下滑压力。"
+    (report_dir / "report.md").write_text(report_text, encoding="utf-8")
