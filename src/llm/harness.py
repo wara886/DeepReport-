@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from datetime import datetime
 import time
@@ -20,6 +21,10 @@ class LLMHarnessError(RuntimeError):
 
 class LLMHarnessSchemaError(LLMHarnessError):
     """Raised when structured output does not match the requested schema."""
+
+
+class LLMHarnessTimeoutError(LLMHarnessError):
+    """Raised when a backend attempt exceeds the configured timeout."""
 
 
 @dataclass
@@ -43,12 +48,14 @@ class LLMHarness:
         backend: Any,
         fallback_backend: Any | None = None,
         max_retries: int = 1,
+        timeout_seconds: float | None = None,
         cost_per_1k_tokens: float = 0.0,
     ) -> None:
         self.session_factory = session_factory
         self.backend = backend
         self.fallback_backend = fallback_backend
         self.max_retries = max(1, int(max_retries or 1))
+        self.timeout_seconds = float(timeout_seconds) if timeout_seconds else None
         self.cost_per_1k_tokens = float(cost_per_1k_tokens or 0.0)
 
     def run_prompt(
@@ -61,6 +68,7 @@ class LLMHarness:
         task_id: str | None = None,
         prompt: str | None = None,
         prompt_version_id: int | None = None,
+        timeout_seconds: float | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> LLMHarnessResult:
         run_id = f"llm_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid4().hex[:8]}"
@@ -79,7 +87,13 @@ class LLMHarness:
             for _ in range(attempts_for_backend):
                 attempt_count += 1
                 try:
-                    output = self._call_backend(backend, prompt=prompt or prompt_key, input=input, schema=schema)
+                    output = self._call_backend(
+                        backend,
+                        prompt=prompt or prompt_key,
+                        input=input,
+                        schema=schema,
+                        timeout_seconds=_resolve_timeout(timeout_seconds, self.timeout_seconds),
+                    )
                     _validate_schema(output, schema)
                     latency_ms = _elapsed_ms(started)
                     run_metadata = _merge_metadata(metadata, attempt_errors=attempt_errors)
@@ -149,16 +163,27 @@ class LLMHarness:
             sequence.append((self.fallback_backend, True))
         return sequence
 
-    def _call_backend(self, backend: Any, *, prompt: str, input: dict[str, Any], schema: dict[str, Any] | None) -> dict[str, Any]:
-        if hasattr(backend, "generate_structured"):
-            result = backend.generate_structured(prompt=prompt, schema=schema, **input)
-        elif callable(backend):
-            result = backend(prompt=prompt, schema=schema, **input)
-        else:
-            raise LLMHarnessError("Backend must be callable or implement generate_structured")
-        if not isinstance(result, dict):
-            raise LLMHarnessSchemaError("Structured LLM output must be a JSON object")
-        return result
+    def _call_backend(
+        self,
+        backend: Any,
+        *,
+        prompt: str,
+        input: dict[str, Any],
+        schema: dict[str, Any] | None,
+        timeout_seconds: float | None,
+    ) -> dict[str, Any]:
+        if timeout_seconds and timeout_seconds > 0:
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(_generate_structured, backend, prompt, input, schema)
+            try:
+                result = future.result(timeout=timeout_seconds)
+            except FutureTimeoutError as exc:
+                future.cancel()
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise LLMHarnessTimeoutError(f"Backend timed out after {timeout_seconds:g}s") from exc
+            executor.shutdown(wait=True)
+            return result
+        return _generate_structured(backend, prompt, input, schema)
 
     def _record_run(
         self,
@@ -207,6 +232,23 @@ class LLMHarness:
                 )
             )
             session.commit()
+
+
+def _generate_structured(
+    backend: Any,
+    prompt: str,
+    input: dict[str, Any],
+    schema: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if hasattr(backend, "generate_structured"):
+        result = backend.generate_structured(prompt=prompt, schema=schema, **input)
+    elif callable(backend):
+        result = backend(prompt=prompt, schema=schema, **input)
+    else:
+        raise LLMHarnessError("Backend must be callable or implement generate_structured")
+    if not isinstance(result, dict):
+        raise LLMHarnessSchemaError("Structured LLM output must be a JSON object")
+    return result
 
 
 def serialize_llm_run(item: LLMRun) -> dict[str, Any]:
@@ -274,6 +316,12 @@ def _token_count(payload: dict[str, Any]) -> int:
 
 def _elapsed_ms(started: float) -> int:
     return max(0, int((time.perf_counter() - started) * 1000))
+
+
+def _resolve_timeout(call_timeout: float | None, default_timeout: float | None) -> float | None:
+    if call_timeout is not None:
+        return float(call_timeout) if call_timeout > 0 else None
+    return default_timeout
 
 
 def _backend_name(backend: Any) -> str:

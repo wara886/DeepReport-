@@ -3698,6 +3698,8 @@ def render_workbench_html() -> str:
           <div class="kv"><span class="label">状态</span><span><span class="status ${esc(item.status)}">${esc(statusText(item.status))}</span></span></div>
           <div class="kv"><span class="label">耗时</span><span>${esc(number(item.latency_ms))} ms</span></div>
           <div class="kv"><span class="label">结构化校验</span><span>${esc(passText(item.schema_valid))}</span></div>
+          <div class="kv"><span class="label">重试与降级</span><span>${esc(number(item.attempt_count))} 次尝试 · ${esc(item.fallback_used ? "已启用降级模型" : "未降级")}</span></div>
+          <div class="kv"><span class="label">Token / 成本</span><span>${esc(number(item.total_tokens))} tokens · $${esc(fmt(item.cost_usd))}</span></div>
           <details class="detail-section" open><summary>运行输入</summary><div class="text-block">${esc(JSON.stringify(item.input || {}, null, 2))}</div></details>
           <details class="detail-section" open><summary>运行输出</summary><div class="text-block">${esc(JSON.stringify(item.output || {}, null, 2))}</div></details>
           <details class="detail-section"><summary>运行诊断</summary><div class="text-block">${esc(JSON.stringify(item.metadata || {}, null, 2))}</div></details>
