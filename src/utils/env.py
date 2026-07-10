@@ -13,9 +13,11 @@ def load_env_files(config_path: str | Path | None = None, env_path: str | Path |
         candidates.append(Path(env_path))
     candidates.append(Path.cwd() / ".env")
     if config_path:
-        path = Path(config_path)
+        path = Path(config_path).resolve()
         if path.parent.name == "configs":
             candidates.append(path.parent.parent / ".env")
+            sibling_legacy = path.parent.parent.parent / "DeepReport-wara886" / ".env"
+            candidates.append(sibling_legacy)
 
     seen: set[Path] = set()
     for candidate in candidates:
