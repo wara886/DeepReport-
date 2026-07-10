@@ -835,19 +835,14 @@ def _build_citation_usage(
     unused_citations = [item for item in normalized_citations if not item["used"]]
     traceable_claims = [item for item in claims if int(item.get("evidence_count") or 0) > 0]
     claims_without_used_citation: list[dict[str, Any]] = []
+    claims_with_used_citation: list[dict[str, Any]] = []
     used_claim_count = 0
     for claim in traceable_claims:
         if _claim_has_used_citation(claim, normalized_citations):
             used_claim_count += 1
+            claims_with_used_citation.append(_citation_claim_trace_row(claim))
             continue
-        claims_without_used_citation.append(
-            {
-                "id": claim.get("id"),
-                "section_name": claim.get("section_name"),
-                "claim_text": claim.get("claim_text"),
-                "evidence_ids": _claim_evidence_ids(claim),
-            }
-        )
+        claims_without_used_citation.append(_citation_claim_trace_row(claim))
     claim_usage_rate = _ratio(used_claim_count, len(traceable_claims))
     citation_usage_rate = _ratio(len(used_citations), len(normalized_citations))
     status = _citation_usage_status(
@@ -876,8 +871,18 @@ def _build_citation_usage(
         "claim_usage_rate": claim_usage_rate,
         "citation_usage_rate": citation_usage_rate,
         "unused_citations": unused_citations[:8],
+        "claims_with_used_citation": claims_with_used_citation[:8],
         "claims_without_used_citation": claims_without_used_citation[:8],
         "recommended_actions": recommended_actions,
+    }
+
+
+def _citation_claim_trace_row(claim: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": claim.get("id"),
+        "section_name": claim.get("section_name"),
+        "claim_text": claim.get("claim_text"),
+        "evidence_ids": _claim_evidence_ids(claim),
     }
 
 

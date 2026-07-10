@@ -15,6 +15,10 @@ def test_workbench_report_task_evidence_gate_is_productized():
     assert "renderPreGenerationEvidenceGate" in html
     assert "证据不足，已暂停生成" in html
     assert "未通过，已暂停生成" in html
+    assert "草稿生成" in html
+    assert "正式交付" in html
+    assert "待补权威来源" in html
+    assert "不应作为正式研报交付" in html
     assert "检查数据源" in html
     assert "补采集批次" in html
 
@@ -43,8 +47,13 @@ def test_workbench_report_task_citation_usage_is_productized():
     assert "正文引用待补齐" in html
     assert "正文已使用引用" in html
     assert "可追溯主张" in html
+    assert "报告引用证据链" in html
+    assert "证据链路：报告结论 → 主张复核" in html
     assert "缺引用主张" in html
+    assert "关联证据：" in html
     assert "未进入正文的引用" in html
+    assert "sourceDisplayText" in html
+    assert "productText" in html
     assert "查看报告产物" in html
 
 
@@ -61,6 +70,7 @@ def test_workbench_report_task_entity_memory_is_productized():
     assert "已形成关系" in html
     assert "实体样例" in html
     assert "关系样例" in html
+    assert "证据支持" in html
     assert "数据进入、记忆沉淀、结构化处理、线索发现、主张复核、报告输出" in html
 
 

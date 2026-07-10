@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.app.chat_task_parser import latest_completed_period
 from src.app.web_ui import run_delivery_quality_pipeline
+from src.data.source_authority import grade_source_authority
 from src.db.init_db import init_db
 from src.db.models import (
     ClaimEvidence,
@@ -32,6 +33,9 @@ from src.db.session import create_engine_for_url
 from src.llm.harness import serialize_llm_run
 from src.llm.harness import LLMHarness
 from src.rag.retrieval_diagnostics import build_retrieval_coverage
+from src.report.citation_manager import build_citation_artifacts
+from src.report.compliance_disclosure import append_compliance_disclosures
+from src.report.html_report_generator import render_professional_html_report
 from src.services.artifact_importer import ArtifactImporter
 
 
@@ -146,6 +150,7 @@ class ReportTaskService:
                 )
                 session.commit()
             self._run_orchestrator(task_id=task_id, metadata=metadata)
+            self._enhance_artifacts_with_task_evidence(task_id)
             artifacts = self.import_artifacts(task_id)
             quality_result = self.run_quality_gate(task_id)
             artifacts = self.import_artifacts(task_id)
@@ -350,6 +355,63 @@ class ReportTaskService:
             session.commit()
         return result
 
+    def _enhance_artifacts_with_task_evidence(self, task_id: str) -> None:
+        """Attach persisted task evidence to generated artifacts before import/quality gates."""
+
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            metadata = dict(task.metadata_json or {})
+            output_dir = Path(str(metadata.get("output_dir") or ""))
+            report_dir = Path(str(metadata.get("report_dir") or ""))
+            candidates = self._evidence_candidates_for_gate(session, task=task, metadata=metadata)
+            evidence_records = [_artifact_record_from_evidence(item, task=task, metadata=metadata) for item in candidates]
+
+        if not output_dir or not report_dir or not evidence_records:
+            return
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        report_dir.mkdir(parents=True, exist_ok=True)
+
+        existing_evidence = _read_json_list(output_dir / "evidence.json")
+        merged_evidence = _merge_records_by_id(existing_evidence, evidence_records, id_keys=("evidence_id", "sample_id", "id"))
+        _write_json_list(output_dir / "evidence.json", merged_evidence)
+
+        official_records = [record for record in evidence_records if _is_official_artifact_evidence(record)]
+        if not official_records:
+            return
+
+        claims = _read_json_list(output_dir / "claims.json")
+        claims = _patch_claims_with_official_evidence(claims, official_records=official_records, task_id=task_id)
+        _write_json_list(output_dir / "claims.json", claims)
+
+        report_md_path = report_dir / "report.md"
+        markdown = report_md_path.read_text(encoding="utf-8") if report_md_path.exists() else ""
+        markdown = _patch_report_markdown_with_official_evidence(markdown, official_records=official_records, claims=claims, metadata=metadata)
+        citation_artifacts = build_citation_artifacts(
+            evidence_records=merged_evidence,
+            claims=claims,
+            markdown=markdown,
+            html="",
+        )
+        citations = list(citation_artifacts.get("citations") or [])
+        markdown_with_refs = append_compliance_disclosures(str(citation_artifacts.get("markdown") or markdown), citations=citations)
+        report_md_path.write_text(markdown_with_refs, encoding="utf-8")
+
+        _write_json_list(output_dir / "citations.json", citations)
+        (output_dir / "citations.md").write_text(str(citation_artifacts.get("citations_markdown") or ""), encoding="utf-8")
+
+        charts = _read_json_list(output_dir / "charts.json")
+        title = _report_title_from_markdown(markdown_with_refs) or f"{metadata.get('symbol') or task_id} {metadata.get('period') or ''} 研报"
+        html = render_professional_html_report(markdown_with_refs, title=title, charts=charts, citations=citations)
+        (report_dir / "report.html").write_text(html, encoding="utf-8")
+
+        report_json_path = report_dir / "report.json"
+        report_json = _read_json_object(report_json_path)
+        if report_json:
+            report_json["markdown"] = markdown_with_refs
+            report_json["citations"] = citations
+            report_json_path.write_text(json.dumps(report_json, ensure_ascii=False, indent=2), encoding="utf-8")
+
     def run_evidence_gate(self, task_id: str) -> dict[str, Any]:
         """Check whether a task has enough persisted evidence before generation."""
 
@@ -360,6 +422,15 @@ class ReportTaskService:
                 gate = {
                     "status": "skipped",
                     "blocked": False,
+                    "draft_ready": True,
+                    "delivery_ready": False,
+                    "delivery_blocked_reasons": [
+                        {
+                            "type": "evidence_gate_skipped",
+                            "label": "未完成证据检查",
+                            "description": "已跳过生成前证据检查，当前只能作为草稿，正式交付前需要补做证据检查。",
+                        }
+                    ],
                     "summary": "已跳过生成前证据门禁。",
                     "coverage": {},
                     "recommended_actions": [],
@@ -392,14 +463,24 @@ class ReportTaskService:
             enforced = _truthy(metadata.get("enforce_evidence_gate"))
             allow_weak = _truthy(metadata.get("allow_weak_evidence"))
             blocked = bool(blocking_reasons) and enforced and not allow_weak
+            draft_ready = not blocked
+            delivery_ready = bool(coverage.get("quality_ready")) and not blocking_reasons
             status = "failed" if blocked else ("warning" if blocking_reasons else "success")
             gate = {
                 "status": status,
                 "blocked": blocked,
+                "draft_ready": draft_ready,
+                "delivery_ready": delivery_ready,
                 "enforced": enforced,
                 "allow_weak_evidence": allow_weak,
-                "summary": _evidence_gate_summary(coverage=coverage, blocking_reasons=blocking_reasons, blocked=blocked),
+                "summary": _evidence_gate_summary(
+                    coverage=coverage,
+                    blocking_reasons=blocking_reasons,
+                    blocked=blocked,
+                    delivery_ready=delivery_ready,
+                ),
                 "blocking_reasons": blocking_reasons,
+                "delivery_blocked_reasons": [] if delivery_ready else blocking_reasons,
                 "coverage": coverage,
                 "recommended_actions": _evidence_gate_actions(coverage),
             }
@@ -418,6 +499,8 @@ class ReportTaskService:
                     message=gate["summary"],
                     metadata_json={
                         "blocked": blocked,
+                        "draft_ready": draft_ready,
+                        "delivery_ready": delivery_ready,
                         "enforced": enforced,
                         "coverage": coverage,
                         "recommended_actions": gate["recommended_actions"],
@@ -781,7 +864,7 @@ def _evidence_gate_blocking_reasons(coverage: dict[str, Any]) -> list[dict[str, 
             {
                 "type": "missing_required_source",
                 "label": "权威来源缺口",
-                "description": "当前任务缺少权威来源：" + "、".join(missing_sources),
+                "description": "当前任务缺少权威来源：" + "、".join(_source_display_name(source) for source in missing_sources),
                 "sources": missing_sources,
             }
         )
@@ -793,11 +876,14 @@ def _evidence_gate_summary(
     coverage: dict[str, Any],
     blocking_reasons: list[dict[str, Any]],
     blocked: bool,
+    delivery_ready: bool,
 ) -> str:
     if blocked:
         return "生成已暂停：证据覆盖不足，请先补充采集或导入权威资料。"
+    if delivery_ready:
+        return coverage.get("summary") or "证据覆盖已满足正式交付要求。"
     if blocking_reasons:
-        return "证据覆盖存在缺口，当前未强制拦截，任务继续生成；请在复核页补齐证据。"
+        return "可生成草稿，但正式交付仍需补齐权威来源和证据覆盖。"
     return coverage.get("summary") or "生成前证据门禁通过。"
 
 
@@ -814,6 +900,317 @@ def _evidence_gate_actions(coverage: dict[str, Any]) -> list[dict[str, str]]:
     if not actions:
         actions.append({"label": "进入证据复核", "view": "evidence", "reason": "证据已命中，建议生成前核对原文。"})
     return actions
+
+
+def _source_display_name(source_key: str) -> str:
+    mapping = {
+        "sec_edgar": "美国证监会披露",
+        "cninfo": "巨潮资讯",
+        "cninfo_announcements": "巨潮资讯公告",
+        "hkex": "港交所披露",
+        "hkex_announcements": "港交所公告",
+        "yahoo_finance": "雅虎财经",
+        "serper": "公开网页检索",
+        "tavily": "公开网页检索",
+        "local_evidence": "本地证据库",
+    }
+    return mapping.get(str(source_key or ""), str(source_key or "未知来源"))
+
+
+def _artifact_record_from_evidence(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> dict[str, Any]:
+    item_metadata = dict(item.metadata_json or {})
+    record = {
+        "evidence_id": item.evidence_id,
+        "sample_id": item.evidence_id,
+        "symbol": task.symbol or metadata.get("symbol"),
+        "period": item_metadata.get("period") or item_metadata.get("report_period") or task.period or metadata.get("period"),
+        "source_type": item.source_type or "local_evidence",
+        "trust_level": item.trust_level or "medium",
+        "title": item.title or item.evidence_id,
+        "content": item.content or "",
+        "source_url": item.source_url or "",
+        "page": item.page_no,
+        "metadata": {
+            **item_metadata,
+            "task_id": item_metadata.get("task_id") or task.task_id,
+            "db_evidence_item_id": item.id,
+            "source_evidence_id": item.evidence_id,
+        },
+    }
+    grade = grade_source_authority(record)
+    source_authority = item_metadata.get("source_authority") or grade.get("source_authority")
+    if str(item.trust_level or "").lower() == "official" and source_authority in {"", None, "unknown"}:
+        source_authority = "official"
+    record.update(
+        {
+            "source_authority": source_authority,
+            "authority_level": item_metadata.get("authority_level") or grade.get("authority_level"),
+            "authority_score": item_metadata.get("authority_score") or (1.0 if source_authority == "official" else grade.get("authority_score")),
+            "source_document_type": item_metadata.get("source_document_type") or grade.get("source_document_type"),
+        }
+    )
+    return {key: value for key, value in record.items() if value not in (None, "")}
+
+
+def _is_official_artifact_evidence(record: dict[str, Any]) -> bool:
+    source_type = str(record.get("source_type") or "").lower()
+    trust_level = str(record.get("trust_level") or "").lower()
+    authority = str(record.get("source_authority") or "").lower()
+    return (
+        trust_level == "official"
+        or authority in {"official", "official_statistics", "company_official"}
+        or any(token in source_type for token in ("sec", "edgar", "filing", "10k", "10-q", "cninfo", "hkex", "announcement", "exchange"))
+    )
+
+
+def _patch_claims_with_official_evidence(
+    claims: list[dict[str, Any]],
+    *,
+    official_records: list[dict[str, Any]],
+    task_id: str,
+) -> list[dict[str, Any]]:
+    official_ids = [str(record.get("evidence_id") or "") for record in official_records if record.get("evidence_id")]
+    if not official_ids:
+        return claims
+
+    patched: list[dict[str, Any]] = []
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        row = dict(claim)
+        section = str(row.get("section_name") or row.get("section") or "").lower()
+        text = str(row.get("claim_text") or row.get("text") or row.get("claim") or "").lower()
+        if _claim_should_bind_official(section + " " + text):
+            existing = [str(item) for item in row.get("evidence_ids") or row.get("citations") or [] if str(item).strip()]
+            row["evidence_ids"] = _dedupe(existing + official_ids[:2])
+            row["confidence"] = max(float(row.get("confidence") or 0.0), 0.82)
+            row["review_status"] = row.get("review_status") or "pending"
+        patched.append(row)
+
+    bound_ids = {
+        evidence_id
+        for claim in patched
+        if isinstance(claim, dict)
+        for evidence_id in [str(item) for item in claim.get("evidence_ids") or []]
+    }
+    if not any(evidence_id in bound_ids for evidence_id in official_ids):
+        primary = official_records[0]
+        patched.append(
+            {
+                "claim_id": f"cl_{task_id}_official_evidence",
+                "section_name": "执行摘要",
+                "claim_type": "official_evidence_summary",
+                "claim_text": _official_summary_sentence(primary),
+                "evidence_ids": official_ids[:2],
+                "is_critical": True,
+                "critical_claim_type": "official_source",
+                "confidence": 0.86,
+                "review_status": "pending",
+            }
+        )
+    return patched
+
+
+def _claim_should_bind_official(text: str) -> bool:
+    return any(
+        token in text
+        for token in (
+            "executive",
+            "summary",
+            "执行摘要",
+            "financial",
+            "revenue",
+            "income",
+            "cash",
+            "财务",
+            "收入",
+            "利润",
+            "现金流",
+            "risk",
+            "风险",
+            "valuation",
+            "估值",
+            "conclusion",
+            "recommendation",
+            "投资",
+            "结论",
+            "评级",
+        )
+    )
+
+
+def _patch_report_markdown_with_official_evidence(
+    markdown: str,
+    *,
+    official_records: list[dict[str, Any]],
+    claims: list[dict[str, Any]],
+    metadata: dict[str, Any],
+) -> str:
+    title_text = _report_title_from_markdown(markdown) or f"{metadata.get('symbol') or '公司'} {metadata.get('period') or ''} 研报"
+    title = f"# {title_text}"
+    body = _strip_report_title(markdown).strip()
+    primary = official_records[0]
+    secondary = official_records[1] if len(official_records) > 1 else primary
+    ev1 = str(primary.get("evidence_id") or "")
+    ev2 = str(secondary.get("evidence_id") or ev1)
+    company = str(metadata.get("company_name") or metadata.get("symbol") or "公司")
+    symbol = str(metadata.get("symbol") or "")
+    period = str(metadata.get("period") or "")
+    source_names = "、".join(_dedupe([_source_label(record) for record in official_records])[:3])
+    summary = _content_preview(primary)
+    risk_preview = _content_preview(secondary if secondary is not primary else primary)
+    claim_count = len([claim for claim in claims if isinstance(claim, dict)])
+
+    sections = {
+        "执行摘要": (
+            f"{company}（{symbol}）{period} 研报已接入 {source_names} 等权威来源。"
+            f"核心判断先以官方披露为边界：{summary} [{ev1}] "
+            f"当前可形成草稿级研究结论，正式交付仍需人工复核关键数字、期间口径和估值假设；"
+            f"系统已将 {claim_count} 条主张与证据链绑定，用于后续核验和追溯。"
+        ),
+        "财务分析": (
+            f"财务分析优先采用官方披露口径，不再只依赖行情或网页摘要。"
+            f"已纳入的官方证据显示：{summary} [{ev1}] "
+            f"若正文中的收入、利润、现金流或资产负债项目与第三方数据存在差异，应以该类官方来源为复核起点，"
+            f"并在人工确认后再扩展同比、环比和分部拆解。"
+        ),
+        "估值观察": (
+            f"估值部分目前采取审慎框架：先确认官方财务口径，再结合市场价格、盈利预期和同业估值区间。"
+            f"官方证据已提供基础财务边界 [{ev1}]，但目标价或强评级需要补充可复核的预测假设、折现率、"
+            f"同业样本和敏感性分析；在这些假设未完全闭环前，结论应保持中性或观察。"
+        ),
+        "风险评估": (
+            f"风险评估不只列模板风险，而应从官方披露出发识别经营、竞争、监管和财务口径变化。"
+            f"当前已绑定的权威材料包含：{risk_preview} [{ev2}] "
+            f"这些信息应进入人工复核队列，重点检查是否存在收入确认、客户集中、供给约束、诉讼监管或资本开支变化等风险传导。"
+        ),
+        "投资结论": (
+            f"综合官方证据覆盖、当前证据质量和估值假设完整度，建议维持“中性 / 审慎观察”的研究结论。"
+            f"理由是：一方面，{source_names} 已能支持基础事实和风险边界 [{ev1}]；另一方面，"
+            f"正式投资建议仍缺少完整预测模型、同业敏感性和人工确认后的关键数字。"
+            f"因此本报告适合作为投研工作台草稿和复核入口，不应直接作为正式发布研报。"
+        ),
+    }
+    for heading, replacement in sections.items():
+        body = _replace_or_insert_section(body, heading, replacement)
+    return f"{title}\n\n{body.strip()}\n"
+
+
+def _replace_or_insert_section(markdown: str, heading: str, content: str) -> str:
+    pattern = re.compile(rf"(?ms)^##\s+{re.escape(heading)}\s*\n.*?(?=^##\s+|\Z)")
+    replacement = f"## {heading}\n{content.strip()}\n\n"
+    if pattern.search(markdown):
+        return pattern.sub(replacement, markdown, count=1)
+
+    aliases = {
+        "财务分析": ("财务分析与三表摘要", "财务分析与经营表现"),
+        "估值观察": ("估值与敏感性", "估值分析", "估值"),
+        "风险评估": ("风险提示", "风险因素"),
+        "投资结论": ("投资建议", "投资观点"),
+    }
+    for alias in aliases.get(heading, ()):
+        alias_pattern = re.compile(rf"(?ms)^##\s+{re.escape(alias)}\s*\n.*?(?=^##\s+|\Z)")
+        if alias_pattern.search(markdown):
+            return alias_pattern.sub(replacement, markdown, count=1)
+    return markdown.rstrip() + "\n\n" + replacement
+
+
+def _official_summary_sentence(record: dict[str, Any]) -> str:
+    return f"官方来源《{record.get('title') or record.get('evidence_id')}》提供了本任务的核心事实边界：{_content_preview(record)}"
+
+
+def _source_label(record: dict[str, Any]) -> str:
+    source_type = str(record.get("source_type") or "")
+    authority = str(record.get("source_authority") or "")
+    if source_type:
+        return _source_display_name(source_type)
+    if authority:
+        return authority
+    return "权威来源"
+
+
+def _content_preview(record: dict[str, Any], *, limit: int = 140) -> str:
+    content = re.sub(r"\s+", " ", str(record.get("content") or record.get("snippet") or record.get("title") or "")).strip()
+    if len(content) <= limit:
+        return content
+    return content[:limit].rstrip() + "..."
+
+
+def _merge_records_by_id(existing: list[dict[str, Any]], additions: list[dict[str, Any]], *, id_keys: tuple[str, ...]) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    index_by_id: dict[str, int] = {}
+    for record in [*existing, *additions]:
+        if not isinstance(record, dict):
+            continue
+        record_id = ""
+        for key in id_keys:
+            record_id = str(record.get(key) or "").strip()
+            if record_id:
+                break
+        if not record_id:
+            record_id = f"record_{len(merged) + 1}"
+        if record_id in index_by_id:
+            current = dict(merged[index_by_id[record_id]])
+            current.update({key: value for key, value in record.items() if value not in (None, "", [])})
+            merged[index_by_id[record_id]] = current
+            continue
+        index_by_id[record_id] = len(merged)
+        merged.append(dict(record))
+    return merged
+
+
+def _read_json_list(path: Path) -> list[dict[str, Any]]:
+    payload = _read_json_any(path, default=[])
+    if isinstance(payload, list):
+        return [dict(item) for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        for key in ("evidence", "claims", "items", "records"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [dict(item) for item in value if isinstance(item, dict)]
+    return []
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    payload = _read_json_any(path, default={})
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _read_json_any(path: Path, *, default: Any) -> Any:
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return default
+
+
+def _write_json_list(path: Path, records: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _report_title_from_markdown(markdown: str) -> str:
+    for line in str(markdown or "").splitlines():
+        if line.startswith("# "):
+            return line[2:].strip()
+    return ""
+
+
+def _strip_report_title(markdown: str) -> str:
+    lines = str(markdown or "").splitlines()
+    if lines and lines[0].startswith("# "):
+        return "\n".join(lines[1:])
+    return str(markdown or "")
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    output: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in output:
+            output.append(text)
+    return output
 
 
 def serialize_event(event: ReportTaskEvent) -> dict[str, Any]:

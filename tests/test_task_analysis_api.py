@@ -188,6 +188,8 @@ def test_report_task_analysis_package_connects_quality_chain_and_risk(tmp_path):
     assert body["citation_usage"]["status"] == "ready"
     assert body["citation_usage"]["used_claim_count"] == 1
     assert body["citation_usage"]["traceable_claim_count"] == 1
+    assert body["citation_usage"]["claims_with_used_citation"][0]["claim_text"] == "NVIDIA FY2024 毛利率存在下滑压力。"
+    assert body["citation_usage"]["claims_with_used_citation"][0]["evidence_ids"] == ["ev-analysis-margin"]
     assert body["entity_memory"]["ready"] is True
     assert body["entity_memory"]["source_evidence_count"] == 1
     assert body["entity_memory"]["entity_count"] >= 4
@@ -227,6 +229,7 @@ def test_report_task_analysis_detects_report_citation_usage_gap(tmp_path):
     assert usage["citation_count"] == 1
     assert usage["used_citation_count"] == 0
     assert usage["unused_citation_count"] == 1
+    assert usage["claims_with_used_citation"] == []
     assert usage["claims_without_used_citation"][0]["claim_text"] == "NVIDIA FY2024 毛利率存在下滑压力。"
     checks = {item["key"]: item for item in body["quality_proof"]["checks"]}
     assert checks["citation_usage"]["passed"] is False

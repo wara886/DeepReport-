@@ -76,6 +76,65 @@ def test_ingestion_batch_create_start_fail_retry_and_complete(tmp_path):
     assert source_after_complete.json()["last_error"] is None
 
 
+def test_completed_official_ingestion_batch_persists_evidence_for_report_gate(tmp_path):
+    with build_client(tmp_path) as client:
+        client.post("/api/data-sources", json={"source_key": "sec_edgar"})
+        created = client.post(
+            "/api/ingestion-batches",
+            json={
+                "batch_id": "ing-sec-gate-nvda",
+                "name": "NVDA FY2024 SEC 10-K 补采集",
+                "source_key": "sec_edgar",
+                "target_type": "filings",
+                "symbol": "NVDA",
+                "period": "FY2024",
+            },
+        )
+        completed = client.post(
+            "/api/ingestion-batches/ing-sec-gate-nvda/complete",
+            json={
+                "documents": [
+                    {
+                        "title": "NVIDIA FY2024 Form 10-K",
+                        "doc_type": "10-K",
+                        "report_period": "FY2024",
+                        "source_url": "https://www.sec.gov/Archives/nvda-2024-10k",
+                        "evidence_items": [
+                            {
+                                "title": "FY2024 revenue from Form 10-K",
+                                "content": "NVIDIA reported fiscal 2024 revenue in its Form 10-K.",
+                                "source_url": "https://www.sec.gov/Archives/nvda-2024-10k",
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        task = client.post(
+            "/api/report-tasks",
+            json={
+                "task_id": "task-after-sec-ingestion",
+                "symbol": "NVDA",
+                "company_name": "NVIDIA",
+                "period": "FY2024",
+                "enforce_evidence_gate": True,
+                "run_immediately": False,
+            },
+        )
+        gate = client.app.state.report_task_service.run_evidence_gate("task-after-sec-ingestion")
+
+    assert created.status_code == 201
+    assert completed.status_code == 200
+    assert completed.json()["metadata"]["ingested_document_count"] == 1
+    assert completed.json()["metadata"]["ingested_evidence_count"] == 1
+    assert task.status_code == 201
+    assert gate["blocked"] is False
+    assert gate["draft_ready"] is True
+    assert gate["delivery_ready"] is True
+    assert gate["coverage"]["returned_sources"] == ["sec_edgar"]
+    assert gate["coverage"]["missing_sources"] == []
+
+
 def test_ingestion_batch_rejects_invalid_transitions(tmp_path):
     with build_client(tmp_path) as client:
         created = client.post("/api/ingestion-batches", json={"batch_id": "ing-invalid", "name": "测试采集"})

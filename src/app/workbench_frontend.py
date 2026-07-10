@@ -659,7 +659,7 @@ def render_workbench_html() -> str:
                 <div class="field"><label for="workspaceMarket">市场</label><input id="workspaceMarket" placeholder="美股 / A 股 / 港股" /></div>
                 <div class="field full"><label for="workspaceMetrics">关注指标</label><input id="workspaceMetrics" placeholder="收入, 毛利率, 自由现金流" /></div>
                 <div class="field full"><label for="workspaceRisks">风险类型</label><input id="workspaceRisks" placeholder="估值风险, 现金流风险, 监管风险" /></div>
-                <div class="field full"><label for="workspaceSources">默认数据源</label><input id="workspaceSources" placeholder="sec_edgar, yahoo_finance" /></div>
+                <div class="field full"><label for="workspaceSources">默认数据源</label><input id="workspaceSources" placeholder="美国证监会年报、雅虎财经、本地证据库" /></div>
               </div>
               <div class="modal-actions"><button class="btn primary" id="createWorkspace">创建空间</button></div>
               <div id="workspaceMessage"></div>
@@ -763,7 +763,7 @@ def render_workbench_html() -> str:
               <h2>创建采集批次</h2>
               <div class="form-grid">
                 <div class="field full"><label for="ingestionName">批次名称</label><input id="ingestionName" placeholder="例如：NVDA FY2024 年报采集" /></div>
-                <div class="field"><label for="ingestionCreateSource">数据源</label><input id="ingestionCreateSource" placeholder="例如：美国证监会年报 / sec_edgar" /></div>
+                <div class="field"><label for="ingestionCreateSource">数据源</label><input id="ingestionCreateSource" placeholder="例如：美国证监会年报" /></div>
                 <div class="field"><label for="ingestionTargetType">采集目标</label><select id="ingestionTargetType"><option value="filings">公告/年报</option><option value="market_data">行情数据</option><option value="news">新闻资料</option><option value="documents">文档资料</option></select></div>
                 <div class="field"><label for="ingestionSymbol">股票代码</label><input id="ingestionSymbol" placeholder="NVDA" /></div>
                 <div class="field"><label for="ingestionPeriod">期间</label><input id="ingestionPeriod" placeholder="FY2024" /></div>
@@ -1414,6 +1414,34 @@ def render_workbench_html() -> str:
     const textOf = (map, value) => map[String(value || "")] || fmt(value);
     const statusText = (value) => textOf(statusMap, value);
     const sourceText = (value) => textOf(sourceMap, value);
+    function productText(value) {
+      let text = fmt(value);
+      const replacements = [
+        [/\bcontent_depth\b/g, "正文完整度"],
+        [/\bverifier\b/g, "主张校验"],
+        [/\bclaim_verifier\b/g, "主张校验"],
+        [/\bsec_edgar\b/g, "美国证监会披露"],
+        [/\bevidence_ids\b/g, "证据绑定"],
+        [/\bevidence_id\b/g, "证据追踪号"],
+        [/\bquality_failed\b/g, "质量未通过"],
+        [/\bevidence_gate_failed\b/g, "证据不足，已暂停生成"],
+        [/\bcitation_gap\b/g, "正文引用待补齐"],
+        [/\bsource_gap\b/g, "来源缺口"],
+        [/\bdelivery_pass\b/g, "正式交付状态"],
+      ];
+      replacements.forEach(([pattern, label]) => { text = text.replace(pattern, label); });
+      return text;
+    }
+    function sourceDisplayText(value) {
+      const raw = String(value || "").trim();
+      if (!raw) return "未知来源";
+      const mapped = sourceText(raw);
+      if (mapped !== raw) return mapped;
+      if (/official|filing|announcement/i.test(raw)) return "官方披露资料";
+      if (/market|quote|price/i.test(raw)) return "行情与估值数据";
+      if (/news|web|search/i.test(raw)) return "公开网页资料";
+      return productText(raw);
+    }
     const stepText = (value) => textOf(stepMap, value);
     const docTypeText = (value) => textOf(docTypeMap, value);
     const artifactText = (value) => textOf(artifactMap, value);
@@ -1566,7 +1594,7 @@ def render_workbench_html() -> str:
 
     function renderSourceList(values) {
       const items = Array.isArray(values) ? values : [];
-      return items.length ? items.map(sourceText).map(esc).join("、") : "-";
+      return items.length ? items.map(sourceDisplayText).map(esc).join("、") : "-";
     }
 
     function sourcePurposeText(item) {
@@ -1645,13 +1673,13 @@ def render_workbench_html() -> str:
     }
 
     function systemValueText(label, value) {
-      if (label === "数据源标识") return `${sourceText(value)} (${fmt(value)})`;
+      if (label === "数据源标识") return `${sourceDisplayText(value)} (${fmt(value)})`;
       if (label === "规则" || label === "来源规则") return signalTypeText(value);
       return fmt(value);
     }
 
     function evidenceDisplayTitle(item) {
-      return item?.title || sourceText(item?.source_type) || "证据片段";
+      return item?.title || sourceDisplayText(item?.source_type) || "证据片段";
     }
 
     function renderEvidenceSearchSummary(item) {
@@ -2270,7 +2298,7 @@ def render_workbench_html() -> str:
       $("ingestionDetail").innerHTML = `<h2>创建采集批次</h2>
         <div class="form-grid">
           <div class="field full"><label for="ingestionName">批次名称</label><input id="ingestionName" placeholder="例如：NVDA FY2024 年报采集" /></div>
-          <div class="field"><label for="ingestionCreateSource">数据源</label><input id="ingestionCreateSource" placeholder="例如：美国证监会年报 / sec_edgar" /></div>
+          <div class="field"><label for="ingestionCreateSource">数据源</label><input id="ingestionCreateSource" placeholder="例如：美国证监会年报" /></div>
           <div class="field"><label for="ingestionTargetType">采集目标</label><select id="ingestionTargetType"><option value="filings">公告/年报</option><option value="market_data">行情数据</option><option value="news">新闻资料</option><option value="documents">文档资料</option></select></div>
           <div class="field"><label for="ingestionSymbol">股票代码</label><input id="ingestionSymbol" placeholder="NVDA" /></div>
           <div class="field"><label for="ingestionPeriod">期间</label><input id="ingestionPeriod" placeholder="FY2024" /></div>
@@ -3382,9 +3410,9 @@ def render_workbench_html() -> str:
             </div>
           </div>
           ${categories.length ? `<div class="diagnostic-card"><strong>失败分类</strong>${categories.map(([key, value]) => `<div class="dist-row"><span>${esc(qualityCategoryText(key))}</span><strong>${esc(number(value))}</strong></div>`).join("")}</div>` : ""}
-          ${issues.length ? `<div class="diagnostic-card"><strong>主要问题</strong><div class="diagnostic-list">${issues.map((issue) => `<div class="diagnostic-issue ${esc(issue.severity || "")}"><span class="label">${esc(severityText(issue.severity || "warning"))}${issue.category ? ` / ${esc(qualityCategoryText(issue.category))}` : ""}</span><br>${esc(issue.message || "")}</div>`).join("")}</div></div>` : ""}
-          ${failedSections.length ? `<div class="diagnostic-card"><strong>需修复章节</strong><div class="diagnostic-meta">${failedSections.map((item) => `<span class="status failed">${esc(item)}</span>`).join("")}</div></div>` : ""}
-          ${fixes.length ? `<div class="diagnostic-card"><strong>修复建议</strong><div class="diagnostic-list">${fixes.map((item) => `<div class="diagnostic-issue">${esc(item)}</div>`).join("")}</div></div>` : ""}
+          ${issues.length ? `<div class="diagnostic-card"><strong>主要问题</strong><div class="diagnostic-list">${issues.map((issue) => `<div class="diagnostic-issue ${esc(issue.severity || "")}"><span class="label">${esc(severityText(issue.severity || "warning"))}${issue.category ? ` / ${esc(qualityCategoryText(issue.category))}` : ""}</span><br>${esc(productText(issue.message || ""))}</div>`).join("")}</div></div>` : ""}
+          ${failedSections.length ? `<div class="diagnostic-card"><strong>需修复章节</strong><div class="diagnostic-meta">${failedSections.map((item) => `<span class="status failed">${esc(productText(item))}</span>`).join("")}</div></div>` : ""}
+          ${fixes.length ? `<div class="diagnostic-card"><strong>修复建议</strong><div class="diagnostic-list">${fixes.map((item) => `<div class="diagnostic-issue">${esc(productText(item))}</div>`).join("")}</div></div>` : ""}
           <div class="diagnostic-grid">${runCards}</div>
         </div>
       </div>`;
@@ -3406,8 +3434,8 @@ def render_workbench_html() -> str:
           <span>结构化校验：${esc(passText(run.schema_valid))}</span>
           ${run.metadata?.quality_feedback_used ? `<span>已使用质量反馈</span>` : ""}
         </div>
-        ${run.summary ? `<div class="text-block">${esc(run.summary)}</div>` : ""}
-        ${run.error_message ? `<div class="error">${esc(run.error_message)}</div>` : ""}
+        ${run.summary ? `<div class="text-block">${esc(productText(run.summary))}</div>` : ""}
+        ${run.error_message ? `<div class="error">${esc(productText(run.error_message))}</div>` : ""}
       </div>`;
     }
 
@@ -3473,8 +3501,8 @@ def render_workbench_html() -> str:
     function evidenceGateStatusText(gate) {
       if (gate.blocked) return "未通过，已暂停生成";
       const map = {
-        success: "通过",
-        warning: "有缺口，继续生成",
+        success: "正式交付可用",
+        warning: "草稿可生成",
         failed: "未通过",
         skipped: "已跳过",
       };
@@ -3501,21 +3529,24 @@ def render_workbench_html() -> str:
       }
       const coverage = gate.coverage || {};
       const blockingReasons = gate.blocking_reasons || [];
+      const deliveryBlockedReasons = gate.delivery_blocked_reasons || blockingReasons;
       const actions = gate.recommended_actions || [];
       const requiredSources = coverage.required_sources || [];
       const missingSources = coverage.missing_sources || [];
       const returnedSources = coverage.returned_sources || [];
-      const statusClass = evidenceGateStatusClass(gate);
+      const draftReady = gate.draft_ready !== false && !gate.blocked;
+      const deliveryReady = gate.delivery_ready === true;
       return `<div class="detail-section"><h3>生成前证据门禁</h3>
         <div class="chain-summary">${esc(gate.summary || "暂无门禁说明。")}</div>
         <div class="analysis-stats">
-          <div class="analysis-stat"><span class="label">门禁结论</span><strong><span class="status ${esc(statusClass)}">${esc(evidenceGateStatusText(gate))}</span></strong><span class="score-note">${esc(gate.enforced ? "严格模式" : (gate.allow_weak_evidence ? "弱证据可继续" : "提示模式"))}</span></div>
+          <div class="analysis-stat"><span class="label">草稿生成</span><strong><span class="status ${esc(draftReady ? "passed" : "failed")}">${esc(draftReady ? "可运行" : "已暂停")}</span></strong><span class="score-note">${esc(gate.blocked ? "需先补齐证据" : "可继续生成草稿")}</span></div>
+          <div class="analysis-stat"><span class="label">正式交付</span><strong><span class="status ${esc(deliveryReady ? "passed" : "failed")}">${esc(deliveryReady ? "可交付" : "待补权威来源")}</span></strong><span class="score-note">${esc(deliveryReady ? "证据覆盖满足要求" : "不应作为正式研报交付")}</span></div>
           <div class="analysis-stat"><span class="label">候选证据</span><strong>${esc(number(coverage.candidate_count || 0))}</strong><span class="score-note">进入生成前检查</span></div>
           <div class="analysis-stat"><span class="label">已命中来源</span><strong>${esc(number(returnedSources.length))}</strong><span class="score-note">${renderSourceList(returnedSources)}</span></div>
           <div class="analysis-stat"><span class="label">缺失来源</span><strong>${esc(number(missingSources.length))}</strong><span class="score-note">${missingSources.length ? renderSourceList(missingSources) : "无关键缺口"}</span></div>
         </div>
         <div class="kv"><span class="label">建议来源</span><span>${requiredSources.length ? renderSourceList(requiredSources) : "未限定"}</span></div>
-        ${blockingReasons.length ? `<div class="diagnostic-list">${blockingReasons.map((reason) => `<div class="diagnostic-issue ${esc(reason.type || "warning")}"><div class="diagnostic-head"><strong>${esc(reason.label || "证据缺口")}</strong><span class="status failed">需处理</span></div><div class="score-note">${esc(evidenceReasonText(reason))}</div></div>`).join("")}</div>` : `<div class="empty">当前没有阻塞生成的证据缺口。</div>`}
+        ${deliveryBlockedReasons.length ? `<div class="diagnostic-list">${deliveryBlockedReasons.map((reason) => `<div class="diagnostic-issue ${esc(reason.type || "warning")}"><div class="diagnostic-head"><strong>${esc(reason.label || "证据缺口")}</strong><span class="status failed">${esc(gate.blocked ? "阻塞生成" : "阻塞交付")}</span></div><div class="score-note">${esc(evidenceReasonText(reason))}</div></div>`).join("")}</div>` : `<div class="empty">当前没有阻塞正式交付的证据缺口。</div>`}
         <div class="links" style="margin-top:10px">
           ${actions.length ? actions.map((action) => `<button class="btn" data-jump="${esc(action.view || "evidence")}">${esc(action.label || "处理证据")}</button>`).join("") : `<button class="btn" data-jump="evidence">查看证据库</button>`}
           <button class="btn" data-jump="datasources">检查数据源</button>
@@ -3607,10 +3638,10 @@ def render_workbench_html() -> str:
         </div>
         <div class="check-grid">
           <div class="check-item ${sampleEntities.length ? "passed" : "failed"}"><div class="diagnostic-head"><strong>实体样例</strong><span class="status ${sampleEntities.length ? "passed" : "pending"}">${esc(sampleEntities.length ? "已有记忆" : "待沉淀")}</span></div>
-            ${sampleEntities.length ? `<div class="mini-list">${sampleEntities.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(item.canonical_name || "实体")}${item.symbol ? ` / ${esc(item.symbol)}` : ""}</strong><br><span class="label">${esc(entityTypeText(item.entity_type))} · 来源证据 ${esc(item.source_evidence_id || "-")}</span></div>`).join("")}</div>` : `<div class="empty">还没有从当前任务证据沉淀出实体。</div>`}
+            ${sampleEntities.length ? `<div class="mini-list">${sampleEntities.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(item.canonical_name || "实体")}${item.symbol ? ` / ${esc(item.symbol)}` : ""}</strong><br><span class="label">${esc(entityTypeText(item.entity_type))} · 证据支持</span></div>`).join("")}</div>` : `<div class="empty">还没有从当前任务证据沉淀出实体。</div>`}
           </div>
           <div class="check-item ${sampleRelations.length ? "passed" : "failed"}"><div class="diagnostic-head"><strong>关系样例</strong><span class="status ${sampleRelations.length ? "passed" : "pending"}">${esc(sampleRelations.length ? "已有关系" : "待沉淀")}</span></div>
-            ${sampleRelations.length ? `<div class="mini-list">${sampleRelations.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(item.source || "实体")} → ${esc(relationTypeText(item.relation_type))} → ${esc(item.target || "实体")}</strong><br><span class="label">来源证据 ${esc(item.source_evidence_id || "-")}</span></div>`).join("")}</div>` : `<div class="empty">还没有从当前任务证据形成实体关系。</div>`}
+            ${sampleRelations.length ? `<div class="mini-list">${sampleRelations.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(item.source || "实体")} → ${esc(relationTypeText(item.relation_type))} → ${esc(item.target || "实体")}</strong><br><span class="label">证据支持</span></div>`).join("")}</div>` : `<div class="empty">还没有从当前任务证据形成实体关系。</div>`}
           </div>
         </div>
         <div class="links" style="margin-top:10px">
@@ -3703,12 +3734,12 @@ def render_workbench_html() -> str:
           ? "当前主要缺口来自质量检查项，处理后再重新生成或刷新分析包。"
           : "当前没有主张级阻塞项，建议进入评测中心查看回归表现。";
       return `<div class="detail-section"><h3>研报质量证明</h3>
-        <div class="chain-summary">${esc(proof.explanation || "暂无质量解释。")}</div>
+        <div class="chain-summary">${esc(productText(proof.explanation || "暂无质量解释。"))}</div>
         <div class="chain-summary"><strong>为什么是这个质量分</strong><br>${esc(reasonText)}<br><strong>还差什么</strong><br>${esc(gapText)}</div>
         <div class="kv"><span class="label">交付门禁</span><span><span class="status ${esc(proof.delivery_pass === true ? "passed" : (proof.delivery_pass === false ? "failed" : "pending"))}">${esc(passText(proof.delivery_pass))}</span></span></div>
         <div class="kv"><span class="label">质量分</span><span>${esc(fmt(proof.quality_score ?? task.quality_score))}</span></div>
-        <div class="check-grid">${checks.length ? checks.map((item) => `<div class="check-item ${item.passed ? "passed" : "failed"}"><div class="diagnostic-head"><strong>${esc(item.title)}</strong><span class="status ${item.passed ? "passed" : "failed"}">${esc(item.passed ? "通过" : "需处理")}</span></div><div class="score-note">${esc(item.description || "")}</div><div class="mono">${esc(checkValueText(item))}</div></div>`).join("") : `<div class="empty">暂无质量检查项</div>`}</div>
-        ${issues.length ? `<div class="detail-section"><h3>主要问题</h3><div class="diagnostic-list">${issues.slice(0, 5).map((issue) => `<div class="diagnostic-issue ${esc(issue.severity || "")}">${esc(issue.message || issue)}</div>`).join("")}</div></div>` : ""}
+        <div class="check-grid">${checks.length ? checks.map((item) => `<div class="check-item ${item.passed ? "passed" : "failed"}"><div class="diagnostic-head"><strong>${esc(productText(item.title))}</strong><span class="status ${item.passed ? "passed" : "failed"}">${esc(item.passed ? "通过" : "需处理")}</span></div><div class="score-note">${esc(productText(item.description || ""))}</div><div class="mono">${esc(checkValueText(item))}</div></div>`).join("") : `<div class="empty">暂无质量检查项</div>`}</div>
+        ${issues.length ? `<div class="detail-section"><h3>主要问题</h3><div class="diagnostic-list">${issues.slice(0, 5).map((issue) => `<div class="diagnostic-issue ${esc(issue.severity || "")}">${esc(productText(issue.message || issue))}</div>`).join("")}</div></div>` : ""}
         ${failedClaims.length ? `<div class="detail-section"><h3>需关注主张</h3><div class="mini-list">${failedClaims.slice(0, 5).map((claim) => `<div class="mini-item"><strong>主张 ${esc(claim.id)}</strong><br>${esc(claim.claim_text || "")}<br><span class="label">校验：${esc(statusText(claim.verification_status))} · 数字：${esc(statusText(claim.numeric_check_status))} · 引用：${esc(statusText(claim.citation_check_status))}</span></div>`).join("")}</div></div>` : ""}
         <div class="links" style="margin-top:10px">
           <button class="btn" data-jump="claims">查看主张复核</button>
@@ -3734,10 +3765,10 @@ def render_workbench_html() -> str:
           <div class="analysis-stat"><span class="label">命中来源</span><strong>${esc(number(returnedSources.length))}</strong><span class="score-note">${renderSourceList(returnedSources)}</span></div>
           <div class="analysis-stat"><span class="label">来源缺口</span><strong>${esc(number(missingSources.length))}</strong><span class="score-note">${missingSources.length ? renderSourceList(missingSources) : "无关键缺口"}</span></div>
         </div>
-        <div class="chain-summary">${esc(coverage.summary || "暂无召回说明。")}</div>
+        <div class="chain-summary">${esc(productText(coverage.summary || "暂无召回说明。"))}</div>
         ${gaps.length ? `<div class="diagnostic-list">${gaps.map((gap) => `<div class="diagnostic-issue ${esc(gap.type || "")}">
-          <div class="diagnostic-head"><strong>${esc(gap.label || "证据缺口")}</strong><button class="btn" data-jump="${esc(gap.next_view || "evidence")}">去处理</button></div>
-          <div class="score-note">${esc(gap.description || "")}</div>
+          <div class="diagnostic-head"><strong>${esc(productText(gap.label || "证据缺口"))}</strong><button class="btn" data-jump="${esc(gap.next_view || "evidence")}">去处理</button></div>
+          <div class="score-note">${esc(productText(gap.description || ""))}</div>
         </div>`).join("")}</div>` : `<div class="empty">当前未发现明显召回缺口。</div>`}
       </div>`;
     }
@@ -3759,13 +3790,13 @@ def render_workbench_html() -> str:
         missing_required_source: "缺少必要权威来源",
         retrieval_gap: "证据召回缺口",
       };
-      return value ? textOf(map, value) : "无阻塞原因";
+      return value ? productText(textOf(map, value)) : "无阻塞原因";
     }
 
     function renderEvidenceExamples(items) {
       const rows = Array.isArray(items) ? items : [];
       if (!rows.length) return `<div class="empty">暂无样例</div>`;
-      return `<div class="mini-list">${rows.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(item.title || item.evidence_id || "证据")}</strong><br><span class="label">${esc(sourceText(item.source_type))} · ${esc(statusText(item.trust_level))} · ${esc(item.report_period || "未标期间")}</span></div>`).join("")}</div>`;
+      return `<div class="mini-list">${rows.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(productText(item.title || "证据资料"))}</strong><br><span class="label">${esc(sourceDisplayText(item.source_type))} · ${esc(statusText(item.trust_level))} · ${esc(item.report_period || "未标期间")}</span></div>`).join("")}</div>`;
     }
 
     function renderRetrievalDiagnostics(diagnostics) {
@@ -3782,7 +3813,7 @@ def render_workbench_html() -> str:
       const stage = diagnostics.stage || "";
       const stageClass = stage === "ready" ? "passed" : (stage === "source_gap" ? "warning" : "failed");
       return `<div class="detail-section"><h3>证据召回诊断</h3>
-        <div class="chain-summary">${esc(diagnostics.summary || "暂无诊断说明。")}</div>
+        <div class="chain-summary">${esc(productText(diagnostics.summary || "暂无诊断说明。"))}</div>
         <div class="analysis-stats">
           <div class="analysis-stat"><span class="label">诊断阶段</span><strong><span class="status ${esc(stageClass)}">${esc(retrievalStageText(stage))}</span></strong><span class="score-note">${esc(retrievalReasonText(diagnostics.failure_reason))}</span></div>
           <div class="analysis-stat"><span class="label">候选资料</span><strong>${esc(number(diagnostics.candidate_count || 0))}</strong><span class="score-note">公司/任务相关资料池</span></div>
@@ -3808,7 +3839,7 @@ def render_workbench_html() -> str:
         no_traceable_claims: "主张未绑定证据",
         no_claims: "缺少研报主张",
       };
-      return textOf(map, value);
+      return productText(textOf(map, value));
     }
 
     function citationUsageStatusClass(value, ready) {
@@ -3828,26 +3859,41 @@ def render_workbench_html() -> str:
       const gaps = usage.claims_without_used_citation || [];
       const unused = usage.unused_citations || [];
       const actions = usage.recommended_actions || [];
+      const chainRows = gaps.length ? gaps : (usage.claims_with_used_citation || usage.used_claims || []);
       return `<div class="detail-section"><h3>引用覆盖闭环</h3>
-        <div class="chain-summary">${esc(usage.summary || "暂无引用覆盖说明。")}</div>
+        <div class="chain-summary">${esc(productText(usage.summary || "暂无引用覆盖说明。"))}</div>
         <div class="analysis-stats">
           <div class="analysis-stat"><span class="label">闭环状态</span><strong><span class="status ${esc(statusClass)}">${esc(citationUsageStatusText(status))}</span></strong><span class="score-note">${esc(ready ? "可用于质量证明" : "需要处理后再交付")}</span></div>
           <div class="analysis-stat"><span class="label">正文已使用引用</span><strong>${esc(number(usage.used_citation_count || 0))} / ${esc(number(usage.citation_count || 0))}</strong><span class="score-note">${esc(percentText(usage.citation_usage_rate))}</span></div>
           <div class="analysis-stat"><span class="label">可追溯主张</span><strong>${esc(number(usage.used_claim_count || 0))} / ${esc(number(usage.traceable_claim_count || 0))}</strong><span class="score-note">${esc(percentText(usage.claim_usage_rate))}</span></div>
           <div class="analysis-stat"><span class="label">待补齐</span><strong>${esc(number(gaps.length))}</strong><span class="score-note">未在正文找到已使用引用的主张</span></div>
         </div>
+        <div class="detail-section"><h3>报告引用证据链</h3>
+          ${chainRows.length ? `<div class="mini-list">${chainRows.slice(0, 5).map(renderCitationClaimTrace).join("")}</div>` : `<div class="empty">暂无可展示的主张到证据链路。任务完成并导入主张、引用产物后会自动补全。</div>`}
+        </div>
         <div class="check-grid">
           <div class="check-item ${gaps.length ? "failed" : "passed"}"><div class="diagnostic-head"><strong>缺引用主张</strong><span class="status ${gaps.length ? "failed" : "passed"}">${esc(gaps.length ? "需处理" : "无缺口")}</span></div>
-            ${gaps.length ? `<div class="mini-list">${gaps.slice(0, 5).map((claim) => `<div class="mini-item"><strong>${esc(claim.section_name || "研报主张")}</strong><br>${esc(claim.claim_text || "")}<br><span class="label">关联证据：${esc((claim.evidence_ids || []).join("、") || "未记录")}</span></div>`).join("")}</div>` : `<div class="empty">所有可追溯主张都已找到正文引用。</div>`}
+            ${gaps.length ? `<div class="mini-list">${gaps.slice(0, 5).map((claim) => `<div class="mini-item"><strong>${esc(productText(claim.section_name || "研报主张"))}</strong><br>${esc(productText(claim.claim_text || ""))}<br><span class="label">关联证据：${esc(number((claim.evidence_ids || []).length))} 条</span></div>`).join("")}</div>` : `<div class="empty">所有可追溯主张都已找到正文引用。</div>`}
           </div>
           <div class="check-item ${unused.length ? "failed" : "passed"}"><div class="diagnostic-head"><strong>未进入正文的引用</strong><span class="status ${unused.length ? "failed" : "passed"}">${esc(unused.length ? "需核对" : "无缺口")}</span></div>
-            ${unused.length ? `<div class="mini-list">${unused.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(item.title || item.evidence_id || "证据引用")}</strong><br><span class="label">${esc(item.evidence_id || "-")} · ${esc(sourceText(item.source_type))}</span></div>`).join("")}</div>` : `<div class="empty">引用清单中的证据均已进入报告正文。</div>`}
+            ${unused.length ? `<div class="mini-list">${unused.slice(0, 5).map((item) => `<div class="mini-item"><strong>${esc(productText(item.title || "证据引用"))}</strong><br><span class="label">${esc(sourceDisplayText(item.source_type))} · ${esc(statusText(item.trust_level || item.source_authority || "unknown"))}</span></div>`).join("")}</div>` : `<div class="empty">引用清单中的证据均已进入报告正文。</div>`}
           </div>
         </div>
         <div class="links" style="margin-top:10px">
           ${actions.length ? actions.map((action) => `<button class="btn" data-jump="${esc(action.view || "claims")}">${esc(action.label || "处理引用")}</button>`).join("") : `<button class="btn" data-jump="claims">进入主张复核</button>`}
           <button class="btn" data-jump="export">查看报告产物</button>
         </div>
+      </div>`;
+    }
+
+    function renderCitationClaimTrace(claim) {
+      const evidenceCount = (claim.evidence_ids || claim.citation_ids || []).length;
+      const status = evidenceCount ? "证据已绑定" : "待补证据";
+      return `<div class="mini-item">
+        <strong>${esc(productText(claim.section_name || claim.section || "研报主张"))}</strong>
+        <span class="status ${evidenceCount ? "passed" : "failed"}">${esc(status)}</span><br>
+        ${esc(productText(claim.claim_text || claim.text || ""))}<br>
+        <span class="label">证据链路：报告结论 → 主张复核 → ${esc(number(evidenceCount))} 条证据 → 正文引用</span>
       </div>`;
     }
 
@@ -3929,7 +3975,7 @@ def render_workbench_html() -> str:
     function renderEvidenceIds(ids) {
       const values = (ids || []).filter(Boolean);
       if (!values.length) return "";
-      return `<div class="reason-list">${values.slice(0, 4).map((id) => `<span class="reason-pill">证据 ${esc(id)}</span>`).join("")}${values.length > 4 ? `<span class="reason-pill">+${esc(number(values.length - 4))}</span>` : ""}</div>`;
+      return `<div class="reason-list"><span class="reason-pill">已绑定 ${esc(number(values.length))} 条证据</span></div>`;
     }
 
     function riskBindingText(binding) {

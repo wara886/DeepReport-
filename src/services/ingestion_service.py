@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -11,7 +12,7 @@ from sqlalchemy import Select, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from src.db.models import DataSource, IngestionBatch, IngestionBatchEvent, Workspace
+from src.db.models import Company, DataSource, Document, EvidenceItem, IngestionBatch, IngestionBatchEvent, Workspace
 
 
 class IngestionBatchNotFound(LookupError):
@@ -125,13 +126,27 @@ class IngestionService:
             batch.finished_at = _utc_now()
             batch.error_message = None
             _apply_counts(batch, payload)
+            persisted = _persist_ingested_records(session, batch=batch, payload=payload)
+            if persisted["document_count"] or persisted["evidence_count"]:
+                metadata = dict(batch.metadata_json or {})
+                metadata["ingested_document_count"] = int(metadata.get("ingested_document_count") or 0) + persisted["document_count"]
+                metadata["ingested_evidence_count"] = int(metadata.get("ingested_evidence_count") or 0) + persisted["evidence_count"]
+                metadata["evidence_source_key"] = batch.source_key
+                metadata["evidence_return_ready"] = persisted["evidence_count"] > 0
+                batch.metadata_json = metadata
+                if payload.get("item_count") is None:
+                    batch.item_count = max(batch.item_count, persisted["document_count"] + persisted["evidence_count"])
+                if payload.get("success_count") is None:
+                    batch.success_count = max(batch.success_count, persisted["document_count"] + persisted["evidence_count"])
+                if payload.get("failed_count") is None:
+                    batch.failed_count = 0
             batch.events.append(
                 IngestionBatchEvent(
                     batch_id=batch.batch_id,
                     stage="run",
                     status="completed",
                     message=_optional_string(payload.get("message")) or "采集批次已完成",
-                    metadata_json=_dict_or_none(payload.get("metadata")),
+                    metadata_json={**(_dict_or_none(payload.get("metadata")) or {}), **persisted},
                 )
             )
             _mark_datasource_health(batch.data_source, status="success", error=None)
@@ -303,6 +318,171 @@ def _apply_counts(batch: IngestionBatch, payload: dict[str, Any]) -> None:
         batch.success_count = max(0, int(payload["success_count"]))
     if payload.get("failed_count") is not None:
         batch.failed_count = max(0, int(payload["failed_count"]))
+
+
+def _persist_ingested_records(session: Session, *, batch: IngestionBatch, payload: dict[str, Any]) -> dict[str, int]:
+    documents_payload = _list_of_dicts(payload.get("documents"))
+    evidence_payload = _list_of_dicts(payload.get("evidence_items") or payload.get("evidence"))
+    if not documents_payload and not evidence_payload:
+        return {"document_count": 0, "evidence_count": 0}
+
+    company = _get_or_create_batch_company(session, batch)
+    document_count = 0
+    evidence_count = 0
+    for document_payload in documents_payload:
+        document, created = _get_or_create_document(session, batch=batch, company=company, payload=document_payload)
+        if created:
+            document_count += 1
+        nested_evidence = _list_of_dicts(document_payload.get("evidence_items") or document_payload.get("evidence"))
+        if not nested_evidence and _optional_string(document_payload.get("content")):
+            nested_evidence = [document_payload]
+        for item_payload in nested_evidence:
+            if _create_evidence_item(session, batch=batch, company=company, document=document, payload=item_payload):
+                evidence_count += 1
+    for item_payload in evidence_payload:
+        if _create_evidence_item(session, batch=batch, company=company, document=None, payload=item_payload):
+            evidence_count += 1
+    return {"document_count": document_count, "evidence_count": evidence_count}
+
+
+def _get_or_create_batch_company(session: Session, batch: IngestionBatch) -> Company | None:
+    symbol = _optional_string(batch.symbol)
+    if not symbol:
+        return None
+    market = _market_for_source(batch.source_key)
+    existing = session.scalar(select(Company).where(Company.symbol == symbol, Company.market == market))
+    if existing is not None:
+        return existing
+    company = Company(name=symbol, symbol=symbol, market=market, aliases=[symbol])
+    session.add(company)
+    session.flush()
+    return company
+
+
+def _get_or_create_document(
+    session: Session,
+    *,
+    batch: IngestionBatch,
+    company: Company | None,
+    payload: dict[str, Any],
+) -> tuple[Document, bool]:
+    title = _optional_string(payload.get("title")) or _default_document_title(batch)
+    content_hash = _optional_string(payload.get("content_hash")) or _stable_hash(
+        "document",
+        batch.batch_id,
+        title,
+        payload.get("source_url"),
+        payload.get("file_path"),
+        payload.get("content"),
+    )
+    existing = session.scalar(select(Document).where(Document.content_hash == content_hash))
+    if existing is not None:
+        return existing, False
+    document = Document(
+        company_id=company.id if company else None,
+        datasource_id=batch.data_source_id,
+        batch_id=batch.batch_id,
+        title=title,
+        doc_type=_optional_string(payload.get("doc_type")) or _default_doc_type(batch),
+        report_period=_optional_string(payload.get("report_period")) or _optional_string(payload.get("period")) or batch.period,
+        source_url=_optional_string(payload.get("source_url")),
+        file_path=_optional_string(payload.get("file_path")),
+        content_hash=content_hash,
+        parse_status=_optional_string(payload.get("parse_status")) or "parsed",
+    )
+    session.add(document)
+    session.flush()
+    return document, True
+
+
+def _create_evidence_item(
+    session: Session,
+    *,
+    batch: IngestionBatch,
+    company: Company | None,
+    document: Document | None,
+    payload: dict[str, Any],
+) -> bool:
+    content = _optional_string(payload.get("content") or payload.get("snippet") or payload.get("text"))
+    if not content:
+        return False
+    source_type = _optional_string(payload.get("source_type")) or batch.source_key or "local_evidence"
+    evidence_id = _optional_string(payload.get("evidence_id")) or _stable_hash(
+        "evidence",
+        batch.batch_id,
+        source_type,
+        payload.get("title"),
+        content,
+    )[:48]
+    existing = session.scalar(select(EvidenceItem).where(EvidenceItem.evidence_id == evidence_id))
+    if existing is not None:
+        return False
+    metadata = {
+        **(_dict_or_none(payload.get("metadata")) or {}),
+        "batch_id": batch.batch_id,
+        "source_key": batch.source_key,
+        "symbol": _optional_string(payload.get("symbol")) or batch.symbol,
+        "period": _optional_string(payload.get("report_period")) or _optional_string(payload.get("period")) or batch.period,
+        "ingestion_target_type": batch.target_type,
+    }
+    item = EvidenceItem(
+        evidence_id=evidence_id,
+        company_id=company.id if company else None,
+        document_id=document.id if document else None,
+        chunk_id=_optional_string(payload.get("chunk_id")),
+        source_type=source_type,
+        trust_level=_optional_string(payload.get("trust_level")) or _default_trust_level(batch),
+        title=_optional_string(payload.get("title")) or (document.title if document else _default_document_title(batch)),
+        content=content,
+        source_url=_optional_string(payload.get("source_url")) or (document.source_url if document else None),
+        page_no=int(payload["page_no"]) if payload.get("page_no") not in (None, "") else None,
+        metadata_json=metadata,
+    )
+    session.add(item)
+    session.flush()
+    return True
+
+
+def _list_of_dicts(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _stable_hash(*values: Any) -> str:
+    joined = "|".join(str(value or "") for value in values)
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()
+
+
+def _market_for_source(source_key: str | None) -> str:
+    source = str(source_key or "")
+    if source.startswith("cninfo") or source in {"eastmoney", "eastmoney_financials"}:
+        return "CN"
+    if source.startswith("hkex") or source == "hk_financials":
+        return "HK"
+    return "US"
+
+
+def _default_doc_type(batch: IngestionBatch) -> str:
+    if batch.target_type == "filings":
+        return "official_filing"
+    return batch.target_type or "document"
+
+
+def _default_document_title(batch: IngestionBatch) -> str:
+    symbol = batch.symbol or "公司"
+    period = batch.period or "当前期间"
+    if batch.target_type == "filings":
+        return f"{symbol} {period} 官方披露"
+    return f"{symbol} {period} 采集资料"
+
+
+def _default_trust_level(batch: IngestionBatch) -> str:
+    if batch.data_source and batch.data_source.trust_level:
+        return batch.data_source.trust_level
+    if batch.source_key in {"sec_edgar", "cninfo_announcements", "hkex_announcements", "exchange_announcements"}:
+        return "official"
+    return "primary"
 
 
 def _mark_datasource_health(datasource: DataSource | None, *, status: str, error: str | None) -> None:
