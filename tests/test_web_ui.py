@@ -102,8 +102,9 @@ def test_load_run_payload_treats_quality_diagnostic_as_completed(tmp_path):
     assert payload["status"] == "completed"
     assert payload["delivery_gate"]["delivery_pass"] is False
     assert payload["delivery_gate"]["diagnostic_delivery_pass"] is False
-    assert user_payload["status"] == "completed"
-    assert "error" not in user_payload
+    assert user_payload["status"] == "quality_failed"
+    assert user_payload["found"] is False
+    assert "error" in user_payload
 
 
 def test_report_artifact_url_uses_run_specific_path(monkeypatch, tmp_path):

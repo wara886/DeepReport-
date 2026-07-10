@@ -298,7 +298,7 @@ def normalize_financial_scale(
     # overwrite it — a second call (e.g. from html_report_generator's
     # _visible_user_charts with a default USD context) would corrupt the
     # unit label originally set with the correct market currency.
-    if not already_scaled or not chart_js.get("raw_currency"):
+    if not already_scaled or not (chart_js.get("raw_currency") or chart_js.get("unit_label")):
         chart["chart_js"] = {
             **chart_js,
             "data": scaled,

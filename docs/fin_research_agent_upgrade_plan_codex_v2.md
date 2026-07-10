@@ -219,8 +219,9 @@ pytest -q --disable-warnings \
 
 全量回归说明：
 
-- 全量测试的慢点在同进程触发外部模型、Embedding 或 Serper 回退后的 SSL 等待；相邻测试拆开运行可以快速通过，不是 LangGraph checkpoint 死锁。
-- 已知失败仍集中在聊天任务解析旧契约、报告阻塞文案、估值错误分类/同行 fallback 和 HTML 图表序列化。这些问题不阻塞 R0.2 状态编排实现，但在推送、合并 `main` 前仍必须单独修复并重新跑全量回归。
+- 已完成聊天任务解析、报告阻塞文案、估值错误分类、同行 fallback、HTML 图表序列化、跨公司证据污染、Verifier 重写、ReAct 分析、乱码识别和旧状态合同治理。
+- 外部同行发现、Yahoo 估值倍数和 FRED 利率改为显式 opt-in；默认测试和离线报告不会再因隐藏网络 fallback 卡在 SSL/yfinance 等待。
+- 2026-07-10 全量收集 855 项；`pytest -q --disable-warnings --maxfail=20` 全部通过（4 项按既有条件 skip）。
 
 #### R0.3：生产化与 P3 收尾（下一阶段）
 

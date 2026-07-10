@@ -52,3 +52,30 @@ def test_searchmanager_registered_engines_seed_workspace_scoped_sources(temp_db_
 
     assert workspace_sources["total"] == len(SearchManager.with_local_sources().engine_names())
     assert global_sources["total"] == len(SearchManager.with_local_sources().engine_names()) * 2
+
+
+def test_searchmanager_filters_unlabelled_cross_symbol_evidence():
+    manager = SearchManager()
+
+    def fixture_engine(**_):
+        return {
+            "hits": [
+                {"evidence_id": "target", "symbol": "AAPL", "title": "Apple filing", "content": "AAPL revenue"},
+                {"evidence_id": "leak", "symbol": "TSLA", "title": "Tesla filing", "content": "TSLA revenue"},
+                {
+                    "evidence_id": "peer",
+                    "symbol": "MSFT",
+                    "context_role": "peer",
+                    "title": "Peer benchmark",
+                    "content": "MSFT benchmark",
+                },
+            ],
+            "meta": {},
+        }
+
+    manager.register_engine("fixture", fixture_engine)
+    payload = manager.search("technology revenue", engines=["fixture"], symbol="AAPL")
+
+    ids = {item["result_id"] for item in payload["hits"]}
+    assert ids == {"target", "peer"}
+    assert payload["meta"]["cross_symbol_filtered_count"] == 1

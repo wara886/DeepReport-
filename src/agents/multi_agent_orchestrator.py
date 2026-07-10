@@ -264,7 +264,7 @@ class MultiAgentOrchestrator:
         fast: bool = False,
         search_engines: List[str] | None = None,
         retrieval_ranking_mode: str = "hybrid_rerank",
-        enable_remote_data: bool = True,
+        enable_remote_data: bool = False,
         data_source_config_path: str = "configs/data_sources.yaml",
         quality_remediation_plan: Dict[str, Any] | None = None,
         claim_contract: str = "",
@@ -679,7 +679,7 @@ class MultiAgentOrchestrator:
         fast: bool = False,
         search_engines: List[str] | None = None,
         retrieval_ranking_mode: str = "hybrid_rerank",
-        enable_remote_data: bool = True,
+        enable_remote_data: bool = False,
         data_source_config_path: str = "configs/data_sources.yaml",
         entity_resolution: Dict[str, Any] | None = None,
         quality_remediation_plan: Dict[str, Any] | None = None,
@@ -1298,7 +1298,7 @@ class MultiAgentOrchestrator:
         fast: bool = False,
         search_engines: List[str] | None = None,
         retrieval_ranking_mode: str = "hybrid_rerank",
-        enable_remote_data: bool = True,
+        enable_remote_data: bool = False,
         data_source_config_path: str = "configs/data_sources.yaml",
         entity_resolution: Dict[str, Any] | None = None,
         quality_remediation_plan: Dict[str, Any] | None = None,
@@ -1446,10 +1446,9 @@ class MultiAgentOrchestrator:
             tasks = prepare_collaborative_tasks(tasks)
         route_context_path = self._write_json("task_route_context.json", build_task_route_context(tasks))
         results = self._execute_dynamic_tasks(tasks=tasks, state=state)
-        # Verifier rework loop skipped — the delivery rework loop below already
-        # runs the full gate (objective eval → gate check → repair agents →
-        # FinalAnswer rewrite → Verifier) so a separate verifier-only rework
-        # would duplicate FinalAnswer+Verifier calls with no additional benefit.
+        # Repair verifier-specific citation/grounding failures before the wider
+        # delivery gate decides whether objective quality remediation is needed.
+        self._run_verifier_rework_loop(state=state)
         self._run_gap_resolver(state=state)
         self._run_delivery_rework_loop(state=state)
 
@@ -2828,7 +2827,7 @@ def prepare_dynamic_tasks(
     profile: Dict[str, Any] | None = None,
     search_engines: List[str] | None = None,
     retrieval_ranking_mode: str = "hybrid_rerank",
-    enable_remote_data: bool = True,
+    enable_remote_data: bool = False,
     data_source_config_path: str = "configs/data_sources.yaml",
     skill_registry: SkillRegistry | None = None,
     router_memory_brief: str = "",

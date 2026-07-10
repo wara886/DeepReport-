@@ -7,6 +7,7 @@ import re
 from typing import Any, Dict, List
 
 from src.agents.base_agent import AgentTask, BaseAgent, TaskResult
+from src.agents.react_loop import run_react_tool_loop
 from src.features.financial_metric_lineage import build_financial_metric_lineage, build_financial_metric_tables
 from src.evaluation.financial_currency_audit import build_currency_audit
 from src.models import ModelAdapter
@@ -94,13 +95,30 @@ class DeepAnalyzeAgent(BaseAgent):
         raw_data_root = str(task.parameters.get("raw_data_root") or "data/raw/real_data")
         skill_brief = str(task.parameters.get("skill_brief", "")).strip()
 
-        ratio_rows = self.call_tool("calculate_financial_ratios", records=records)["rows"]
+        react_payload = self._run_react_analysis(
+            task=task,
+            records=records,
+            symbol=symbol,
+            period=period,
+            raw_data_root=raw_data_root,
+        )
+        observed = {
+            str(item.get("tool_name") or ""): item.get("result")
+            for item in react_payload.get("observations", [])
+            if isinstance(item, dict) and isinstance(item.get("result"), dict)
+        }
+
+        ratio_payload = observed.get("calculate_financial_ratios") or self.call_tool("calculate_financial_ratios", records=records)
+        ratio_rows = ratio_payload["rows"]
         if ratio_rows is None:
             ratio_rows = self.call_tool("calculate_financial_ratios", records=records)["rows"]
-        trend_rows = self.call_tool("build_trend_features", records=records)["rows"]
-        statement_view = self.call_tool("build_three_statement_view", records=records)
-        peer_context = self.call_tool("build_peer_comparison", symbol=symbol, period=period, raw_data_root=raw_data_root)
-        valuation = self.call_tool(
+        trend_payload = observed.get("build_trend_features") or self.call_tool("build_trend_features", records=records)
+        trend_rows = trend_payload["rows"]
+        statement_view = observed.get("build_three_statement_view") or self.call_tool("build_three_statement_view", records=records)
+        peer_context = observed.get("build_peer_comparison") or self.call_tool(
+            "build_peer_comparison", symbol=symbol, period=period, raw_data_root=raw_data_root
+        )
+        valuation = observed.get("perform_company_valuation") or self.call_tool(
                 "perform_company_valuation",
                 symbol=symbol,
                 period=period,
@@ -155,6 +173,9 @@ class DeepAnalyzeAgent(BaseAgent):
             "peer_count": int(peer_context.get("peer_count", 0) or 0),
             "valuation_available": bool(valuation.get("valuation_available", False)),
             "llm_used": False,
+            "react_used": bool(react_payload.get("trace")),
+            "react_trace": react_payload.get("trace", []),
+            "react_error": react_payload.get("error", ""),
             "skill_brief_chars": len(skill_brief),
         }
 
@@ -233,6 +254,62 @@ class DeepAnalyzeAgent(BaseAgent):
                 },
             },
             metadata=metadata,
+        )
+
+    def _run_react_analysis(
+        self,
+        task: AgentTask,
+        records: List[Dict[str, Any]],
+        symbol: str,
+        period: str,
+        raw_data_root: str,
+    ) -> Dict[str, Any]:
+        if not bool(task.parameters.get("use_react", False)) or not self.model or not hasattr(self.model, "chat"):
+            return {"trace": [], "observations": [], "error": ""}
+
+        names = [
+            "calculate_financial_ratios",
+            "build_trend_features",
+            "build_three_statement_view",
+            "build_peer_comparison",
+            "perform_company_valuation",
+        ]
+        schemas = [self.tool_registry.get(name).to_tool_schema() for name in names]
+        raw_handlers = self.tool_registry.handlers()
+        handlers = {
+            "calculate_financial_ratios": lambda **kwargs: raw_handlers["calculate_financial_ratios"](
+                records=kwargs.pop("records", records), **kwargs
+            ),
+            "build_trend_features": lambda **kwargs: raw_handlers["build_trend_features"](
+                records=kwargs.pop("records", records), **kwargs
+            ),
+            "build_three_statement_view": lambda **kwargs: raw_handlers["build_three_statement_view"](
+                records=kwargs.pop("records", records), **kwargs
+            ),
+            "build_peer_comparison": lambda **kwargs: raw_handlers["build_peer_comparison"](
+                symbol=kwargs.pop("symbol", symbol),
+                period=kwargs.pop("period", period),
+                raw_data_root=kwargs.pop("raw_data_root", raw_data_root),
+                **kwargs,
+            ),
+            "perform_company_valuation": lambda **kwargs: raw_handlers["perform_company_valuation"](
+                symbol=kwargs.pop("symbol", symbol),
+                period=kwargs.pop("period", period),
+                records=kwargs.pop("records", records),
+                raw_data_root=kwargs.pop("raw_data_root", raw_data_root),
+                **kwargs,
+            ),
+        }
+        return run_react_tool_loop(
+            model=self.model,
+            system_prompt=(
+                "You are DeepAnalyzeAgent. Use financial tools to construct grounded analysis artifacts. "
+                "Stop after the necessary ratio, statement, peer, and valuation tools have returned."
+            ),
+            user_prompt=f"Analyze {symbol} for {period} using {len(records)} evidence records.",
+            tool_schemas=schemas,
+            handlers=handlers,
+            max_steps=int(task.parameters.get("react_max_steps", 3) or 3),
         )
 
 def build_rule_claims(

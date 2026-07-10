@@ -135,6 +135,13 @@ class SearchManager:
         # 证据清洗：在去重排序前统一过 cleaning_pipeline
         market = _infer_market_from_kwargs(kwargs)
         all_hits = _clean_search_results(all_hits, market=market)
+        target_symbol = str(kwargs.get("symbol") or "").strip().upper()
+        if target_symbol:
+            before_isolation = len(all_hits)
+            all_hits = [hit for hit in all_hits if _hit_matches_target_or_context(hit, target_symbol)]
+            cross_symbol_filtered_count = before_isolation - len(all_hits)
+        else:
+            cross_symbol_filtered_count = 0
 
         hits = _dedupe_and_rank(all_hits, topk=topk)
         return {
@@ -145,8 +152,20 @@ class SearchManager:
                 "engine_meta": engine_meta,
                 "total_hits_before_dedupe": len(all_hits),
                 "returned_hits": len(hits),
+                "cross_symbol_filtered_count": cross_symbol_filtered_count,
             },
         }
+
+
+def _hit_matches_target_or_context(hit: SearchResult, target_symbol: str) -> bool:
+    """Keep target evidence and explicitly labelled contextual evidence only."""
+
+    raw = hit.raw if isinstance(hit.raw, dict) else {}
+    hit_symbol = str(raw.get("symbol") or "").strip().upper()
+    if not hit_symbol or hit_symbol == target_symbol:
+        return True
+    context_role = str(raw.get("context_role") or raw.get("evidence_role") or "").strip().lower()
+    return context_role in {"peer", "macro", "industry", "benchmark"}
 
 
 def local_evidence_search(

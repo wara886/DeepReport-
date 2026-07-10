@@ -25,7 +25,7 @@ class CollaborativeOrchestrator(MultiAgentOrchestrator):
         fast: bool = False,
         search_engines: List[str] | None = None,
         retrieval_ranking_mode: str = "hybrid_rerank",
-        enable_remote_data: bool = True,
+        enable_remote_data: bool = False,
         data_source_config_path: str = "configs/data_sources.yaml",
         quality_remediation_plan: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:

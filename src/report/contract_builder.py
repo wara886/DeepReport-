@@ -1505,9 +1505,13 @@ def _normalize_sensitivity_rows(payload: Dict[str, Any]) -> List[Dict[str, Any]]
 def _peer_row_has_metrics(row: Dict[str, Any]) -> bool:
     keys = (
         "revenue_growth_pct",
+        "revenue_growth",
         "gross_margin_pct",
+        "gross_margin",
         "net_margin_pct",
+        "net_margin",
         "roe_pct",
+        "roe",
         "revenue_billion",
         "net_income_billion",
         "free_cash_flow_billion",
