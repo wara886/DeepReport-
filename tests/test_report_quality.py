@@ -1,5 +1,6 @@
 import json
 
+from src.agents.final_answer_agent import auto_rewrite_core_sections
 from src.evaluation.report_quality import _check_delivery_policy, evaluate_report_quality, write_quality_outputs
 
 
@@ -254,6 +255,65 @@ def test_quality_policy_blocks_formal_delivery_from_coverage_contract():
     assert "formal delivery" in messages
     assert "draft only" in messages
     assert "A/H" not in messages
+
+
+def test_auto_rewrite_core_sections_reduces_content_depth_blockers(tmp_path):
+    original = """
+# AMD FY2024 公司研报
+
+## 执行摘要
+短。
+
+## 业务概览
+AMD 的业务覆盖数据中心、客户端、游戏和嵌入式板块，产品包括 CPU、GPU、加速卡和嵌入式芯片。公司经营表现需要结合产品周期、客户需求、供应链和竞争格局判断。该部分用于说明业务边界和主要收入驱动，不直接替代财务和估值判断。
+
+## 财务分析
+收入、利润和现金流需要结合利润表、资产负债表和现金流量表分析。若收入增长但现金流承压，需要关注应收账款、库存和资本开支；若毛利率改善且费用率稳定，则盈利质量更具支撑。报告期内财务判断仍应以官方披露和结构化指标复核为前提。
+
+## 同行对比
+同行比较应关注 NVIDIA、Intel、Broadcom 等公司在产品结构、毛利率、研发投入、数据中心暴露度和库存周期上的差异。不同公司业务结构不同，不能直接套用单一估值倍数，需要结合收入质量和利润率水平比较。
+
+## 估值观察
+本报告分别披露相对估值与
+
+## 风险评估
+风险较多。
+
+## 投资结论
+观察。
+"""
+    repaired = auto_rewrite_core_sections(
+        original,
+        claims=[
+            {"section_name": "valuation", "claim_text": "估值需要同时参考收入增速、毛利率和现金流质量。", "evidence_ids": ["ev_val"]},
+            {"section_name": "risks", "claim_text": "需求放缓和竞争加剧可能压缩利润率。", "evidence_ids": ["ev_risk"]},
+            {"section_name": "conclusion", "claim_text": "基于估值约束和风险边界，维持审慎观察。", "evidence_ids": ["ev_conclusion"]},
+        ],
+        evidence_records=[{"evidence_id": "ev_sec", "title": "FY2024 Form 10-K", "source_type": "sec_edgar", "period": "FY2024"}],
+        financial_metrics={"metrics": [{"metric_name": "收入", "value": 100, "unit": "亿美元", "period": "FY2024", "source_type": "sec_edgar"}]},
+        quality_remediation_plan={"quality_feedback_used": True, "failed_sections": ["valuation", "risk", "investment_conclusion", "executive_summary"]},
+    )
+    run_dir = _write_run(
+        tmp_path,
+        report_md=repaired,
+        claims=[
+            {"claim_id": "cl_val", "claim_text": "估值需要同时参考收入增速、毛利率和现金流质量。", "evidence_ids": ["ev_val"]},
+            {"claim_id": "cl_risk", "claim_text": "需求放缓和竞争加剧可能压缩利润率。", "evidence_ids": ["ev_risk"]},
+            {"claim_id": "cl_conclusion", "claim_text": "基于估值约束和风险边界，维持审慎观察。", "evidence_ids": ["ev_conclusion"]},
+        ],
+    )
+
+    report = evaluate_report_quality(run_dir)
+    content_depth_messages = [
+        issue["message"]
+        for issue in report["issues"]
+        if issue["category"] == "content_depth"
+    ]
+
+    assert not any("执行摘要 content insufficient" in msg for msg in content_depth_messages)
+    assert not any("估值观察 appears truncated" in msg for msg in content_depth_messages)
+    assert not any("风险评估 content insufficient" in msg for msg in content_depth_messages)
+    assert not any("投资结论 content insufficient" in msg for msg in content_depth_messages)
 
 
 def test_quality_evaluator_reads_nested_statement_rows_and_cashflow_gap(tmp_path):
