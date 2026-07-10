@@ -104,6 +104,7 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
                 "task_id": "task-runtime-review",
                 "symbol": "NVDA",
                 "period": "FY2024",
+                "request_id": "request-runtime-review",
                 "run_immediately": True,
             },
         )
@@ -118,6 +119,11 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
     assert created.status_code == 201
     assert created.json()["status"] == "completed"
     assert created.json()["metadata"]["report_runtime"]["checkpoint_status"] == "interrupted"
+    assert created.json()["trace_context"] == {
+        "request_id": "request-runtime-review",
+        "run_id": "task-runtime-review",
+        "task_id": "task-runtime-review",
+    }
     assert checkpoint.status_code == 200
     assert checkpoint.json()["next"] == ["human_review"]
     assert checkpoint.json()["interrupts"][0]["value"]["type"] == "claim_review_required"
@@ -127,6 +133,10 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
     assert body["checkpoint"]["next"] == []
     assert body["runtime"]["review_decision"]["approved"] is True
     assert body["task"]["metadata"]["report_runtime"]["checkpoint_status"] == "completed"
+    observability = body["task"]["runtime_observability"]
+    assert observability["trace_context"]["request_id"] == "request-runtime-review"
+    assert observability["checkpoint_status"] == "completed"
+    assert set(observability["node_latency_ms"]) == {"evidence", "generation", "quality", "finalize", "human_review"}
     assert any(event["stage"] == "claim_review" and event["status"] == "resumed" for event in body["task"]["events"])
 
 
@@ -177,3 +187,20 @@ def test_report_task_can_use_legacy_pipeline_compatibility_switch(tmp_path):
     assert created.json()["metadata"]["report_runtime"].get("checkpoint_status") is None
     assert runtime.status_code == 409
     assert "disabled" in runtime.json()["error"]
+
+
+def test_report_task_api_propagates_request_id_header(tmp_path):
+    with make_client(tmp_path, ReviewArtifactOrchestrator) as client:
+        response = client.post(
+            "/api/report-tasks",
+            headers={"X-Request-ID": "request-from-client"},
+            json={
+                "task_id": "task-request-trace",
+                "symbol": "NVDA",
+                "period": "FY2024",
+            },
+        )
+
+    assert response.status_code == 201
+    assert response.headers["X-Request-ID"] == "request-from-client"
+    assert response.json()["trace_context"]["request_id"] == "request-from-client"

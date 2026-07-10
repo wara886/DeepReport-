@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import operator
 from pathlib import Path
 import sqlite3
+import time
 from typing import Annotated, Any, Protocol, TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -29,6 +31,8 @@ class ReportGraphState(ReportRunState, total=False):
     runtime_events: Annotated[list[dict[str, Any]], operator.add]
     last_node: str
     review_decision: NotRequired[dict[str, Any]]
+    request_id: NotRequired[str]
+    run_id: NotRequired[str]
 
 
 class EvidenceNodePatch(TypedDict, total=False):
@@ -191,16 +195,16 @@ class LangGraphReportRuntime:
         return builder
 
     def _evidence_node(self, state: ReportGraphState) -> dict[str, Any]:
-        return self._node_patch("evidence", self.handlers.evidence(state))
+        return self._execute_node("evidence", state, self.handlers.evidence)
 
     def _generation_node(self, state: ReportGraphState) -> dict[str, Any]:
-        return self._node_patch("generation", self.handlers.generation(state))
+        return self._execute_node("generation", state, self.handlers.generation)
 
     def _quality_node(self, state: ReportGraphState) -> dict[str, Any]:
-        return self._node_patch("quality", self.handlers.quality(state))
+        return self._execute_node("quality", state, self.handlers.quality)
 
     def _finalize_node(self, state: ReportGraphState) -> dict[str, Any]:
-        return self._node_patch("finalize", self.handlers.finalize(state))
+        return self._execute_node("finalize", state, self.handlers.finalize)
 
     def _human_review_node(self, state: ReportGraphState) -> dict[str, Any]:
         decision = interrupt(
@@ -212,9 +216,20 @@ class LangGraphReportRuntime:
                 "required_actions": state.get("delivery_readiness", {}).get("required_actions", []),
             }
         )
+        started = time.perf_counter()
         patch = self.handlers.review(state, decision)
         patch["review_decision"] = _decision_payload(decision)
-        return self._node_patch("human_review", patch)
+        return self._node_patch("human_review", patch, state=state, duration_ms=(time.perf_counter() - started) * 1000)
+
+    def _execute_node(
+        self,
+        node: str,
+        state: ReportGraphState,
+        callback: Callable[[ReportGraphState], dict[str, Any]],
+    ) -> dict[str, Any]:
+        started = time.perf_counter()
+        patch = callback(state)
+        return self._node_patch(node, patch, state=state, duration_ms=(time.perf_counter() - started) * 1000)
 
     @staticmethod
     def _route_after_evidence(state: ReportGraphState) -> str:
@@ -229,13 +244,30 @@ class LangGraphReportRuntime:
         return "human_review" if "pending_claim_review" in blockers else "end"
 
     @staticmethod
-    def _node_patch(node: str, raw_patch: dict[str, Any] | None) -> dict[str, Any]:
+    def _node_patch(
+        node: str,
+        raw_patch: dict[str, Any] | None,
+        *,
+        state: ReportGraphState | None = None,
+        duration_ms: float = 0.0,
+    ) -> dict[str, Any]:
         patch = dict(raw_patch or {})
         unknown = set(patch).difference(_PATCHABLE_STATE_KEYS)
         if unknown:
             raise ValueError(f"Node {node} returned unsupported state keys: {sorted(unknown)}")
         patch["last_node"] = node
-        patch["runtime_events"] = [{"node": node, "status": "completed"}]
+        trace = state or {}
+        patch["runtime_events"] = [
+            {
+                "node": node,
+                "status": "completed",
+                "task_id": trace.get("task_id"),
+                "run_id": trace.get("run_id") or trace.get("task_id"),
+                "request_id": trace.get("request_id") or trace.get("task_id"),
+                "duration_ms": round(float(duration_ms), 3),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ]
         return patch
 
     @staticmethod

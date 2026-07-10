@@ -234,8 +234,8 @@ def build_report_run_state(task: Any) -> ReportRunState:
             "can_export_formal_package": delivery["can_export_formal_package"],
             "blocking_reasons": list(delivery["blocking_reasons"]),
             "required_actions": list(delivery["required_actions"]),
-            "supported_formats": ["markdown", "html", "json", "csv"],
-            "pending_formats": ["pdf", "docx"],
+            "supported_formats": ["markdown", "html", "pdf", "docx", "json", "csv"],
+            "pending_formats": [],
         },
     }
 
@@ -361,12 +361,15 @@ def _delivery_readiness(
     if quality_state.get("inferred_from_legacy_status"):
         warnings.append("legacy_quality_state_inferred")
     blockers = _dedupe(blockers)
-    can_review = artifact_state["report_available"] and lifecycle in {"quality_blocked", "generation_completed"}
+    review_blockers = {"pending_claim_review", "rejected_claims_present", "approved_claims_missing"}
+    can_review = artifact_state["report_available"] and bool(review_blockers.intersection(blockers))
     can_deliver = not blockers
     if can_deliver:
         status = "export_ready"
     elif can_review:
         status = "review_required"
+    elif artifact_state["report_available"] and lifecycle == "quality_blocked":
+        status = "remediation_required"
     elif lifecycle in {"evidence_checking", "generating", "quality_checking"}:
         status = "in_progress"
     elif lifecycle == "queued":

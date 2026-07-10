@@ -6,6 +6,7 @@ import argparse
 
 from sqlalchemy.engine import Engine
 
+from src.db.migrations import migrate_schema
 from src.db.models import Base
 from src.db.session import create_engine_for_url
 
@@ -15,6 +16,7 @@ def init_db(database_url: str | None = None, *, engine: Engine | None = None) ->
 
     target_engine = engine or create_engine_for_url(database_url)
     Base.metadata.create_all(bind=target_engine)
+    migrate_schema(target_engine)
     return target_engine
 
 
@@ -27,6 +29,7 @@ def reset_db(database_url: str | None = None, *, engine: Engine | None = None) -
     target_engine = engine or create_engine_for_url(database_url)
     Base.metadata.drop_all(bind=target_engine)
     Base.metadata.create_all(bind=target_engine)
+    migrate_schema(target_engine)
     return target_engine
 
 

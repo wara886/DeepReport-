@@ -158,6 +158,8 @@ class ReportTaskService:
         try:
             if self.langgraph_runtime_enabled:
                 initial_state = self.get_task(task_id)["run_state"]
+                initial_state["request_id"] = str(metadata.get("request_id") or task_id)
+                initial_state["run_id"] = str(metadata.get("run_id") or task_id)
                 runtime_result = self._get_langgraph_runtime().invoke(initial_state, thread_id=task_id)
                 self._record_runtime_result(task_id, runtime_result)
             else:
@@ -343,6 +345,16 @@ class ReportTaskService:
             runtime = dict(metadata.get("report_runtime") or {})
             runtime["checkpoint_status"] = "interrupted" if interrupts else "completed"
             runtime["interrupts"] = interrupts
+            events = list(result.get("runtime_events") or [])
+            runtime["events"] = events
+            runtime["node_latency_ms"] = {
+                str(item.get("node")): float(item.get("duration_ms") or 0.0)
+                for item in events
+                if isinstance(item, dict) and item.get("node")
+            }
+            runtime["total_node_latency_ms"] = round(sum(runtime["node_latency_ms"].values()), 3)
+            runtime["request_id"] = str(result.get("request_id") or metadata.get("request_id") or task_id)
+            runtime["run_id"] = str(result.get("run_id") or metadata.get("run_id") or task_id)
             metadata["report_runtime"] = runtime
             task.metadata_json = metadata
             if interrupts:
@@ -829,6 +841,7 @@ class ReportTaskService:
                 ).all()
             )
             payload["quality_diagnostics"] = build_quality_diagnostics(task, llm_runs)
+            payload["runtime_observability"] = build_runtime_observability(task, llm_runs)
             return payload
 
     def get_artifacts(self, task_id: str) -> dict[str, Any]:
@@ -856,6 +869,7 @@ class ReportTaskService:
         artifacts = [serialize_artifact(item) for item in sorted(task.artifacts, key=lambda item: item.id or 0)]
         events = [serialize_event(item) for item in sorted(task.events, key=lambda item: item.id or 0)]
         run_state = build_report_run_state(task)
+        metadata = task.metadata_json or {}
         return {
             "id": task.id,
             "task_id": task.task_id,
@@ -871,7 +885,12 @@ class ReportTaskService:
             "started_at": _dt(task.started_at),
             "finished_at": _dt(task.finished_at),
             "error_message": task.error_message,
-            "metadata": task.metadata_json or {},
+            "metadata": metadata,
+            "trace_context": {
+                "request_id": str(metadata.get("request_id") or task.task_id),
+                "run_id": str(metadata.get("run_id") or task.task_id),
+                "task_id": task.task_id,
+            },
             "events": events,
             "artifacts": artifacts,
             "report_links": _report_links(artifacts),
@@ -1636,6 +1655,49 @@ def build_quality_diagnostics(task: ReportTask, llm_runs: list[LLMRun]) -> dict[
         "agent_runs": [run for run in llm_payloads if str(run.get("prompt_key") or "").startswith("agent.")],
         "llm_run_count": len(llm_payloads),
         "failed_llm_run_count": sum(1 for run in llm_payloads if run.get("status") == "failed"),
+    }
+
+
+def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun]) -> dict[str, Any]:
+    """Aggregate request tracing, node latency, and LLM usage for one task."""
+
+    metadata = task.metadata_json or {}
+    runtime = metadata.get("report_runtime") if isinstance(metadata.get("report_runtime"), dict) else {}
+    events = runtime.get("events") if isinstance(runtime.get("events"), list) else []
+    node_latency = runtime.get("node_latency_ms") if isinstance(runtime.get("node_latency_ms"), dict) else {}
+    prompt_tokens = sum(int(item.prompt_tokens or 0) for item in llm_runs)
+    completion_tokens = sum(int(item.completion_tokens or 0) for item in llm_runs)
+    total_tokens = sum(int(item.total_tokens or 0) for item in llm_runs)
+    cost_raw = sum(float(item.cost_usd or 0.0) for item in llm_runs)
+    cost_usd = round(cost_raw, 8)
+    run_count_sum = len(llm_runs)
+    pricing_status = "not_configured" if cost_raw == 0.0 and run_count_sum > 0 else "available" if cost_raw > 0 else "no_runs"
+    llm_latency_ms = sum(int(item.latency_ms or 0) for item in llm_runs)
+    elapsed_ms = None
+    if task.started_at and task.finished_at:
+        elapsed_ms = round((task.finished_at - task.started_at).total_seconds() * 1000, 3)
+    return {
+        "schema_version": "report_runtime_observability.v1",
+        "trace_context": {
+            "request_id": str(metadata.get("request_id") or task.task_id),
+            "run_id": str(metadata.get("run_id") or task.task_id),
+            "task_id": task.task_id,
+        },
+        "checkpoint_status": runtime.get("checkpoint_status", "not_started"),
+        "last_node": events[-1].get("node") if events and isinstance(events[-1], dict) else None,
+        "node_latency_ms": node_latency,
+        "total_node_latency_ms": round(sum(float(value or 0.0) for value in node_latency.values()), 3),
+        "task_elapsed_ms": elapsed_ms,
+        "llm": {
+            "run_count": run_count_sum,
+            "failed_run_count": sum(1 for item in llm_runs if item.status == "failed"),
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost_usd": cost_usd,
+            "pricing_status": pricing_status,
+            "latency_ms": llm_latency_ms,
+        },
     }
 
 

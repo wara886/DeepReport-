@@ -99,6 +99,7 @@ class ManualImportService:
                 report_period=period,
                 source_url=source_url,
                 file_path=file_path,
+                content=content or "",
                 content_hash=content_hash,
                 parse_status=parse_status,
             )
@@ -163,7 +164,7 @@ def _initial_steps(
                 status="success",
                 started_at=now,
                 finished_at=now,
-                metadata_json={"parser": "manual_import", "stub": True},
+                metadata_json={"parser": "manual_import"},
             )
         )
     else:

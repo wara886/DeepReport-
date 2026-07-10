@@ -333,23 +333,23 @@ def render_workbench_html() -> str:
       </div>
       <nav class="nav" aria-label="工作台导航">
         <button class="active" data-view="dashboard"><span>投研首页</span><span class="tag available">可用</span></button>
-        <button data-view="workspace"><span>投研空间</span><span class="tag preview">预览</span></button>
-        <button data-view="stockpool"><span>股票池管理</span><span class="tag preview">预览</span></button>
-        <button data-view="datasources"><span>数据源管理</span><span class="tag preview">预览</span></button>
-        <button data-view="ingestion"><span>采集任务</span><span class="tag preview">预览</span></button>
-        <button data-view="manual"><span>手动导入</span><span class="tag preview">预览</span></button>
-        <button data-view="documents"><span>文档处理中心</span><span class="tag preview">预览</span></button>
+	        <button data-view="workspace"><span>投研空间</span><span class="tag available">可用</span></button>
+	        <button data-view="stockpool"><span>股票池管理</span><span class="tag available">可用</span></button>
+	        <button data-view="datasources"><span>数据源管理</span><span class="tag available">可用</span></button>
+	        <button data-view="ingestion"><span>采集任务</span><span class="tag available">可用</span></button>
+	        <button data-view="manual"><span>手动导入</span><span class="tag available">可用</span></button>
+	        <button data-view="documents"><span>文档处理中心</span><span class="tag available">可用</span></button>
         <button data-view="evidence"><span>证据库</span><span class="tag available">可用</span></button>
-        <button data-view="facts"><span>财务事实中心</span><span class="tag preview">预览</span></button>
+	        <button data-view="facts"><span>财务事实中心</span><span class="tag available">可用</span></button>
         <button data-view="signals"><span>投资线索</span><span class="tag enhancing">增强中</span></button>
         <button data-view="tasks"><span>研报任务</span><span class="tag available">可用</span></button>
         <button data-view="claims"><span>主张复核</span><span class="tag available">可用</span></button>
-        <button data-view="dictionary"><span>金融词典</span><span class="tag preview">预览</span></button>
-        <button data-view="promptops"><span>提示词运营</span><span class="tag preview">预览</span></button>
+	        <button data-view="dictionary"><span>金融词典</span><span class="tag available">可用</span></button>
+	        <button data-view="promptops"><span>提示词运营</span><span class="tag available">可用</span></button>
         <button data-view="entities"><span>实体库</span><span class="tag enhancing">增强中</span></button>
         <button data-view="graph"><span>关系图谱</span><span class="tag enhancing">增强中</span></button>
-        <button data-view="evaluation"><span>评测中心</span><span class="tag preview">预览</span></button>
-        <button data-view="export"><span>导出中心</span><span class="tag preview">预览</span></button>
+	        <button data-view="evaluation"><span>评测中心</span><span class="tag available">可用</span></button>
+	        <button data-view="export"><span>导出中心</span><span class="tag available">可用</span></button>
       </nav>
     </aside>
 
@@ -380,18 +380,18 @@ def render_workbench_html() -> str:
                 <h2>处理漏斗</h2>
                 <button class="btn" data-jump="documents">失败步骤</button>
               </div>
-              <div class="tab-switch" role="tablist" aria-label="处理漏斗视图">
-                <button class="active" data-funnel-tab="funnel">处理漏斗</button>
-                <button data-funnel-tab="chain">处理链路</button>
-              </div>
-              <div class="funnel-view active" id="funnelTab">
-                <div id="funnelDemoNote"></div>
-                <div class="funnel-visual" id="funnelVisual"></div>
-                <div id="funnelLoss"></div>
-              </div>
-              <div class="funnel-view" id="chainTab">
-                <div class="funnel" id="funnel"></div>
-              </div>
+	              <div class="tab-switch" role="tablist" aria-label="处理漏斗视图">
+	                <button class="active" data-funnel-tab="chain">真实处理链路</button>
+	                <button data-funnel-tab="funnel">示意漏斗</button>
+	              </div>
+	              <div class="funnel-view" id="funnelTab">
+	                <div id="funnelDemoNote"></div>
+	                <div class="funnel-visual" id="funnelVisual"></div>
+	                <div id="funnelLoss"></div>
+	              </div>
+	              <div class="funnel-view active" id="chainTab">
+	                <div class="funnel" id="funnel"></div>
+	              </div>
             </div>
             <div class="grid">
               <div class="panel">
@@ -1331,7 +1331,7 @@ def render_workbench_html() -> str:
       evidence_not_delivery_ready: "证据未达到正式交付要求", quality_check_pending: "尚未完成质量检查",
       quality_gate_failed: "质量门禁未通过", unsupported_claims_present: "存在未获证据支持的主张",
       claims_missing: "尚未生成主张", approved_claims_missing: "尚无审核通过的主张",
-      report_artifact_missing: "缺少报告产物", export_ready: "可正式交付", review_required: "需要人工复核",
+      report_artifact_missing: "缺少报告产物", export_ready: "可正式交付", review_required: "需要人工复核", remediation_required: "需要补证据或修复质量问题",
       in_progress: "处理中", complete_report_generation: "完成研报生成", resolve_rejected_claims: "处理已驳回主张",
       review_pending_claims: "复核待处理主张", run_evidence_gate: "执行证据检查",
       supplement_authoritative_evidence: "补充权威来源证据", run_quality_gate: "执行质量检查",
@@ -1339,8 +1339,11 @@ def render_workbench_html() -> str:
       import_or_generate_claims: "生成或导入主张", approve_supported_claims: "审核通过有证据支持的主张",
       generate_report_artifact: "生成报告产物",
       interrupted: "等待人工复核", resumed: "已从断点继续", checkpoint_retry: "断点重试",
-      filings: "公告/年报", documents: "文档资料", news: "新闻资料",
-    };
+	      filings: "公告/年报", documents: "文档资料", news: "新闻资料",
+	      content_depth: "正文完整度不足", llm_review: "智能复核问题", verifier: "主张校验问题",
+	      model_run_failure: "模型运行失败", claim_not_supported: "主张未获证据支持",
+	      numeric_mismatch: "数字不一致", retrieval_gap: "证据召回缺口",
+	    };
     const entityTypeMap = {
       company: "公司", ticker: "股票代码", industry: "行业", product: "产品", customer: "客户",
       supplier: "供应商", executive: "高管", metric: "财务指标", document: "文档",
@@ -1434,12 +1437,21 @@ def render_workbench_html() -> str:
     const textOf = (map, value) => map[String(value || "")] || fmt(value);
     const statusText = (value) => textOf(statusMap, value);
     const sourceText = (value) => textOf(sourceMap, value);
-    function productText(value) {
-      let text = fmt(value);
+	    function productText(value) {
+	      const mappedValue = statusMap[String(value || "")] || "";
+	      let text = mappedValue || fmt(value);
       const replacements = [
-        [/\bcontent_depth\b/g, "正文完整度"],
-        [/\bverifier\b/g, "主张校验"],
-        [/\bclaim_verifier\b/g, "主张校验"],
+	        [/\bcontent_depth\b/g, "正文完整度"],
+	        [/\bllm_review\b/g, "智能复核"],
+	        [/\bverifier\b/g, "主张校验"],
+	        [/\bagent\.planning\b/g, "任务规划智能体"],
+	        [/\bagent\.research\b/g, "资料检索智能体"],
+	        [/\bagent\.browser\b/g, "网页读取智能体"],
+	        [/\bagent\.analyze\b/g, "分析智能体"],
+	        [/\bagent\.risk\b/g, "风险分析智能体"],
+	        [/\bagent\.peer\b/g, "同行分析智能体"],
+	        [/\bagent\.gap_resolver\b/g, "证据补齐智能体"],
+	        [/\bclaim_verifier\b/g, "主张校验"],
         [/\bsec_edgar\b/g, "美国证监会披露"],
         [/\bevidence_ids\b/g, "证据绑定"],
         [/\bevidence_id\b/g, "证据追踪号"],
@@ -1599,8 +1611,10 @@ def render_workbench_html() -> str:
         source_access_or_fetch: "来源访问失败",
         valuation: "估值口径",
         period: "期间错配",
-        llm_review: "智能复核",
-        numeric: "数字核验",
+	        llm_review: "智能复核",
+	        content_depth: "正文完整度",
+	        verifier: "主张校验",
+	        numeric: "数字核验",
         structure: "结构完整性",
         freshness: "时效性",
       };
@@ -1788,7 +1802,7 @@ def render_workbench_html() -> str:
     }
 
     function exportFormatText(value) {
-      const map = { json: "JSON", markdown: "Markdown", html: "HTML", claims_csv: "主张 CSV", evidence_csv: "证据 CSV", facts_csv: "财务事实 CSV", review_csv: "复核记录 CSV" };
+      const map = { json: "JSON", markdown: "Markdown", html: "HTML", pdf: "PDF", docx: "DOCX", manifest: "导出清单", claims_csv: "主张 CSV", evidence_csv: "证据 CSV", facts_csv: "财务事实 CSV", review_csv: "复核记录 CSV" };
       return textOf(map, value);
     }
 
@@ -2774,7 +2788,7 @@ def render_workbench_html() -> str:
       const readiness = task?.delivery_readiness || {};
       const status = String(readiness.status || "");
       if (status) {
-        const classMap = { export_ready: "completed", review_required: "pending", in_progress: "running", queued: "queued", blocked: "failed" };
+        const classMap = { export_ready: "completed", review_required: "pending", remediation_required: "failed", in_progress: "running", queued: "queued", blocked: "failed" };
         return { key: classMap[status] || status, label: statusText(status) };
       }
       return { key: String(task?.status || "unknown"), label: statusText(task?.status || "unknown") };
@@ -2945,8 +2959,8 @@ def render_workbench_html() -> str:
     function renderEvaluation(payload) {
       const metrics = payload.metrics || {};
       const cards = [
-        { label: "交付通过率", value: percentText(metrics.delivery_pass_rate), note: `${number(metrics.delivery_pass_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务`, view: "tasks" },
-        { label: "平均质量分", value: scoreText(metrics.average_quality_score), note: "已进入质检任务均值", view: "tasks" },
+        { label: "正式交付通过率", value: percentText(metrics.delivery_pass_rate), note: `${number(metrics.delivery_pass_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务；需同时通过证据、质量和复核门禁`, view: "tasks" },
+        { label: "内容完整度评分", value: scoreText(metrics.average_quality_score), note: "仅衡量报告内容完整程度，不等同于正式交付状态", view: "tasks" },
         { label: "可追溯主张率", value: percentText(metrics.traceable_claim_rate), note: `${number(metrics.traceable_claim_count)} / ${number(metrics.claim_count)} 条主张`, view: "claims" },
         { label: "证据召回可用率", value: percentText(metrics.evidence_ready_task_rate), note: `${number(metrics.evidence_ready_task_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务`, view: "evidence" },
         { label: "关键来源覆盖率", value: percentText(metrics.source_quality_ready_task_rate), note: `${number(metrics.source_quality_ready_task_count)} 个任务来源充分`, view: "datasources" },
@@ -2954,7 +2968,7 @@ def render_workbench_html() -> str:
         { label: "数值一致性", value: percentText(metrics.numeric_consistency_rate), note: `${number(metrics.numeric_checked_count)} 条已检查`, view: "facts" },
         { label: "模型运行成功率", value: percentText(metrics.llm_success_rate), note: `${number(metrics.llm_success_count)} / ${number(metrics.llm_run_count)} 次运行`, view: "promptops" },
         { label: "结构化输出有效率", value: percentText(metrics.schema_valid_rate), note: `${number(metrics.schema_valid_count)} / ${number(metrics.schema_checked_count)} 次校验`, view: "promptops" },
-        { label: "平均耗时", value: metrics.average_llm_latency_ms == null ? "-" : `${number(metrics.average_llm_latency_ms)} ms`, note: `成本 $${fmt(metrics.llm_cost_usd)}`, view: "promptops" },
+        { label: "平均耗时", value: metrics.average_llm_latency_ms == null ? "-" : `${number(metrics.average_llm_latency_ms)} ms`, note: `成本 ${costText(metrics.llm_cost_usd, metrics.llm_run_count)}`, view: "promptops" },
       ];
       $("evaluationCards").innerHTML = cards.map((card) => `<button class="card metric-card" data-jump="${esc(card.view)}">
         <div class="label"><span>${esc(card.label)}</span><span class="hint">查看</span></div>
@@ -3045,19 +3059,19 @@ def render_workbench_html() -> str:
         ["降级运行", number(health.fallback_count)],
         ["结构化输出", percentText(health.schema_valid_rate)],
         ["平均耗时", health.average_latency_ms == null ? "-" : `${number(health.average_latency_ms)} ms`],
-        ["累计成本", `$${fmt(health.cost_usd)}`],
+        ["累计成本", costText(health.cost_usd, health.run_count)],
       ];
       $("evaluationModelHealth").innerHTML = rows.map(([label, value]) => `<div class="dist-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join("")
         + ((health.recent_roles || []).length ? `<div class="detail-section"><h3>最近运行角色</h3>${health.recent_roles.map((item) => `<div class="dist-row"><span>${esc(modelRoleText(item.role))}</span><strong>${esc(number(item.count))}</strong></div>`).join("")}</div>` : "");
     }
 
     function renderEvaluationFailures(items) {
-      $("evaluationFailures").innerHTML = items.length
-        ? items.map((item) => `<div class="mini-item">
-            <div class="mini-title">
-              <strong>${esc(item.label)}</strong>
-              <span class="status ${esc(item.severity)}">${esc(signalSeverityText(item.severity))}</span>
-            </div>
+	      $("evaluationFailures").innerHTML = items.length
+	        ? items.map((item) => `<div class="mini-item">
+	            <div class="mini-title">
+	              <strong>${esc(productText(item.key || item.label))}</strong>
+	              <span class="status ${esc(item.severity)}">${esc(signalSeverityText(item.severity))}</span>
+	            </div>
             <div class="mini-meta">${esc(number(item.count))} 项需要处理</div>
             <div style="margin-top:8px"><button class="btn" data-jump="${esc(item.next_view || "evaluation")}">查看处理入口</button></div>
           </div>`).join("")
@@ -3404,7 +3418,7 @@ def render_workbench_html() -> str:
       $("evaluationRuns").innerHTML = runs.length
         ? runs.map((run) => `<div class="mini-item">
             <div class="mini-title">
-              <strong>${esc(run.label || "模型运行")}</strong>
+	              <strong>${esc(modelRunLabelText(run))}</strong>
               <span class="status ${esc(run.status)}">${esc(statusText(run.status))}</span>
             </div>
             <div class="mini-meta">${esc(run.task_id || "未绑定任务")} · 结构化输出 ${esc(passText(run.schema_valid))} · ${esc(run.latency_ms == null ? "-" : run.latency_ms + " ms")} · ${esc(fmt(run.created_at))}</div>
@@ -3426,6 +3440,15 @@ def render_workbench_html() -> str:
       if (key === "average_quality_score") return scoreText(value);
       if (String(key || "").includes("rate")) return percentText(value);
       return fmt(value);
+    }
+
+    function costText(cost, runCount) {
+      // Show "成本未配置" when there are LLM runs but no cost data
+      const hasRuns = typeof runCount === "number" && runCount > 0;
+      const isZero = cost === null || cost === undefined || cost === "" || cost === 0;
+      if (hasRuns && isZero) return "成本未配置";
+      if (isZero) return "-";
+      return `$${fmt(cost)}`;
     }
 
     function scoreText(value) {
@@ -3450,19 +3473,39 @@ def render_workbench_html() -> str:
       return textOf(map, value);
     }
 
-    function modelRoleText(value) {
-      const map = {
-        quality_gate: "质量门禁",
-        verifier: "校验智能体",
-        writer: "研报撰写",
-        researcher: "资料检索",
-        planner: "任务规划",
-        final_answer: "最终研报",
-      };
-      return textOf(map, value);
-    }
+	    function modelRoleText(value) {
+	      const map = {
+	        quality_gate: "质量门禁",
+	        verifier: "校验智能体",
+	        writer: "研报撰写",
+	        researcher: "资料检索",
+	        planner: "任务规划",
+	        final_answer: "最终研报",
+	        gap_resolver: "证据补齐",
+	        analyze: "综合分析",
+	        browser: "网页读取",
+	        research: "资料检索",
+	        planning: "任务规划",
+	        risk: "风险分析",
+	        peer: "同行分析",
+	        "agent.gap_resolver": "证据补齐智能体",
+	        "agent.analyze": "分析智能体",
+	        "agent.browser": "网页读取智能体",
+	        "agent.research": "资料检索智能体",
+	        "agent.planning": "任务规划智能体",
+	        "agent.risk": "风险分析智能体",
+	        "agent.peer": "同行分析智能体",
+	      };
+	      return productText(textOf(map, value));
+	    }
 
-    async function loadDashboard() {
+	    function modelRunLabelText(run) {
+	      const raw = String(run?.label || run?.role || run?.model_role || run?.prompt_key || "").trim();
+	      if (!raw) return "模型运行";
+	      return modelRoleText(raw);
+	    }
+
+	    async function loadDashboard() {
       try {
         const [summary, funnel, recentTasksPayload] = await Promise.all([
           getJson("/api/dashboard/summary"),
@@ -4639,7 +4682,7 @@ def render_workbench_html() -> str:
           <div class="kv"><span class="label">耗时</span><span>${esc(number(item.latency_ms))} ms</span></div>
           <div class="kv"><span class="label">结构化校验</span><span>${esc(passText(item.schema_valid))}</span></div>
           <div class="kv"><span class="label">重试与降级</span><span>${esc(number(item.attempt_count))} 次尝试 · ${esc(item.fallback_used ? "已启用降级模型" : "未降级")}</span></div>
-          <div class="kv"><span class="label">Token / 成本</span><span>${esc(number(item.total_tokens))} tokens · $${esc(fmt(item.cost_usd))}</span></div>
+          <div class="kv"><span class="label">Token / 成本</span><span>${esc(number(item.total_tokens))} tokens · ${costText(item.cost_usd, item.run_count)}</span></div>
           <details class="detail-section" open><summary>运行输入</summary><div class="text-block">${esc(JSON.stringify(item.input || {}, null, 2))}</div></details>
           <details class="detail-section" open><summary>运行输出</summary><div class="text-block">${esc(JSON.stringify(item.output || {}, null, 2))}</div></details>
           <details class="detail-section"><summary>运行诊断</summary><div class="text-block">${esc(JSON.stringify(item.metadata || {}, null, 2))}</div></details>
@@ -5283,7 +5326,7 @@ def render_workbench_html() -> str:
             claims.length ? claims.map((claim) => `<div class="event"><strong>主张 ${esc(claim.id)}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}</div>`).join("") : `<div class="empty">暂无主张</div>`
           }</div>
           <div class="links" style="margin-top:10px"><button class="btn primary" data-export-package="${esc(item.task_id)}">预览正式导出包</button></div>
-          <div id="exportPackagePreview" class="detail-section"><h3>正式导出包</h3><div class="empty">预览后可检查正式包包含的主张、证据、财务事实和 CSV 表。</div></div>
+          <div id="exportPackagePreview" class="detail-section"><h3>正式导出包</h3><div class="empty">预览后可检查正式包包含的 PDF、DOCX、主张、证据、财务事实和 CSV 表。</div></div>
           ${systemInfoBlock("系统信息", [["任务编号", item.task_id]])}
           <div class="detail-section"><h3>说明</h3><div class="empty">${esc(item.formal_export_note || "正式导出包将在后续阶段接入。")}</div></div>`;
         bindExportPackageButtons($("exportDetail"));

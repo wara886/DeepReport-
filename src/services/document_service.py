@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, List
 
 from sqlalchemy import Select, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -115,6 +116,51 @@ class DocumentService:
             )
         return stmt
 
+    def process_document(self, document_id: int) -> dict[str, Any]:
+        """Chunk document content and create evidence items.
+
+        This is the canonical endpoint for turning imported document content
+        into searchable evidence. It is idempotent: calling again skips
+        already-processed chunks.
+        """
+        with self.session_factory() as session:
+            doc = self._get_document(session, str(document_id))
+            if not doc.content:
+                raise DocumentNotFound(f"Document {document_id} has no content to process")
+            steps = {s.step_name: s for s in doc.processing_steps}
+            now = _utc_now()
+
+            if "chunk" in steps and steps["chunk"].status == "success":
+                session.expire(doc)
+                return self.serialize_document(doc, include_detail=True)
+
+            content = doc.content
+            company = doc.company
+            chunks = _chunk_text(content, doc_id=doc.id, chunk_size=800, overlap=80)
+            evidence_items = _chunks_to_evidence(
+                chunks,
+                document=doc,
+                company=company,
+            )
+            for item in evidence_items:
+                session.add(item)
+            session.flush()
+            step = DocumentProcessingStep(
+                document_id=doc.id,
+                step_name="chunk",
+                status="success",
+                started_at=now,
+                finished_at=now,
+                metadata_json={
+                    "chunk_count": len(chunks),
+                    "evidence_count": len(evidence_items),
+                },
+            )
+            session.add(step)
+            session.commit()
+            session.expire(doc)
+        return self.get_document(document_id)
+
     def _get_document(self, session: Session, document_id: int | str) -> Document:
         try:
             normalized_id = int(document_id)
@@ -207,3 +253,83 @@ def _snippet(content: str | None, *, limit: int = 220) -> str:
 
 def _dt(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
+
+
+def _utc_now() -> datetime:
+    from datetime import timezone
+    return datetime.now(timezone.utc)
+
+
+# --- Document processing helpers ---
+
+import hashlib
+import re
+from typing import Any, Dict, List, Tuple
+
+
+@dataclass
+class _TextChunk:
+    content: str
+    index: int
+    page: int | None = None
+
+
+def _chunk_text(text: str, *, doc_id: int, chunk_size: int = 800, overlap: int = 80) -> List[_TextChunk]:
+    """Simple paragraph-aware text chunking."""
+    if not text:
+        return []
+    paragraphs = re.split(r"\n\s*\n", text)
+    chunks: List[_TextChunk] = []
+    buffer: List[str] = []
+    buf_len = 0
+    idx = 0
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+        if buf_len + len(para) > chunk_size and buffer:
+            chunk_text = "\n\n".join(buffer)
+            chunks.append(_TextChunk(content=chunk_text, index=idx))
+            overlap_paras = buffer[-1:] if overlap > 0 else []
+            overlap_len = len(buffer[-1]) if buffer else 0
+            buffer = list(overlap_paras)
+            buf_len = overlap_len
+            idx += 1
+        buffer.append(para)
+        buf_len += len(para)
+    if buffer:
+        chunk_text = "\n\n".join(buffer)
+        chunks.append(_TextChunk(content=chunk_text, index=idx))
+    return chunks
+
+
+def _chunks_to_evidence(
+    chunks: List[_TextChunk],
+    *,
+    document: Any,
+    company: Any | None,
+) -> List[EvidenceItem]:
+    """Convert text chunks into EvidenceItem records."""
+    items: List[EvidenceItem] = []
+    for chunk in chunks:
+        source_type = str(document.doc_type or "manual_text")
+        evidence_id = f"manual-ev-{document.id}-chunk-{chunk.index}"
+        items.append(
+            EvidenceItem(
+                evidence_id=evidence_id,
+                company_id=company.id if company else None,
+                document_id=document.id,
+                chunk_id=evidence_id,
+                source_type=source_type,
+                trust_level="low",
+                title=f"{document.title} (片段 {chunk.index + 1})",
+                content=chunk.content,
+                source_url=document.source_url,
+                page_no=chunk.page,
+                metadata_json={
+                    "chunk_index": chunk.index,
+                    "import_type": "manual_import",
+                },
+            )
+        )
+    return items

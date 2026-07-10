@@ -118,6 +118,25 @@ def test_quality_pass_does_not_override_pending_claim_review():
     assert state["delivery_readiness"]["blocking_reasons"] == ["pending_claim_review", "approved_claims_missing"]
 
 
+def test_quality_blocked_task_with_review_complete_requires_remediation():
+    metadata = completed_runtime_metadata()
+    metadata["report_runtime"]["lifecycle_status"] = "quality_blocked"
+    metadata["quality_result"]["delivery_gate"]["delivery_pass"] = False
+    task = task_stub(
+        status="quality_failed",
+        current_stage="quality_failed",
+        metadata=metadata,
+        claims=[approved_claim()],
+        artifacts=[report_artifact()],
+    )
+
+    state = build_report_run_state(task)
+
+    assert state["delivery_readiness"]["status"] == "remediation_required"
+    assert state["delivery_readiness"]["can_enter_human_review"] is False
+    assert "quality_gate_failed" in state["delivery_readiness"]["blocking_reasons"]
+
+
 def test_legacy_completed_task_is_compatible_but_marks_inferred_gates():
     task = task_stub(
         status="completed",

@@ -36,6 +36,8 @@ def test_workbench_exposes_export_center_entry_contract(temp_db_engine, tmp_path
     assert 'postJson(`/api/exports/${encodeURIComponent(taskId)}/package/files`, {})' in html
     assert "正式导出" in html
     assert "预览正式导出包" in html
+    assert 'pdf: "PDF"' in html
+    assert 'docx: "DOCX"' in html
     assert "生成下载文件" in html
     assert "下载文件" in html
     assert "仅已通过复核" in html

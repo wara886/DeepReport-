@@ -12,6 +12,7 @@ from src.report.chart_generator import generate_report_charts
 from src.report.chart_consistency import audit_chart_consistency
 from src.report.compliance_disclosure import append_compliance_disclosures, append_compliance_disclosures_to_html
 from src.report.docx_exporter import export_markdown_to_docx
+from src.report.pdf_exporter import export_markdown_to_pdf
 from src.report.html_report_generator import render_professional_html_report
 from src.report.report_enhancer import attach_charts_to_html, attach_charts_to_markdown, inject_chart_references, polish_report_html
 from src.report.section_contracts import (
@@ -37,6 +38,7 @@ __all__ = [
     "build_citations",
     "build_citations_from_map",
     "export_markdown_to_docx",
+    "export_markdown_to_pdf",
     "generate_report_charts",
     "polish_report_html",
     "render_professional_html_report",

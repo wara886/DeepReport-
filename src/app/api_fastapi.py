@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import threading
 from typing import Any, Optional
 from urllib import error, request as urlrequest
+import uuid
 
 from fastapi import BackgroundTasks
 from fastapi import FastAPI, Request
@@ -133,6 +134,14 @@ def create_fastapi_app(
         report_task_service=app.state.report_task_service,
     )
 
+    @app.middleware("http")
+    async def attach_request_trace(incoming: Request, call_next: Any) -> Response:
+        request_id = str(incoming.headers.get("x-request-id") or f"req_{uuid.uuid4().hex}")
+        incoming.state.request_id = request_id
+        response = await call_next(incoming)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "finsight-deepreport"}
@@ -165,6 +174,7 @@ def create_fastapi_app(
     @app.post("/api/report-tasks")
     async def create_report_task(incoming: Request, background_tasks: BackgroundTasks) -> Response:
         payload = await _json_payload(incoming)
+        payload.setdefault("request_id", str(incoming.state.request_id))
         run_async = bool(payload.pop("run_async", payload.pop("async_report_run", False)))
         run_immediately = bool(payload.pop("run_immediately", payload.pop("auto_run", payload.pop("run", False))))
         payload["run_mode"] = "async_generation" if run_immediately and run_async else ("sync_generation" if run_immediately else "queue_only")
@@ -1024,6 +1034,18 @@ def create_fastapi_app(
             return JSONResponse(content=_document_service(app).get_document(document_id))
         except DocumentNotFound:
             return JSONResponse(status_code=404, content={"error": f"Document not found: {document_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/documents/{document_id}/process")
+    def process_document(document_id: int) -> Response:
+        """Chunk document content into searchable evidence items.
+        Idempotent: already-processed documents skip chunking."""
+        try:
+            result = _document_service(app).process_document(document_id)
+            return JSONResponse(content=result)
+        except DocumentNotFound as exc:
+            return JSONResponse(status_code=404, content={"error": str(exc)})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 

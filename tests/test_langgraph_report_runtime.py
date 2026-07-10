@@ -9,6 +9,8 @@ def initial_state():
     return {
         "schema_version": "report_run_state.v1",
         "task_id": "task-langgraph",
+        "request_id": "request-langgraph",
+        "run_id": "run-langgraph",
         "symbol": "NVDA",
         "period": "FY2024",
         "report_type": "equity_research",
@@ -114,6 +116,9 @@ def test_langgraph_runtime_runs_typed_nodes_and_interrupts_for_claim_review():
         "finalize",
         "human_review",
     ]
+    assert all(item["request_id"] == "request-langgraph" for item in completed["runtime_events"])
+    assert all(item["run_id"] == "run-langgraph" for item in completed["runtime_events"])
+    assert all(item["duration_ms"] >= 0 for item in completed["runtime_events"])
     assert runtime.snapshot(thread_id="task-langgraph")["next"] == []
 
 

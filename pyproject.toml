@@ -18,6 +18,7 @@ dependencies = [
   "yfinance>=0.2.43",
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",
+  "reportlab>=4.2,<5",
   # Keep the runtime compatible with the repository's LangChain 0.2 integration.
   "langgraph>=0.2.76,<0.3.0",
   "langgraph-checkpoint-sqlite>=2.0.11,<3.0.0",
@@ -35,6 +36,7 @@ local_rag = [
 pdf = [
   "PyMuPDF>=1.23.8",
   "pdfplumber>=0.11.0",
+  "pypdf>=5,<6",
 ]
 docx = [
   "python-docx>=1.1.2",
