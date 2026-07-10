@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from src.data.source_quality import apply_source_quality
+from src.retrieval.canonical_chunks import normalize_retrieval_record
 
 
 @dataclass
@@ -33,10 +34,23 @@ class EvidenceRecord:
     authority_level: str = ""
     source_document_type: str = ""
     authority_score: float = 0.0
+    chunk_id: str = ""
+    parent_evidence_id: str = ""
+    chunk_type: str = ""
+    chunk_index: int | None = None
+    section_type: str = ""
+    section_title: str = ""
+    page_no: int | None = None
+    pages: List[int] | None = None
+    table_id: str = ""
+    row_id: str = ""
+    metric_name: str = ""
+    meta_tags: List[str] | None = None
+    metadata: Dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "EvidenceRecord":
-        annotated = apply_source_quality(dict(data))
+        annotated = apply_source_quality(normalize_retrieval_record(dict(data)))
         return cls(
             sample_id=str(annotated.get("sample_id", annotated.get("evidence_id", ""))),
             source_type=str(annotated.get("source_type", "")),
@@ -57,6 +71,19 @@ class EvidenceRecord:
             authority_level=str(annotated.get("authority_level", "")),
             source_document_type=str(annotated.get("source_document_type", "")),
             authority_score=float(annotated.get("authority_score", 0.0) or 0.0),
+            chunk_id=str(annotated.get("chunk_id") or annotated.get("sample_id") or ""),
+            parent_evidence_id=str(annotated.get("parent_evidence_id") or annotated.get("parent_sample_id") or ""),
+            chunk_type=str(annotated.get("chunk_type") or annotated.get("block_type") or ""),
+            chunk_index=_optional_int(annotated.get("chunk_index")),
+            section_type=str(annotated.get("section_type") or ""),
+            section_title=str(annotated.get("section_title") or ""),
+            page_no=_optional_int(annotated.get("page_no") or annotated.get("page")),
+            pages=_int_list(annotated.get("pages")),
+            table_id=str(annotated.get("table_id") or ""),
+            row_id=str(annotated.get("row_id") or ""),
+            metric_name=str(annotated.get("metric_name") or ""),
+            meta_tags=_str_list(annotated.get("meta_tags") or annotated.get("tags") or annotated.get("section_tags")),
+            metadata=annotated.get("metadata") if isinstance(annotated.get("metadata"), dict) else {},
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -80,11 +107,40 @@ class EvidenceRecord:
             "authority_level": self.authority_level,
             "source_document_type": self.source_document_type,
             "authority_score": self.authority_score,
+            "chunk_id": self.chunk_id,
+            "parent_evidence_id": self.parent_evidence_id,
+            "chunk_type": self.chunk_type,
+            "chunk_index": self.chunk_index,
+            "section_type": self.section_type,
+            "section_title": self.section_title,
+            "page_no": self.page_no,
+            "pages": list(self.pages or []),
+            "table_id": self.table_id,
+            "row_id": self.row_id,
+            "metric_name": self.metric_name,
+            "meta_tags": list(self.meta_tags or []),
+            "metadata": dict(self.metadata or {}),
         }
 
     @property
     def searchable_text(self) -> str:
-        return f"{self.title} {self.content}".strip()
+        metadata_terms = " ".join(
+            str(value)
+            for value in [
+                self.source_type,
+                self.source_document_type,
+                self.chunk_type,
+                self.section_type,
+                self.section_title,
+                self.table_id,
+                self.row_id,
+                self.metric_name,
+                " ".join(self.meta_tags or []),
+            ]
+            if value not in (None, "")
+        )
+        page_terms = " ".join(f"page_{page}" for page in self.pages or ([] if self.page_no is None else [self.page_no]))
+        return f"{self.title} {metadata_terms} {page_terms} {self.content}".strip()
 
 
 class EvidenceStore:
@@ -184,6 +240,32 @@ def _load_json_records(paths: List[Path]) -> tuple[List[Dict[str, Any]], Dict[st
             skipped_files.append(str(path))
             load_errors.append({"path": str(path), "error": str(exc)})
     return records, {"loaded_file_count": loaded, "skipped_files": skipped_files, "load_errors": load_errors}
+
+
+def _optional_int(value: Any) -> int | None:
+    try:
+        return int(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _int_list(value: Any) -> List[int]:
+    if value in (None, ""):
+        return []
+    values = value if isinstance(value, list) else [value]
+    output: List[int] = []
+    for item in values:
+        parsed = _optional_int(item)
+        if parsed is not None:
+            output.append(parsed)
+    return output
+
+
+def _str_list(value: Any) -> List[str]:
+    if value in (None, ""):
+        return []
+    values = value if isinstance(value, list) else [value]
+    return [str(item).strip() for item in values if str(item).strip()]
 
 
 def _classify_load_error(exc: Exception) -> str:
