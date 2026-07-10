@@ -550,6 +550,8 @@ class ReportTaskService:
         llm_run_id = self._record_quality_gate_harness_run(task_id, metadata=metadata, quality_result=result)
         score = _quality_score_from_result(result)
         delivery_pass = _dict_path(result, "delivery_gate").get("delivery_pass")
+        if delivery_pass is not True:
+            _mark_report_html_as_delivery_blocked(report_dir, result)
         with self.session() as session:
             task = self._get_task_for_update(session, task_id)
             if score is not None:
@@ -1578,6 +1580,26 @@ def _strip_report_title(markdown: str) -> str:
     if lines and lines[0].startswith("# "):
         return "\n".join(lines[1:])
     return str(markdown or "")
+
+
+def _mark_report_html_as_delivery_blocked(report_dir: Path, quality_result: dict[str, Any]) -> None:
+    report_dir = Path(report_dir)
+    html_path = report_dir / "report.html"
+    markdown_path = report_dir / "report.md"
+    if not html_path.exists() and not markdown_path.exists():
+        return
+    markdown = markdown_path.read_text(encoding="utf-8") if markdown_path.exists() else html_path.read_text(encoding="utf-8")
+    title = _report_title_from_markdown(markdown) or "研报草稿"
+    blockers = [str(item.get("message") or item.get("category") or item) for item in _top_quality_issues(quality_result)[:5]]
+    html = render_professional_html_report(
+        markdown=markdown,
+        title=title,
+        delivery_status="blocked_quality_gate_failed",
+        top_blockers=blockers,
+        quality_blocked=True,
+    )
+    html_path.parent.mkdir(parents=True, exist_ok=True)
+    html_path.write_text(html, encoding="utf-8")
 
 
 def _dedupe(values: list[str]) -> list[str]:

@@ -146,22 +146,25 @@ def test_quality_evaluator_passes_complete_company_report(tmp_path):
 # AMD 2025Q4 公司研报
 
 ## 执行摘要
-AMD 数据中心、客户端、游戏和嵌入式业务共同构成主营业务，本文基于 SEC 与行情来源形成中性投资结论。
+AMD 数据中心、客户端、游戏和嵌入式业务共同构成主营业务，本文基于 SEC 与行情来源形成中性投资结论。报告期内收入、利润、现金流和资产负债结构均围绕 2025Q4 口径展开，核心判断是公司仍具备产品组合优化和数据中心需求拉动的经营韧性，但估值已经反映较高增长预期。正式结论采用审慎表述：认可业务弹性，同时要求持续跟踪毛利率、库存和资本开支变化。
 
-## 主营业务与业务画像
-公司产品覆盖 CPU、GPU、数据中心加速卡和嵌入式芯片，并与 NVIDIA、Intel、Broadcom 做同行比较。
+## 业务概览
+公司产品覆盖 CPU、GPU、数据中心加速卡和嵌入式芯片，收入来源横跨数据中心、客户端、游戏和嵌入式业务。业务画像重点在于高性能计算产品和企业级客户需求，数据中心业务对整体收入增速和毛利率影响更大。客户端与游戏业务受消费电子周期影响较明显，嵌入式业务则提供相对稳定的工业和边缘计算需求。整体来看，公司商业模式依赖产品迭代、渠道覆盖、供应链执行和生态合作，长期竞争力来自架构迭代、软件生态和客户认证周期。
 
-## 财务分析与三表摘要
-收入和利润以亿美元展示，现金流和资产负债表口径与 2025Q4 对齐，毛利率为 50%。
+## 财务分析
+收入和利润以亿美元展示，现金流和资产负债表口径与 2025Q4 对齐，毛利率为 50%。利润表关注收入增速、毛利率和费用率变化，资产负债表关注现金、存货和股东权益结构，现金流量表关注经营现金流能否支撑研发投入和资本开支。若经营现金流持续高于净利润，盈利质量更稳健；若存货增加快于收入增长，则需要警惕需求放缓或产品迭代造成的减值压力。综合三表看，公司仍处于增长投入期，财务质量需要结合收入结构和现金转换率判断，并进一步观察研发投入效率、应收账款周转、自由现金流稳定性和资产周转效率，避免只看利润忽略现金。
 
-## 估值与敏感性
-估值使用 P/E 约为 20x 和 P/B 约为 5x，敏感性分析覆盖收入增速、毛利率和费用率情景。
+## 同行对比
+同行比较以 NVIDIA、Intel、Broadcom 等半导体公司为参考，但不同公司在 GPU、CPU、网络芯片和企业软件暴露度上存在差异。对 AMD 而言，最重要的可比维度包括收入增速、毛利率、研发投入强度、数据中心业务占比和库存周转。若公司毛利率低于高端 GPU 龙头，但收入增速和现金流改善更快，则估值应体现成长弹性与竞争压力并存。同行对比不能简单给出同一倍数结论，必须说明业务结构和利润率差异。
 
-## 投资建议
-维持中性评级，投资结论是估值与增长预期大体匹配。
+## 估值观察
+估值使用 P/E 约为 20x 和 P/B 约为 5x，敏感性分析覆盖收入增速、毛利率和费用率情景。当前估值判断重点不是单一倍数高低，而是增长假设能否被收入结构、毛利率改善和现金流质量支撑。如果数据中心业务继续扩大且费用率保持稳定，估值中枢有支撑；如果竞争加剧导致毛利率下行，估值溢价会收缩。DCF 输入仍需完整预测和折现率假设，因此本节只输出区间化观察，不给出确定性目标价，并把估值弹性主要绑定到收入增速、毛利率和现金流转换率。
 
-## 风险提示
-风险提示包括行业竞争、AI GPU 供给、库存和宏观需求风险。
+## 风险评估
+风险提示包括行业竞争、AI GPU 供给、库存和宏观需求风险。第一，AI 芯片和服务器 CPU 市场竞争激烈，竞争对手产品迭代可能压缩价格和毛利率。第二，供应链和先进制程产能如果出现约束，可能影响交付节奏和收入确认。第三，客户端与游戏需求受宏观消费周期影响，弱需求会放大库存和渠道折扣风险。第四，估值较依赖长期增长假设，若收入增速或现金流低于预期，市场可能重新定价。第五，出口管制、客户集中度和研发投入回报不确定性也会影响长期盈利弹性。
+
+## 投资结论
+维持中性观察评级，投资结论是估值与增长预期大体匹配。上行触发因素包括数据中心收入持续超预期、毛利率改善、经营现金流增强以及库存周转稳定。下行触发因素包括竞争导致价格压力、客户端需求恢复不及预期、资本开支拖累自由现金流，以及估值倍数回落。综合来看，公司经营质量具备韧性，但正式投资判断仍应以后续官方财报、现金流趋势和估值输入复核为前提。基于当前证据，报告更适合支持审慎跟踪和复核，而不是直接形成激进买入结论。
 
 ## 合规披露
 资料来源：SEC EDGAR、Yahoo Finance。本文仅供参考，不构成投资建议；不存在利益冲突，保持独立性披露。
@@ -660,6 +663,87 @@ def test_content_depth_gate_flags_sparse_sections(tmp_path):
     assert "content_depth" in categories, f"Expected content_depth issues, got categories: {categories}"
 
 
+def test_content_depth_gate_runs_without_section_dossiers(tmp_path):
+    """Core section contract must still run when section_dossiers.json is absent."""
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""# Test
+
+## 执行摘要
+短。
+
+## 业务概览
+短。
+
+## 财务分析
+短。
+
+## 同行对比
+短。
+
+## 估值观察
+短。
+
+## 风险评估
+短。
+
+## 投资结论
+短。
+""",
+    )
+
+    report = evaluate_report_quality(run_dir)
+    assert report["objective_pass"] is False
+    cd_issues = [i for i in report.get("issues", []) if i["category"] == "content_depth"]
+    assert any("执行摘要 content insufficient" in i["message"] for i in cd_issues)
+    assert any("投资结论 content insufficient" in i["message"] for i in cd_issues)
+
+
+def test_content_depth_gate_blocks_truncated_core_section(tmp_path):
+    """Half-sentence truncation in a core section blocks formal delivery."""
+    long_text = "公司收入、利润、现金流和资产负债结构均已形成可追溯分析，经营质量说明较完整。" * 8
+    run_dir = _write_run_with_dossiers(
+        tmp_path,
+        report_md=f"""# Test
+
+## 执行摘要
+{long_text}
+
+## 业务概览
+{long_text}
+
+## 财务分析
+{long_text}
+
+## 同行对比
+{long_text}
+
+## 估值观察
+本报告分别披露相对估值与
+
+## 风险评估
+{long_text}
+
+## 投资结论
+{long_text}
+""",
+        section_dossiers={
+            "executive_summary": {"min_content_level": "full"},
+            "business_overview": {"min_content_level": "full"},
+            "financial_analysis": {"min_content_level": "full"},
+            "peer_compare": {"min_content_level": "full"},
+            "valuation": {"min_content_level": "full"},
+            "risks": {"min_content_level": "full"},
+            "conclusion": {"min_content_level": "full"},
+        },
+    )
+
+    report = evaluate_report_quality(run_dir)
+    cd_issues = [i for i in report.get("issues", []) if i["category"] == "content_depth"]
+    assert report["objective_pass"] is False
+    assert any("估值观察 appears truncated" in i["message"] for i in cd_issues)
+
+
 def test_content_depth_allows_data_gap_sections(tmp_path):
     """Sections with data_gap mark are not penalized for being short."""
     run_dir = _write_run_with_dossiers(
@@ -673,13 +757,13 @@ def test_content_depth_allows_data_gap_sections(tmp_path):
 短文本，但应被 data_gap 豁免，不影响评分。
 
 ## 财务分析
-本期公司收入同比增长百分之二十四，达到三十五点四亿美元，其中数据中心业务占比首次超过客户端业务成为最大收入来源。毛利率提升至百分之五十二点一，同比提升一点八个百分点，主要受益于高毛利的数据中心 GPU 出货占比提升。经营现金流十二点三亿美元，自由现金流九点八亿美元，均同比改善。资产负债方面总资产八十亿美元，股东权益五十亿美元，资产负债率约百分之三十七点五。盈利质量方面 ROE 约为百分之十五，ROA 约为百分之九，均处于健康水平。整体来看公司财务表现稳健，盈利能力和现金流生成能力均在改善。
+本期公司收入同比增长百分之二十四，达到三十五点四亿美元，其中数据中心业务占比首次超过客户端业务成为最大收入来源。毛利率提升至百分之五十二点一，同比提升一点八个百分点，主要受益于高毛利的数据中心 GPU 出货占比提升。经营现金流十二点三亿美元，自由现金流九点八亿美元，均同比改善。资产负债方面总资产八十亿美元，股东权益五十亿美元，资产负债率约百分之三十七点五。盈利质量方面 ROE 约为百分之十五，ROA 约为百分之九，均处于健康水平。整体来看公司财务表现稳健，盈利能力和现金流生成能力均在改善，费用率变化也未显著削弱利润弹性。
 
 ## 同行对比
 短文本，但应被 data_gap 豁免，不影响评分。
 
 ## 估值观察
-本期采用 P/E、P/B 和 DCF 三种方法对公司进行估值。P/E 约为三十倍，基于过去十二个月净利润计算。P/B 约为十倍，反映市场对公司资产质量的定价。DCF 估值为一百八十亿美元，假设加权平均资本成本为百分之十，终端增长率为百分之三。综合估值在一百五十到二百亿美元区间。当前市值与模型估值差异在合理范围内，三种方法结果相互印证。估值差异主要来源于不同方法对增长假设和风险溢价的敏感度不同，投资者应参考多种方法综合判断。
+本期采用 P/E、P/B 和 DCF 三种方法对公司进行估值。P/E 约为三十倍，基于过去十二个月净利润计算。P/B 约为十倍，反映市场对公司资产质量的定价。DCF 估值为一百八十亿美元，假设加权平均资本成本为百分之十，终端增长率为百分之三。综合估值在一百五十到二百亿美元区间。当前市值与模型估值差异在合理范围内，三种方法结果相互印证。估值差异主要来源于不同方法对增长假设和风险溢价的敏感度不同，投资者应参考多种方法综合判断，并关注假设调整带来的估值区间变化。
 
 ## 风险评估
 公司面临多方面的风险因素。行业竞争加剧风险：AI 芯片市场份额争夺日趋激烈，主要竞争对手持续推出新产品。毛利率波动风险：产品组合变化可能影响整体毛利率水平，高毛利产品占比下降将压缩盈利空间。资本开支压力：为保持技术竞争力，公司持续加大研发和产能投入，可能对自由现金流形成压力。估值回调风险：当前估值倍数处于历史中高水平，市场情绪变化可能引发估值回调。数据覆盖限制：本报告风险分析基于公开披露信息，部分风险因素可能未被完整覆盖，投资者应结合自身判断做出决策。

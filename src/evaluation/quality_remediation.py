@@ -111,6 +111,8 @@ def _normalize_issues(items: List[Any]) -> List[Dict[str, Any]]:
 def _required_fixes(issues: List[Dict[str, Any]], quality: Dict[str, Any], llm_review: Dict[str, Any]) -> List[str]:
     text = _norm(" ".join(issue["category"] + " " + issue["message"] for issue in issues))
     fixes: List[str] = []
+    if "content_depth" in text or any(term in text for term in ["content insufficient", "truncated", "unfinished", "正文完整度", "section missing"]):
+        fixes.append("Rewrite thin, missing, or truncated core sections to meet the formal section contract before delivery.")
     if _mentions_financial_statements(text):
         fixes.append("Backfill income statement, balance sheet, and cash flow statement summaries from primary or structured evidence.")
     if any(term in text for term in ["valuation", "sensitivity", "p/e", "p/b", "p/s"]):
@@ -136,6 +138,8 @@ def _failed_sections(issues: List[Dict[str, Any]], quality: Dict[str, Any] | Non
     required = quality.get("required_checks", {}) if isinstance(quality, dict) and isinstance(quality.get("required_checks"), dict) else {}
     failed_required = set(_failed_required_keys(required)) if required and not required.get("passed", True) else set()
     output: List[str] = []
+    if any(term in text for term in ["content_depth", "content insufficient", "truncated", "unfinished", "section missing", "正文完整度"]):
+        output.extend(_sections_from_content_depth_issues(issues))
     if _mentions_financial_statements(text) or "has_three_table_summary" in failed_required:
         output.append("three_statement_analysis")
     if any(term in text for term in ["business", "identity", "industry", "主营", "业务"]):
@@ -152,6 +156,28 @@ def _failed_sections(issues: List[Dict[str, Any]], quality: Dict[str, Any] | Non
         output.append("investment_conclusion")
     if any(term in text for term in ["executive", "summary", "摘要"]):
         output.append("executive_summary")
+    return _dedupe(output)
+
+
+def _sections_from_content_depth_issues(issues: List[Dict[str, Any]]) -> List[str]:
+    mappings = [
+        ("executive_summary", ("执行摘要", "executive summary", "summary")),
+        ("business_profile", ("业务概览", "business overview", "business profile")),
+        ("financial_analysis", ("财务分析", "financial analysis")),
+        ("peer_comparison", ("同行对比", "peer", "comparison")),
+        ("valuation", ("估值观察", "valuation")),
+        ("sensitivity", ("估值敏感性", "sensitivity")),
+        ("risk", ("风险评估", "risk")),
+        ("investment_conclusion", ("投资结论", "investment conclusion", "recommendation")),
+    ]
+    output: List[str] = []
+    for issue in issues:
+        if issue.get("category") != "content_depth":
+            continue
+        message = _norm(str(issue.get("message") or ""))
+        for section, terms in mappings:
+            if any(_norm(term) in message for term in terms):
+                output.append(section)
     return _dedupe(output)
 
 
@@ -198,7 +224,22 @@ def _responsible_agents(issues: List[Dict[str, Any]], failed_sections: List[str]
         ("PeerAgent", ["peer_comparison", "peer", "comparison"]),
         ("ValuationAgent", ["valuation_analysis_role"]),
         ("RiskAgent", ["risk"]),
-        ("FinalAnswerAgent", ["company_report_requirement_fit", "professional_report_likeness", "empty", "hollow", "framework"]),
+        (
+            "FinalAnswerAgent",
+            [
+                "company_report_requirement_fit",
+                "professional_report_likeness",
+                "content_depth",
+                "content insufficient",
+                "truncated",
+                "unfinished",
+                "section missing",
+                "正文完整度",
+                "empty",
+                "hollow",
+                "framework",
+            ],
+        ),
     ]
     rows: List[Dict[str, str]] = []
     for agent, terms in mappings:

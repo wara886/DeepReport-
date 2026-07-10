@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import json
+from pathlib import Path
+import re
 import threading
 from typing import Any, Optional
 from urllib import error, request as urlrequest
@@ -131,6 +134,11 @@ def create_fastapi_app(
     app.state.investment_signal_service = InvestmentSignalService(session_factory=app.state.report_task_service.session)
     app.state.task_analysis_service = TaskAnalysisService(
         session_factory=app.state.report_task_service.session,
+        report_task_service=app.state.report_task_service,
+    )
+    app.state.artifact_roots = _artifact_roots(
+        output_dir=output_dir,
+        report_dir=report_dir,
         report_task_service=app.state.report_task_service,
     )
 
@@ -1226,6 +1234,12 @@ def create_fastapi_app(
 
     @app.get("/artifacts/{artifact_path:path}")
     def artifacts(artifact_path: str, incoming: Request) -> Response:
+        local_artifact = _resolve_artifact_path(app, artifact_path)
+        if local_artifact is not None:
+            guarded = _guard_report_html_delivery_label(app, local_artifact)
+            if guarded is not None:
+                return guarded
+            return FileResponse(local_artifact)
         suffix = f"?{incoming.url.query}" if incoming.url.query else ""
         return _forward(app, f"/artifacts/{artifact_path}{suffix}", method="GET")
 
@@ -1339,6 +1353,134 @@ def _forward(app: FastAPI, path: str, *, method: str, body: bytes | None = None)
     except Exception as exc:
         return JSONResponse(status_code=502, content={"error": f"upstream request failed: {exc}"})
     return Response(content=content, status_code=status_code, media_type=content_type.split(";", 1)[0])
+
+
+def _artifact_roots(
+    *,
+    output_dir: str | Path,
+    report_dir: str | Path,
+    report_task_service: ReportTaskService,
+) -> list[Path]:
+    candidates = [
+        Path(report_dir),
+        Path(output_dir),
+        getattr(report_task_service, "report_root", None),
+        getattr(report_task_service, "output_root", None),
+        Path(USER_REPORT_DIR),
+        Path(USER_OUTPUT_DIR),
+        Path(DEV_REPORT_DIR),
+        Path(DEV_OUTPUT_DIR),
+        Path("data/export_packages"),
+    ]
+    roots: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        root = Path(candidate).resolve()
+        if root in seen:
+            continue
+        seen.add(root)
+        roots.append(root)
+    return roots
+
+
+def _resolve_artifact_path(app: FastAPI, artifact_path: str) -> Path | None:
+    normalized = artifact_path.split("?", 1)[0].strip().lstrip("/")
+    if not normalized or "\x00" in normalized:
+        return None
+    relative = Path(normalized)
+    if relative.is_absolute() or any(part in ("", ".", "..") for part in relative.parts):
+        return None
+
+    roots = list(getattr(app.state, "artifact_roots", []) or [])
+    if relative.parts and relative.parts[0] == "runs":
+        candidates = [root / relative for root in roots]
+    else:
+        candidates = [root / relative for root in roots]
+        if relative.parts and relative.parts[0] not in {"runs", "export_packages"}:
+            candidates.extend(root / "runs" / relative for root in roots)
+
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if not _is_within_any_root(resolved, roots):
+            continue
+        if resolved.is_file():
+            return resolved
+    return None
+
+
+def _guard_report_html_delivery_label(app: FastAPI, artifact_path: Path) -> Response | None:
+    if artifact_path.name != "report.html":
+        return None
+    if "runs" not in artifact_path.parts or "reports" not in artifact_path.parts:
+        return None
+
+    gate = _find_delivery_gate_for_report(app, artifact_path)
+    if not isinstance(gate, dict) or gate.get("delivery_pass") is not False:
+        return None
+
+    try:
+        html = artifact_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    blocked_label = "草稿生成，正式交付阻塞"
+    if blocked_label not in html:
+        html = re.sub(r"正常(?:生成|交付)\s*·\s*\d{1,3}%", blocked_label, html)
+        html = re.sub(r"需复核\s*·\s*\d{1,3}%", blocked_label, html)
+        html = html.replace("正常生成", blocked_label)
+        html = html.replace("正常交付", blocked_label)
+        html = html.replace("需复核", blocked_label)
+        if "正式交付阻塞" not in html:
+            warning = (
+                '<div class="degraded-warning">'
+                "<strong>草稿版本：</strong>当前报告未通过正式交付门禁，请先处理质量、证据或复核阻塞原因。"
+                "</div>"
+            )
+            html = html.replace("</header>", f"{warning}</header>", 1)
+    return Response(content=html, media_type="text/html")
+
+
+def _find_delivery_gate_for_report(app: FastAPI, report_html: Path) -> dict[str, Any] | None:
+    try:
+        parts = report_html.resolve().parts
+    except OSError:
+        return None
+    for idx, part in enumerate(parts):
+        if part != "runs" or idx + 2 >= len(parts):
+            continue
+        run_id = parts[idx + 1]
+        if parts[idx + 2] != "reports":
+            continue
+        for root in list(getattr(app.state, "artifact_roots", []) or []):
+            candidate = Path(root) / "runs" / run_id / "outputs" / "delivery_gate.json"
+            try:
+                resolved = candidate.resolve()
+            except OSError:
+                continue
+            if not _is_within_any_root(resolved, list(getattr(app.state, "artifact_roots", []) or [])):
+                continue
+            if resolved.is_file():
+                try:
+                    payload = json.loads(resolved.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    return None
+                return payload if isinstance(payload, dict) else None
+    return None
+
+
+def _is_within_any_root(path: Path, roots: list[Path]) -> bool:
+    for root in roots:
+        try:
+            path.relative_to(root.resolve())
+            return True
+        except (OSError, ValueError):
+            continue
+    return False
 
 
 app = create_fastapi_app()

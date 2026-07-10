@@ -78,6 +78,7 @@ def test_report_task_quality_gate_failure_marks_task_as_quality_failed(tmp_path)
             json={"task_id": "task-quality-failed", "symbol": "NVDA", "period": "FY2024", "run_immediately": True},
         )
         artifacts = client.get("/api/report-tasks/task-quality-failed/artifacts")
+        html = client.get("/artifacts/runs/task-quality-failed/reports/report.html")
 
     assert response.status_code == 201
     body = response.json()
@@ -97,6 +98,10 @@ def test_report_task_quality_gate_failure_marks_task_as_quality_failed(tmp_path)
     assert body["events"][-1]["stage"] == "quality_failed"
     artifact_types = {item["artifact_type"] for item in artifacts.json()["artifacts"]}
     assert {"quality_report", "llm_quality_review", "delivery_gate"}.issubset(artifact_types)
+    assert html.status_code == 200
+    assert "草稿生成，正式交付阻塞" in html.text
+    assert "执行摘要深度不足" in html.text
+    assert "正常生成" not in html.text
 
 
 def test_report_task_quality_failed_task_can_be_retried(tmp_path):

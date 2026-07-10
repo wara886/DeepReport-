@@ -53,8 +53,6 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
     )
     llm_score_pass = llm_score_strict_pass or llm_score_relaxed_pass
     llm_review_pass = bool(llm_review.get("llm_review_pass", False)) and llm_score_pass and not blocking_issue
-    # 区分 content_depth blockers 和其他 blockers
-    # content_depth 是内容长度不足，不影响数据准确性，用户模式下不阻断
     content_depth_blockers = [
         item for item in issues
         if item.get("severity") in {"fatal", "blocker"}
@@ -65,20 +63,19 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
         if item.get("severity") in {"fatal", "blocker"}
         and item.get("category") != "content_depth"
     ]
-    # 用户模式：content_depth blockers 不阻断交付（内容可以后续改进，不影响数据准确性）
-    # 只要其他 blocker 为 0、verifier 通过、总分达标即可
     total = quality.get("total_score", 0)
     threshold = quality.get("quality_threshold", 0.82)
     score_pass = isinstance(total, (int, float)) and total >= threshold
     diagnostic_delivery_pass = (
         score_pass
+        and objective_pass
         and verifier_passed
-        and len(other_blockers) == 0
-        and not llm_blocking_issue
+        and llm_review_pass
+        and not blocking_issue
     )
     # Delivery gate: use actual computed value.
-    # diagnostic_delivery_pass excludes content_depth blockers (内容长度不足不阻断).
-    # This was previously hardcoded True during development; now it reflects the real gate.
+    # Content-depth blockers are formal delivery blockers: a truncated or
+    # placeholder report may be a draft, but it is not a deliverable report.
     delivery_pass = bool(diagnostic_delivery_pass)
     status = "completed"
     return {
@@ -103,7 +100,7 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
             "company_report_score": summary.get("company_report_overall_score") or summary.get("company_report_score"),
         },
         "gate_requirements": {
-            "formula": "diagnostic_delivery_pass = score_pass && verifier_passed && no_non_content_blockers && no_llm_blocking_issue",
+            "formula": "delivery_pass = score_pass && objective_pass && verifier_passed && llm_review_pass && no_fatal_or_blocker",
             "diagnostic_only": True,
             "verification_passed": verifier_passed,
             "objective_pass": objective_pass,
@@ -114,6 +111,7 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
             "llm_review_relaxed_score_pass": llm_score_relaxed_pass,
             "llm_review_no_fatal_or_blocker": not llm_blocking_issue,
             "delivery_no_fatal_or_blocker": not blocking_issue,
+            "content_depth_blocks_formal_delivery": bool(content_depth_blockers),
         },
         "issue_counts": {
             "fatal": sum(1 for item in issues if item.get("severity") == "fatal"),

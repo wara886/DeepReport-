@@ -221,14 +221,17 @@ def _render_header(
     top_blockers: list[str] | None = None,
     quality_blocked: bool = False,
 ) -> str:
-    is_zh = _contains_cjk(title)
+    blocker_text = " ".join(str(item or "") for item in (top_blockers or []))
+    is_zh = _contains_cjk(title + blocker_text)
     blocked = quality_blocked or delivery_status.startswith("blocked") or delivery_status.startswith("degraded")
-    subtitle = "自动财务观察报告（已降级）" if (is_zh and blocked) else (
+    subtitle = "草稿研报（正式交付阻塞）" if (is_zh and blocked) else (
         "多智能体深度研究报告" if is_zh else (
-            "Auto Financial Observation Report (Degraded)" if blocked else "Multi-Agent Deep Research Report"
+            "Draft Report (Formal Delivery Blocked)" if blocked else "Multi-Agent Deep Research Report"
         )
     )
-    status = "需复核" if (is_zh and blocked) else ("正常生成" if is_zh else ("Review Required" if blocked else "Generated"))
+    status = "草稿生成，正式交付阻塞" if (is_zh and blocked) else (
+        "正常生成" if is_zh else ("Draft Generated, Formal Delivery Blocked" if blocked else "Generated")
+    )
     score = _estimate_confidence(chart_count, citation_count, delivery_status)
     diagnostic_label = "质量诊断" if is_zh else "Quality review"
     blocker_labels = [_user_blocker_label(item, is_zh=is_zh) for item in (top_blockers or [])[:5]]
@@ -265,8 +268,8 @@ def _user_blocker_label(value: str, is_zh: bool) -> str:
 
 def _render_degraded_warning(is_zh: bool = False) -> str:
     if is_zh:
-        return """<div class="degraded-warning"><i class="fas fa-exclamation-triangle"></i> 部分章节证据覆盖仍需复核，报告已保留降级说明。</div>"""
-    return """<div class="degraded-warning"><i class="fas fa-exclamation-triangle"></i> Some sections still require evidence review; the report preserves degradation notes.</div>"""
+        return """<div class="degraded-warning"><i class="fas fa-exclamation-triangle"></i> 当前报告为草稿版本，正式交付仍被证据、章节质量、主张复核或导出门禁阻塞。请先处理质量诊断中的阻塞原因。</div>"""
+    return """<div class="degraded-warning"><i class="fas fa-exclamation-triangle"></i> This is a draft report. Formal delivery is still blocked by evidence, section quality, claim review, or export readiness gates.</div>"""
 
 
 def _render_toc(entries: list[str]) -> str:

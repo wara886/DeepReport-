@@ -409,6 +409,12 @@ HALF_SENTENCE_MARKERS = [
     "needs_attention",
 ]
 
+HALF_SENTENCE_REGEXES = [
+    r"(?:与|及|和|并|或|、|：|，|,)\s*$",
+    r"(?:本报告|本节|公司|风险|估值|结论)[^。\n]{8,80}(?:与|及|和|并|或|、|：|，|,)\s*$",
+    r"(?:分别披露|主要包括|主要来自|体现为|取决于)[^。\n]{0,80}$",
+]
+
 # Internal debug/ID patterns that must never appear in the final report body
 DEBUG_LEAK_PATTERNS = [
     "metric_count",
@@ -457,11 +463,10 @@ CHART_INTERNAL_LABEL_PATTERNS = [
 
 
 def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:
-    """Check each core section for minimum content depth using section_dossiers."""
+    """Check every core section against the formal delivery section contract."""
     section_dossiers = artifacts.get("section_dossiers", {})
-    if not isinstance(section_dossiers, dict) or not section_dossiers:
-        return 1.0  # no dossiers available, skip check
-
+    if not isinstance(section_dossiers, dict):
+        section_dossiers = {}
     text = _report_text(artifacts)
     total_checks = len(CONTENT_DEPTH_THRESHOLDS)
     passes = 0
@@ -472,22 +477,26 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
             continue
         body = _section_body(text, (heading,))
         if not body:
-            _issue(issues, "warning", "content_depth", f"section {heading} missing content depth")
+            _issue(issues, "blocker", "content_depth", f"{heading} section missing")
             continue
         chinese_chars = len(re.sub(r"[\s\n\r#\-*:：，、。）（\[\]【】\"''a-zA-Z0-9]", "", body))
         if chinese_chars >= threshold:
-            passes += 1
-        else:
-            dossier = section_dossiers.get(section_key, {})
-            if not isinstance(dossier, dict):
+            if not _section_has_truncation(body):
                 passes += 1
                 continue
-            min_content_level = dossier.get("min_content_level", "")
-            if min_content_level == "data_gap":
-                passes += 1  # data_gap sections are allowed to be short
-                continue
-            _issue(issues, "blocker", "content_depth",
-                   f"{heading} content insufficient: only {chinese_chars} chars (threshold {threshold})")
+        dossier = section_dossiers.get(section_key, {})
+        if isinstance(dossier, dict) and dossier.get("min_content_level") == "data_gap":
+            passes += 1
+            continue
+        if chinese_chars < threshold:
+            _issue(
+                issues,
+                "blocker",
+                "content_depth",
+                f"{heading} content insufficient: only {chinese_chars} chars (threshold {threshold})",
+            )
+        if _section_has_truncation(body):
+            _issue(issues, "blocker", "content_depth", f"{heading} appears truncated or ends with an unfinished phrase")
 
     # Template phrase detection
     for phrase in TEMPLATE_PHRASES:
@@ -498,6 +507,9 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
     for marker in HALF_SENTENCE_MARKERS:
         if marker in text:
             _issue(issues, "blocker", "content_depth", f"report contains half-sentence marker: {marker}")
+    for pattern in HALF_SENTENCE_REGEXES:
+        if re.search(pattern, text.strip(), flags=re.MULTILINE):
+            _issue(issues, "blocker", "content_depth", f"report contains unfinished sentence pattern: {pattern}")
 
     # Debug/internal ID leakage detection
     for pattern in DEBUG_LEAK_PATTERNS:
@@ -533,6 +545,18 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
     if total_checks == 0:
         return 1.0
     return round(passes / total_checks, 4)
+
+
+def _section_has_truncation(body: str) -> bool:
+    lines = [line.strip() for line in str(body or "").splitlines() if line.strip()]
+    if not lines:
+        return False
+    tail = lines[-1]
+    if tail.startswith("|"):
+        return False
+    if tail.endswith(("。", "！", "？", ".", "!", "?", "）", ")", "]", "】")):
+        return False
+    return bool(re.search(r"(?:与|及|和|并|或|、|：|，|,)$", tail) or len(tail) >= 12)
 
 
 def _has_orphan_numeric_summary(text: str) -> bool:
@@ -1270,7 +1294,7 @@ def _blackboard_valuation_gap_is_explained(artifacts: Dict[str, Any]) -> bool:
 
 
 def _investment_conclusion_has_direction_and_reason(text: str) -> bool:
-    body = _section_body(text, ("investment_conclusion", "recommendation", "rating", "投资建议", "评级"))
+    body = _section_body(text, ("investment_conclusion", "recommendation", "rating", "投资结论", "投资建议", "评级"))
     if not body:
         return False
     has_direction = _contains_any(body, ("neutral", "cautious", "positive", "buy", "hold", "sell", "watch", "中性", "买入", "持有", "卖出"))

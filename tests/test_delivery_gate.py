@@ -88,6 +88,50 @@ def test_delivery_gate_treats_nonblocking_evidence_gap_as_warning(tmp_path):
     assert gate["issue_counts"]["warning"] == 1
 
 
+def test_delivery_gate_blocks_formal_delivery_on_content_depth_blocker(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    for name, payload in {
+        "verification_report.json": {"passed": True},
+        "quality_report.json": {
+            "objective_pass": True,
+            "total_score": 0.92,
+            "issues": [
+                {
+                    "severity": "blocker",
+                    "category": "content_depth",
+                    "message": "执行摘要 content insufficient: only 36 chars",
+                }
+            ],
+        },
+        "llm_quality_review.json": {"llm_review_pass": True, "total_score": 0.86, "issues": []},
+    }.items():
+        (outputs / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["delivery_pass"] is False
+    assert gate["diagnostic_delivery_pass"] is False
+    assert gate["blocker_counts"]["content_depth"] == 1
+    assert gate["gate_requirements"]["content_depth_blocks_formal_delivery"] is True
+
+
+def test_delivery_gate_requires_objective_pass_even_when_scores_are_high(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    for name, payload in {
+        "verification_report.json": {"passed": True},
+        "quality_report.json": {"objective_pass": False, "total_score": 0.95, "issues": []},
+        "llm_quality_review.json": {"llm_review_pass": True, "total_score": 0.87, "issues": []},
+    }.items():
+        (outputs / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["delivery_pass"] is False
+    assert gate["objective_pass"] is False
+
+
 def test_delivery_gate_never_emits_none_message_and_enforces_llm_score(tmp_path):
     outputs = tmp_path / "run" / "company" / "outputs"
     outputs.mkdir(parents=True)
