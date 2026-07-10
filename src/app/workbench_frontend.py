@@ -5263,9 +5263,30 @@ def render_workbench_html() -> str:
           <div class="detail-section"><h3>CSV 表</h3><div class="mini-list">
             ${Object.entries(csv).map(([key, value]) => `<div class="mini-item"><strong>${esc(exportCsvText(key))}</strong><br><span class="label">${esc(String(value || "").split("\n").filter(Boolean).length)} 行</span></div>`).join("")}
           </div></div>
+          <div class="links" style="margin-top:10px"><button class="btn primary" data-write-export-package="${esc(taskId)}">生成下载文件</button></div>
+          <div id="exportPackageFiles" class="detail-section"><h3>下载文件</h3><div class="empty">生成后会提供 JSON、Markdown、HTML 和 CSV 下载链接。</div></div>
           <div class="detail-section"><h3>Markdown 预览</h3><pre class="text-block">${esc((pkg.markdown || "").slice(0, 1200))}</pre></div>`;
+        bindWriteExportPackageButtons($("exportPackagePreview"));
       } catch (error) {
         showLoadError("exportPackagePreview");
+      }
+    }
+
+    function bindWriteExportPackageButtons(root = document) {
+      root.querySelectorAll("[data-write-export-package]").forEach((btn) => {
+        if (btn.dataset.boundWriteExportPackage === "true") return;
+        btn.dataset.boundWriteExportPackage = "true";
+        btn.addEventListener("click", () => writeExportPackageFiles(btn.dataset.writeExportPackage));
+      });
+    }
+
+    async function writeExportPackageFiles(taskId) {
+      try {
+        const result = await postJson(`/api/exports/${encodeURIComponent(taskId)}/package/files`, {});
+        const files = result.files || [];
+        $("exportPackageFiles").innerHTML = `<h3>下载文件</h3>${files.length ? `<div class="mini-list">${files.map((file) => `<div class="mini-item"><strong>${esc(exportFormatText(file.format))}</strong><br><a href="${esc(file.download_url)}" target="_blank">下载 ${esc(file.filename)}</a><br><span class="label">${esc(number(file.size_bytes))} bytes</span></div>`).join("")}</div>` : `<div class="empty">暂无可下载文件。</div>`}`;
+      } catch (error) {
+        showLoadError("exportPackageFiles");
       }
     }
 

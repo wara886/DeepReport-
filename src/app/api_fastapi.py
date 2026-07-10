@@ -9,7 +9,7 @@ from urllib import error, request as urlrequest
 
 from fastapi import BackgroundTasks
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from src.app.web_ui import DEFAULT_OUTPUT_DIR, DEFAULT_REPORT_DIR, run_ui_server
 from src.app.workbench_frontend import render_workbench_html
@@ -1012,6 +1012,23 @@ def create_fastapi_app(
             return JSONResponse(status_code=404, content={"error": f"Export entry not found: {task_id}"})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/exports/{task_id}/package/files")
+    def write_export_package_files(task_id: str) -> Response:
+        try:
+            return JSONResponse(content=_export_service(app).write_export_package(task_id))
+        except ExportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Export entry not found: {task_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/exports/{task_id}/package/files/{filename}")
+    def download_export_package_file(task_id: str, filename: str) -> Response:
+        try:
+            path = _export_service(app).get_package_file(task_id, filename)
+            return FileResponse(path)
+        except FileNotFoundError:
+            return JSONResponse(status_code=404, content={"error": f"Export package file not found: {filename}"})
 
     @app.post("/api/claims/{claim_id}/approve")
     async def approve_claim(claim_id: int, incoming: Request) -> Response:

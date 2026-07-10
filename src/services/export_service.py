@@ -7,6 +7,8 @@ from collections.abc import Callable
 import csv
 from datetime import datetime
 from io import StringIO
+import json
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func, select
@@ -32,8 +34,9 @@ class ExportService:
         "verification_report",
     }
 
-    def __init__(self, *, session_factory: Callable[[], Session]) -> None:
+    def __init__(self, *, session_factory: Callable[[], Session], package_root: str | Path = "data/export_packages") -> None:
         self.session_factory = session_factory
+        self.package_root = Path(package_root)
 
     def list_export_entries(self, *, status: str | None = None, symbol: str | None = None, limit: int = 50) -> dict[str, Any]:
         limit = max(1, min(int(limit or 50), 200))
@@ -140,6 +143,56 @@ class ExportService:
                 "review_records": _review_csv(review_records),
             },
         }
+
+    def write_export_package(self, task_id: str) -> dict[str, Any]:
+        package = self.build_export_package(task_id)
+        target_dir = self.package_root / _safe_task_dir(task_id)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        files = {
+            "json": ("package.json", json.dumps(package["json"], ensure_ascii=False, indent=2)),
+            "markdown": ("report_package.md", package["markdown"]),
+            "html": ("report_package.html", package["html"]),
+            "claims_csv": ("claims.csv", package["csv"]["claims"]),
+            "evidence_csv": ("evidence.csv", package["csv"]["evidence"]),
+            "facts_csv": ("financial_facts.csv", package["csv"]["financial_facts"]),
+            "review_csv": ("review_records.csv", package["csv"]["review_records"]),
+        }
+        written = []
+        for key, (filename, content) in files.items():
+            path = target_dir / filename
+            path.write_text(content, encoding="utf-8")
+            written.append(
+                {
+                    "format": key,
+                    "filename": filename,
+                    "path": str(path),
+                    "download_url": f"/api/exports/{task_id}/package/files/{filename}",
+                    "size_bytes": path.stat().st_size,
+                }
+            )
+        return {
+            "task_id": task_id,
+            "package_dir": str(target_dir),
+            "files": written,
+            "readiness": package["json"]["readiness"],
+        }
+
+    def get_package_file(self, task_id: str, filename: str) -> Path:
+        allowed = {
+            "package.json",
+            "report_package.md",
+            "report_package.html",
+            "claims.csv",
+            "evidence.csv",
+            "financial_facts.csv",
+            "review_records.csv",
+        }
+        if filename not in allowed:
+            raise FileNotFoundError(filename)
+        path = self.package_root / _safe_task_dir(task_id) / filename
+        if not path.exists() or not path.is_file():
+            raise FileNotFoundError(filename)
+        return path
 
     def artifact_distribution(self) -> dict[str, int]:
         with self.session_factory() as session:
@@ -364,6 +417,11 @@ def _html_escape(value: Any) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
+
+
+def _safe_task_dir(value: str) -> str:
+    safe = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in str(value or "").strip())
+    return safe or "task"
 
 
 def _dt(value: datetime | None) -> str | None:

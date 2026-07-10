@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from src.app.api_fastapi import create_fastapi_app
 from src.db.models import ClaimEvidence, Company, EvidenceItem, FinancialFact, ReportArtifact, ReportClaim, ReportTask, ReviewRecord
+from src.services.export_service import ExportService
 from src.services.report_task_service import ReportTaskService
 
 
@@ -18,6 +19,7 @@ def build_export_client(temp_db_engine, tmp_path):
         memory_root=str(tmp_path / "legacy_memory"),
         report_task_service=service,
     )
+    app.state.export_service = ExportService(session_factory=service.session, package_root=tmp_path / "export_packages")
     return service, TestClient(app)
 
 
@@ -146,3 +148,22 @@ def test_export_package_excludes_rejected_and_pending_claims(temp_db_engine, tmp
     assert "Rejected claim." not in body["markdown"]
     assert "Approved claim." in body["csv"]["claims"]
     assert "Rejected claim." not in body["csv"]["claims"]
+
+
+def test_export_package_files_are_written_and_downloadable(temp_db_engine, tmp_path):
+    service, client = build_export_client(temp_db_engine, tmp_path)
+    seed_export_task(service)
+
+    with client:
+        write_response = client.post("/api/exports/task-export/package/files")
+        download_response = client.get("/api/exports/task-export/package/files/claims.csv")
+        missing_response = client.get("/api/exports/task-export/package/files/secret.txt")
+
+    assert write_response.status_code == 200
+    body = write_response.json()
+    filenames = {item["filename"] for item in body["files"]}
+    assert {"package.json", "report_package.md", "report_package.html", "claims.csv", "evidence.csv", "financial_facts.csv", "review_records.csv"}.issubset(filenames)
+    assert all(item["download_url"].startswith("/api/exports/task-export/package/files/") for item in body["files"])
+    assert download_response.status_code == 200
+    assert "Approved claim." in download_response.text
+    assert missing_response.status_code == 404
