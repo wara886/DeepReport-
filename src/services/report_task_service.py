@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.app.chat_task_parser import latest_completed_period
 from src.app.web_ui import run_delivery_quality_pipeline
+from src.data.company_universe import infer_market_from_symbol
 from src.data.source_authority import grade_source_authority
 from src.db.init_db import init_db
 from src.db.models import (
@@ -906,8 +907,10 @@ def _source_display_name(source_key: str) -> str:
     mapping = {
         "sec_edgar": "美国证监会披露",
         "cninfo": "巨潮资讯",
+        "cninfo_announcement": "巨潮资讯披露",
         "cninfo_announcements": "巨潮资讯公告",
         "hkex": "港交所披露",
+        "hkex_announcement": "港交所披露",
         "hkex_announcements": "港交所公告",
         "yahoo_finance": "雅虎财经",
         "serper": "公开网页检索",
@@ -1057,39 +1060,15 @@ def _patch_report_markdown_with_official_evidence(
     symbol = str(metadata.get("symbol") or "")
     period = str(metadata.get("period") or "")
     source_names = "、".join(_dedupe([_source_label(record) for record in official_records])[:3])
-    summary = _content_preview(primary)
-    risk_preview = _content_preview(secondary if secondary is not primary else primary)
+    meta = _report_meta_tags(symbol=symbol, official_records=official_records)
     claim_count = len([claim for claim in claims if isinstance(claim, dict)])
 
     sections = {
-        "执行摘要": (
-            f"{company}（{symbol}）{period} 研报已接入 {source_names} 等权威来源。"
-            f"核心判断先以官方披露为边界：{summary} [{ev1}] "
-            f"当前可形成草稿级研究结论，正式交付仍需人工复核关键数字、期间口径和估值假设；"
-            f"系统已将 {claim_count} 条主张与证据链绑定，用于后续核验和追溯。"
-        ),
-        "财务分析": (
-            f"财务分析优先采用官方披露口径，不再只依赖行情或网页摘要。"
-            f"已纳入的官方证据显示：{summary} [{ev1}] "
-            f"若正文中的收入、利润、现金流或资产负债项目与第三方数据存在差异，应以该类官方来源为复核起点，"
-            f"并在人工确认后再扩展同比、环比和分部拆解。"
-        ),
-        "估值观察": (
-            f"估值部分目前采取审慎框架：先确认官方财务口径，再结合市场价格、盈利预期和同业估值区间。"
-            f"官方证据已提供基础财务边界 [{ev1}]，但目标价或强评级需要补充可复核的预测假设、折现率、"
-            f"同业样本和敏感性分析；在这些假设未完全闭环前，结论应保持中性或观察。"
-        ),
-        "风险评估": (
-            f"风险评估不只列模板风险，而应从官方披露出发识别经营、竞争、监管和财务口径变化。"
-            f"当前已绑定的权威材料包含：{risk_preview} [{ev2}] "
-            f"这些信息应进入人工复核队列，重点检查是否存在收入确认、客户集中、供给约束、诉讼监管或资本开支变化等风险传导。"
-        ),
-        "投资结论": (
-            f"综合官方证据覆盖、当前证据质量和估值假设完整度，建议维持“中性 / 审慎观察”的研究结论。"
-            f"理由是：一方面，{source_names} 已能支持基础事实和风险边界 [{ev1}]；另一方面，"
-            f"正式投资建议仍缺少完整预测模型、同业敏感性和人工确认后的关键数字。"
-            f"因此本报告适合作为投研工作台草稿和复核入口，不应直接作为正式发布研报。"
-        ),
+        "执行摘要": _render_meta_summary_section(company, symbol, period, source_names, claim_count, ev1, meta),
+        "财务分析": _render_meta_financial_section(ev1, meta),
+        "估值观察": _render_meta_valuation_section(ev1, meta),
+        "风险评估": _render_meta_risk_section(ev2, meta),
+        "投资结论": _render_meta_conclusion_section(source_names, ev1, meta),
     }
     for heading, replacement in sections.items():
         body = _replace_or_insert_section(body, heading, replacement)
@@ -1113,6 +1092,141 @@ def _replace_or_insert_section(markdown: str, heading: str, content: str) -> str
         if alias_pattern.search(markdown):
             return alias_pattern.sub(replacement, markdown, count=1)
     return markdown.rstrip() + "\n\n" + replacement
+
+
+def _report_meta_tags(symbol: str, official_records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build a controlled, market-aware tag set for report section drafting."""
+
+    market_meta = infer_market_from_symbol(symbol)
+    joined = " ".join(
+        " ".join(
+            [
+                str(record.get("title") or ""),
+                str(record.get("content") or record.get("snippet") or ""),
+                str(record.get("source_type") or ""),
+            ]
+        )
+        for record in official_records
+        if isinstance(record, dict)
+    ).lower()
+
+    financial_tags = _matched_report_tags(
+        joined,
+        {
+            "收入表现": ("revenue", "sales", "收入", "营收"),
+            "利润质量": ("gross margin", "margin", "profit", "net income", "净利润", "毛利", "利润"),
+            "现金流": ("cash flow", "operating cash", "free cash", "现金流"),
+            "资产负债": ("debt", "liabilit", "asset", "资产", "负债"),
+            "分部/业务结构": ("segment", "business", "gaming", "cloud", "业务", "分部"),
+        },
+        fallback=["收入表现", "利润质量", "现金流"],
+    )
+    risk_tags = _matched_report_tags(
+        joined,
+        {
+            "风险披露": ("risk", "风险"),
+            "竞争风险": ("competition", "competitive", "竞争"),
+            "监管风险": ("regulatory", "regulation", "policy", "监管", "政策"),
+            "供应链风险": ("supply", "manufacturing", "供应链", "产能"),
+            "需求波动": ("demand", "inventory", "channel", "需求", "库存", "渠道"),
+            "客户集中": ("customer concentration", "major customer", "客户集中"),
+        },
+        fallback=["风险披露", "竞争风险", "经营波动"],
+    )
+    valuation_tags = ["估值输入不足", "盈利预测待补", "同业比较待补", "敏感性待补"]
+    source_label = _market_report_source_label(market_meta.get("market", ""), official_records)
+
+    return {
+        "market": market_meta.get("market") or "unknown",
+        "exchange": market_meta.get("exchange") or "",
+        "currency": market_meta.get("currency") or "",
+        "source_label": source_label,
+        "financial_tags": financial_tags,
+        "risk_tags": risk_tags,
+        "valuation_tags": valuation_tags,
+        "all_tags": _dedupe([*financial_tags, *risk_tags, *valuation_tags]),
+    }
+
+
+def _matched_report_tags(text: str, rules: dict[str, tuple[str, ...]], *, fallback: list[str]) -> list[str]:
+    matched = [tag for tag, keywords in rules.items() if any(keyword.lower() in text for keyword in keywords)]
+    return _dedupe(matched or fallback)[:4]
+
+
+def _market_report_source_label(market: str, official_records: list[dict[str, Any]]) -> str:
+    source_types = {str(record.get("source_type") or "").lower() for record in official_records if isinstance(record, dict)}
+    if market == "us" or "sec_edgar" in source_types:
+        return "美国证监会披露"
+    if market == "hk" or source_types & {"hkex", "hkex_announcement", "hkex_announcements", "hkex_annual_report"}:
+        return "港交所披露"
+    if market == "cn_a" or source_types & {"cninfo", "cninfo_announcement", "cninfo_announcements", "exchange_announcement"}:
+        return "巨潮资讯披露"
+    labels = [_source_label(record) for record in official_records if isinstance(record, dict)]
+    return _dedupe(labels)[0] if labels else "权威来源披露"
+
+
+def _render_meta_summary_section(
+    company: str,
+    symbol: str,
+    period: str,
+    source_names: str,
+    claim_count: int,
+    evidence_id: str,
+    meta: dict[str, Any],
+) -> str:
+    tags = "、".join(meta.get("all_tags") or [])
+    source_label = str(meta.get("source_label") or source_names or "权威来源披露")
+    return "\n".join(
+        [
+            f"- 事实边界：本报告以{source_label}为核心事实来源，覆盖公司为{company}（{symbol}），期间为{period or '最近完整披露期'}。[{evidence_id}]",
+            f"- 元标签：{tags}。这些标签用于约束小节生成，避免把原始材料片段直接拼进正文。[{evidence_id}]",
+            f"- 研究状态：当前已形成{claim_count}条可追溯主张，适合作为草稿和人工复核入口；正式交付前仍需补齐预测模型、同业比较和敏感性分析。[{evidence_id}]",
+        ]
+    )
+
+
+def _render_meta_financial_section(evidence_id: str, meta: dict[str, Any]) -> str:
+    source_label = str(meta.get("source_label") or "权威来源披露")
+    financial_tags = meta.get("financial_tags") or ["收入表现", "利润质量", "现金流"]
+    lines = [f"- {financial_tags[0]}：{source_label}已支持对收入规模、业务增长和披露口径进行复核；同比拆分、分部贡献和一次性因素仍需结构化表格确认。[{evidence_id}]"]
+    lines.append(f"- 利润质量：当前证据可用于检查毛利率、费用率和净利变化方向，但不应替代完整三表模型。[{evidence_id}]")
+    lines.append(f"- 现金流：需要把经营现金流、资本开支和分红回购与利润表现交叉验证，避免只依据单一收入指标得出结论。[{evidence_id}]")
+    return "\n".join(lines)
+
+
+def _render_meta_valuation_section(evidence_id: str, meta: dict[str, Any]) -> str:
+    valuation_tags = "、".join(meta.get("valuation_tags") or ["估值输入不足", "盈利预测待补"])
+    currency = str(meta.get("currency") or "对应市场货币")
+    return "\n".join(
+        [
+            f"- 估值边界：当前证据主要解决事实核验，不直接给出目标价；估值输入仍标记为{valuation_tags}。[{evidence_id}]",
+            f"- 后续模型：正式版需要补齐{currency}口径下的收入预测、利润率假设、折现率或可比公司倍数，并展示关键假设敏感性。[{evidence_id}]",
+            f"- 判断约束：在预测模型未闭环前，估值结论应保持审慎观察，不把证据覆盖等同于买卖评级。[{evidence_id}]",
+        ]
+    )
+
+
+def _render_meta_risk_section(evidence_id: str, meta: dict[str, Any]) -> str:
+    source_label = str(meta.get("source_label") or "权威来源披露")
+    risk_tags = meta.get("risk_tags") or ["风险披露", "竞争风险", "经营波动"]
+    return "\n".join(
+        [
+            f"- 风险披露：{source_label}提示需要持续跟踪{risk_tags[0]}、{risk_tags[1] if len(risk_tags) > 1 else '经营波动'}等事项，本节采用中文归纳，不直接搬运英文原文。[{evidence_id}]",
+            f"- 传导路径：风险需要从披露事实、业务环节、财务指标和投资结论逐层验证；目前适合作为风险清单，尚不能替代人工复核。[{evidence_id}]",
+            f"- 监控动作：后续应补充公告更新、管理层口径和行业数据，确认风险是否已经反映到收入、利润率或现金流。[{evidence_id}]",
+        ]
+    )
+
+
+def _render_meta_conclusion_section(source_names: str, evidence_id: str, meta: dict[str, Any]) -> str:
+    source_label = str(meta.get("source_label") or source_names or "权威来源披露")
+    return "\n".join(
+        [
+            f"- 综合判断：基于{source_label}和当前证据链，本报告更适合作为投研草稿、复核清单和后续建模入口。[{evidence_id}]",
+            f"- 交付口径：证据引用已经覆盖核心事实，但正式投资建议仍缺少完整预测模型、同业比较、估值敏感性和人工校验记录。[{evidence_id}]",
+            f"- 建议动作：维持“中性 / 审慎观察”，优先补齐财务表格、关键假设和风险传导链，再进入正式交付。[{evidence_id}]",
+        ]
+    )
 
 
 def _official_summary_sentence(record: dict[str, Any]) -> str:

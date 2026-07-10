@@ -160,6 +160,48 @@ def seed_task_evidence(
         session.commit()
 
 
+def seed_company_evidence(
+    service,
+    *,
+    task_id: str,
+    symbol: str,
+    company_name: str,
+    market: str,
+    period: str,
+    source_type: str,
+    title: str,
+    content: str,
+):
+    with service.session() as session:
+        company = Company(name=company_name, symbol=symbol, market=market)
+        session.add(company)
+        session.flush()
+        document = Document(
+            company_id=company.id,
+            batch_id=f"batch-{task_id}",
+            title=title,
+            doc_type="annual_report",
+            report_period=period,
+            source_url=f"https://example.com/{task_id}",
+            parse_status="parsed",
+        )
+        session.add(document)
+        session.flush()
+        session.add(
+            EvidenceItem(
+                evidence_id=f"ev_{task_id}",
+                company_id=company.id,
+                document_id=document.id,
+                source_type=source_type,
+                trust_level="official",
+                title=title,
+                content=content,
+                metadata_json={"period": period, "company_name": company_name, "symbol": symbol},
+            )
+        )
+        session.commit()
+
+
 def test_enforced_evidence_gate_blocks_generation_without_evidence(tmp_path):
     _, client = build_client(tmp_path)
 
@@ -261,6 +303,87 @@ def test_task_official_db_evidence_is_merged_into_report_artifacts_before_qualit
     assert "正式投资建议仍缺少完整预测模型" in report_md
     assert "参考来源" in report_html
     assert "FY2024 revenue evidence" in report_html
+
+
+def test_task_report_patch_uses_market_meta_tags_and_avoids_truncated_english_sections(tmp_path):
+    cases = [
+        {
+            "task_id": "task-us-meta-report",
+            "symbol": "NVDA",
+            "company_name": "NVIDIA",
+            "market": "US",
+            "period": "FY2024",
+            "source_type": "sec_edgar",
+            "title": "NVIDIA FY2024 Form 10-K",
+            "content": "NVIDIA reported revenue growth, gross margin expansion, supply constraints, regulatory exposure, and intense competition in accelerated computing markets.",
+            "required_source": "美国证监会披露",
+        },
+        {
+            "task_id": "task-hk-meta-report",
+            "symbol": "0700.HK",
+            "company_name": "腾讯控股",
+            "market": "HK",
+            "period": "FY2024",
+            "source_type": "hkex_announcement",
+            "title": "腾讯控股 FY2024 港交所年报",
+            "content": "Tencent annual report disclosed revenue, gross profit, operating cash flow, regulatory risk, gaming business, advertising demand, cloud services and shareholder return.",
+            "required_source": "港交所披露",
+        },
+        {
+            "task_id": "task-a-meta-report",
+            "symbol": "600519.SS",
+            "company_name": "贵州茅台",
+            "market": "CN",
+            "period": "FY2024",
+            "source_type": "cninfo_announcement",
+            "title": "贵州茅台 FY2024 巨潮资讯年报",
+            "content": "Kweichow Moutai annual report disclosed revenue, net profit, cash flow, channel inventory, baijiu demand, regulatory policy and shareholder dividend plan.",
+            "required_source": "巨潮资讯披露",
+        },
+    ]
+    for case in cases:
+        WeakArtifactOrchestrator.calls = 0
+        service, client = build_client_with_orchestrator(tmp_path / case["task_id"], WeakArtifactOrchestrator)
+        seed_company_evidence(
+            service,
+            task_id=case["task_id"],
+            symbol=case["symbol"],
+            company_name=case["company_name"],
+            market=case["market"],
+            period=case["period"],
+            source_type=case["source_type"],
+            title=case["title"],
+            content=case["content"],
+        )
+
+        with client:
+            response = client.post(
+                "/api/report-tasks",
+                json={
+                    "task_id": case["task_id"],
+                    "symbol": case["symbol"],
+                    "period": case["period"],
+                    "company_name": case["company_name"],
+                    "enforce_evidence_gate": True,
+                },
+            )
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["status"] == "completed"
+        report_dir = tmp_path / case["task_id"] / "reports" / "runs" / case["task_id"] / "reports"
+        report_md = (report_dir / "report.md").read_text(encoding="utf-8")
+
+        assert case["required_source"] in report_md
+        assert "元标签" in report_md
+        assert "收入表现" in report_md
+        assert "风险披露" in report_md
+        assert "本节暂不展开详细分析" not in report_md
+        assert "evidence_not_available" not in report_md
+        assert "..." not in report_md
+        assert "reported revenue growth" not in report_md
+        assert "annual report disclosed" not in report_md
+        assert "Kweichow Moutai" not in report_md
 
 
 def test_enforced_evidence_gate_blocks_delivery_when_official_source_is_missing(tmp_path):

@@ -17,8 +17,9 @@ def build_retrieval_coverage(
 
     returned_sources = sorted({_source_type(item) for item in returned if _source_type(item)})
     candidate_sources = sorted({_source_type(item) for item in candidates if _source_type(item)})
+    returned_source_groups = {_canonical_source_group(source) for source in returned_sources}
     required_sources = required_sources_for_query(company=company, source_type=source_type)
-    missing_sources = [source for source in required_sources if source not in returned_sources]
+    missing_sources = [source for source in required_sources if _canonical_source_group(source) not in returned_source_groups]
     gaps = retrieval_gaps(
         candidate_count=len(candidates),
         returned_count=len(returned),
@@ -138,6 +139,17 @@ def _source_type(item: Any) -> str:
     if isinstance(item, dict):
         return str(item.get("source_type") or "").strip()
     return str(getattr(item, "source_type", "") or "").strip()
+
+
+def _canonical_source_group(source: str) -> str:
+    normalized = str(source or "").strip().lower()
+    if normalized in {"cninfo", "cninfo_announcement", "cninfo_announcements", "exchange_announcement", "exchange_announcements"}:
+        return "cninfo"
+    if normalized in {"hkex", "hkex_announcement", "hkex_announcements", "hkex_annual_report"}:
+        return "hkex"
+    if normalized in {"sec", "sec_edgar", "official_10k", "official_10q", "official_filing"}:
+        return "sec_edgar"
+    return normalized
 
 
 def _norm(value: str | None) -> str:
