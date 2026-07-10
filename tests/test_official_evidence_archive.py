@@ -31,6 +31,8 @@ def test_hk_official_evidence_requires_page_anchored_three_statements():
     assert coverage["market"] == "hk"
     assert coverage["has_three_statements"] is True
     assert coverage["pdf_page_anchor_count"] == 1
+    assert coverage["draft_generation_allowed"] is True
+    assert coverage["formal_delivery_allowed"] is True
     assert coverage["degrade_required"] is False
 
 
@@ -44,8 +46,12 @@ def test_cn_official_evidence_marks_missing_statements_for_degraded_delivery(tmp
 
     coverage = payload["evidence_coverage"]
     assert coverage["degrade_required"] is True
+    assert coverage["draft_generation_allowed"] is True
+    assert coverage["formal_delivery_allowed"] is False
     assert "period_matched_official_filing" in coverage["missing_requirements"]
     assert "cash_flow_statement" in coverage["missing_requirements"]
+    assert coverage["blocking_reasons"]
+    assert coverage["recommended_actions"]
 
     path = archive_official_evidence_manifest(payload["official_evidence_manifest"], root=tmp_path)
     archived = json.loads(open(path, encoding="utf-8").read())
@@ -78,6 +84,7 @@ def test_hk_annual_delivery_rejects_mismatched_official_period():
     assert coverage["period_matched_official_record_count"] == 0
     assert coverage["period_mismatched_official_record_count"] == 1
     assert coverage["degrade_required"] is True
+    assert coverage["formal_delivery_allowed"] is False
     assert "period_matched_official_filing" in coverage["missing_requirements"]
 
 
@@ -110,6 +117,7 @@ def test_cn_annual_delivery_requires_verified_source_period():
     assert coverage["candidate_statement_types"] == ["balance_sheet", "cash_flow_statement", "income_statement"]
     assert coverage["statement_types"] == []
     assert coverage["degrade_required"] is True
+    assert coverage["formal_delivery_allowed"] is False
 
 
 def test_hk_statements_from_non_official_source_do_not_satisfy_delivery_gate():
@@ -139,6 +147,7 @@ def test_hk_statements_from_non_official_source_do_not_satisfy_delivery_gate():
     assert coverage["statement_types"] == []
     assert coverage["has_three_statements"] is False
     assert coverage["degrade_required"] is True
+    assert coverage["formal_delivery_allowed"] is False
 
 
 def test_cn_eastmoney_structured_three_statements_satisfy_structured_lineage():
@@ -168,7 +177,50 @@ def test_cn_eastmoney_structured_three_statements_satisfy_structured_lineage():
     assert coverage["has_official_pdf_three_statements"] is False
     assert coverage["has_structured_three_statements"] is True
     assert coverage["has_formal_delivery_lineage"] is True
+    assert coverage["formal_delivery_allowed"] is True
     assert coverage["degrade_required"] is False
+
+
+def test_us_annual_requires_period_matched_sec_evidence_for_formal_delivery():
+    payload = build_official_evidence_artifacts(
+        [],
+        symbol="AMD",
+        period="FY2024",
+        tables=[],
+    )
+
+    coverage = payload["evidence_coverage"]
+    assert coverage["market"] == "us"
+    assert coverage["coverage_status"] == "insufficient"
+    assert coverage["draft_generation_allowed"] is True
+    assert coverage["formal_delivery_allowed"] is False
+    assert coverage["degrade_required"] is True
+    assert "period_matched_official_filing" in coverage["missing_requirements"]
+    assert any("SEC" in action for action in coverage["recommended_actions"])
+
+
+def test_us_annual_period_matched_sec_evidence_allows_formal_delivery():
+    payload = build_official_evidence_artifacts(
+        [
+            {
+                "evidence_id": "sec_10k",
+                "symbol": "AMD",
+                "period": "FY2024",
+                "source_type": "sec_filing",
+                "source_url": "https://www.sec.gov/Archives/edgar/data/0000002488/10-k.htm",
+                "content": "Form 10-K fiscal year 2024.",
+            }
+        ],
+        symbol="AMD",
+        period="FY2024",
+        tables=[],
+    )
+
+    coverage = payload["evidence_coverage"]
+    assert coverage["coverage_status"] == "sufficient"
+    assert coverage["formal_delivery_allowed"] is True
+    assert coverage["degrade_required"] is False
+    assert coverage["period_matched_official_record_count"] == 1
 
 
 def test_archive_persists_official_source_text_snapshot(tmp_path):

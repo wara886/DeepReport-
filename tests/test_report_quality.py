@@ -231,6 +231,31 @@ def test_quality_policy_blocks_ah_formal_delivery_when_official_evidence_is_inco
     assert any(issue["category"] == "official_evidence" and issue["severity"] == "blocker" for issue in issues)
 
 
+def test_quality_policy_blocks_formal_delivery_from_coverage_contract():
+    issues = []
+    _check_delivery_policy(
+        {
+            "summary": {"symbol": "AMD", "entity_resolution": {"resolved_symbol": "AMD", "confidence": 0.9}},
+            "search_meta": {},
+            "report_md": "risk valuation source gap",
+            "report_html": "",
+            "evidence_coverage": {
+                "draft_generation_allowed": True,
+                "formal_delivery_allowed": False,
+                "blocking_reasons": ["missing period-matched SEC filing or SEC Company Facts"],
+                "recommended_actions": ["Fetch the matching SEC EDGAR filing."],
+            },
+        },
+        issues,
+    )
+
+    messages = "\n".join(issue["message"] for issue in issues)
+    assert any(issue["category"] == "official_evidence" and issue["severity"] == "blocker" for issue in issues)
+    assert "formal delivery" in messages
+    assert "draft only" in messages
+    assert "A/H" not in messages
+
+
 def test_quality_evaluator_reads_nested_statement_rows_and_cashflow_gap(tmp_path):
     run_dir = _write_run(
         tmp_path,

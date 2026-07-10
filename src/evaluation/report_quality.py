@@ -662,13 +662,16 @@ def _check_delivery_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any
         _issue(issues, "blocker", "delivery_policy", "investment conclusion has direction but lacks reason, growth driver, competitive pressure or valuation constraint")
 
     evidence_coverage = artifacts.get("evidence_coverage", {}) if isinstance(artifacts.get("evidence_coverage"), dict) else {}
-    if evidence_coverage.get("degrade_required") is True:
-        missing = ", ".join(str(item) for item in evidence_coverage.get("missing_requirements", [])[:6])
+    if evidence_coverage.get("formal_delivery_allowed") is False or evidence_coverage.get("degrade_required") is True:
+        reasons = evidence_coverage.get("blocking_reasons")
+        if not isinstance(reasons, list) or not reasons:
+            reasons = evidence_coverage.get("missing_requirements", [])
+        missing = ", ".join(str(item) for item in reasons[:6]) if isinstance(reasons, list) else str(reasons)
         _issue(
             issues,
             "blocker",
             "official_evidence",
-            f"Official evidence is insufficient for formal A/H delivery; degrade strong conclusions: {missing}",
+            f"Official evidence is insufficient for formal delivery; generate draft only until fixed: {missing}",
         )
 
 

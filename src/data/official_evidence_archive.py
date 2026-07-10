@@ -70,8 +70,13 @@ def build_official_evidence_artifacts(
     elif market == "us" and _is_annual(period) and not matching_official:
         missing.append("period_matched_official_filing")
 
-    required_market = market in {"cn_a", "hk"}
-    coverage_status = "sufficient" if not missing else "insufficient" if required_market else "partial"
+    requires_formal_official_evidence = market in {"us", "cn_a", "hk"} and (
+        market in {"cn_a", "hk"} or _is_annual(period)
+    )
+    formal_delivery_allowed = not (requires_formal_official_evidence and missing)
+    coverage_status = "sufficient" if not missing else "insufficient" if requires_formal_official_evidence else "partial"
+    blocking_reasons = [_requirement_label(item, market=market) for item in missing]
+    recommended_actions = _recommended_actions(missing, market=market)
     assessment = {
         "schema_version": "evidence_coverage.v1",
         "symbol": symbol,
@@ -91,9 +96,18 @@ def build_official_evidence_artifacts(
         "has_structured_three_statements": has_structured_three_statements,
         "has_formal_delivery_lineage": has_formal_delivery_lineage,
         "missing_requirements": missing,
+        "required_official_sources": _required_official_sources(market, period),
+        "blocking_reasons": blocking_reasons,
+        "recommended_actions": recommended_actions,
         "coverage_status": coverage_status,
-        "degrade_required": bool(required_market and missing),
-        "policy": "A/H delivery claims require period-matched official evidence plus official-PDF or accepted structured three-statement lineage.",
+        "draft_generation_allowed": True,
+        "formal_delivery_allowed": formal_delivery_allowed,
+        "degrade_required": not formal_delivery_allowed,
+        "policy": (
+            "Formal delivery for US annual and A/H reports requires period-matched official filings; "
+            "A/H reports also require official-PDF or accepted structured three-statement lineage. "
+            "Draft generation remains allowed when official evidence is incomplete."
+        ),
     }
     return {
         "official_evidence_manifest": {
@@ -182,6 +196,50 @@ def _is_official_record(record: Dict[str, Any]) -> bool:
         or authority in {"official", "official_statistics"}
         or any(domain in url for domain in ("sec.gov", "cninfo.com.cn", "sse.com.cn", "szse.cn", "hkexnews.hk"))
     )
+
+
+def _required_official_sources(market: str, period: str) -> List[str]:
+    if market == "us" and _is_annual(period):
+        return ["SEC EDGAR 10-K/10-Q or SEC Company Facts matching the requested fiscal period"]
+    if market == "cn_a":
+        return ["CNINFO or exchange announcement matching the requested period", "three financial statements with official or accepted structured lineage"]
+    if market == "hk":
+        return ["HKEX annual/interim/results announcement matching the requested period", "three financial statements with official PDF page anchors or accepted structured lineage"]
+    return []
+
+
+def _requirement_label(requirement: str, *, market: str) -> str:
+    labels = {
+        "period_matched_official_filing": "missing period-matched official filing",
+        "income_statement": "missing income statement from official or accepted structured lineage",
+        "balance_sheet": "missing balance sheet from official or accepted structured lineage",
+        "cash_flow_statement": "missing cash flow statement from official or accepted structured lineage",
+        "official_pdf_page_citations": "missing official PDF page citations",
+    }
+    label = labels.get(str(requirement), str(requirement))
+    if market == "us" and requirement == "period_matched_official_filing":
+        return "missing period-matched SEC filing or SEC Company Facts"
+    return label
+
+
+def _recommended_actions(missing: Iterable[str], *, market: str) -> List[str]:
+    missing_set = {str(item) for item in missing}
+    actions: List[str] = []
+    if "period_matched_official_filing" in missing_set:
+        if market == "us":
+            actions.append("Fetch the matching SEC EDGAR filing or SEC Company Facts for this fiscal period.")
+        elif market == "cn_a":
+            actions.append("Fetch the matching CNINFO or exchange announcement for this fiscal period.")
+        elif market == "hk":
+            actions.append("Fetch the matching HKEX annual/interim/results announcement for this fiscal period.")
+        else:
+            actions.append("Fetch a period-matched official filing before formal delivery.")
+    statement_gap = sorted(STATEMENT_TYPES & missing_set)
+    if statement_gap:
+        actions.append("Extract and link the missing financial statements to official evidence before formal delivery.")
+    if "official_pdf_page_citations" in missing_set:
+        actions.append("Re-parse the official PDF and retain page anchors for cited financial tables.")
+    return actions
 
 
 def _statement_types(tables: Iterable[Dict[str, Any]], allowed_evidence_ids: set[str] | None = None) -> set[str]:
