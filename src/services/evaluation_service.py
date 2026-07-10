@@ -187,6 +187,7 @@ class EvaluationService:
                 "retrieval_quality": _retrieval_quality(metrics, retrieval_coverages),
                 "model_health": _model_health(metrics, recent_llm_runs),
                 "failure_categories": _failure_categories(failure_counter),
+                "regression_matrix": _regression_matrix(quality_evaluated_tasks[:limit]),
                 "recent_tasks": [_task_quality_row(task) for task in quality_evaluated_tasks[:limit]],
                 "recent_llm_runs": [_llm_run_row(run) for run in recent_llm_runs],
                 "notes": _notes(metrics),
@@ -457,6 +458,81 @@ def _task_quality_row(task: ReportTask) -> dict[str, Any]:
         },
         "updated_at": _dt(task.finished_at or task.started_at or task.created_at),
     }
+
+
+def _regression_matrix(tasks: list[ReportTask]) -> dict[str, Any]:
+    rows = [_regression_matrix_row(task) for task in tasks]
+    evaluated_count = len(rows)
+    passed_count = sum(1 for row in rows if row["status"] == "passed")
+    blocked_count = sum(1 for row in rows if row["status"] == "blocked")
+    warning_count = sum(1 for row in rows if row["status"] == "warning")
+    return {
+        "title": "研报质量回归矩阵",
+        "description": "按任务汇总交付门禁、证据覆盖、引用支持、数字一致性、结构化输出和模型运行状态。",
+        "evaluated_count": evaluated_count,
+        "passed_count": passed_count,
+        "blocked_count": blocked_count,
+        "warning_count": warning_count,
+        "pass_rate": _ratio(passed_count, evaluated_count),
+        "rows": rows,
+    }
+
+
+def _regression_matrix_row(task: ReportTask) -> dict[str, Any]:
+    base = _task_quality_row(task)
+    claims = list(task.claims or [])
+    claim_count = len(claims)
+    retrieval = base["retrieval_coverage"]
+    delivery_pass = base["delivery_pass"]
+    gates = [
+        _matrix_gate("delivery_gate", "交付门禁", delivery_pass is True, value=delivery_pass),
+        _matrix_gate("evidence_coverage", "证据覆盖", bool(retrieval["evidence_ready"]), value=retrieval["returned_count"]),
+        _matrix_gate("source_coverage", "关键来源", bool(retrieval["quality_ready"]), value=len(retrieval["missing_sources"])),
+        _matrix_gate("traceable_claims", "可追溯主张", base["traceable_claim_rate"] >= 0.8 if claim_count else None, value=base["traceable_claim_rate"]),
+        _matrix_gate("citation_support", "引用支持", base["citation_failed_count"] == 0 if claim_count else None, value=base["citation_failed_count"]),
+        _matrix_gate("numeric_consistency", "数字一致性", base["numeric_failed_count"] == 0 if claim_count else None, value=base["numeric_failed_count"]),
+    ]
+    failed_gates = [gate for gate in gates if gate["status"] == "failed"]
+    pending_gates = [gate for gate in gates if gate["status"] == "pending"]
+    status = "passed"
+    if failed_gates:
+        status = "blocked"
+    elif pending_gates:
+        status = "warning"
+    return {
+        "task_id": base["task_id"],
+        "symbol": base["symbol"],
+        "company_name": base["company_name"],
+        "period": base["period"],
+        "status": status,
+        "task_status": base["status"],
+        "quality_score": base["quality_score"],
+        "claim_count": claim_count,
+        "gates": gates,
+        "failed_gate_labels": [gate["label"] for gate in failed_gates],
+        "recommended_action": _regression_recommended_action(failed_gates, pending_gates),
+        "updated_at": base["updated_at"],
+    }
+
+
+def _matrix_gate(key: str, label: str, passed: bool | None, *, value: Any = None) -> dict[str, Any]:
+    status = "pending" if passed is None else ("passed" if passed else "failed")
+    return {"key": key, "label": label, "status": status, "passed": passed, "value": value}
+
+
+def _regression_recommended_action(failed_gates: list[dict[str, Any]], pending_gates: list[dict[str, Any]]) -> str:
+    failed_keys = {gate["key"] for gate in failed_gates}
+    if "delivery_gate" in failed_keys:
+        return "先查看质量门禁失败原因，再补证据或修正文稿。"
+    if "evidence_coverage" in failed_keys or "source_coverage" in failed_keys:
+        return "先补采集官方来源或进入证据库补齐关键证据。"
+    if "citation_support" in failed_keys:
+        return "先到主张复核页处理引用缺口。"
+    if "numeric_consistency" in failed_keys:
+        return "先回到财务事实和原文证据修正数字冲突。"
+    if pending_gates:
+        return "补充主张或模型运行记录后再纳入正式回归。"
+    return "可作为当前回归基线。"
 
 
 def _task_retrieval_coverage(task: ReportTask) -> dict[str, Any]:

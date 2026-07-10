@@ -255,6 +255,20 @@ def test_evaluation_summary_aggregates_quality_and_harness_metrics(tmp_path):
     assert body["retrieval_quality"]["returned_sources"][0]["label"] == "美国证监会披露"
     assert any(item["label"] == "证据召回可用率" for item in body["quality_gates"])
     assert any(item["label"] == "关键来源覆盖率" for item in body["quality_gates"])
+    matrix = body["regression_matrix"]
+    assert matrix["title"] == "研报质量回归矩阵"
+    assert matrix["evaluated_count"] == 3
+    assert matrix["passed_count"] == 1
+    assert matrix["blocked_count"] == 2
+    assert matrix["pass_rate"] == 0.3333
+    rows = {row["task_id"]: row for row in matrix["rows"]}
+    assert rows["task-eval-ok"]["status"] == "passed"
+    assert rows["task-eval-ok"]["recommended_action"] == "可作为当前回归基线。"
+    assert rows["task-eval-bad"]["status"] == "blocked"
+    assert "交付门禁" in rows["task-eval-bad"]["failed_gate_labels"]
+    assert "引用支持" in rows["task-eval-bad"]["failed_gate_labels"]
+    assert rows["task-eval-bad"]["recommended_action"] == "先查看质量门禁失败原因，再补证据或修正文稿。"
+    assert {gate["label"] for gate in rows["task-eval-source-gap"]["gates"]} >= {"证据覆盖", "关键来源", "可追溯主张"}
 
 
 def test_evaluation_summary_handles_empty_state(tmp_path):
@@ -268,6 +282,8 @@ def test_evaluation_summary_handles_empty_state(tmp_path):
     assert body["metrics"]["active_task_count"] == 0
     assert body["metrics"]["delivery_pass_rate"] == 0.0
     assert body["failure_categories"] == []
+    assert body["regression_matrix"]["rows"] == []
+    assert body["regression_matrix"]["pass_rate"] == 0.0
     assert "暂无研报任务" in body["notes"][0]
 
 

@@ -1114,6 +1114,10 @@ def render_workbench_html() -> str:
                   <h2>最近研报质量</h2>
                   <button class="btn" data-jump="tasks">任务列表</button>
                 </div>
+                <div class="detail-section" style="border-top:0;margin-top:0;padding-top:0">
+                  <h3>回归矩阵</h3>
+                  <div id="evaluationRegressionMatrix"></div>
+                </div>
                 <div class="table-scroll">
                   <table>
                     <thead><tr><th>研报</th><th>状态</th><th>质量分</th><th>证据覆盖</th><th>校验通过</th><th>风险项</th><th>操作</th></tr></thead>
@@ -2896,6 +2900,7 @@ def render_workbench_html() -> str:
       renderEvaluationRetrievalQuality(payload.retrieval_quality || {});
       renderEvaluationModelHealth(payload.model_health || {});
       renderEvaluationFailures(payload.failure_categories || []);
+      renderEvaluationRegressionMatrix(payload.regression_matrix || {});
       renderEvaluationTaskRows(payload.recent_tasks || []);
       renderEvaluationRuns(payload.recent_llm_runs || []);
       renderEvaluationNotes(payload);
@@ -2990,6 +2995,30 @@ def render_workbench_html() -> str:
             <div style="margin-top:8px"><button class="btn" data-jump="${esc(item.next_view || "evaluation")}">查看处理入口</button></div>
           </div>`).join("")
         : emptyBox("当前没有明显阻塞问题", [{ label: "查看研报任务", view: "tasks", className: "primary" }]);
+    }
+
+    function renderEvaluationRegressionMatrix(matrix) {
+      const rows = matrix.rows || [];
+      if (!rows.length) {
+        $("evaluationRegressionMatrix").innerHTML = emptyBox("暂无回归矩阵数据", [{ label: "创建研报任务", view: "tasks", className: "primary" }]);
+        return;
+      }
+      $("evaluationRegressionMatrix").innerHTML = `<div class="chain-summary">${esc(matrix.description || "按任务检查交付门禁、证据覆盖、引用支持和数字一致性。")}</div>
+        <div class="dist" style="margin:10px 0">
+          <div class="dist-row"><span>纳入回归</span><strong>${esc(number(matrix.evaluated_count))}</strong></div>
+          <div class="dist-row"><span>通过率</span><strong>${esc(percentText(matrix.pass_rate))}</strong></div>
+          <div class="dist-row"><span>阻塞任务</span><strong>${esc(number(matrix.blocked_count))}</strong></div>
+        </div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>任务</th><th>回归状态</th><th>失败门禁</th><th>下一步</th><th>操作</th></tr></thead>
+          <tbody>${rows.map((row) => `<tr>
+            <td>${esc(row.company_name || row.symbol)}<br><span class="label">${esc(row.symbol)} · ${esc(row.period)}</span></td>
+            <td><span class="status ${esc(row.status)}">${esc(regressionStatusText(row.status))}</span><br><span class="label">质量分 ${esc(scoreText(row.quality_score))}</span></td>
+            <td>${(row.failed_gate_labels || []).length ? esc((row.failed_gate_labels || []).join("、")) : "-"}</td>
+            <td>${esc(row.recommended_action || "查看任务诊断。")}</td>
+            <td><button class="btn" data-evaluation-diagnostic="${esc(row.task_id)}">诊断</button></td>
+          </tr>`).join("")}</tbody>
+        </table></div>`;
     }
 
     function renderEvaluationTaskRows(tasks) {
@@ -3318,6 +3347,11 @@ def render_workbench_html() -> str:
 
     function evaluationGateStatusText(value) {
       const map = { passed: "达标", warning: "需关注", failed: "未达标", pending: "待生成" };
+      return textOf(map, value);
+    }
+
+    function regressionStatusText(value) {
+      const map = { passed: "通过", blocked: "阻塞", warning: "待补充", pending: "待生成" };
       return textOf(map, value);
     }
 

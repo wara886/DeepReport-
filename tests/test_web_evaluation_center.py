@@ -14,6 +14,12 @@ def test_workbench_evaluation_center_is_productized_and_loads_api():
     assert "引用支持率" in html
     assert "模型运行成功率" in html
     assert "最近研报质量" in html
+    assert "回归矩阵" in html
+    assert "evaluationRegressionMatrix" in html
+    assert "renderEvaluationRegressionMatrix" in html
+    assert "regression_matrix" in html
+    assert "regressionStatusText" in html
+    assert "按任务检查交付门禁、证据覆盖、引用支持和数字一致性" in html
     assert "单任务诊断" in html
     assert "data-evaluation-diagnostic" in html
     assert "/api/evaluation/report-tasks/" in html
