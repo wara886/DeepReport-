@@ -23,6 +23,20 @@ def test_workbench_report_task_evidence_gate_is_productized():
     assert "补采集批次" in html
 
 
+def test_workbench_uses_unified_delivery_readiness():
+    html = render_workbench_html()
+
+    assert "taskDeliveryStatus" in html
+    assert "renderDeliveryReadiness" in html
+    assert "统一交付状态" in html
+    assert "can_generate_draft" in html
+    assert "can_enter_human_review" in html
+    assert "can_deliver_formal_report" in html
+    assert "can_export_formal_package" in html
+    assert "尚未完成证据检查" in html
+    assert "存在待复核主张" in html
+
+
 def test_workbench_report_task_retrieval_diagnostics_is_productized():
     html = render_workbench_html()
 

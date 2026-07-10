@@ -111,7 +111,7 @@ docs/implementation_notes/legacy_cleanup.md
 
 ---
 
-### 1.3 当前执行状态（2026-07-09 更新）
+### 1.3 当前执行状态（2026-07-10 更新）
 
 当前仓库实际推进状态如下，后续 Codex 继续执行时必须以本节为准，避免重复实现已经完成的 P0/P1 功能。
 
@@ -119,14 +119,17 @@ docs/implementation_notes/legacy_cleanup.md
 | --- | --- | --- |
 | P0 最小可演示投研工作台 | 已完成并提交 | 已具备工作台外壳、投研首页、任务创建/取消、文档处理、证据库、Claim 复核、导出入口、严格漏斗和基础用户流。 |
 | P1 投研空间、数据源、采集、手动导入、词典、PromptOps、Harness、财务事实 | 已完成核心闭环，已做收尾提交 | 已补齐数据源健康、补采集闭环、PromptOps 版本管理、Harness 观测、质量证明解释、任务分析链路总览、文档空状态引导。 |
-| P2 Hybrid RAG、实体库、关系图谱、投资线索 | 可进入，但必须先做 RAG 质量闭环 | 目前已有实体、关系、线索、逻辑链雏形；进入 P2 后优先补检索质量、证据召回和评测闭环，不要先做炫酷图谱。 |
-| P3 评测中心、导出中心与生产化 | 暂不进入 | 等 P2 的 RAG/证据链稳定后，再做正式导出包、回归评测矩阵和生产部署增强。 |
+| P2 Hybrid RAG、实体库、关系图谱、投资线索 | P2.1-P2.5 核心闭环已完成 | 已具备检索诊断、引用使用闭环、任务级实体记忆、投资线索、投资逻辑链和风险传导链；后续继续做质量回归，不优先引入复杂图数据库。 |
+| P3 评测中心、导出中心与生产化 | P3.1/P3.2 已进入，P3.3 待完成 | 已有单任务诊断、回归矩阵、Formal-18/Quick-9/回归集产物导入，以及 Markdown/HTML/JSON/CSV 正式包预览和下载；PDF/DOCX 与统一生产可观测仍待完成。 |
+| R0 统一 Agent Runtime | R0.1 状态核心已完成 | 已新增 `ReportRunState`、合法状态迁移、统一 `DeliveryReadiness/ExportReadiness`，任务、评测、导出与前端读取同一投影；LangGraph 编排与 checkpoint 作为 R0.2 渐进接入。 |
 
 最近关键提交：
 
 - `fc93229 fix(p0): stabilize workbench task and import feedback`
 - `ce2b39e fix(p1): tighten workbench quality and remediation flows`
 - `09abf38 fix(p1): polish workbench closure experience`
+- `f60a57b feat(p2.5): add investment argument chain`
+- 本地待推送提交已继续补齐 canonical PDF chunk、检索 metadata、评测矩阵、benchmark 导入和正式导出包。
 
 P1 收尾验收已运行：
 
@@ -149,6 +152,53 @@ python tmp/current_workbench_user_walkthrough.py
 3. P2 首要目标是证明“生成研报为什么可信”：证据召回质量、引用覆盖、检索失败降级、质量评测闭环。
 4. P2 不优先做复杂 Neo4j/Milvus 迁移；可以保留 PostgreSQL + Chroma 的渐进方案，先把接口契约和测试打稳。
 5. 每完成一个 P2.x 小模块，必须先做单元测试和一次真实用户浏览器走查，再提交。
+
+### 1.4 统一 Agent Runtime 收口计划（2026-07-10 启动）
+
+#### 问题复述
+
+P0/P1 功能反复出现的根因不是页面功能缺失，而是任务状态、证据门禁、质量门禁、Claim 复核、Artifact、正式导出和前端标签分别判断“是否完成/是否可交付”。`completed` 曾同时被理解为“生成结束”和“可以正式交付”，导致任务列表、质量中心和导出中心结论不一致。
+
+#### R0.1：状态与交付合同（已完成）
+
+- 新增 `src/runtime/report_run_state.py`，定义金融研报 canonical lifecycle：排队、证据检查、证据阻塞、生成、质量检查、质量阻塞、生成完成、失败、取消和归档。
+- 所有 `ReportTaskService` 生命周期写入通过 `apply_report_transition()`，旧 `status/current_stage` 继续保留为兼容投影。
+- `POST /api/report-tasks` 默认只创建并排队；只有显式 `run_immediately=true` 才进入生成，前端的“立即生成”模式继续显式传参。
+- 统一输出 `run_state`、`delivery_readiness`、`export_readiness`，区分：可生成草稿、可进入人工复核、可正式交付、可正式导出。
+- 正式交付同时检查任务阶段、证据门禁、质量门禁、Claim 审核/校验和报告 Artifact；不能再用 `task.status == completed` 单独判断。
+- `ReportTaskService`、`EvaluationService`、`ExportService` 和工作台任务页复用同一 readiness；Claim 审核完成后这些入口同步变化。
+- 保留旧任务兼容：历史 `completed` 任务缺少 runtime/gate 元数据时可推断旧门禁结论，但返回 legacy inference warning。
+
+R0.1 定向验收范围：
+
+```bash
+pytest -q --disable-warnings \
+  tests/test_report_runtime_state.py \
+  tests/test_report_task_api.py \
+  tests/test_report_task_status_lifecycle.py \
+  tests/test_report_task_quality_gate.py \
+  tests/test_report_task_evidence_gate.py \
+  tests/test_report_task_artifact_import.py \
+  tests/test_export_entry_api.py \
+  tests/test_evaluation_api.py \
+  tests/test_workbench_frontend_script.py
+```
+
+#### R0.2：LangGraph 渐进接入（下一阶段）
+
+1. 以现有 `ReportRunState` 作为唯一 graph state schema，不在 LangGraph 内新增另一套任务状态。
+2. 将证据门禁、研究分析、报告写作、Verifier、质量门禁包装为节点；节点只返回 typed patch，不直接更新 `ReportTask.status`。
+3. conditional edge 只根据 canonical lifecycle/readiness 路由补采集、继续生成、质量修复或人工复核。
+4. 接入生产级持久化 checkpointer，以 `task_id/run_id` 作为线程标识，支持失败恢复、状态历史和幂等重试。
+5. Claim 人工复核接入 interrupt/resume；KG、长期记忆仍是 projection，不成为当前任务完成条件。
+6. API、任务表、评测和导出继续读取数据库中的统一 runtime 投影，避免框架状态和业务状态再次分裂。
+
+#### R0.3：生产化与 P3 收尾
+
+- 补 PDF/DOCX 正式导出，并继续遵守统一 ExportReadiness。
+- `request_id/run_id/task_id` 贯穿 API、LangGraph 节点、LLM、工具和结构化日志。
+- 补 checkpoint 恢复、重复执行幂等、人工复核恢复、成本/延迟聚合和失败降级测试。
+- 修复仓库既有全量回归债务后，完成阶段提交、推送和合并 `main`。
 
 ## 2. 参考视频二次复核结果：不能遗漏的产品能力
 

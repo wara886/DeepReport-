@@ -37,6 +37,13 @@ from src.rag.retrieval_diagnostics import build_retrieval_coverage
 from src.report.citation_manager import build_citation_artifacts
 from src.report.compliance_disclosure import append_compliance_disclosures
 from src.report.html_report_generator import render_professional_html_report
+from src.runtime.report_run_state import (
+    InvalidReportTransition,
+    ReportLifecycleStatus,
+    apply_report_transition,
+    build_report_run_state,
+    resolve_lifecycle_status,
+)
 from src.services.artifact_importer import ArtifactImporter
 
 
@@ -95,6 +102,7 @@ class ReportTaskService:
                 current_stage="queued",
                 metadata_json=metadata,
             )
+            self._transition_task(task, "queued", reason="task_created")
             session.add(task)
             session.add(
                 ReportTaskEvent(
@@ -117,8 +125,9 @@ class ReportTaskService:
             if task.status not in {"queued", "failed", "timeout", "quality_failed"}:
                 return self.serialize_task(task)
 
-            task.status = "running"
-            task.current_stage = "evidence_gate"
+            if resolve_lifecycle_status(task) != "queued":
+                self._transition_task(task, "queued", reason="implicit_retry_before_run")
+            self._transition_task(task, "evidence_checking", reason="report_run_started")
             task.started_at = task.started_at or _utc_now()
             task.error_message = None
             session.add(
@@ -139,7 +148,7 @@ class ReportTaskService:
                 return self.get_task(task_id)
             with self.session() as session:
                 task = self._get_task_for_update(session, task_id)
-                task.current_stage = "orchestrator"
+                self._transition_task(task, "generating", reason="evidence_gate_passed")
                 session.add(
                     ReportTaskEvent(
                         task_id=task.task_id,
@@ -159,8 +168,8 @@ class ReportTaskService:
                 task = self._get_task_for_update(session, task_id)
                 delivery_gate = _dict_path(quality_result, "delivery_gate")
                 delivery_pass = delivery_gate.get("delivery_pass")
-                task.status = "completed" if delivery_pass is True else "quality_failed"
-                task.current_stage = task.status
+                target: ReportLifecycleStatus = "generation_completed" if delivery_pass is True else "quality_blocked"
+                self._transition_task(task, target, reason="quality_gate_completed")
                 task.finished_at = _utc_now()
                 task.error_message = None
                 task.quality_score = _quality_score_from_result(quality_result)
@@ -170,9 +179,9 @@ class ReportTaskService:
                 session.add(
                     ReportTaskEvent(
                         task_id=task.task_id,
-                        stage=task.status,
+                        stage=task.current_stage or task.status,
                         status=task.status,
-                        message="Report task completed" if task.status == "completed" else "Report generated but quality gate failed",
+                        message="Report task completed" if delivery_pass is True else "Report generated but quality gate failed",
                         metadata_json={
                             "artifact_count": len(artifacts),
                             "delivery_pass": delivery_pass,
@@ -184,8 +193,7 @@ class ReportTaskService:
         except Exception as exc:
             with self.session() as session:
                 task = self._get_task_for_update(session, task_id)
-                task.status = "failed"
-                task.current_stage = "failed"
+                self._transition_task(task, "failed", reason=type(exc).__name__)
                 task.finished_at = _utc_now()
                 task.error_message = str(exc)
                 session.add(
@@ -208,8 +216,7 @@ class ReportTaskService:
                 raise ReportTaskConflict(f"Task {task_id} is already running")
             if task.status == "archived":
                 raise ReportTaskConflict(f"Task {task_id} cannot be retried from archived status")
-            task.status = "queued"
-            task.current_stage = "queued"
+            self._transition_task(task, "queued", reason="task_retry_requested")
             task.error_message = None
             task.started_at = None
             task.finished_at = None
@@ -234,7 +241,7 @@ class ReportTaskService:
                 raise ReportTaskConflict(f"Task {task_id} is already running")
             if task.status != "queued":
                 raise ReportTaskConflict(f"Task {task_id} cannot be started from status {task.status}")
-            task.current_stage = "queued"
+            self._transition_task(task, "queued", reason="task_start_requested")
             session.add(
                 ReportTaskEvent(
                     task_id=task.task_id,
@@ -254,8 +261,7 @@ class ReportTaskService:
             task = self._get_task_for_update(session, task_id)
             if task.status in {"running", "completed", "failed", "cancelled", "archived"}:
                 raise ReportTaskConflict(f"Task {task_id} cannot be cancelled from status {task.status}")
-            task.status = "cancelled"
-            task.current_stage = "cancelled"
+            self._transition_task(task, "cancelled", reason=reason or "user_cancelled")
             task.finished_at = _utc_now()
             task.error_message = reason or "Task cancelled by user"
             session.add(
@@ -278,8 +284,7 @@ class ReportTaskService:
             if task.status == "archived":
                 raise ReportTaskConflict(f"Task {task_id} is already archived")
             previous_status = task.status
-            task.status = "archived"
-            task.current_stage = "archived"
+            self._transition_task(task, "archived", reason=reason or "user_archived")
             task.finished_at = task.finished_at or _utc_now()
             metadata = dict(task.metadata_json or {})
             metadata["archived_from_status"] = previous_status
@@ -309,6 +314,7 @@ class ReportTaskService:
     def run_quality_gate(self, task_id: str) -> dict[str, Any]:
         with self.session() as session:
             task = self._get_task_for_update(session, task_id)
+            self._transition_task(task, "quality_checking", reason="quality_gate_started")
             metadata = dict(task.metadata_json or {})
             output_dir = Path(str(metadata.get("output_dir") or ""))
             report_dir = Path(str(metadata.get("report_dir") or ""))
@@ -487,9 +493,8 @@ class ReportTaskService:
             }
             metadata["pre_generation_evidence_gate"] = gate
             task.metadata_json = metadata
-            if blocked:
-                task.status = "quality_failed"
-                task.current_stage = "evidence_gate_failed"
+            if blocked and resolve_lifecycle_status(task) == "evidence_checking":
+                self._transition_task(task, "evidence_blocked", reason="evidence_gate_blocked")
                 task.finished_at = _utc_now()
                 task.error_message = gate["summary"]
             session.add(
@@ -578,7 +583,11 @@ class ReportTaskService:
         with self.session() as session:
             stmt = (
                 select(ReportTask)
-                .options(selectinload(ReportTask.artifacts), selectinload(ReportTask.events))
+                .options(
+                    selectinload(ReportTask.artifacts),
+                    selectinload(ReportTask.events),
+                    selectinload(ReportTask.claims),
+                )
                 .order_by(ReportTask.created_at.desc(), ReportTask.id.desc())
                 .limit(limit)
             )
@@ -593,7 +602,7 @@ class ReportTaskService:
                 normalized_symbol = symbol.strip().upper()
                 stmt = stmt.where(ReportTask.symbol == normalized_symbol)
                 count_stmt = count_stmt.where(ReportTask.symbol == normalized_symbol)
-            items = [self.serialize_task(task) for task in session.scalars(stmt).all()]
+            items = [self.serialize_task(task) for task in session.scalars(stmt).unique().all()]
             total = int(session.scalar(count_stmt) or 0)
         return {"items": items, "total": total}
 
@@ -602,7 +611,11 @@ class ReportTaskService:
             task = session.scalar(
                 select(ReportTask)
                 .where(ReportTask.task_id == task_id)
-                .options(selectinload(ReportTask.artifacts), selectinload(ReportTask.events))
+                .options(
+                    selectinload(ReportTask.artifacts),
+                    selectinload(ReportTask.events),
+                    selectinload(ReportTask.claims),
+                )
             )
             if task is None:
                 raise ReportTaskNotFound(task_id)
@@ -634,6 +647,7 @@ class ReportTaskService:
     def serialize_task(self, task: ReportTask) -> dict[str, Any]:
         artifacts = [serialize_artifact(item) for item in sorted(task.artifacts, key=lambda item: item.id or 0)]
         events = [serialize_event(item) for item in sorted(task.events, key=lambda item: item.id or 0)]
+        run_state = build_report_run_state(task)
         return {
             "id": task.id,
             "task_id": task.task_id,
@@ -653,6 +667,9 @@ class ReportTaskService:
             "events": events,
             "artifacts": artifacts,
             "report_links": _report_links(artifacts),
+            "run_state": run_state,
+            "delivery_readiness": run_state["delivery_readiness"],
+            "export_readiness": run_state["export_readiness"],
         }
 
     def _ensure_db(self) -> None:
@@ -709,6 +726,7 @@ class ReportTaskService:
             "data_source_config_path": str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
             "memory_enabled": bool(payload.get("memory_enabled", False)),
             "execution_tier": str(payload.get("execution_tier") or ("user_fast" if self.mode == "user" else "developer_fast")),
+            "run_mode": str(payload.get("run_mode") or "queue_only"),
             "enforce_evidence_gate": _truthy(payload.get("enforce_evidence_gate", False)),
             "allow_weak_evidence": _truthy(payload.get("allow_weak_evidence", False)),
             "skip_evidence_gate": _truthy(payload.get("skip_evidence_gate", False)),
@@ -735,7 +753,7 @@ class ReportTaskService:
         )
         with self.session() as session:
             task = self._get_task_for_update(session, task_id)
-            task.current_stage = "artifact_import"
+            self._transition_task(task, "generating", stage_override="artifact_import", reason="orchestrator_completed")
             if isinstance(result, dict) and isinstance(result.get("quality_score"), (int, float)):
                 task.quality_score = float(result["quality_score"])
             session.add(
@@ -754,11 +772,28 @@ class ReportTaskService:
         task = session.scalar(
             select(ReportTask)
             .where(ReportTask.task_id == task_id)
-            .options(selectinload(ReportTask.artifacts), selectinload(ReportTask.events))
+            .options(
+                selectinload(ReportTask.artifacts),
+                selectinload(ReportTask.events),
+                selectinload(ReportTask.claims),
+            )
         )
         if task is None:
             raise ReportTaskNotFound(task_id)
         return task
+
+    def _transition_task(
+        self,
+        task: ReportTask,
+        target: ReportLifecycleStatus,
+        *,
+        stage_override: str | None = None,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            return apply_report_transition(task, target, stage_override=stage_override, reason=reason)
+        except InvalidReportTransition as exc:
+            raise ReportTaskConflict(str(exc)) from exc
 
     def _evidence_candidates_for_gate(
         self,

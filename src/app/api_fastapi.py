@@ -21,7 +21,7 @@ from src.services.document_service import DocumentNotFound, DocumentService
 from src.services.entity_service import EntityConflict, EntityNotFound, EntityService
 from src.services.evidence_service import EvidenceNotFound, EvidenceService
 from src.services.evaluation_service import EvaluationService
-from src.services.export_service import ExportService, ExportTaskNotFound
+from src.services.export_service import ExportNotReady, ExportService, ExportTaskNotFound
 from src.services.financial_fact_service import FinancialFactConflict, FinancialFactNotFound, FinancialFactService
 from src.services.ingestion_service import IngestionBatchConflict, IngestionBatchNotFound, IngestionService
 from src.services.investment_signal_service import (
@@ -163,7 +163,8 @@ def create_fastapi_app(
     async def create_report_task(incoming: Request, background_tasks: BackgroundTasks) -> Response:
         payload = await _json_payload(incoming)
         run_async = bool(payload.pop("run_async", payload.pop("async_report_run", False)))
-        run_immediately = bool(payload.pop("run_immediately", payload.pop("auto_run", payload.pop("run", True))))
+        run_immediately = bool(payload.pop("run_immediately", payload.pop("auto_run", payload.pop("run", False))))
+        payload["run_mode"] = "async_generation" if run_immediately and run_async else ("sync_generation" if run_immediately else "queue_only")
         try:
             task = _report_task_service(app).create_task(payload)
             if run_immediately:
@@ -1019,6 +1020,8 @@ def create_fastapi_app(
             return JSONResponse(content=_export_service(app).write_export_package(task_id))
         except ExportTaskNotFound:
             return JSONResponse(status_code=404, content={"error": f"Export entry not found: {task_id}"})
+        except ExportNotReady as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc), "blocked_reasons": exc.blocked_reasons})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -1027,6 +1030,10 @@ def create_fastapi_app(
         try:
             path = _export_service(app).get_package_file(task_id, filename)
             return FileResponse(path)
+        except ExportNotReady as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc), "blocked_reasons": exc.blocked_reasons})
+        except ExportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Export entry not found: {task_id}"})
         except FileNotFoundError:
             return JSONResponse(status_code=404, content={"error": f"Export package file not found: {filename}"})
 

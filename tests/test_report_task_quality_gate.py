@@ -75,7 +75,7 @@ def test_report_task_quality_gate_failure_marks_task_as_quality_failed(tmp_path)
     with make_client(tmp_path, failing_quality_runner) as client:
         response = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-quality-failed", "symbol": "NVDA", "period": "FY2024"},
+            json={"task_id": "task-quality-failed", "symbol": "NVDA", "period": "FY2024", "run_immediately": True},
         )
         artifacts = client.get("/api/report-tasks/task-quality-failed/artifacts")
 
@@ -103,7 +103,7 @@ def test_report_task_quality_failed_task_can_be_retried(tmp_path):
     with make_client(tmp_path, failing_quality_runner) as client:
         failed = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-quality-retry", "symbol": "NVDA", "period": "FY2024"},
+            json={"task_id": "task-quality-retry", "symbol": "NVDA", "period": "FY2024", "run_immediately": True},
         )
 
     assert failed.json()["status"] == "quality_failed"
@@ -124,7 +124,7 @@ def test_report_task_quality_gate_records_llm_run_observability(tmp_path):
     with make_client(tmp_path, failing_quality_runner) as client:
         response = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-quality-llm-run", "symbol": "NVDA", "period": "FY2024"},
+            json={"task_id": "task-quality-llm-run", "symbol": "NVDA", "period": "FY2024", "run_immediately": True},
         )
         runs = client.get("/api/llm-runs", params={"task_id": "task-quality-llm-run"})
 
@@ -167,7 +167,7 @@ def test_report_task_quality_gate_binds_promptops_active_version(tmp_path):
         active = client.get("/api/promptops/templates/report_quality_gate/active")
         response = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-quality-promptops", "symbol": "NVDA", "period": "FY2024"},
+            json={"task_id": "task-quality-promptops", "symbol": "NVDA", "period": "FY2024", "run_immediately": True},
         )
         runs = client.get("/api/llm-runs", params={"task_id": "task-quality-promptops"})
 

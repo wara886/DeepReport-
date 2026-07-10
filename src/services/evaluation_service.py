@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from src.db.models import ClaimEvidence, DataSource, IngestionBatch, LLMRun, ReportClaim, ReportTask
 from src.evaluation.benchmark_summary_importer import load_benchmark_summaries
 from src.rag.retrieval_diagnostics import build_retrieval_coverage
+from src.runtime.report_run_state import build_report_run_state
 from src.services.datasource_service import DEFAULT_SOURCE_CATALOG
 from src.services.report_task_service import ReportTaskNotFound
 
@@ -39,7 +40,10 @@ class EvaluationService:
                 session.scalars(
                     select(ReportTask)
                     .where(active_task_condition)
-                    .options(selectinload(ReportTask.claims).selectinload(ReportClaim.evidence_links))
+                    .options(
+                        selectinload(ReportTask.artifacts),
+                        selectinload(ReportTask.claims).selectinload(ReportClaim.evidence_links),
+                    )
                     .order_by(ReportTask.created_at.desc(), ReportTask.id.desc())
                     .limit(limit)
                 )
@@ -57,7 +61,10 @@ class EvaluationService:
                         active_task_condition,
                         ReportTask.status.in_(QUALITY_EVALUATED_TASK_STATUSES),
                     )
-                    .options(selectinload(ReportTask.claims).selectinload(ReportClaim.evidence_links).selectinload(ClaimEvidence.evidence_item))
+                    .options(
+                        selectinload(ReportTask.artifacts),
+                        selectinload(ReportTask.claims).selectinload(ReportClaim.evidence_links).selectinload(ClaimEvidence.evidence_item),
+                    )
                     .order_by(ReportTask.created_at.desc(), ReportTask.id.desc())
                 ).all()
             )
@@ -204,7 +211,10 @@ class EvaluationService:
             task = session.scalar(
                 select(ReportTask)
                 .where(ReportTask.task_id == task_id)
-                .options(selectinload(ReportTask.claims).selectinload(ReportClaim.evidence_links).selectinload(ClaimEvidence.evidence_item))
+                .options(
+                    selectinload(ReportTask.artifacts),
+                    selectinload(ReportTask.claims).selectinload(ReportClaim.evidence_links).selectinload(ClaimEvidence.evidence_item),
+                )
             )
             if task is None:
                 raise ReportTaskNotFound(task_id)
@@ -222,6 +232,11 @@ class EvaluationService:
         quality_result = (task.metadata_json or {}).get("quality_result")
         quality_result = quality_result if isinstance(quality_result, dict) else {}
         delivery_gate = quality_result.get("delivery_gate") if isinstance(quality_result.get("delivery_gate"), dict) else {}
+        run_state = build_report_run_state(task)
+        delivery_readiness = run_state["delivery_readiness"]
+        product_delivery_gate = dict(delivery_gate)
+        product_delivery_gate["quality_gate_pass"] = delivery_gate.get("delivery_pass")
+        product_delivery_gate["delivery_pass"] = delivery_readiness["can_deliver_formal_report"]
         quality_issues = _top_quality_issues(quality_result)
         issue_groups = _task_claim_issue_groups(claims)
         model_issues = _task_model_issues(runs)
@@ -237,16 +252,20 @@ class EvaluationService:
         }
         blockers = _task_blockers(
             task=task,
-            delivery_gate=delivery_gate,
+            delivery_gate=product_delivery_gate,
             quality_issues=quality_issues,
             issue_groups=issue_groups,
             model_issues=model_issues,
         )
         return {
-            "task": _task_diagnostic_header(task, delivery_gate),
+            "task": _task_diagnostic_header(task, product_delivery_gate),
+            "run_state": run_state,
+            "delivery_readiness": delivery_readiness,
+            "export_readiness": run_state["export_readiness"],
             "summary": {
                 **counters,
-                "delivery_pass": delivery_gate.get("delivery_pass"),
+                "delivery_pass": delivery_readiness["can_deliver_formal_report"],
+                "quality_gate_pass": delivery_gate.get("delivery_pass"),
                 "quality_score": task.quality_score,
                 "traceable_claim_rate": _ratio(
                     len(claims) - counters["missing_evidence_count"],
@@ -257,7 +276,7 @@ class EvaluationService:
                     len(claims),
                 ),
             },
-            "quality_gates": _task_quality_checks(task=task, delivery_gate=delivery_gate, counters=counters),
+            "quality_gates": _task_quality_checks(task=task, delivery_gate=product_delivery_gate, counters=counters),
             "blockers": blockers,
             "claim_issues": {
                 key: [_claim_issue_row(claim) for claim in values[:12]]
@@ -331,12 +350,7 @@ def _top_quality_issues(quality_result: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _task_delivery_passed(task: ReportTask) -> bool:
-    quality_result = (task.metadata_json or {}).get("quality_result")
-    if isinstance(quality_result, dict):
-        delivery_gate = quality_result.get("delivery_gate")
-        if isinstance(delivery_gate, dict) and delivery_gate.get("delivery_pass") is not None:
-            return bool(delivery_gate.get("delivery_pass"))
-    return task.status == "completed"
+    return bool(build_report_run_state(task)["delivery_readiness"]["can_deliver_formal_report"])
 
 
 def _quality_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
@@ -430,13 +444,15 @@ def _task_quality_row(task: ReportTask) -> dict[str, Any]:
     numeric_failed = sum(1 for claim in claims if _is_failed_check(claim.numeric_check_status))
     pending_review = sum(1 for claim in claims if claim.review_status == "pending")
     quality_result = (task.metadata_json or {}).get("quality_result")
-    delivery_pass = None
+    quality_gate_pass = None
     issue_count = 0
     if isinstance(quality_result, dict):
         delivery_gate = quality_result.get("delivery_gate") if isinstance(quality_result.get("delivery_gate"), dict) else {}
-        delivery_pass = delivery_gate.get("delivery_pass")
+        quality_gate_pass = delivery_gate.get("delivery_pass")
         issue_count = len(_top_quality_issues(quality_result))
     retrieval_coverage = _task_retrieval_coverage(task)
+    run_state = build_report_run_state(task)
+    delivery_readiness = run_state["delivery_readiness"]
     return {
         "task_id": task.task_id,
         "symbol": task.symbol,
@@ -445,7 +461,10 @@ def _task_quality_row(task: ReportTask) -> dict[str, Any]:
         "report_type": task.report_type,
         "status": task.status,
         "quality_score": task.quality_score,
-        "delivery_pass": delivery_pass,
+        "delivery_pass": delivery_readiness["can_deliver_formal_report"],
+        "quality_gate_pass": quality_gate_pass,
+        "delivery_readiness": delivery_readiness,
+        "export_readiness": run_state["export_readiness"],
         "issue_count": issue_count,
         "claim_count": claim_count,
         "traceable_claim_rate": _ratio(traceable, claim_count),

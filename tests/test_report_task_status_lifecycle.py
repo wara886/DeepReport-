@@ -58,7 +58,7 @@ def test_report_task_status_lifecycle_records_events(tmp_path):
     with make_client(tmp_path, SuccessfulOrchestrator) as client:
         response = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-lifecycle-001", "symbol": "MSFT", "period": "FY2024"},
+            json={"task_id": "task-lifecycle-001", "symbol": "MSFT", "period": "FY2024", "run_immediately": True},
         )
 
     assert response.status_code == 201
@@ -80,7 +80,7 @@ def test_report_task_retry_moves_failed_task_back_to_completed(tmp_path):
     with make_client(tmp_path, FailingThenSuccessfulOrchestrator) as client:
         failed = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-retry-001", "symbol": "TSLA", "period": "FY2024"},
+            json={"task_id": "task-retry-001", "symbol": "TSLA", "period": "FY2024", "run_immediately": True},
         )
         retried = client.post("/api/report-tasks/task-retry-001/retry", json={})
 

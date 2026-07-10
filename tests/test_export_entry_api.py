@@ -167,3 +167,17 @@ def test_export_package_files_are_written_and_downloadable(temp_db_engine, tmp_p
     assert download_response.status_code == 200
     assert "Approved claim." in download_response.text
     assert missing_response.status_code == 404
+
+
+def test_formal_export_files_are_blocked_until_canonical_readiness_passes(temp_db_engine, tmp_path):
+    service, client = build_export_client(temp_db_engine, tmp_path)
+    seed_export_task(service, pending=True)
+
+    with client:
+        write_response = client.post("/api/exports/task-export/package/files")
+        download_response = client.get("/api/exports/task-export/package/files/claims.csv")
+
+    assert write_response.status_code == 409
+    assert write_response.json()["blocked_reasons"] == ["pending_claim_review"]
+    assert download_response.status_code == 409
+    assert download_response.json()["blocked_reasons"] == ["pending_claim_review"]

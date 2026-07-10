@@ -136,7 +136,7 @@ def test_report_task_artifact_import_links_completed_outputs(tmp_path):
     with TestClient(app) as client:
         created = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-artifacts-001", "symbol": "AAPL", "period": "FY2024"},
+            json={"task_id": "task-artifacts-001", "symbol": "AAPL", "period": "FY2024", "run_immediately": True},
         )
         artifacts = client.get("/api/report-tasks/task-artifacts-001/artifacts")
 
@@ -168,7 +168,7 @@ def test_report_task_artifact_import_populates_financial_facts_from_claim_number
     with TestClient(app) as client:
         created = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-facts-001", "symbol": "AAPL", "period": "FY2024"},
+            json={"task_id": "task-facts-001", "symbol": "AAPL", "period": "FY2024", "run_immediately": True},
         )
         facts = client.get("/api/financial-facts", params={"company": "AAPL", "period": "FY2024"})
         dashboard = client.get("/api/dashboard/summary")
@@ -265,7 +265,7 @@ def test_report_task_artifact_import_binds_financial_metrics_lineage(tmp_path):
     with TestClient(app) as client:
         created = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-metrics-lineage", "symbol": "AAPL", "period": "FY2024"},
+            json={"task_id": "task-metrics-lineage", "symbol": "AAPL", "period": "FY2024", "run_immediately": True},
         )
         facts = client.get("/api/financial-facts", params={"company": "AAPL", "metric": "gross_margin", "period": "FY2024"})
 
@@ -361,7 +361,7 @@ def test_report_task_artifact_import_populates_facts_from_tables_and_valuation(t
     with TestClient(app) as client:
         created = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-table-valuation-facts", "symbol": "AAPL", "period": "FY2024"},
+            json={"task_id": "task-table-valuation-facts", "symbol": "AAPL", "period": "FY2024", "run_immediately": True},
         )
         facts = client.get("/api/financial-facts", params={"company": "AAPL", "period": "FY2024"})
 
@@ -399,7 +399,7 @@ def test_report_task_imports_agent_trace_as_llm_runs(tmp_path):
     with TestClient(app) as client:
         created = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-agent-trace", "symbol": "AAPL", "period": "FY2024"},
+            json={"task_id": "task-agent-trace", "symbol": "AAPL", "period": "FY2024", "run_immediately": True},
         )
         runs = client.get("/api/llm-runs", params={"task_id": "task-agent-trace", "limit": 20})
         dashboard = client.get("/api/dashboard/summary")

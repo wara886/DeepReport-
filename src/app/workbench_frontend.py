@@ -1327,6 +1327,17 @@ def render_workbench_html() -> str:
       company: "公司别名", product: "产品别名", metric: "财务指标", industry: "行业术语", risk: "风险词", exclude: "排除词",
       approve: "通过", reject: "驳回", edit: "保存修改", regenerate: "重生成",
       rejected_claims_present: "存在已驳回主张", pending_claim_review: "存在待复核主张",
+      report_task_not_completed: "研报生成尚未完成", evidence_check_pending: "尚未完成证据检查",
+      evidence_not_delivery_ready: "证据未达到正式交付要求", quality_check_pending: "尚未完成质量检查",
+      quality_gate_failed: "质量门禁未通过", unsupported_claims_present: "存在未获证据支持的主张",
+      claims_missing: "尚未生成主张", approved_claims_missing: "尚无审核通过的主张",
+      report_artifact_missing: "缺少报告产物", export_ready: "可正式交付", review_required: "需要人工复核",
+      in_progress: "处理中", complete_report_generation: "完成研报生成", resolve_rejected_claims: "处理已驳回主张",
+      review_pending_claims: "复核待处理主张", run_evidence_gate: "执行证据检查",
+      supplement_authoritative_evidence: "补充权威来源证据", run_quality_gate: "执行质量检查",
+      resolve_quality_blockers: "处理质量阻塞", resolve_unsupported_claims: "处理未支持主张",
+      import_or_generate_claims: "生成或导入主张", approve_supported_claims: "审核通过有证据支持的主张",
+      generate_report_artifact: "生成报告产物",
       filings: "公告/年报", documents: "文档资料", news: "新闻资料",
     };
     const entityTypeMap = {
@@ -2758,18 +2769,45 @@ def render_workbench_html() -> str:
       return textOf(map, value);
     }
 
+    function taskDeliveryStatus(task) {
+      const readiness = task?.delivery_readiness || {};
+      const status = String(readiness.status || "");
+      if (status) {
+        const classMap = { export_ready: "completed", review_required: "pending", in_progress: "running", queued: "queued", blocked: "failed" };
+        return { key: classMap[status] || status, label: statusText(status) };
+      }
+      return { key: String(task?.status || "unknown"), label: statusText(task?.status || "unknown") };
+    }
+
+    function renderDeliveryReadiness(task) {
+      const readiness = task?.delivery_readiness || {};
+      if (!Object.keys(readiness).length) return "";
+      const blockers = readiness.blocking_reasons || [];
+      const actions = readiness.required_actions || [];
+      return `<div class="detail-section"><h3>统一交付状态</h3>
+        <div class="analysis-stats">
+          <div class="analysis-stat"><span class="label">生成草稿</span><strong>${esc(passText(readiness.can_generate_draft))}</strong></div>
+          <div class="analysis-stat"><span class="label">人工复核</span><strong>${esc(passText(readiness.can_enter_human_review))}</strong></div>
+          <div class="analysis-stat"><span class="label">正式交付</span><strong>${esc(passText(readiness.can_deliver_formal_report))}</strong></div>
+          <div class="analysis-stat"><span class="label">正式导出</span><strong>${esc(passText(readiness.can_export_formal_package))}</strong></div>
+        </div>
+        ${blockers.length ? `<div class="text-block">${esc(blockers.map(statusText).join("\\n"))}</div>` : `<div class="empty">当前没有正式交付阻塞项。</div>`}
+        ${actions.length ? `<div class="score-note">下一步：${esc(actions.map(statusText).join("、"))}</div>` : ""}
+      </div>`;
+    }
+
     function renderRecentTaskTable(payload) {
       const tasks = (payload.items || []).slice(0, 6);
       $("recentTaskRows").innerHTML = tasks.length
-        ? tasks.map((task) => `<tr>
+        ? tasks.map((task) => { const delivery = taskDeliveryStatus(task); return `<tr>
             <td>${esc(task.symbol || "-")}</td>
             <td>${esc(task.period || "-")}</td>
             <td>${esc(reportTypeText(task.report_type))}</td>
-            <td><span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span></td>
+            <td><span class="status ${esc(delivery.key)}">${esc(delivery.label)}</span></td>
             <td>${esc(fmt(task.quality_score))}</td>
             <td>${esc(fmt(task.finished_at || task.started_at || task.created_at))}</td>
             <td><button class="btn" data-task-detail-jump="${esc(task.task_id)}">查看</button></td>
-          </tr>`).join("")
+          </tr>`; }).join("")
         : `<tr><td colspan="7"><div class="empty"><div>暂无研报任务</div><div class="empty-actions"><button class="btn primary" data-open-create-task>创建研报任务</button></div></div></td></tr>`;
       bindJumpHandlers($("recentTaskRows"));
       bindCreateTaskButtons($("recentTaskRows"));
@@ -3060,15 +3098,15 @@ def render_workbench_html() -> str:
 
     function renderEvaluationTaskRows(tasks) {
       $("evaluationTaskRows").innerHTML = tasks.length
-        ? tasks.map((task) => `<tr>
+        ? tasks.map((task) => { const delivery = taskDeliveryStatus(task); return `<tr>
             <td>${esc(task.company_name || task.symbol)}<br><span class="label">${esc(task.symbol)} · ${esc(task.period)} · ${esc(reportTypeText(task.report_type))}</span></td>
-            <td><span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span><br><span class="label">门禁：${esc(passText(task.delivery_pass))}</span></td>
+            <td><span class="status ${esc(delivery.key)}">${esc(delivery.label)}</span><br><span class="label">正式交付：${esc(passText(task.delivery_pass))}</span></td>
             <td>${esc(scoreText(task.quality_score))}</td>
             <td>${esc(percentText(task.traceable_claim_rate))}</td>
             <td>${esc(percentText(task.verified_claim_rate))}</td>
             <td>${esc(number(Number(task.issue_count || 0) + Number(task.citation_failed_count || 0) + Number(task.numeric_failed_count || 0) + Number(task.pending_review_count || 0)))}</td>
             <td><div class="links"><button class="btn primary" data-evaluation-diagnostic="${esc(task.task_id)}">诊断</button><button class="btn" data-task-detail-jump="${esc(task.task_id)}">分析包</button></div></td>
-          </tr>`).join("")
+          </tr>`; }).join("")
         : `<tr><td colspan="7">${emptyBox("暂无研报质量记录", [{ label: "创建研报任务", view: "tasks", className: "primary" }])}</td></tr>`;
     }
 
@@ -3096,6 +3134,7 @@ def render_workbench_html() -> str:
 
     function renderEvaluationTaskDiagnostic(payload, analysis = null) {
       const task = payload.task || {};
+      const delivery = taskDeliveryStatus({ status: task.status, delivery_readiness: payload.delivery_readiness || {} });
       const summary = payload.summary || {};
       const blockers = payload.blockers || [];
       const actions = payload.recommended_actions || [];
@@ -3109,7 +3148,7 @@ def render_workbench_html() -> str:
               <h3>${esc(task.company_name || task.symbol || "研报任务")} · ${esc(task.period || "-")}</h3>
               <div class="score-note">${esc(task.symbol || "-")} · ${esc(reportTypeText(task.report_type))} · ${esc(fmt(task.updated_at))}</div>
             </div>
-            <span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span>
+            <span class="status ${esc(delivery.key)}">${esc(delivery.label)}</span>
           </div>
           <div class="analysis-stats" style="margin-top:10px">
             <div class="analysis-stat"><span class="label">质量分</span><strong>${esc(scoreText(summary.quality_score))}</strong><span class="score-note">门禁：${esc(passText(summary.delivery_pass))}</span></div>
@@ -3435,15 +3474,15 @@ def render_workbench_html() -> str:
         const payload = await getJson("/api/report-tasks" + suffix);
         const rows = payload.items || [];
         $("taskRows").innerHTML = rows.length
-          ? rows.map((task) => `<tr data-selectable="true" data-task-id="${esc(task.task_id)}">
+          ? rows.map((task) => { const delivery = taskDeliveryStatus(task); return `<tr data-selectable="true" data-task-id="${esc(task.task_id)}">
               <td><button class="btn" data-task-detail="${esc(task.task_id)}">${esc(metadataName(task))}</button></td>
               <td>${esc(task.symbol)}<br><span class="label">${esc(task.period)}</span></td>
-              <td><span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span></td>
+              <td><span class="status ${esc(delivery.key)}">${esc(delivery.label)}</span></td>
               <td class="nowrap">${esc(stepText(task.current_stage))}</td>
               <td>${esc(fmt(task.created_at))}</td>
               <td>${artifactButtons(task)}</td>
               <td>${taskActionButtons(task)}</td>
-            </tr>`).join("")
+            </tr>`; }).join("")
           : `<tr><td colspan="7"><div class="empty">暂无研报任务</div></td></tr>`;
         document.querySelectorAll("[data-task-detail]").forEach((btn) => {
           btn.addEventListener("click", () => loadTaskDetail(btn.dataset.taskDetail));
@@ -3532,6 +3571,7 @@ def render_workbench_html() -> str:
       try {
         const analysis = await getJson(`/api/report-tasks/${encodeURIComponent(taskId)}/analysis`);
         const task = analysis.task || {};
+        const delivery = taskDeliveryStatus(task);
         const events = task.events || [];
         const metadata = task.metadata || {};
         $("taskDetail").innerHTML = `<h2>任务详情</h2>
@@ -3539,12 +3579,13 @@ def render_workbench_html() -> str:
           <div class="kv"><span class="label">查询期间</span><span>${esc(task.period)}</span></div>
           <div class="kv"><span class="label">报告类型</span><span>${esc(reportTypeText(task.report_type))}</span></div>
           <div class="kv"><span class="label">数据源范围</span><span>${esc(dataSourceScopeText(metadata.data_source_scope))}</span></div>
-          <div class="kv"><span class="label">状态</span><span><span class="status ${esc(task.status)}">${esc(statusText(task.status))}</span></span></div>
+          <div class="kv"><span class="label">状态</span><span><span class="status ${esc(delivery.key)}">${esc(delivery.label)}</span></span></div>
           <div class="kv"><span class="label">阶段</span><span>${esc(stepText(task.current_stage))}</span></div>
           <div class="kv"><span class="label">质量分</span><span>${esc(fmt(task.quality_score))}</span></div>
           <div class="detail-section"><h3>研究问题</h3><div class="text-block">${esc(metadata.research_topic || "-")}</div></div>
           <div class="detail-section"><h3>任务操作</h3>${taskActionButtons(task)}</div>
           ${task.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(task.error_message)}</div></div>` : ""}
+          ${renderDeliveryReadiness(task)}
           ${renderPreGenerationEvidenceGate(metadata.pre_generation_evidence_gate || {})}
           ${renderTaskLinkageOverview(analysis)}
           ${renderTaskNarrative(analysis)}
@@ -5261,9 +5302,9 @@ def render_workbench_html() -> str:
             <div class="analysis-stat"><span class="label">财务事实</span><strong>${esc(number((payload.financial_facts || []).length))}</strong><span class="score-note">结构化表</span></div>
           </div>
           <div class="detail-section"><h3>CSV 表</h3><div class="mini-list">
-            ${Object.entries(csv).map(([key, value]) => `<div class="mini-item"><strong>${esc(exportCsvText(key))}</strong><br><span class="label">${esc(String(value || "").split("\n").filter(Boolean).length)} 行</span></div>`).join("")}
+            ${Object.entries(csv).map(([key, value]) => `<div class="mini-item"><strong>${esc(exportCsvText(key))}</strong><br><span class="label">${esc(String(value || "").split("\\n").filter(Boolean).length)} 行</span></div>`).join("")}
           </div></div>
-          <div class="links" style="margin-top:10px"><button class="btn primary" data-write-export-package="${esc(taskId)}">生成下载文件</button></div>
+          <div class="links" style="margin-top:10px"><button class="btn primary" data-write-export-package="${esc(taskId)}"${readiness.official_export_ready ? "" : " disabled"}>${readiness.official_export_ready ? "生成下载文件" : "正式导出尚未就绪"}</button></div>
           <div id="exportPackageFiles" class="detail-section"><h3>下载文件</h3><div class="empty">生成后会提供 JSON、Markdown、HTML 和 CSV 下载链接。</div></div>
           <div class="detail-section"><h3>Markdown 预览</h3><pre class="text-block">${esc((pkg.markdown || "").slice(0, 1200))}</pre></div>`;
         bindWriteExportPackageButtons($("exportPackagePreview"));

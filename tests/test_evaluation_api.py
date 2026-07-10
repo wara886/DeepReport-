@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from src.app.api_fastapi import create_fastapi_app
-from src.db.models import ClaimEvidence, DataSource, EvidenceItem, IngestionBatch, LLMRun, ReportClaim, ReportTask
+from src.db.models import ClaimEvidence, DataSource, EvidenceItem, IngestionBatch, LLMRun, ReportArtifact, ReportClaim, ReportTask
 from src.services.evaluation_service import EvaluationService
 from src.services.report_task_service import ReportTaskService
 
@@ -117,6 +117,14 @@ def seed_evaluation_state(service):
         )
         session.add_all([task_ok, task_bad, task_source_gap, task_archived, task_cancelled, task_queued])
         session.flush()
+        session.add(
+            ReportArtifact(
+                task_id="task-eval-ok",
+                artifact_type="markdown",
+                path="report.md",
+                url="/artifacts/report.md",
+            )
+        )
         evidence = EvidenceItem(
             evidence_id="ev-eval-1",
             content="Gross margin and revenue evidence.",

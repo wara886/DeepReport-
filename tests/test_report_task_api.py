@@ -4,7 +4,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from src.app.api_fastapi import create_fastapi_app
-from src.db.models import ReportTask
+from src.db.models import ReportArtifact, ReportClaim, ReportTask
+from src.runtime.report_run_state import apply_report_transition
 from src.services.report_task_service import ReportTaskService
 
 
@@ -97,6 +98,79 @@ def test_report_task_api_accepts_auto_run_false_alias(tmp_path):
     assert created.json()["started_at"] is None
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
+
+
+def test_report_task_api_defaults_to_queue_only_and_exposes_runtime_readiness(tmp_path):
+    with build_client(tmp_path) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-api-queue-default", "symbol": "AAPL", "period": "FY2024"},
+        )
+
+    assert created.status_code == 201
+    body = created.json()
+    assert body["status"] == "queued"
+    assert body["started_at"] is None
+    assert body["run_state"]["run_mode"] == "queue_only"
+    assert body["run_state"]["lifecycle_status"] == "queued"
+    assert body["delivery_readiness"]["can_generate_draft"] is True
+    assert body["delivery_readiness"]["can_deliver_formal_report"] is False
+    assert body["export_readiness"]["can_export_formal_package"] is False
+
+
+def test_task_evaluation_and_export_share_readiness_after_claim_review(tmp_path):
+    service = build_service(tmp_path)
+    service.create_task({"task_id": "task-readiness-shared", "symbol": "NVDA", "period": "FY2024"})
+    with service.session() as session:
+        task = session.scalar(select(ReportTask).where(ReportTask.task_id == "task-readiness-shared"))
+        assert task is not None
+        apply_report_transition(task, "evidence_checking")
+        apply_report_transition(task, "generating")
+        apply_report_transition(task, "quality_checking")
+        apply_report_transition(task, "generation_completed")
+        metadata = dict(task.metadata_json or {})
+        metadata["pre_generation_evidence_gate"] = {
+            "status": "success",
+            "blocked": False,
+            "draft_ready": True,
+            "delivery_ready": True,
+        }
+        metadata["quality_result"] = {"delivery_gate": {"delivery_pass": True}, "top_quality_issues": []}
+        task.metadata_json = metadata
+        task.quality_score = 0.92
+        session.add(ReportArtifact(task_id=task.task_id, artifact_type="markdown", path="report.md"))
+        claim = ReportClaim(
+            task_id=task.task_id,
+            claim_text="Revenue increased.",
+            review_status="pending",
+            verification_status="supported",
+        )
+        session.add(claim)
+        session.commit()
+        claim_id = claim.id
+
+    app = create_fastapi_app(
+        output_dir=str(tmp_path / "legacy_outputs"),
+        report_dir=str(tmp_path / "legacy_reports"),
+        memory_root=str(tmp_path / "legacy_memory"),
+        report_task_service=service,
+    )
+    with TestClient(app) as client:
+        task_before = client.get("/api/report-tasks/task-readiness-shared").json()
+        export_before = client.get("/api/exports/task-readiness-shared").json()
+        approved = client.post(f"/api/claims/{claim_id}/approve", json={"reviewer": "analyst"})
+        task_after = client.get("/api/report-tasks/task-readiness-shared").json()
+        export_after = client.get("/api/exports/task-readiness-shared").json()
+        evaluation = client.get("/api/evaluation/summary").json()
+
+    assert task_before["delivery_readiness"]["can_deliver_formal_report"] is False
+    assert export_before["official_export_ready"] is False
+    assert task_before["delivery_readiness"]["blocking_reasons"] == export_before["blocked_reasons"]
+    assert approved.status_code == 200
+    assert task_after["delivery_readiness"]["can_deliver_formal_report"] is True
+    assert export_after["official_export_ready"] is True
+    assert task_after["delivery_readiness"]["blocking_reasons"] == export_after["blocked_reasons"] == []
+    assert evaluation["metrics"]["delivery_pass_count"] == 1
 
 
 def test_report_task_api_cancel_and_archive_lifecycle(tmp_path):

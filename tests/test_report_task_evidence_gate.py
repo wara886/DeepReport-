@@ -212,8 +212,9 @@ def test_enforced_evidence_gate_blocks_generation_without_evidence(tmp_path):
                 "task_id": "task-gate-block",
                 "symbol": "NVDA",
                 "period": "FY2024",
-                "company_name": "NVIDIA",
-                "enforce_evidence_gate": True,
+                    "company_name": "NVIDIA",
+                    "enforce_evidence_gate": True,
+                    "run_immediately": True,
             },
         )
 
@@ -244,8 +245,9 @@ def test_enforced_evidence_gate_allows_generation_with_required_official_source(
                 "task_id": "task-gate-pass",
                 "symbol": "NVDA",
                 "period": "FY2024",
-                "company_name": "NVIDIA",
-                "enforce_evidence_gate": True,
+                    "company_name": "NVIDIA",
+                    "enforce_evidence_gate": True,
+                    "run_immediately": True,
             },
         )
 
@@ -275,8 +277,9 @@ def test_task_official_db_evidence_is_merged_into_report_artifacts_before_qualit
                 "task_id": "task-official-artifact-merge",
                 "symbol": "NVDA",
                 "period": "FY2024",
-                "company_name": "NVIDIA",
-                "enforce_evidence_gate": True,
+                    "company_name": "NVIDIA",
+                    "enforce_evidence_gate": True,
+                    "run_immediately": True,
             },
         )
 
@@ -363,8 +366,9 @@ def test_task_report_patch_uses_market_meta_tags_and_avoids_truncated_english_se
                     "task_id": case["task_id"],
                     "symbol": case["symbol"],
                     "period": case["period"],
-                    "company_name": case["company_name"],
-                    "enforce_evidence_gate": True,
+                        "company_name": case["company_name"],
+                        "enforce_evidence_gate": True,
+                        "run_immediately": True,
                 },
             )
 
@@ -397,8 +401,9 @@ def test_enforced_evidence_gate_blocks_delivery_when_official_source_is_missing(
                 "task_id": "task-gate-official-gap",
                 "symbol": "NVDA",
                 "period": "FY2024",
-                "company_name": "NVIDIA",
-                "enforce_evidence_gate": True,
+                    "company_name": "NVIDIA",
+                    "enforce_evidence_gate": True,
+                    "run_immediately": True,
             },
         )
 
@@ -423,7 +428,7 @@ def test_default_evidence_gate_records_warning_without_blocking_legacy_fast_task
     with client:
         response = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-gate-warning", "symbol": "AAPL", "period": "FY2024"},
+                json={"task_id": "task-gate-warning", "symbol": "AAPL", "period": "FY2024", "run_immediately": True},
         )
 
     assert response.status_code == 201

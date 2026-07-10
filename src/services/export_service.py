@@ -15,11 +15,21 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from src.db.models import ClaimEvidence, EvidenceItem, FinancialFact, ReportArtifact, ReportClaim, ReportTask, ReviewRecord
+from src.runtime.report_run_state import build_report_run_state
 from src.services.report_task_service import serialize_artifact
 
 
 class ExportTaskNotFound(LookupError):
     """Raised when export review is requested for an unknown task."""
+
+
+class ExportNotReady(RuntimeError):
+    """Raised when a formal package action is blocked by canonical readiness."""
+
+    def __init__(self, task_id: str, blocked_reasons: list[str]) -> None:
+        self.task_id = task_id
+        self.blocked_reasons = blocked_reasons
+        super().__init__(f"Formal export is blocked for {task_id}: {', '.join(blocked_reasons)}")
 
 
 class ExportService:
@@ -67,8 +77,10 @@ class ExportService:
 
     def serialize_export_entry(self, task: ReportTask, *, include_claims: bool = False) -> dict[str, Any]:
         artifacts = [serialize_artifact(item) for item in sorted(task.artifacts, key=lambda item: item.id or 0)]
-        claim_counts = Counter(claim.review_status for claim in task.claims)
-        blocked_reasons = export_blockers(task, claim_counts)
+        run_state = build_report_run_state(task)
+        claim_state = run_state["claim_state"]
+        export_readiness = run_state["export_readiness"]
+        blocked_reasons = list(export_readiness["blocking_reasons"])
         payload = {
             "task_id": task.task_id,
             "symbol": task.symbol,
@@ -79,12 +91,14 @@ class ExportService:
             "finished_at": _dt(task.finished_at),
             "artifact_count": len(artifacts),
             "artifacts": artifacts,
-            "review_status_counts": dict(sorted(claim_counts.items())),
-            "approved_claim_count": int(claim_counts.get("approved", 0)),
-            "pending_claim_count": int(claim_counts.get("pending", 0)),
-            "rejected_claim_count": int(claim_counts.get("rejected", 0)),
-            "official_export_ready": not blocked_reasons,
+            "review_status_counts": claim_state["review_status_counts"],
+            "approved_claim_count": claim_state["approved_count"],
+            "pending_claim_count": claim_state["pending_count"],
+            "rejected_claim_count": claim_state["rejected_count"],
+            "official_export_ready": export_readiness["can_export_formal_package"],
             "blocked_reasons": blocked_reasons,
+            "delivery_readiness": run_state["delivery_readiness"],
+            "export_readiness": export_readiness,
             "formal_export_note": "正式导出包已接入 Markdown、HTML、JSON 和 CSV；PDF/DOCX 可基于同一导出包继续生成。",
         }
         if include_claims:
@@ -116,6 +130,8 @@ class ExportService:
                 "readiness": {
                     "official_export_ready": entry["official_export_ready"],
                     "blocked_reasons": entry["blocked_reasons"],
+                    "delivery_readiness": entry["delivery_readiness"],
+                    "export_readiness": entry["export_readiness"],
                     "approved_claim_count": len(approved_claims),
                     "pending_claim_count": entry["pending_claim_count"],
                     "rejected_claim_count": entry["rejected_claim_count"],
@@ -146,6 +162,9 @@ class ExportService:
 
     def write_export_package(self, task_id: str) -> dict[str, Any]:
         package = self.build_export_package(task_id)
+        readiness = package["json"]["readiness"]
+        if not readiness["official_export_ready"]:
+            raise ExportNotReady(task_id, list(readiness["blocked_reasons"]))
         target_dir = self.package_root / _safe_task_dir(task_id)
         target_dir.mkdir(parents=True, exist_ok=True)
         files = {
@@ -189,6 +208,17 @@ class ExportService:
         }
         if filename not in allowed:
             raise FileNotFoundError(filename)
+        with self.session_factory() as session:
+            task = session.scalar(
+                select(ReportTask)
+                .where(ReportTask.task_id == task_id)
+                .options(selectinload(ReportTask.artifacts), selectinload(ReportTask.claims))
+            )
+            if task is None:
+                raise ExportTaskNotFound(task_id)
+            readiness = build_report_run_state(task)["export_readiness"]
+            if not readiness["can_export_formal_package"]:
+                raise ExportNotReady(task_id, list(readiness["blocking_reasons"]))
         path = self.package_root / _safe_task_dir(task_id) / filename
         if not path.exists() or not path.is_file():
             raise FileNotFoundError(filename)
@@ -201,17 +231,8 @@ class ExportService:
 
 
 def export_blockers(task: ReportTask, claim_counts: Counter[str]) -> list[str]:
-    blockers: list[str] = []
-    if task.status != "completed":
-        blockers.append("report_task_not_completed")
-    if int(claim_counts.get("rejected", 0)) > 0:
-        blockers.append("rejected_claims_present")
-    if int(claim_counts.get("pending", 0)) > 0:
-        blockers.append("pending_claim_review")
-    artifact_types = {artifact.artifact_type for artifact in task.artifacts}
-    if not artifact_types.intersection({"markdown", "html", "json"}):
-        blockers.append("report_artifact_missing")
-    return blockers
+    del claim_counts  # Kept for the public compatibility signature.
+    return list(build_report_run_state(task)["export_readiness"]["blocking_reasons"])
 
 
 def serialize_claim(claim: ReportClaim) -> dict[str, Any]:
