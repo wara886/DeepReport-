@@ -23,6 +23,12 @@ DEFAULT_CASES = [
     {"case_id": "p13_cna_moutai", "market": "CN-A", "symbol": "600519.SS", "company_name": "贵州茅台", "period": "FY2024"},
 ]
 
+DEFAULT_REAL_ARTIFACT_ROOTS = [
+    "data/outputs_user/runs",
+    "data/outputs_dev/runs",
+    "data/outputs/multi_agent/runs",
+]
+
 
 def run_market_quality_regression(
     *,
@@ -51,6 +57,156 @@ def run_market_quality_regression(
             "report": str(suite_dir / "benchmark_report.md"),
         },
     }
+
+
+def run_real_artifact_quality_regression(
+    *,
+    output_root: str | Path = "data/evaluation/p1_real_artifact_quality_regression",
+    source_roots: list[str | Path] | None = None,
+    max_per_market: int = 2,
+) -> dict[str, Any]:
+    """Re-score existing generated report artifacts by market."""
+
+    root = Path(output_root)
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    suite_dir = root / f"p1_real_artifact_quality_regression_{run_id}"
+    suite_dir.mkdir(parents=True, exist_ok=True)
+    rows: list[dict[str, Any]] = []
+    selected = _select_real_artifact_runs(source_roots or DEFAULT_REAL_ARTIFACT_ROOTS, max_per_market=max_per_market)
+    for item in selected:
+        rows.append(_evaluate_existing_artifact_run(item, suite_dir=suite_dir))
+    summary = _summarize(rows)
+    _write_outputs(suite_dir=suite_dir, rows=rows, summary=summary)
+    return {
+        "suite_id": suite_dir.name,
+        "suite_dir": str(suite_dir),
+        "case_count": len(rows),
+        "summary": summary,
+        "paths": {
+            "benchmark_summary": str(suite_dir / "benchmark_summary.csv"),
+            "market_breakdown": str(suite_dir / "market_breakdown.csv"),
+            "runs": str(suite_dir / "benchmark_runs.jsonl"),
+            "failures": str(suite_dir / "benchmark_failures.csv"),
+            "report": str(suite_dir / "benchmark_report.md"),
+        },
+    }
+
+
+def _select_real_artifact_runs(source_roots: list[str | Path], *, max_per_market: int) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    counts = {"US": 0, "HK": 0, "CN-A": 0}
+    for outputs in _iter_output_dirs(source_roots):
+        reports = _reports_dir_for_outputs(outputs)
+        if not (reports / "report.md").exists():
+            continue
+        summary = _read_json(outputs / "run_summary.json", {})
+        symbol = str(summary.get("symbol") or _symbol_from_path(outputs)).upper()
+        market = _market_from_symbol(symbol)
+        if market not in counts or counts[market] >= max_per_market:
+            continue
+        counts[market] += 1
+        selected.append(
+            {
+                "case_id": f"real_{outputs.parent.name}",
+                "market": market,
+                "symbol": symbol or "UNKNOWN",
+                "company_name": str(summary.get("company_name") or summary.get("title") or symbol or outputs.parent.name),
+                "period": str(summary.get("period") or ""),
+                "outputs_dir": outputs,
+                "reports_dir": reports,
+            }
+        )
+        if all(value >= max_per_market for value in counts.values()):
+            break
+    return selected
+
+
+def _iter_output_dirs(source_roots: list[str | Path]) -> list[Path]:
+    dirs: list[Path] = []
+    for root in source_roots:
+        path = Path(root)
+        if not path.exists():
+            continue
+        if path.name == "outputs":
+            dirs.append(path)
+            continue
+        dirs.extend(p for p in path.rglob("outputs") if p.is_dir())
+    return sorted(set(dirs), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+
+
+def _reports_dir_for_outputs(outputs: Path) -> Path:
+    parts = list(outputs.parts)
+    if "outputs_user" in parts:
+        parts[parts.index("outputs_user")] = "reports_user"
+        if parts[-1] == "outputs":
+            parts[-1] = "reports"
+        return Path(*parts)
+    if "outputs_dev" in parts:
+        parts[parts.index("outputs_dev")] = "reports_dev"
+        if parts[-1] == "outputs":
+            parts[-1] = "reports"
+        return Path(*parts)
+    if outputs.name == "outputs":
+        return outputs.parent / "reports"
+    return outputs.parent / "reports"
+
+
+def _evaluate_existing_artifact_run(item: dict[str, Any], *, suite_dir: Path) -> dict[str, Any]:
+    outputs = Path(item["outputs_dir"])
+    reports = Path(item["reports_dir"])
+    quality = evaluate_report_quality_from_paths(outputs, reports, outputs.parent)
+    write_quality_outputs_for_paths(outputs, reports, quality)
+    gate = build_delivery_gate_from_outputs(outputs, outputs.parent)
+    write_delivery_gate_for_outputs(outputs, gate)
+    claims = _as_list(_read_json(outputs / "claims.json", []))
+    citations = _as_list(_read_json(outputs / "citations.json", []))
+    return {
+        "case_id": str(item["case_id"]),
+        "market": str(item["market"]),
+        "company_name": str(item["company_name"]),
+        "canonical_symbol": str(item["symbol"]),
+        "period": str(item.get("period") or ""),
+        "outputs_dir": str(outputs),
+        "reports_dir": str(reports),
+        "status": "evaluated",
+        "delivery_pass": bool(gate.get("delivery_pass")),
+        "objective_pass": bool(quality.get("objective_pass")),
+        "objective_quality_score": round(float(quality.get("total_score", 0.0)) * 100.0, 2),
+        "content_depth_blocker_count": _issue_count(quality, category="content_depth"),
+        "official_evidence_blocker_count": _issue_count(quality, category="official_evidence"),
+        "citation_coverage_rate": _citation_coverage_rate(claims, citations),
+        "failure_categories": _failure_categories(quality, gate),
+    }
+
+
+def _market_from_symbol(symbol: str) -> str:
+    text = str(symbol or "").upper()
+    if text.endswith(".HK"):
+        return "HK"
+    if text.endswith((".SS", ".SZ", ".SH")):
+        return "CN-A"
+    if text and "." not in text:
+        return "US"
+    return "OTHER"
+
+
+def _symbol_from_path(outputs: Path) -> str:
+    name = outputs.parent.name.upper()
+    for token in name.replace("-", "_").split("_"):
+        if token.endswith((".HK", ".SS", ".SZ", ".SH")) or token.isalpha():
+            return token
+    return ""
+
+
+def _read_json(path: Path, default: Any) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return default
+
+
+def _as_list(value: Any) -> list[dict[str, Any]]:
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
 
 
 def _run_case(case: dict[str, Any], *, suite_dir: Path) -> dict[str, Any]:
