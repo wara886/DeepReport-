@@ -43,6 +43,13 @@ from src.runtime.report_run_state import (
     apply_report_transition,
     build_report_run_state,
     resolve_lifecycle_status,
+    restore_report_transition,
+)
+from src.runtime.langgraph_report_runtime import (
+    CallbackReportGraphHandlers,
+    LangGraphReportRuntime,
+    ReportGraphState,
+    project_run_state_patch,
 )
 from src.services.artifact_importer import ArtifactImporter
 
@@ -69,6 +76,8 @@ class ReportTaskService:
         mode: str = "user",
         orchestrator_factory: Callable[..., Any] | None = None,
         quality_runner: Callable[..., dict[str, Any]] | None = None,
+        langgraph_runtime_enabled: bool = True,
+        runtime_checkpoint_path: str | Path | None = None,
         engine: Engine | None = None,
     ) -> None:
         self.database_url = database_url
@@ -79,6 +88,10 @@ class ReportTaskService:
         self.mode = mode
         self.orchestrator_factory = orchestrator_factory or MultiAgentOrchestrator
         self.quality_runner = quality_runner or run_delivery_quality_pipeline
+        self.langgraph_runtime_enabled = bool(langgraph_runtime_enabled)
+        self.runtime_checkpoint_path = Path(runtime_checkpoint_path) if runtime_checkpoint_path else self.output_root / "runtime_checkpoints.sqlite"
+        self._langgraph_runtime: LangGraphReportRuntime | None = None
+        self._runtime_lock = threading.Lock()
         self._engine = engine
         self._session_factory: sessionmaker[Session] | None = None
         self._init_lock = threading.Lock()
@@ -143,57 +156,25 @@ class ReportTaskService:
             metadata = dict(task.metadata_json or {})
 
         try:
-            evidence_gate = self.run_evidence_gate(task_id)
-            if evidence_gate.get("blocked") is True:
-                return self.get_task(task_id)
-            with self.session() as session:
-                task = self._get_task_for_update(session, task_id)
-                self._transition_task(task, "generating", reason="evidence_gate_passed")
-                session.add(
-                    ReportTaskEvent(
-                        task_id=task.task_id,
-                        stage="orchestrator",
-                        status="running",
-                        message="研报生成流程开始",
-                        metadata_json={"evidence_gate_status": evidence_gate.get("status")},
-                    )
-                )
-                session.commit()
-            self._run_orchestrator(task_id=task_id, metadata=metadata)
-            self._enhance_artifacts_with_task_evidence(task_id)
-            artifacts = self.import_artifacts(task_id)
-            quality_result = self.run_quality_gate(task_id)
-            artifacts = self.import_artifacts(task_id)
-            with self.session() as session:
-                task = self._get_task_for_update(session, task_id)
-                delivery_gate = _dict_path(quality_result, "delivery_gate")
-                delivery_pass = delivery_gate.get("delivery_pass")
-                target: ReportLifecycleStatus = "generation_completed" if delivery_pass is True else "quality_blocked"
-                self._transition_task(task, target, reason="quality_gate_completed")
-                task.finished_at = _utc_now()
-                task.error_message = None
-                task.quality_score = _quality_score_from_result(quality_result)
-                metadata = dict(task.metadata_json or {})
-                metadata["quality_result"] = _compact_quality_result(quality_result)
-                task.metadata_json = metadata
-                session.add(
-                    ReportTaskEvent(
-                        task_id=task.task_id,
-                        stage=task.current_stage or task.status,
-                        status=task.status,
-                        message="Report task completed" if delivery_pass is True else "Report generated but quality gate failed",
-                        metadata_json={
-                            "artifact_count": len(artifacts),
-                            "delivery_pass": delivery_pass,
-                            "quality_score": task.quality_score,
-                        },
-                    )
-                )
-                session.commit()
+            if self.langgraph_runtime_enabled:
+                initial_state = self.get_task(task_id)["run_state"]
+                runtime_result = self._get_langgraph_runtime().invoke(initial_state, thread_id=task_id)
+                self._record_runtime_result(task_id, runtime_result)
+            else:
+                self._run_task_legacy_pipeline(task_id=task_id, metadata=metadata)
         except Exception as exc:
             with self.session() as session:
                 task = self._get_task_for_update(session, task_id)
-                self._transition_task(task, "failed", reason=type(exc).__name__)
+                lifecycle = resolve_lifecycle_status(task)
+                if lifecycle in {"evidence_checking", "generating", "quality_checking"}:
+                    self._transition_task(task, "failed", reason=type(exc).__name__)
+                metadata = dict(task.metadata_json or {})
+                metadata["runtime_failure"] = {
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                    "checkpoint_available": self.langgraph_runtime_enabled,
+                }
+                task.metadata_json = metadata
                 task.finished_at = _utc_now()
                 task.error_message = str(exc)
                 session.add(
@@ -208,6 +189,225 @@ class ReportTaskService:
                 session.commit()
 
         return self.get_task(task_id)
+
+    def get_runtime_checkpoint(self, task_id: str) -> dict[str, Any]:
+        self.get_task(task_id)
+        return self._get_langgraph_runtime().snapshot(thread_id=task_id)
+
+    def resume_runtime(self, task_id: str, *, decision: Any) -> dict[str, Any]:
+        self.get_task(task_id)
+        result = self._get_langgraph_runtime().resume(thread_id=task_id, decision=decision)
+        self._record_runtime_result(task_id, result)
+        return {"task": self.get_task(task_id), "runtime": result, "checkpoint": self.get_runtime_checkpoint(task_id)}
+
+    def retry_runtime_checkpoint(self, task_id: str) -> dict[str, Any]:
+        self.get_task(task_id)
+        result = self._get_langgraph_runtime().retry_from_checkpoint(thread_id=task_id)
+        self._record_runtime_result(task_id, result)
+        return {"task": self.get_task(task_id), "runtime": result, "checkpoint": self.get_runtime_checkpoint(task_id)}
+
+    def _get_langgraph_runtime(self) -> LangGraphReportRuntime:
+        if not self.langgraph_runtime_enabled:
+            raise ReportTaskConflict("LangGraph report runtime is disabled")
+        if self._langgraph_runtime is not None:
+            return self._langgraph_runtime
+        with self._runtime_lock:
+            if self._langgraph_runtime is None:
+                handlers = CallbackReportGraphHandlers(
+                    evidence_callback=self._graph_evidence_node,
+                    generation_callback=self._graph_generation_node,
+                    quality_callback=self._graph_quality_node,
+                    finalize_callback=self._graph_finalize_node,
+                    review_callback=self._graph_review_node,
+                )
+                self._langgraph_runtime = LangGraphReportRuntime(
+                    handlers,
+                    checkpoint_path=self.runtime_checkpoint_path,
+                )
+        return self._langgraph_runtime
+
+    def _graph_evidence_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            if resolve_lifecycle_status(task) in {"failed", "timeout"}:
+                restore_report_transition(task, "evidence_checking")
+                task.error_message = None
+                task.finished_at = None
+                session.commit()
+        self.run_evidence_gate(task_id)
+        return self._current_run_state_patch(task_id)
+
+    def _graph_generation_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            lifecycle = resolve_lifecycle_status(task)
+            if lifecycle in {"failed", "timeout"}:
+                restore_report_transition(task, "generating")
+            else:
+                self._transition_task(task, "generating", reason="evidence_gate_passed")
+            task.error_message = None
+            task.finished_at = None
+            metadata = dict(task.metadata_json or {})
+            evidence_gate = metadata.get("pre_generation_evidence_gate")
+            evidence_gate = evidence_gate if isinstance(evidence_gate, dict) else {}
+            session.add(
+                ReportTaskEvent(
+                    task_id=task.task_id,
+                    stage="orchestrator",
+                    status="running",
+                    message="研报生成流程开始",
+                    metadata_json={"evidence_gate_status": evidence_gate.get("status"), "runtime": "langgraph"},
+                )
+            )
+            session.commit()
+        self._run_orchestrator(task_id=task_id, metadata=metadata)
+        self._enhance_artifacts_with_task_evidence(task_id)
+        self.import_artifacts(task_id)
+        return self._current_run_state_patch(task_id)
+
+    def _graph_quality_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            if resolve_lifecycle_status(task) in {"failed", "timeout"}:
+                restore_report_transition(task, "quality_checking")
+                task.error_message = None
+                task.finished_at = None
+                session.commit()
+        self.run_quality_gate(task_id)
+        self.import_artifacts(task_id)
+        return self._current_run_state_patch(task_id)
+
+    def _graph_finalize_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            if resolve_lifecycle_status(task) in {"failed", "timeout"}:
+                restore_report_transition(task, "quality_checking")
+            metadata = dict(task.metadata_json or {})
+            quality_result = metadata.get("quality_result")
+            quality_result = quality_result if isinstance(quality_result, dict) else {}
+            delivery_pass = _dict_path(quality_result, "delivery_gate").get("delivery_pass")
+            target: ReportLifecycleStatus = "generation_completed" if delivery_pass is True else "quality_blocked"
+            self._transition_task(task, target, reason="quality_gate_completed")
+            task.finished_at = _utc_now()
+            task.error_message = None
+            task.quality_score = _quality_score_from_result(quality_result)
+            session.add(
+                ReportTaskEvent(
+                    task_id=task.task_id,
+                    stage=task.current_stage or task.status,
+                    status=task.status,
+                    message="Report task completed" if delivery_pass is True else "Report generated but quality gate failed",
+                    metadata_json={
+                        "artifact_count": len(task.artifacts),
+                        "delivery_pass": delivery_pass,
+                        "quality_score": task.quality_score,
+                        "runtime": "langgraph",
+                    },
+                )
+            )
+            session.commit()
+        return self._current_run_state_patch(task_id)
+
+    def _graph_review_node(self, state: ReportGraphState, decision: Any) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        decision_payload = dict(decision) if isinstance(decision, dict) else {"approved": bool(decision)}
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            metadata = dict(task.metadata_json or {})
+            runtime = dict(metadata.get("report_runtime") or {})
+            runtime["checkpoint_status"] = "resumed"
+            runtime["interrupts"] = []
+            metadata["report_runtime"] = runtime
+            task.metadata_json = metadata
+            session.add(
+                ReportTaskEvent(
+                    task_id=task_id,
+                    stage="claim_review",
+                    status="resumed",
+                    message="LangGraph claim review checkpoint resumed",
+                    metadata_json={"decision": decision_payload, "runtime": "langgraph"},
+                )
+            )
+            session.commit()
+        return self._current_run_state_patch(task_id)
+
+    def _record_runtime_result(self, task_id: str, result: dict[str, Any]) -> None:
+        interrupts = list(result.get("interrupts") or [])
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            metadata = dict(task.metadata_json or {})
+            runtime = dict(metadata.get("report_runtime") or {})
+            runtime["checkpoint_status"] = "interrupted" if interrupts else "completed"
+            runtime["interrupts"] = interrupts
+            metadata["report_runtime"] = runtime
+            task.metadata_json = metadata
+            if interrupts:
+                session.add(
+                    ReportTaskEvent(
+                        task_id=task_id,
+                        stage="claim_review",
+                        status="interrupted",
+                        message="LangGraph paused for Claim review",
+                        metadata_json={"interrupts": interrupts, "runtime": "langgraph"},
+                    )
+                )
+            session.commit()
+
+    def _current_run_state_patch(self, task_id: str) -> dict[str, Any]:
+        return project_run_state_patch(self.get_task(task_id)["run_state"])
+
+    def _run_task_legacy_pipeline(self, *, task_id: str, metadata: dict[str, Any]) -> None:
+        evidence_gate = self.run_evidence_gate(task_id)
+        if evidence_gate.get("blocked") is True:
+            return
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            self._transition_task(task, "generating", reason="evidence_gate_passed")
+            session.add(
+                ReportTaskEvent(
+                    task_id=task.task_id,
+                    stage="orchestrator",
+                    status="running",
+                    message="研报生成流程开始",
+                    metadata_json={"evidence_gate_status": evidence_gate.get("status"), "runtime": "legacy"},
+                )
+            )
+            session.commit()
+        self._run_orchestrator(task_id=task_id, metadata=metadata)
+        self._enhance_artifacts_with_task_evidence(task_id)
+        self.import_artifacts(task_id)
+        quality_result = self.run_quality_gate(task_id)
+        self.import_artifacts(task_id)
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            delivery_pass = _dict_path(quality_result, "delivery_gate").get("delivery_pass")
+            target: ReportLifecycleStatus = "generation_completed" if delivery_pass is True else "quality_blocked"
+            self._transition_task(task, target, reason="quality_gate_completed")
+            task.finished_at = _utc_now()
+            task.error_message = None
+            task.quality_score = _quality_score_from_result(quality_result)
+            task_metadata = dict(task.metadata_json or {})
+            task_metadata["quality_result"] = _compact_quality_result(quality_result)
+            task.metadata_json = task_metadata
+            session.add(
+                ReportTaskEvent(
+                    task_id=task.task_id,
+                    stage=task.current_stage or task.status,
+                    status=task.status,
+                    message="Report task completed" if delivery_pass is True else "Report generated but quality gate failed",
+                    metadata_json={
+                        "artifact_count": len(task.artifacts),
+                        "delivery_pass": delivery_pass,
+                        "quality_score": task.quality_score,
+                        "runtime": "legacy",
+                    },
+                )
+            )
+            session.commit()
 
     def retry_task(self, task_id: str, *, run_immediately: bool = True) -> dict[str, Any]:
         with self.session() as session:
@@ -643,6 +843,14 @@ class ReportTaskService:
         self._ensure_db()
         assert self._session_factory is not None
         return self._session_factory()
+
+    def close(self) -> None:
+        """Release runtime checkpoint resources owned by this service."""
+
+        with self._runtime_lock:
+            if self._langgraph_runtime is not None:
+                self._langgraph_runtime.close()
+                self._langgraph_runtime = None
 
     def serialize_task(self, task: ReportTask) -> dict[str, Any]:
         artifacts = [serialize_artifact(item) for item in sorted(task.artifacts, key=lambda item: item.id or 0)]

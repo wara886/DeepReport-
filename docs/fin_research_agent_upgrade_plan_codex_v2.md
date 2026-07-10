@@ -121,7 +121,7 @@ docs/implementation_notes/legacy_cleanup.md
 | P1 投研空间、数据源、采集、手动导入、词典、PromptOps、Harness、财务事实 | 已完成核心闭环，已做收尾提交 | 已补齐数据源健康、补采集闭环、PromptOps 版本管理、Harness 观测、质量证明解释、任务分析链路总览、文档空状态引导。 |
 | P2 Hybrid RAG、实体库、关系图谱、投资线索 | P2.1-P2.5 核心闭环已完成 | 已具备检索诊断、引用使用闭环、任务级实体记忆、投资线索、投资逻辑链和风险传导链；后续继续做质量回归，不优先引入复杂图数据库。 |
 | P3 评测中心、导出中心与生产化 | P3.1/P3.2 已进入，P3.3 待完成 | 已有单任务诊断、回归矩阵、Formal-18/Quick-9/回归集产物导入，以及 Markdown/HTML/JSON/CSV 正式包预览和下载；PDF/DOCX 与统一生产可观测仍待完成。 |
-| R0 统一 Agent Runtime | R0.1 状态核心已完成 | 已新增 `ReportRunState`、合法状态迁移、统一 `DeliveryReadiness/ExportReadiness`，任务、评测、导出与前端读取同一投影；LangGraph 编排与 checkpoint 作为 R0.2 渐进接入。 |
+| R0 统一 Agent Runtime | R0.1/R0.2 核心已完成 | 已新增 `ReportRunState`、合法状态迁移、统一 readiness，并由 LangGraph 接管 evidence、generation、quality、finalize、human review 节点；已接 SQLite checkpoint、失败节点恢复和 Claim interrupt/resume。 |
 
 最近关键提交：
 
@@ -184,16 +184,45 @@ pytest -q --disable-warnings \
   tests/test_workbench_frontend_script.py
 ```
 
-#### R0.2：LangGraph 渐进接入（下一阶段）
+#### R0.2：LangGraph 渐进接入（核心已完成）
 
-1. 以现有 `ReportRunState` 作为唯一 graph state schema，不在 LangGraph 内新增另一套任务状态。
-2. 将证据门禁、研究分析、报告写作、Verifier、质量门禁包装为节点；节点只返回 typed patch，不直接更新 `ReportTask.status`。
-3. conditional edge 只根据 canonical lifecycle/readiness 路由补采集、继续生成、质量修复或人工复核。
-4. 接入生产级持久化 checkpointer，以 `task_id/run_id` 作为线程标识，支持失败恢复、状态历史和幂等重试。
-5. Claim 人工复核接入 interrupt/resume；KG、长期记忆仍是 projection，不成为当前任务完成条件。
-6. API、任务表、评测和导出继续读取数据库中的统一 runtime 投影，避免框架状态和业务状态再次分裂。
+1. 以现有 `ReportRunState` 作为唯一 graph state schema，没有在 LangGraph 内新增第二套任务业务状态。
+2. 新增 `src/runtime/langgraph_report_runtime.py`，将任务拆为 `evidence → generation → quality → finalize → human_review` 节点；节点只能返回受白名单限制的 typed patch。
+3. evidence 节点阻塞后直接结束，不进入生成；finalize 后仅在存在待复核 Claim 时进入 human review interrupt。
+4. 使用 SQLite checkpointer，以 `task_id` 作为 `thread_id`；checkpoint 文件可跨 runtime 实例恢复。
+5. 真实 `ReportTaskService.run_task()` 默认由 LangGraph 编排；保留 `langgraph_runtime_enabled=False` 的旧流水线兼容开关。
+6. 生成节点或质量节点失败后，任务会记录 `runtime_failure.checkpoint_available`；`POST /api/report-tasks/{task_id}/runtime/retry` 从失败节点继续，不重复已完成的证据节点。
+7. Claim 复核通过后，`POST /api/report-tasks/{task_id}/runtime/resume` 使用 interrupt/resume 继续；`GET /api/report-tasks/{task_id}/runtime` 返回当前 checkpoint、待执行节点和 interrupt payload。
+8. 工作台任务操作新增“复核完成，继续工作流”和“从失败节点继续”，仍以统一 readiness 判断正式交付。
+9. KG、长期记忆继续作为 projection，不成为任务主状态或当前任务完成条件。
 
-#### R0.3：生产化与 P3 收尾
+依赖兼容说明：
+
+- 当前仓库仍使用 LangChain 0.2.x；LangGraph 1.2.x 会把 `langchain-core` 升级到 1.x，与现有 RAG、Ragas、LangChain Community 依赖冲突。
+- R0.2 因此固定使用 `langgraph>=0.2.76,<0.3.0` 和 `langgraph-checkpoint-sqlite>=2.0.11,<3.0.0`。该版本已具备本阶段需要的 StateGraph、Command、checkpoint 和 interrupt，不在本阶段升级整个 LangChain/RAG 栈。
+
+R0.2 定向验收范围：
+
+```bash
+pytest -q --disable-warnings \
+  tests/test_langgraph_report_runtime.py \
+  tests/test_report_task_langgraph_runtime.py \
+  tests/test_report_runtime_state.py \
+  tests/test_report_task_api.py \
+  tests/test_report_task_status_lifecycle.py \
+  tests/test_report_task_quality_gate.py \
+  tests/test_report_task_evidence_gate.py \
+  tests/test_report_task_artifact_import.py \
+  tests/test_workbench_frontend_script.py \
+  tests/test_web_report_task_evidence_gate.py
+```
+
+全量回归说明：
+
+- 全量测试的慢点在同进程触发外部模型、Embedding 或 Serper 回退后的 SSL 等待；相邻测试拆开运行可以快速通过，不是 LangGraph checkpoint 死锁。
+- 已知失败仍集中在聊天任务解析旧契约、报告阻塞文案、估值错误分类/同行 fallback 和 HTML 图表序列化。这些问题不阻塞 R0.2 状态编排实现，但在推送、合并 `main` 前仍必须单独修复并重新跑全量回归。
+
+#### R0.3：生产化与 P3 收尾（下一阶段）
 
 - 补 PDF/DOCX 正式导出，并继续遵守统一 ExportReadiness。
 - `request_id/run_id/task_id` 贯穿 API、LangGraph 节点、LLM、工具和结构化日志。

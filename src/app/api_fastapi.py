@@ -90,6 +90,9 @@ def create_fastapi_app(
         try:
             yield
         finally:
+            task_service = getattr(app.state, "report_task_service", None)
+            if task_service is not None:
+                task_service.close()
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
@@ -202,6 +205,41 @@ def create_fastapi_app(
             return JSONResponse(content=_report_task_service(app).get_artifacts(task_id))
         except ReportTaskNotFound:
             return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/report-tasks/{task_id}/runtime")
+    def get_report_task_runtime(task_id: str) -> Response:
+        try:
+            return JSONResponse(content=_report_task_service(app).get_runtime_checkpoint(task_id))
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except ReportTaskConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/report-tasks/{task_id}/runtime/resume")
+    async def resume_report_task_runtime(task_id: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        decision = payload.get("decision", payload)
+        try:
+            return JSONResponse(content=_report_task_service(app).resume_runtime(task_id, decision=decision))
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except ReportTaskConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/report-tasks/{task_id}/runtime/retry")
+    def retry_report_task_runtime_checkpoint(task_id: str) -> Response:
+        try:
+            return JSONResponse(content=_report_task_service(app).retry_runtime_checkpoint(task_id))
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except ReportTaskConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 

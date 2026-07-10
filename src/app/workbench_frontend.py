@@ -1338,6 +1338,7 @@ def render_workbench_html() -> str:
       resolve_quality_blockers: "处理质量阻塞", resolve_unsupported_claims: "处理未支持主张",
       import_or_generate_claims: "生成或导入主张", approve_supported_claims: "审核通过有证据支持的主张",
       generate_report_artifact: "生成报告产物",
+      interrupted: "等待人工复核", resumed: "已从断点继续", checkpoint_retry: "断点重试",
       filings: "公告/年报", documents: "文档资料", news: "新闻资料",
     };
     const entityTypeMap = {
@@ -2837,8 +2838,16 @@ def render_workbench_html() -> str:
 
     function taskActionButtons(task) {
       const status = String(task.status || "");
+      const runtime = task?.metadata?.report_runtime || {};
+      const runtimeFailure = task?.metadata?.runtime_failure || {};
       const id = esc(task.task_id);
       const buttons = [];
+      if (runtime.checkpoint_status === "interrupted") {
+        buttons.push(`<button class="btn primary" data-task-action="resume_runtime" data-task-id="${id}">复核完成，继续工作流</button>`);
+      }
+      if (status === "failed" && runtimeFailure.checkpoint_available) {
+        buttons.push(`<button class="btn primary" data-task-action="retry_checkpoint" data-task-id="${id}">从失败节点继续</button>`);
+      }
       if (status === "queued") {
         buttons.push(`<button class="btn primary" data-task-action="start" data-task-id="${id}">启动</button>`);
         buttons.push(`<button class="btn danger" data-task-action="cancel" data-task-id="${id}">取消</button>`);
@@ -2864,27 +2873,32 @@ def render_workbench_html() -> str:
     }
 
     async function taskLifecycleAction(taskId, action) {
-      const labels = { start: "启动", retry: "重试", cancel: "取消", archive: "归档" };
-      if (["start", "retry", "cancel", "archive"].includes(action) && !confirm(`确认${labels[action]}该研报任务？`)) return;
+      const labels = { start: "启动", retry: "完整重试", cancel: "取消", archive: "归档", resume_runtime: "从人工复核断点继续", retry_checkpoint: "从失败节点继续" };
+      if (["start", "retry", "cancel", "archive", "resume_runtime", "retry_checkpoint"].includes(action) && !confirm(`确认${labels[action]}该研报任务？`)) return;
       const payloadByAction = {
         start: { run_immediately: true, run_async: true },
         retry: { run_immediately: true, run_async: true },
         cancel: { reason: "用户在工作台取消" },
         archive: { reason: "用户在工作台归档" },
+        resume_runtime: { decision: { approved: true, reviewer: "workbench_user" } },
+        retry_checkpoint: {},
       };
       const endpointByAction = {
         start: "start",
         retry: "retry",
         cancel: "cancel",
         archive: "archive",
+        resume_runtime: "runtime/resume",
+        retry_checkpoint: "runtime/retry",
       };
       try {
         const endpoint = endpointByAction[action];
-        const updated = await postJson(`/api/report-tasks/${encodeURIComponent(taskId)}/${endpoint}`, payloadByAction[action]);
+        const response = await postJson(`/api/report-tasks/${encodeURIComponent(taskId)}/${endpoint}`, payloadByAction[action]);
+        const updated = response.task || response;
         await loadTasks();
         await loadTaskDetail(updated.task_id || taskId);
         loadDashboard();
-        if (action === "start" || action === "retry") scheduleTaskRefresh(updated.task_id || taskId);
+        if (["start", "retry", "retry_checkpoint"].includes(action)) scheduleTaskRefresh(updated.task_id || taskId);
       } catch (error) {
         $("taskDetail").insertAdjacentHTML("afterbegin", `<div class="error">${esc(labels[action] || "操作")}失败，请刷新后重试。</div>`);
       }

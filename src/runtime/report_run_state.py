@@ -156,6 +156,47 @@ def apply_report_transition(
     return transition
 
 
+def restore_report_transition(
+    task: Any,
+    target: ReportLifecycleStatus,
+    *,
+    reason: str = "checkpoint_restore",
+) -> dict[str, Any]:
+    """Restore an in-progress lifecycle when retrying a checkpointed node.
+
+    This is intentionally narrower than a normal transition: only a failed or
+    timed-out task may be restored, and only to a node execution stage.
+    """
+
+    current = resolve_lifecycle_status(task)
+    allowed_targets: set[ReportLifecycleStatus] = {"evidence_checking", "generating", "quality_checking"}
+    if current not in {"failed", "timeout"} or target not in allowed_targets:
+        raise InvalidReportTransition(f"Illegal checkpoint restore: {current} -> {target}")
+    legacy_status, legacy_stage = _LEGACY_PROJECTION[target]
+    task.status = legacy_status
+    task.current_stage = legacy_stage
+    metadata = dict(getattr(task, "metadata_json", None) or {})
+    runtime = dict(metadata.get("report_runtime") or {})
+    transition = {
+        "from": current,
+        "to": target,
+        "legacy_status": legacy_status,
+        "legacy_current_stage": legacy_stage,
+        "reason": reason,
+        "checkpoint_restore": True,
+    }
+    runtime.update(
+        {
+            "schema_version": "report_runtime.v1",
+            "lifecycle_status": target,
+            "last_transition": transition,
+        }
+    )
+    metadata["report_runtime"] = runtime
+    task.metadata_json = metadata
+    return transition
+
+
 def build_report_run_state(task: Any) -> ReportRunState:
     """Build the single product-facing state/readiness projection for a task."""
 

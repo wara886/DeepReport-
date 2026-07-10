@@ -35,6 +35,12 @@ def test_workbench_uses_unified_delivery_readiness():
     assert "can_export_formal_package" in html
     assert "尚未完成证据检查" in html
     assert "存在待复核主张" in html
+    assert "resume_runtime" in html
+    assert "retry_checkpoint" in html
+    assert "runtime/resume" in html
+    assert "runtime/retry" in html
+    assert "复核完成，继续工作流" in html
+    assert "从失败节点继续" in html
 
 
 def test_workbench_report_task_retrieval_diagnostics_is_productized():

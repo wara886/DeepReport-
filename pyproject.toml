@@ -18,6 +18,9 @@ dependencies = [
   "yfinance>=0.2.43",
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",
+  # Keep the runtime compatible with the repository's LangChain 0.2 integration.
+  "langgraph>=0.2.76,<0.3.0",
+  "langgraph-checkpoint-sqlite>=2.0.11,<3.0.0",
 ]
 
 [project.optional-dependencies]
