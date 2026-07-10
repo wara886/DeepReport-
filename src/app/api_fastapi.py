@@ -1004,6 +1004,15 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/exports/{task_id}/package")
+    def get_export_package(task_id: str) -> Response:
+        try:
+            return JSONResponse(content=_export_service(app).build_export_package(task_id))
+        except ExportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Export entry not found: {task_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.post("/api/claims/{claim_id}/approve")
     async def approve_claim(claim_id: int, incoming: Request) -> Response:
         payload = await _json_payload(incoming)

@@ -1775,6 +1775,16 @@ def render_workbench_html() -> str:
       return `${company} · ${item?.period || "-"}`;
     }
 
+    function exportFormatText(value) {
+      const map = { json: "JSON", markdown: "Markdown", html: "HTML", claims_csv: "主张 CSV", evidence_csv: "证据 CSV", facts_csv: "财务事实 CSV", review_csv: "复核记录 CSV" };
+      return textOf(map, value);
+    }
+
+    function exportCsvText(value) {
+      const map = { claims: "主张表", evidence: "证据表", financial_facts: "财务事实表", review_records: "复核记录表" };
+      return textOf(map, value);
+    }
+
     function claimTaskText(claim) {
       const task = claim?.task || claim?.report_task || {};
       const company = task.metadata?.company_name || task.company_name || task.symbol || claim?.symbol;
@@ -5217,10 +5227,45 @@ def render_workbench_html() -> str:
           <div class="detail-section"><h3>主张</h3>${
             claims.length ? claims.map((claim) => `<div class="event"><strong>主张 ${esc(claim.id)}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}</div>`).join("") : `<div class="empty">暂无主张</div>`
           }</div>
+          <div class="links" style="margin-top:10px"><button class="btn primary" data-export-package="${esc(item.task_id)}">预览正式导出包</button></div>
+          <div id="exportPackagePreview" class="detail-section"><h3>正式导出包</h3><div class="empty">预览后可检查正式包包含的主张、证据、财务事实和 CSV 表。</div></div>
           ${systemInfoBlock("系统信息", [["任务编号", item.task_id]])}
           <div class="detail-section"><h3>说明</h3><div class="empty">${esc(item.formal_export_note || "正式导出包将在后续阶段接入。")}</div></div>`;
+        bindExportPackageButtons($("exportDetail"));
       } catch (error) {
         showLoadError("exportDetail");
+      }
+    }
+
+    function bindExportPackageButtons(root = document) {
+      root.querySelectorAll("[data-export-package]").forEach((btn) => {
+        if (btn.dataset.boundExportPackage === "true") return;
+        btn.dataset.boundExportPackage = "true";
+        btn.addEventListener("click", () => loadExportPackage(btn.dataset.exportPackage));
+      });
+    }
+
+    async function loadExportPackage(taskId) {
+      try {
+        const pkg = await getJson(`/api/exports/${encodeURIComponent(taskId)}/package`);
+        const payload = pkg.json || {};
+        const readiness = payload.readiness || {};
+        const csv = pkg.csv || {};
+        $("exportPackagePreview").innerHTML = `<h3>正式导出包</h3>
+          <div class="kv"><span class="label">导出格式</span><span>${esc((pkg.formats || []).map(exportFormatText).join("、"))}</span></div>
+          <div class="kv"><span class="label">正式导出</span><span>${readiness.official_export_ready ? `<span class="status completed">可导出</span>` : `<span class="status failed">存在阻塞</span>`}</span></div>
+          <div class="analysis-stats">
+            <div class="analysis-stat"><span class="label">纳入主张</span><strong>${esc(number(readiness.approved_claim_count))}</strong><span class="score-note">仅已通过复核</span></div>
+            <div class="analysis-stat"><span class="label">排除主张</span><strong>${esc(number(readiness.excluded_claim_count))}</strong><span class="score-note">待复核或已驳回</span></div>
+            <div class="analysis-stat"><span class="label">证据</span><strong>${esc(number((payload.evidence || []).length))}</strong><span class="score-note">随主张追溯</span></div>
+            <div class="analysis-stat"><span class="label">财务事实</span><strong>${esc(number((payload.financial_facts || []).length))}</strong><span class="score-note">结构化表</span></div>
+          </div>
+          <div class="detail-section"><h3>CSV 表</h3><div class="mini-list">
+            ${Object.entries(csv).map(([key, value]) => `<div class="mini-item"><strong>${esc(exportCsvText(key))}</strong><br><span class="label">${esc(String(value || "").split("\n").filter(Boolean).length)} 行</span></div>`).join("")}
+          </div></div>
+          <div class="detail-section"><h3>Markdown 预览</h3><pre class="text-block">${esc((pkg.markdown || "").slice(0, 1200))}</pre></div>`;
+      } catch (error) {
+        showLoadError("exportPackagePreview");
       }
     }
 

@@ -32,6 +32,11 @@ def test_workbench_exposes_export_center_entry_contract(temp_db_engine, tmp_path
     assert "导出中心" in html
     assert 'getJson("/api/exports" + suffix)' in html
     assert 'getJson(`/api/exports/${encodeURIComponent(taskId)}`)' in html
+    assert 'getJson(`/api/exports/${encodeURIComponent(taskId)}/package`)' in html
     assert "正式导出" in html
+    assert "预览正式导出包" in html
+    assert "仅已通过复核" in html
+    assert "排除主张" in html
+    assert "主张 CSV" in html
     assert exports.status_code == 200
     assert exports.json()["items"][0]["task_id"] == "task-web-export"
