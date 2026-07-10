@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from src.rag.bm25_retriever import BM25Retriever
@@ -73,6 +74,8 @@ class HybridRetriever:
             fused = reciprocal_rank_fusion([bm25_hits, dense_hits, graph_hits], topk=candidate_topk)
             mode_effective = "hybrid" if (dense_hits or graph_hits) else "bm25"
 
+        fused, section_meta = _apply_section_metadata_boost(query=query, hits=fused)
+
         rerank_meta: dict[str, Any] = {"available": False, "checkpoint_used": False}
         if mode == "hybrid_rerank" and self.reranker is not None:
             fused, rerank_meta = self.reranker.rerank(query=query, hits=fused, topk=topk)
@@ -104,6 +107,7 @@ class HybridRetriever:
             "dense": dense_meta,
             "graph": graph_meta,
             "reranker": rerank_meta,
+            "section_metadata": section_meta,
             "loaded_file_count": store_meta.get("loaded_file_count", 0),
             "fallback_json_file_count": store_meta.get("fallback_json_file_count", 0),
             "skipped_files": store_meta.get("skipped_files", []),
@@ -129,3 +133,84 @@ def _failure_reason(records: list[Any], returned: list[dict[str, Any]], symbol: 
     if not returned:
         return "no_hits_after_ranking"
     return ""
+
+
+SECTION_QUERY_INTENTS: dict[str, dict[str, Any]] = {
+    "financial_statements": {
+        "terms": [
+            "财务报表",
+            "利润表",
+            "资产负债表",
+            "现金流量表",
+            "收入",
+            "毛利",
+            "现金流",
+            "revenue",
+            "gross profit",
+            "cash flow",
+            "income statement",
+            "balance sheet",
+        ],
+        "tags": {"收入表现", "利润质量", "现金流", "财务报表"},
+    },
+    "risk_factors": {
+        "terms": ["风险", "风险因素", "风险披露", "监管", "需求波动", "risk", "regulatory", "volatility"],
+        "tags": {"风险披露", "需求波动", "监管政策"},
+    },
+    "business_overview": {
+        "terms": ["业务", "主营业务", "产品", "渠道", "收入来源", "business", "segments", "products"],
+        "tags": {"业务结构", "主营业务", "收入来源", "产品结构"},
+    },
+    "management_discussion": {
+        "terms": ["管理层讨论", "经营情况", "经营分析", "战略", "management discussion", "md&a"],
+        "tags": {"经营分析", "管理层讨论", "战略计划"},
+    },
+    "ownership_governance": {
+        "terms": ["治理", "董事会", "监事会", "高管", "governance", "board"],
+        "tags": {"治理结构", "董事会", "内部控制"},
+    },
+}
+
+
+def _apply_section_metadata_boost(query: str, hits: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    intents = _detect_section_intents(query)
+    if not intents or not hits:
+        return hits, {"enabled": bool(hits), "matched_sections": [], "boosted_hit_count": 0}
+
+    boosted_count = 0
+    for rank, hit in enumerate(hits):
+        base_score = float(hit.get("final_score", hit.get("rrf_score", hit.get("score", 0.0))) or 0.0)
+        boost = _section_boost_for_hit(hit, intents)
+        if boost > 0:
+            boosted_count += 1
+            hit["section_boost"] = boost
+        hit["final_score"] = base_score + boost
+        hit.setdefault("retrieval_rank_before_section_boost", rank + 1)
+
+    ranked = sorted(hits, key=lambda item: float(item.get("final_score", 0.0) or 0.0), reverse=True)
+    return ranked, {"enabled": True, "matched_sections": intents, "boosted_hit_count": boosted_count}
+
+
+def _detect_section_intents(query: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", str(query or "").strip().lower())
+    if not normalized:
+        return []
+    matched: list[str] = []
+    for section, config in SECTION_QUERY_INTENTS.items():
+        terms = [str(term).lower() for term in config.get("terms", [])]
+        if any(term and term in normalized for term in terms):
+            matched.append(section)
+    return matched
+
+
+def _section_boost_for_hit(hit: dict[str, Any], intents: list[str]) -> float:
+    section_type = str(hit.get("section_type") or "")
+    tags = {str(tag) for tag in hit.get("meta_tags", []) if str(tag)}
+    boost = 0.0
+    for intent in intents:
+        if section_type == intent:
+            boost += 0.04
+        target_tags = SECTION_QUERY_INTENTS.get(intent, {}).get("tags", set())
+        if tags.intersection(target_tags):
+            boost += 0.02
+    return min(boost, 0.08)

@@ -107,3 +107,49 @@ def test_hybrid_retriever_uses_canonical_pdf_chunk_metadata(tmp_path: Path):
     assert risk_hits
     assert risk_hits[0]["section_type"] == "risk_factors"
     assert "风险披露" in risk_hits[0]["meta_tags"]
+
+
+def test_hybrid_retriever_section_metadata_boosts_target_pdf_section(tmp_path: Path):
+    curated = tmp_path / "curated"
+    curated.mkdir()
+    records = [
+        {
+            "chunk_id": "pdf_business_generic",
+            "symbol": "600519.SS",
+            "period": "FY2024",
+            "source_type": "cninfo_announcement",
+            "source_title": "贵州茅台 2024 年报",
+            "section_type": "business_overview",
+            "section_title": "主营业务",
+            "block_type": "paragraph",
+            "text": "公司披露需求波动、监管政策和收入变化，相关内容用于说明业务经营背景。",
+            "pages": [18],
+        },
+        {
+            "chunk_id": "pdf_risk_target",
+            "symbol": "600519.SS",
+            "period": "FY2024",
+            "source_type": "cninfo_announcement",
+            "source_title": "贵州茅台 2024 年报",
+            "section_type": "risk_factors",
+            "section_title": "风险因素",
+            "block_type": "paragraph",
+            "text": "公司披露需求波动、监管政策和收入变化，相关内容用于说明业务经营背景。",
+            "pages": [72],
+        },
+    ]
+    (curated / "pdf_chunks.json").write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
+
+    hits, meta = HybridRetriever(curated_dir=str(curated)).search(
+        "风险披露 需求波动 监管政策",
+        topk=2,
+        symbol="600519.SS",
+        period="FY2024",
+        mode="hybrid",
+    )
+
+    assert hits[0]["chunk_id"] == "pdf_risk_target"
+    assert hits[0]["section_type"] == "risk_factors"
+    assert hits[0]["section_boost"] > 0
+    assert meta["section_metadata"]["matched_sections"] == ["risk_factors"]
+    assert meta["section_metadata"]["boosted_hit_count"] >= 1
