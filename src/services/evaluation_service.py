@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from src.db.models import ClaimEvidence, DataSource, IngestionBatch, LLMRun, ReportClaim, ReportTask
+from src.evaluation.benchmark_summary_importer import load_benchmark_summaries
 from src.rag.retrieval_diagnostics import build_retrieval_coverage
 from src.services.datasource_service import DEFAULT_SOURCE_CATALOG
 from src.services.report_task_service import ReportTaskNotFound
@@ -25,8 +27,9 @@ QUALITY_EVALUATED_TASK_STATUSES = {"completed", "quality_failed"}
 class EvaluationService:
     """Build product-facing quality and harness metrics from existing tables."""
 
-    def __init__(self, *, session_factory: Callable[[], Session]) -> None:
+    def __init__(self, *, session_factory: Callable[[], Session], benchmark_roots: list[str | Path] | None = None) -> None:
         self.session_factory = session_factory
+        self.benchmark_roots = benchmark_roots
 
     def summary(self, *, limit: int = 50) -> dict[str, Any]:
         limit = max(1, min(int(limit or 50), 100))
@@ -188,6 +191,7 @@ class EvaluationService:
                 "model_health": _model_health(metrics, recent_llm_runs),
                 "failure_categories": _failure_categories(failure_counter),
                 "regression_matrix": _regression_matrix(quality_evaluated_tasks[:limit]),
+                "benchmark_suites": load_benchmark_summaries(self.benchmark_roots),
                 "recent_tasks": [_task_quality_row(task) for task in quality_evaluated_tasks[:limit]],
                 "recent_llm_runs": [_llm_run_row(run) for run in recent_llm_runs],
                 "notes": _notes(metrics),

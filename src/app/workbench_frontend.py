@@ -1115,6 +1115,10 @@ def render_workbench_html() -> str:
                   <button class="btn" data-jump="tasks">任务列表</button>
                 </div>
                 <div class="detail-section" style="border-top:0;margin-top:0;padding-top:0">
+                  <h3>基准集结果</h3>
+                  <div id="evaluationBenchmarkSuites"></div>
+                </div>
+                <div class="detail-section" style="border-top:0;margin-top:0;padding-top:0">
                   <h3>回归矩阵</h3>
                   <div id="evaluationRegressionMatrix"></div>
                 </div>
@@ -1174,7 +1178,7 @@ def render_workbench_html() -> str:
           <section class="panel dashboard-bottom">
             <div class="panel-head">
               <h2>下一步接入</h2>
-              <span class="status pending">评测跑批待接入</span>
+              <span class="status pending">质量闭环待加强</span>
             </div>
             <div id="evaluationNotes" class="diagnostic-grid"></div>
           </section>
@@ -2900,6 +2904,7 @@ def render_workbench_html() -> str:
       renderEvaluationRetrievalQuality(payload.retrieval_quality || {});
       renderEvaluationModelHealth(payload.model_health || {});
       renderEvaluationFailures(payload.failure_categories || []);
+      renderEvaluationBenchmarkSuites(payload.benchmark_suites || []);
       renderEvaluationRegressionMatrix(payload.regression_matrix || {});
       renderEvaluationTaskRows(payload.recent_tasks || []);
       renderEvaluationRuns(payload.recent_llm_runs || []);
@@ -3019,6 +3024,28 @@ def render_workbench_html() -> str:
             <td><button class="btn" data-evaluation-diagnostic="${esc(row.task_id)}">诊断</button></td>
           </tr>`).join("")}</tbody>
         </table></div>`;
+    }
+
+    function renderEvaluationBenchmarkSuites(suites) {
+      if (!suites.length) {
+        $("evaluationBenchmarkSuites").innerHTML = emptyBox("暂无基准集跑批结果。运行 Formal-18、Quick-9 或回归集后，这里会自动读取产物。", [{ label: "查看提示词运营", view: "promptops", className: "primary" }]);
+        return;
+      }
+      $("evaluationBenchmarkSuites").innerHTML = `<div class="diagnostic-grid">${suites.slice(0, 6).map((suite) => {
+        const metrics = suite.metrics || {};
+        const markets = (suite.market_breakdown || []).filter((row) => row.market && row.market !== "Overall").map((row) => row.market).join("、") || "未记录";
+        const evaluatedCount = suite.evaluated_count ?? suite.case_count;
+        return `<div class="diagnostic-card">
+          <div class="diagnostic-head"><strong>${esc(suite.suite_name || "基准评测")}</strong><span class="status ${esc(suite.suite_type || "benchmark")}">${esc(benchmarkSuiteTypeText(suite.suite_type))}</span></div>
+          <div class="dist" style="margin-top:10px">
+            <div class="dist-row"><span>交付通过率</span><strong>${esc(percentText(metrics.delivery_pass_rate))}</strong></div>
+            <div class="dist-row"><span>客观质量分</span><strong>${esc(scoreText(metrics.objective_quality_score))}</strong></div>
+            <div class="dist-row"><span>可追溯主张率</span><strong>${esc(percentText(metrics.traceable_claim_rate))}</strong></div>
+          </div>
+          <div class="mini-meta">样例 ${esc(countText(evaluatedCount))} / ${esc(countText(suite.case_count))} · 覆盖市场：${esc(markets)}</div>
+          <div class="score-note">最近产物：${esc(suite.last_updated_at ? fmt(new Date(Number(suite.last_updated_at) * 1000).toISOString()) : "未记录")}</div>
+        </div>`;
+      }).join("")}</div>`;
     }
 
     function renderEvaluationTaskRows(tasks) {
@@ -3343,6 +3370,11 @@ def render_workbench_html() -> str:
       const numeric = Number(value);
       if (!Number.isFinite(numeric)) return fmt(value);
       return numeric <= 1 ? String(Math.round(numeric * 1000) / 10) : String(Math.round(numeric * 10) / 10);
+    }
+
+    function countText(value) {
+      if (value === null || value === undefined || value === "") return "未记录";
+      return number(value);
     }
 
     function evaluationGateStatusText(value) {
@@ -4035,7 +4067,12 @@ def render_workbench_html() -> str:
     }
 
     function chainNodeTypeText(value) {
-      const map = { evidence: "事件", fact: "财务事实", signal: "投资线索", claim: "Claim", company: "实体", risk: "风险线索", report_section: "报告章节" };
+      const map = { evidence: "事件", fact: "财务事实", signal: "投资线索", claim: "主张", company: "实体", risk: "风险线索", report_section: "报告章节" };
+      return textOf(map, value);
+    }
+
+    function benchmarkSuiteTypeText(value) {
+      const map = { quick9: "Quick-9", formal18: "Formal-18", regression: "回归集", benchmark: "基准集" };
       return textOf(map, value);
     }
 

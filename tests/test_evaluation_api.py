@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from src.app.api_fastapi import create_fastapi_app
 from src.db.models import ClaimEvidence, DataSource, EvidenceItem, IngestionBatch, LLMRun, ReportClaim, ReportTask
+from src.services.evaluation_service import EvaluationService
 from src.services.report_task_service import ReportTaskService
 
 
@@ -19,6 +20,29 @@ def build_client(tmp_path):
         report_task_service=service,
     )
     return TestClient(app), service
+
+
+def write_sample_benchmark_suite(root):
+    suite_dir = root / "quick9-fixed"
+    suite_dir.mkdir(parents=True)
+    (suite_dir / "benchmark_summary.csv").write_text(
+        "metric,overall,US,HK,CN-A\n"
+        "Delivery Pass Rate,0.667,1.0,0.0,1.0\n"
+        "Objective Quality Score,88.5,92.0,80.0,93.5\n"
+        "Traceable Claim Rate (Artifact-Derived),0.778,1.0,0.5,0.833\n",
+        encoding="utf-8",
+    )
+    (suite_dir / "market_breakdown.csv").write_text(
+        "market,case_count,quality_evaluable_count,delivery_pass_rate,objective_quality_score,traceable_claim_rate_artifact_derived\n"
+        "Overall,9,8,0.667,88.5,0.778\n"
+        "US,3,3,1.0,92.0,1.0\n"
+        "HK,3,2,0.0,80.0,0.5\n"
+        "CN-A,3,3,1.0,93.5,0.833\n",
+        encoding="utf-8",
+    )
+    (suite_dir / "benchmark_failures.csv").write_text("case_id,market,status,category\nhk-1,HK,failed,runtime_or_model_failure\n", encoding="utf-8")
+    (suite_dir / "benchmark_runs.jsonl").write_text('{"case_id":"us-1"}\n{"case_id":"hk-1"}\n', encoding="utf-8")
+    return suite_dir
 
 
 def seed_evaluation_state(service):
@@ -269,6 +293,37 @@ def test_evaluation_summary_aggregates_quality_and_harness_metrics(tmp_path):
     assert "引用支持" in rows["task-eval-bad"]["failed_gate_labels"]
     assert rows["task-eval-bad"]["recommended_action"] == "先查看质量门禁失败原因，再补证据或修正文稿。"
     assert {gate["label"] for gate in rows["task-eval-source-gap"]["gates"]} >= {"证据覆盖", "关键来源", "可追溯主张"}
+
+
+def test_evaluation_summary_imports_benchmark_suite_outputs(tmp_path):
+    benchmark_root = tmp_path / "benchmarks"
+    suite_dir = write_sample_benchmark_suite(benchmark_root)
+    client, service = build_client(tmp_path)
+    client.app.state.evaluation_service = EvaluationService(
+        session_factory=service.session,
+        benchmark_roots=[benchmark_root],
+    )
+
+    with client:
+        response = client.get("/api/evaluation/summary")
+
+    assert response.status_code == 200
+    suites = response.json()["benchmark_suites"]
+    assert len(suites) == 1
+    suite = suites[0]
+    assert suite["suite_name"] == "Quick-9 多市场跑批"
+    assert suite["suite_type"] == "quick9"
+    assert suite["artifact_dir"] == str(suite_dir)
+    assert suite["metrics"]["delivery_pass_rate"] == 0.667
+    assert suite["metrics"]["objective_quality_score"] == 88.5
+    assert suite["metrics"]["traceable_claim_rate"] == 0.778
+    assert suite["case_count"] == 9
+    assert suite["evaluated_count"] == 8
+    assert suite["failure_count"] == 1
+    markets = {row["market"]: row for row in suite["market_breakdown"]}
+    assert markets["HK"]["evaluated_count"] == 2
+    assert markets["CN-A"]["traceable_claim_rate"] == 0.833
+    assert set(suite["artifacts"]) >= {"summary_csv", "runs_jsonl", "failures_csv", "market_csv"}
 
 
 def test_evaluation_summary_handles_empty_state(tmp_path):

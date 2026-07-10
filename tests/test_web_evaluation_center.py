@@ -14,6 +14,13 @@ def test_workbench_evaluation_center_is_productized_and_loads_api():
     assert "引用支持率" in html
     assert "模型运行成功率" in html
     assert "最近研报质量" in html
+    assert "基准集结果" in html
+    assert "evaluationBenchmarkSuites" in html
+    assert "renderEvaluationBenchmarkSuites" in html
+    assert "benchmark_suites" in html
+    assert "Formal-18" in html
+    assert "Quick-9" in html
+    assert "客观质量分" in html
     assert "回归矩阵" in html
     assert "evaluationRegressionMatrix" in html
     assert "renderEvaluationRegressionMatrix" in html
@@ -48,6 +55,7 @@ def test_workbench_evaluation_center_is_productized_and_loads_api():
     assert "技术追踪信息" in html
     assert "任务追踪号" in html
     assert "来源追踪号" in html
+    assert "质量闭环待加强" in html
     assert "loadEvaluation" in html
     assert 'data-view="evaluation"><span>评测中心</span><span class="tag preview">预览</span></button>' in html
 
@@ -67,3 +75,5 @@ def test_workbench_p1_closure_copy_and_task_linkage_are_productized():
     assert "带有黄色提示的图表不计入真实 KPI" in html
     assert "renderTaskLinkageOverview" in html
     assert "documentEvidenceEmptyState" in html
+    assert 'claim: "主张"' in html
+    assert 'claim: "Claim"' not in html
