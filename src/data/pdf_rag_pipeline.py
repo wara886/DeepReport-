@@ -12,11 +12,14 @@ from src.data.content_governance import strip_pdf_boilerplate
 from src.report.fact_extractors.pdf_encoding import auto_repair_mojibake
 from src.retrieval.bm25_index import BM25Index
 from src.retrieval.chroma_index import ChromaIndex
+from src.retrieval.canonical_chunks import normalize_retrieval_record
 from src.retrieval.evidence_store import EvidenceRecord
 from src.utils.config import load_config
 
 
 SECTION_SCHEMA_VERSION = "pdf_rag_v2.1"
+PDF_CHUNKING_STRATEGY = "pdf_structural_semantic_overlap_v1"
+PDF_OVERLAP_CHARS = 160
 
 GENERIC_NOISE_PATTERNS = [
     (r"^\s*$", "empty"),
@@ -1141,19 +1144,18 @@ def _section_blocks(section_pages: dict[int, str]) -> list[dict[str, Any]]:
     # Stage 2+3: > 2000 chars → 滑动窗口，对齐句子末尾
     page_blocks: list[dict[str, Any]] = []
     window_size = 1150
-    overlap = 160
     for page_num, text in sorted(section_pages.items()):
         merged_lines = _merge_short_lines([line.strip() for line in str(text or "").splitlines()])
         current = ""
         current_pages: list[int] = []
-        for line in merged_lines:
+        for line in _expand_long_lines(merged_lines, max_chars=window_size):
             if not line:
                 continue
             # 当前行超过窗口 → 刷新 block，保留 overlap
             if len(current) + len(line) + 1 > window_size and current:
                 page_blocks.append({"text": current.strip(), "pages": current_pages[:]})
-                # 保留句尾内容作为 overlap，避免句子被截断
-                carry = current[-overlap:] if len(current) > overlap + 20 else current
+                # 保留完整句子作为 overlap，避免从句中间截断上下文。
+                carry = _sentence_aligned_overlap(current, max_chars=PDF_OVERLAP_CHARS)
                 current = carry
                 current_pages = current_pages[-1:] if current_pages else []
             if current:
@@ -1165,6 +1167,56 @@ def _section_blocks(section_pages: dict[int, str]) -> list[dict[str, Any]]:
         if current.strip():
             page_blocks.append({"text": current.strip(), "pages": current_pages[:] or [page_num]})
     return page_blocks
+
+
+def _sentence_aligned_overlap(text: str, *, max_chars: int) -> str:
+    cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    tail = cleaned[-max_chars:]
+
+    # Prefer the first sentence boundary inside the tail. Chinese PDF extraction
+    # often has no whitespace after punctuation, so splitting on whitespace would
+    # still leave overlap starting in the middle of a phrase.
+    for match in re.finditer(r"[.!?。！？；;]", tail):
+        candidate = tail[match.end() :].strip()
+        if 24 <= len(candidate) <= max_chars:
+            return candidate
+
+    parts = re.split(r"(?<=[.!?。！？；;])\s+", tail)
+    for index in range(len(parts)):
+        candidate = " ".join(parts[index:]).strip()
+        if 24 <= len(candidate) <= max_chars:
+            return candidate
+    return tail.strip()
+
+
+def _expand_long_lines(lines: list[str], *, max_chars: int) -> list[str]:
+    expanded: list[str] = []
+    for line in lines:
+        text = str(line or "").strip()
+        if len(text) <= max_chars:
+            expanded.append(text)
+            continue
+        current = ""
+        for sentence in _split_sentences(text):
+            if not sentence:
+                continue
+            if len(current) + len(sentence) + 1 > max_chars and current:
+                expanded.append(current.strip())
+                current = ""
+            current = f"{current} {sentence}".strip() if current else sentence
+        if current:
+            expanded.append(current.strip())
+    return expanded
+
+
+def _split_sentences(text: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not normalized:
+        return []
+    parts = re.split(r"(?<=[.!?。！？；;])\s*", normalized)
+    return [part.strip() for part in parts if part.strip()]
 
 
 def _merge_short_lines(lines: list[str]) -> list[str]:
@@ -1219,23 +1271,32 @@ def _base_chunk(
     is_noise: bool,
 ) -> dict[str, Any]:
     pages_sorted = sorted(set(int(page) for page in pages if page))
-    return {
+    chunk = {
         "chunk_id": chunk_id,
         "evidence_id": chunk_id,
+        "sample_id": chunk_id,
         "symbol": symbol,
         "period": period,
+        "source_type": _pdf_source_type(report_market),
         "source_url": source_url,
         "source_title": source_title,
+        "title": source_title,
         "section_type": section_type,
         "section_title": section_title,
         "page": pages_sorted[0] if pages_sorted else 0,
+        "page_no": pages_sorted[0] if pages_sorted else 0,
         "pages": pages_sorted,
         "page_span": pages_sorted[:1] + pages_sorted[-1:] if pages_sorted else [],
         "anchor_source": anchor_source,
         "report_market": report_market,
         "block_type": block_type,
+        "chunk_type": block_type,
+        "source_document_type": "annual_report_pdf",
+        "section_schema_version": SECTION_SCHEMA_VERSION,
+        "chunking_strategy": PDF_CHUNKING_STRATEGY,
         # 编码修复：对 mojibake 文本 auto_repair_mojibake
         "text": text,
+        "content": text,
         "text_clean": "[{}] {}".format(section_title, _repair_text(text)) if section_title else _repair_text(text),
         "summary_zh": _compact_pdf_summary(_repair_text(text)) if not is_noise else "",
         "quality_flags": quality_flags,
@@ -1243,6 +1304,21 @@ def _base_chunk(
         "is_noise": is_noise,
         "usable_for_generation": not is_noise,
     }
+    normalized = normalize_retrieval_record(chunk)
+    normalized["metadata"]["section_schema_version"] = SECTION_SCHEMA_VERSION
+    normalized["metadata"]["chunking_strategy"] = PDF_CHUNKING_STRATEGY
+    normalized["metadata"]["page_span"] = normalized.get("page_span", [])
+    return normalized
+
+
+def _pdf_source_type(report_market: str) -> str:
+    if report_market == "cn_a":
+        return "cninfo_announcement"
+    if report_market == "hk":
+        return "hkex_announcement"
+    if report_market == "us":
+        return "sec_edgar"
+    return "official_pdf"
 
 
 def _classify_chunk_noise(text: str, section_type: str, schema: dict[str, dict[str, Any]]) -> tuple[list[str], str]:
