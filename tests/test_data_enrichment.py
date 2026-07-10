@@ -522,7 +522,7 @@ def test_macro_evidence_without_symbol_does_not_become_company_business_overview
     text = "\n".join(claim.claim_text for claim in claims)
 
     assert "Company 的证据覆盖" not in text
-    assert "AMD 的证据覆盖" in text
+    assert "AMD SEC companyfacts 显示" in text
 
 
 def test_minimum_valuation_claims_compute_multiples_and_sensitivity():

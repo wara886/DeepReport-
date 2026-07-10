@@ -230,6 +230,12 @@ def _render_header(
     )
     status = "需复核" if (is_zh and blocked) else ("正常生成" if is_zh else ("Review Required" if blocked else "Generated"))
     score = _estimate_confidence(chart_count, citation_count, delivery_status)
+    diagnostic_label = "质量诊断" if is_zh else "Quality review"
+    blocker_labels = [_user_blocker_label(item, is_zh=is_zh) for item in (top_blockers or [])[:5]]
+    blocker_html = ""
+    if blocked:
+        tags = "".join(f'<span class="blocker-tag">{escape(label)}</span>' for label in blocker_labels)
+        blocker_html = f'<div class="quality-diagnostic"><strong>{diagnostic_label}：</strong>{tags or status}</div>'
     return f"""<header class="report-header">
   <div class="container">
     <h1><i class="fas fa-chart-line"></i> {escape(title)}</h1>
@@ -240,8 +246,21 @@ def _render_header(
       {f'<span class="ms-3"><i class="fas fa-bookmark"></i> 参考来源 {citation_count}</span>' if citation_count else ""}
     </div>
     <div class="status-badge"><i class="fas fa-circle-info"></i> {status} · {score}%</div>
+    {blocker_html}
   </div>
 </header>"""
+
+
+def _user_blocker_label(value: str, is_zh: bool) -> str:
+    key = str(value or "").strip()
+    labels_zh = {
+        "governance_section_gap": "治理信息证据不足",
+        "governance_gap": "治理信息待补充",
+        "peer_universe_mismatch": "同行样本口径不一致",
+    }
+    if is_zh:
+        return labels_zh.get(key, key.replace("_", " "))
+    return key.replace("_", " ").title()
 
 
 def _render_degraded_warning(is_zh: bool = False) -> str:

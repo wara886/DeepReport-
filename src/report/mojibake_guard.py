@@ -35,6 +35,10 @@ MOJIBAKE_PATTERNS = [
     r"\u93b5\u8fbc",
     r"\u6d93\u535e",
     r"\u7487\u4f79\u5d41",
+    r"璐靛",
+    r"鑼呭",
+    r"浜夊",
+    r"鈥",
     r"\ufffd",
 ]
 

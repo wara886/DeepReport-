@@ -1985,6 +1985,14 @@ def sanitize_payload_for_user(payload: dict) -> dict:
             "diagnostic_only": gate.get("diagnostic_only"),
             "note": gate.get("note"),
         }
+    if _should_hide_report_delivery(payload):
+        allowed["status"] = "quality_failed"
+        allowed["found"] = False
+        allowed["report_html_url"] = ""
+        allowed["report_markdown"] = ""
+        allowed["report_links"] = {}
+        allowed["report_artifact_version"] = ""
+        allowed["error"] = _delivery_failure_message(payload)
     # Attach report_links if not present but report_dir exists
     if "report_links" not in allowed and payload.get("report_dir"):
         allowed["report_links"] = build_report_links(Path(payload["report_dir"]))
@@ -1994,6 +2002,32 @@ def sanitize_payload_for_user(payload: dict) -> dict:
 def payload_for_mode(payload: dict, mode: str = "user") -> dict:
     """Return full payload for developer mode, sanitized for user mode."""
     return payload if mode == "developer" else sanitize_payload_for_user(payload)
+
+
+def _should_hide_report_delivery(payload: dict) -> bool:
+    """Hide globally advertised report artifacts until the delivery gate passes."""
+    if payload.get("is_current_request") is True:
+        return False
+    gate = payload.get("delivery_gate", {}) if isinstance(payload.get("delivery_gate"), dict) else {}
+    if not gate:
+        return False
+    return gate.get("delivery_pass") is not True
+
+
+def _delivery_failure_message(payload: dict) -> str:
+    issues = payload.get("top_quality_issues")
+    if not issues and isinstance(payload.get("delivery_gate"), dict):
+        issues = payload["delivery_gate"].get("top_issues")
+    if isinstance(issues, list) and issues:
+        messages = [str(item.get("message") or "").strip() for item in issues if isinstance(item, dict)]
+        messages = [message for message in messages if message]
+        if messages:
+            return "质量门禁未通过：" + "；".join(messages[:3])
+    gate = payload.get("delivery_gate", {}) if isinstance(payload.get("delivery_gate"), dict) else {}
+    note = str(gate.get("note") or "").strip()
+    if note:
+        return note
+    return "质量门禁未通过，报告已进入待修复队列。"
 
 
 def run_delivery_quality_pipeline(

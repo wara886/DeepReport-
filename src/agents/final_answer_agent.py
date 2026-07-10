@@ -341,7 +341,7 @@ class FinalAnswerAgent(BaseAgent):
         llm_context = render_diagnostic_contract_inputs(contracts)
         final_md = contract_markdown
         llm_used = False
-        if self.model and llm_context:
+        if self.model and hasattr(self.model, "generate") and llm_context:
             REWRITE_SECTION_KEYS = {
                 "executive_summary",
                 "business_overview",
@@ -1204,6 +1204,8 @@ def normalize_report_headings(markdown: str) -> str:
         "financial analysis": "financial_analysis",
         "peer comparison": "peer_compare",
         "valuation": "valuation",
+        "valuation sensitivity": "valuation_sensitivity",
+        "sensitivity analysis": "valuation_sensitivity",
         "risks": "risks",
         "risk factors": "risks",
         "investment conclusion": "conclusion",
@@ -1233,7 +1235,7 @@ def normalize_report_headings(markdown: str) -> str:
             continue
 
         title = canonical_titles.get(section_key, clean_heading)
-        heading_level = "#" if len(level) == 1 else "##"
+        heading_level = "##"
         if section_key in seen_sections:
             heading_level = "###"
         else:

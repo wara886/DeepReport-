@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional, Tuple
 
+from src.rag.hybrid_retriever import HybridRetriever
+from src.rag.reranker_adapter import RerankerAdapter
 from src.retrieval.bm25_index import BM25Index
 from src.retrieval.chroma_index import ChromaIndex
 from src.retrieval.chunking import chunk_records
@@ -50,6 +52,20 @@ def retrieve_evidence_with_mode(
     use_chunks: bool = False,
     log: bool = True,
 ) -> Tuple[List[Dict[str, object]], Dict[str, object]]:
+    mode = ranking_mode.strip().lower()
+    if mode in {"vector", "hybrid", "hybrid_rerank"}:
+        return _retrieve_evidence_with_hybrid_layer(
+            query=query,
+            topk=topk,
+            symbol=symbol,
+            period=period,
+            curated_dir=curated_dir,
+            ranking_mode=mode,
+            reranker_checkpoint_path=reranker_checkpoint_path,
+            use_chunks=use_chunks,
+            log=log,
+        )
+
     store = EvidenceStore.from_curated_parquet(curated_dir=curated_dir)
     store_meta = dict(getattr(store, "load_meta", {}) or {})
     records = store.filter(symbol=symbol, period=period)
@@ -58,7 +74,6 @@ def retrieve_evidence_with_mode(
         records = chunk_records(records)
     bm25_hits = _bm25_hits(records=records, query=query, topk=topk)
 
-    mode = ranking_mode.strip().lower()
     vector_hits: List[Dict[str, object]] = []
     if mode in {"vector", "hybrid", "hybrid_rerank"}:
         vector_hits, vector_meta = _vector_hits(records=records, query=query, topk=topk)
@@ -219,6 +234,69 @@ def _failure_reason(
     if not ranked:
         return "no_hits_after_ranking"
     return ""
+
+
+def _retrieve_evidence_with_hybrid_layer(
+    *,
+    query: str,
+    topk: int,
+    symbol: Optional[str],
+    period: Optional[str],
+    curated_dir: str,
+    ranking_mode: str,
+    reranker_checkpoint_path: str,
+    use_chunks: bool,
+    log: bool,
+) -> Tuple[List[Dict[str, object]], Dict[str, object]]:
+    reranker = RerankerAdapter(checkpoint_path=reranker_checkpoint_path) if ranking_mode == "hybrid_rerank" else None
+    hits, meta = HybridRetriever(curated_dir=curated_dir, reranker=reranker).search(
+        query,
+        topk=topk,
+        symbol=symbol,
+        period=period,
+        mode=ranking_mode,
+        use_chunks=use_chunks,
+    )
+    meta["checkpoint_path"] = reranker_checkpoint_path
+    meta["checkpoint_used"] = bool((meta.get("reranker") or {}).get("checkpoint_used")) if isinstance(meta.get("reranker"), dict) else False
+    dense_meta = meta.get("dense") if isinstance(meta.get("dense"), dict) else {}
+    meta["vector_backend"] = _legacy_vector_backend_name(str(dense_meta.get("backend", "disabled")))
+    meta["vector_hit_count"] = meta.get("dense_hit_count", 0)
+    meta["reranked_count"] = len(hits)
+    _add_score_stats(meta, hits)
+    _add_component_score_stats(meta, hits)
+    if log:
+        logger.info(
+            "retrieval | mode=%s | effective=%s | query=\"%s\" | hits=%d | bm25=%d | dense=%d | graph=%d",
+            meta["mode"],
+            meta.get("mode_effective"),
+            query[:80],
+            len(hits),
+            meta.get("bm25_hit_count", 0),
+            meta.get("dense_hit_count", 0),
+            meta.get("graph_hit_count", 0),
+        )
+    top_scores = [float(h.get("final_score", 0.0) or 0.0) for h in hits[:3]]
+    if top_scores:
+        log_vector_search(
+            logger,
+            query,
+            topk,
+            len(hits),
+            top_scores,
+            mode=str(meta["mode"]),
+            symbol=symbol or "",
+            period=period or "",
+        )
+    return hits, meta
+
+
+def _legacy_vector_backend_name(raw: str) -> str:
+    if raw.startswith("chromadb"):
+        return "chromadb"
+    if raw == "disabled":
+        return "disabled"
+    return raw or "memory"
 
 
 def _bm25_hits(records: List[object], query: str, topk: int) -> List[Dict[str, object]]:

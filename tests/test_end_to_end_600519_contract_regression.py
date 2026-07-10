@@ -333,8 +333,9 @@ class Test600519ContractRegression:
         md = render_full_report_from_contracts(
             contracts, "Test", top_blockers=top_blockers,
         )
-        assert "质量诊断建议" in md
-        assert any(b in md for b in top_blockers)
+        assert "质量诊断建议" not in md
+        assert "governance_section_not_found" in md
+        assert "period_metadata_missing" in md
 
     def test_8_eastmoney_no_qualitative_citation(self):
         """Eastmoney can exist in references but not as qualitative section citation."""

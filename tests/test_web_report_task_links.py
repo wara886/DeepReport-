@@ -60,3 +60,5 @@ def test_web_report_task_links_are_task_scoped(temp_db_engine, tmp_path):
     html = page.text
     assert '/api/report-tasks/${encodeURIComponent(task.task_id)}/artifacts' in html
     assert '/api/report-tasks/${encodeURIComponent(task.task_id)}' in html
+    assert 'id="workbenchNotice"' in html
+    assert "showNotice(`研报任务已创建：" in html

@@ -56,6 +56,25 @@ SEC_ITEM_TO_SECTION = {
 }
 
 
+def _clip_at_sentence_boundary(text: str, max_chars: int) -> str:
+    """Trim long evidence text without cutting a sentence or Chinese phrase."""
+    cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    head = cleaned[:max_chars].rstrip()
+    sentence_end = max(head.rfind(mark) for mark in ["。", "！", "？", ".", "!", "?", ";", "；"])
+    if sentence_end >= max(40, int(max_chars * 0.55)):
+        return head[: sentence_end + 1].strip()
+    clause_end = max(head.rfind(mark) for mark in ["，", ",", "、", ":", "："])
+    if clause_end >= max(40, int(max_chars * 0.65)):
+        return head[: clause_end].strip() + "。"
+    return head.strip() + "。"
+
+
+def _clean_and_clip_pdf_text(text: str, max_chars: int) -> str:
+    return _clip_at_sentence_boundary(clean_pdf_boilerplate(text), max_chars)
+
+
 def _get_annual_report_sections(
     state: Dict[str, Any],
     analysis_artifacts: Dict[str, Any],
@@ -234,7 +253,7 @@ def _build_executive_summary(
         suggested = _safe_list(dossier, "suggested_paragraphs")
         for para in suggested[:1]:
             if isinstance(para, str) and len(para) > 50:
-                c.add_fact("executive_synthesis", para[:400],
+                c.add_fact("executive_synthesis", _clip_at_sentence_boundary(para, 400),
                            source_types=[SRC_OFFICIAL_FILING])
                 if c.status == "gap":
                     c.status = "partial"
@@ -270,7 +289,7 @@ def _build_business_overview(
     candidates: List[Dict[str, Any]] = []
 
     def _append_candidate(text: str, eid: str, source_type: str) -> None:
-        clean = clean_pdf_boilerplate(text)[:600]
+        clean = _clean_and_clip_pdf_text(text, 600)
         if not clean or len(clean.strip()) < 30:
             return
         candidates.append({
@@ -300,13 +319,13 @@ def _build_business_overview(
     if c.status == "gap":
         sec_biz = _get_annual_report_text_by_sec_item(annual_report_sections, {"business"})
         for item in sec_biz:
-            text = item["text"][:800]
+            text = _clip_at_sentence_boundary(item["text"], 800)
             eid = item["evidence_id"]
             if text and len(text.strip()) >= 50:
                 candidates.append({
                     "score": _business_overview_priority_score(text),
                     "fact_type": "business_model",
-                    "text": text[:600],
+                    "text": _clip_at_sentence_boundary(text, 600),
                     "evidence_id": eid,
                     "source_type": SRC_SEC_10K_SECTION,
                 })
@@ -338,7 +357,7 @@ def _build_business_overview(
             if profile_text:
                 c.add_fact(
                     "business_profile_fallback",
-                    profile_text[:700],
+                    _clip_at_sentence_boundary(profile_text, 700),
                     evidence_ids=[profile_eid] if profile_eid else [],
                     source_types=[profile_source or "company_profile"],
                 )
@@ -408,7 +427,7 @@ def _build_ownership_governance(
         if _is_pdf_gap_summary(text):
             c.add_quality_flag("governance_gap_summary_skipped")
             continue
-        c.add_fact("governance_structure", text[:500],
+        c.add_fact("governance_structure", _clip_at_sentence_boundary(text, 500),
                    evidence_ids=[eid] if eid else [],
                    source_types=[SRC_ANNUAL_REPORT_PDF_SUMMARY])
         if eid and eid not in evidence_ids_used:
@@ -424,7 +443,7 @@ def _build_ownership_governance(
             continue
         if eid in evidence_ids_used:
             continue
-        c.add_fact("governance_detail", text[:400],
+        c.add_fact("governance_detail", _clip_at_sentence_boundary(text, 400),
                    evidence_ids=[eid] if eid else [],
                    source_types=[SRC_ANNUAL_REPORT_PDF_CHUNK])
         if eid and eid not in evidence_ids_used:
@@ -436,11 +455,11 @@ def _build_ownership_governance(
     if c.status == "gap":
         sec_gov = _get_annual_report_text_by_sec_item(annual_report_sections, {"governance", "security_ownership"})
         for item in sec_gov:
-            text = item["text"][:800]
+            text = _clip_at_sentence_boundary(item["text"], 800)
             eid = item["evidence_id"]
             if text and len(text.strip()) >= 50:
                 c.add_fact("governance_structure",
-                           text[:500],
+                           _clip_at_sentence_boundary(text, 500),
                            evidence_ids=[eid] if eid else [],
                            source_types=[SRC_SEC_10K_SECTION])
                 c.status = "supported"
@@ -537,7 +556,7 @@ def _build_strategy_business(
         # Check for fragments
         if text_contains_fragments(text):
             c.add_quality_flag("strategy_fragments_in_summary")
-        clean = clean_pdf_boilerplate(text)[:600]
+        clean = _clean_and_clip_pdf_text(text, 600)
         if clean:
             c.add_fact("strategy_discussion", clean,
                        evidence_ids=[eid] if eid else [],
@@ -551,11 +570,11 @@ def _build_strategy_business(
     if c.status == "gap":
         sec_mda = _get_annual_report_text_by_sec_item(annual_report_sections, {"mda", "strategy"})
         for item in sec_mda:
-            text = item["text"][:800]
+            text = _clip_at_sentence_boundary(item["text"], 800)
             eid = item["evidence_id"]
             if text and len(text.strip()) >= 50:
                 c.add_fact("strategy_discussion",
-                           text[:600],
+                           _clip_at_sentence_boundary(text, 600),
                            evidence_ids=[eid] if eid else [],
                            source_types=[SRC_SEC_10K_SECTION])
                 c.status = "supported"
@@ -572,7 +591,7 @@ def _build_strategy_business(
             continue
         if text_contains_fragments(text):
             continue  # skip fragment chunks - they pollute rather than inform
-        clean = clean_pdf_boilerplate(text)[:500]
+        clean = _clean_and_clip_pdf_text(text, 500)
         if clean:
             c.add_fact("strategy_detail", clean,
                        evidence_ids=[eid] if eid else [],
@@ -671,7 +690,7 @@ def _build_financial_analysis(
         blocks = _safe_list(dossier, "deterministic_blocks")
         for block in blocks:
             if isinstance(block, str) and len(block) > 40:
-                c.deterministic_text = block[:800]
+                c.deterministic_text = _clip_at_sentence_boundary(block, 800)
                 break
 
     # Even without flat metrics, deterministic_text from section_dossiers/tables
@@ -923,7 +942,7 @@ def _build_risk_factors(
         if _is_pdf_gap_summary(text):
             c.add_quality_flag("risk_gap_summary_skipped")
             continue
-        c.add_fact("official_risk_summary", text[:600],
+        c.add_fact("official_risk_summary", _clip_at_sentence_boundary(text, 600),
                    evidence_ids=[eid] if eid else [],
                    source_types=[SRC_ANNUAL_REPORT_PDF_SUMMARY])
         if eid and eid not in evidence_ids_used:
@@ -941,7 +960,7 @@ def _build_risk_factors(
                 continue
             if eid in evidence_ids_used:
                 continue
-            c.add_fact("official_risk_detail", text[:500],
+            c.add_fact("official_risk_detail", _clip_at_sentence_boundary(text, 500),
                        evidence_ids=[eid] if eid else [],
                        source_types=[SRC_ANNUAL_REPORT_PDF_CHUNK])
             if eid and eid not in evidence_ids_used:
@@ -953,11 +972,11 @@ def _build_risk_factors(
     if c.status == "gap":
         sec_risk = _get_annual_report_text_by_sec_item(annual_report_sections, {"risk_factors"})
         for item in sec_risk:
-            text = item["text"][:1200]
+            text = _clip_at_sentence_boundary(item["text"], 1200)
             eid = item["evidence_id"]
             if text and len(text.strip()) >= 50:
                 c.add_fact("official_risk_summary",
-                           text[:1000],
+                           _clip_at_sentence_boundary(text, 1000),
                            evidence_ids=[eid] if eid else [],
                            source_types=[SRC_SEC_10K_SECTION])
                 c.status = "supported"
@@ -1417,7 +1436,7 @@ def _fallback_business_overview_via_text_detector(
     if not biz_text or len(biz_text.strip()) < 50:
         return
 
-    clean = clean_pdf_boilerplate(biz_text)[:800]
+    clean = _clean_and_clip_pdf_text(biz_text, 800)
     if clean:
         fact_type = _classify_business_fact(clean)
         c.add_fact(fact_type, clean, source_types=["pdf_section_detector_fallback"])
@@ -1486,9 +1505,13 @@ def _normalize_sensitivity_rows(payload: Dict[str, Any]) -> List[Dict[str, Any]]
 def _peer_row_has_metrics(row: Dict[str, Any]) -> bool:
     keys = (
         "revenue_growth_pct",
+        "revenue_growth",
         "gross_margin_pct",
+        "gross_margin",
         "net_margin_pct",
+        "net_margin",
         "roe_pct",
+        "roe",
         "revenue_billion",
         "net_income_billion",
         "free_cash_flow_billion",
@@ -1892,7 +1915,7 @@ def _apply_pdf_fallback(
                 continue
             if _is_pdf_toc_text(text):
                 continue
-            clean = clean_pdf_boilerplate(text)[:600]
+            clean = _clean_and_clip_pdf_text(text, 600)
             if clean and len(clean.strip()) >= 60:
                 eid = str(summary.get("evidence_id") or summary.get("chunk_id") or "")
                 contract.add_fact("pdf_fallback", clean,
@@ -1916,7 +1939,7 @@ def _apply_pdf_fallback(
                     continue
                 if _is_pdf_toc_text(text):
                     continue
-                clean = clean_pdf_boilerplate(text)[:500]
+                clean = _clean_and_clip_pdf_text(text, 500)
                 if clean and len(clean.strip()) >= 60:
                     eid = str(chunk.get("evidence_id") or chunk.get("chunk_id") or "")
                     contract.add_fact("pdf_fallback", clean,
@@ -1943,14 +1966,14 @@ def _apply_pdf_fallback(
                     text_hint = str(rec.get("content") or "")[:100]
                     if not any(t in text_hint for t in ["管理层讨论与分析", "业务概", "风险提示"]):
                         continue
-                text = str(rec.get("content") or "")[:600]
+                text = _clip_at_sentence_boundary(str(rec.get("content") or ""), 600)
                 if not text or len(text.strip()) < 80:
                     continue
                 if _is_pdf_gap_summary(text):
                     continue
                 if _is_pdf_toc_text(text):
                     continue
-                clean = clean_pdf_boilerplate(text)[:500]
+                clean = _clean_and_clip_pdf_text(text, 500)
                 if clean and len(clean.strip()) >= 60:
                     eid = str(rec.get("evidence_id") or "")
                     contract.add_fact("pdf_fallback", clean,

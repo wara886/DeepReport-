@@ -1,8 +1,11 @@
 import json
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from src.app.api_fastapi import create_fastapi_app
+from src.db.models import ReportArtifact, ReportClaim, ReportTask
+from src.runtime.report_run_state import apply_report_transition
 from src.services.report_task_service import ReportTaskService
 
 
@@ -15,14 +18,28 @@ class FakeOrchestrator:
         return {"verification_passed": True, "quality_score": 0.88}
 
 
-def build_client(tmp_path):
-    service = ReportTaskService(
+def passing_quality_runner(output_dir, report_dir, **kwargs):
+    return {
+        "quality_report": {"objective_pass": True, "total_score": 0.91},
+        "llm_quality_review": {"llm_review_pass": True, "total_score": 0.9, "model_status": "test"},
+        "delivery_gate": {"delivery_pass": True, "objective_pass": True, "llm_review_pass": True},
+        "top_quality_issues": [],
+    }
+
+
+def build_service(tmp_path):
+    return ReportTaskService(
         database_url=f"sqlite:///{tmp_path / 'tasks.db'}",
         output_root=tmp_path / "outputs",
         report_root=tmp_path / "reports",
         memory_root=tmp_path / "memory",
         orchestrator_factory=FakeOrchestrator,
+        quality_runner=passing_quality_runner,
     )
+
+
+def build_client(tmp_path):
+    service = build_service(tmp_path)
     app = create_fastapi_app(
         output_dir=str(tmp_path / "legacy_outputs"),
         report_dir=str(tmp_path / "legacy_reports"),
@@ -41,6 +58,9 @@ def test_report_task_api_create_list_detail_without_running(tmp_path):
                 "symbol": "nvda",
                 "period": "FY2024",
                 "research_topic": "Generate NVDA FY2024 report",
+                "company_name": "NVIDIA",
+                "data_source_scope": "official_first",
+                "report_type": "annual_review",
                 "run_immediately": False,
             },
         )
@@ -53,6 +73,9 @@ def test_report_task_api_create_list_detail_without_running(tmp_path):
     assert body["symbol"] == "NVDA"
     assert body["status"] == "queued"
     assert body["metadata"]["research_topic"] == "Generate NVDA FY2024 report"
+    assert body["metadata"]["company_name"] == "NVIDIA"
+    assert body["metadata"]["data_source_scope"] == "official_first"
+    assert body["metadata"]["report_type"] == "annual_review"
 
     assert listed.status_code == 200
     assert listed.json()["total"] == 1
@@ -60,6 +83,167 @@ def test_report_task_api_create_list_detail_without_running(tmp_path):
 
     assert detail.status_code == 200
     assert detail.json()["events"][0]["stage"] == "queued"
+
+
+def test_report_task_api_accepts_auto_run_false_alias(tmp_path):
+    with build_client(tmp_path) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-api-auto-run-alias", "symbol": "AAPL", "period": "FY2024", "auto_run": False},
+        )
+        cancelled = client.post("/api/report-tasks/task-api-auto-run-alias/cancel", json={"reason": "不再生成"})
+
+    assert created.status_code == 201
+    assert created.json()["status"] == "queued"
+    assert created.json()["started_at"] is None
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+
+def test_report_task_api_defaults_to_queue_only_and_exposes_runtime_readiness(tmp_path):
+    with build_client(tmp_path) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-api-queue-default", "symbol": "AAPL", "period": "FY2024"},
+        )
+
+    assert created.status_code == 201
+    body = created.json()
+    assert body["status"] == "queued"
+    assert body["started_at"] is None
+    assert body["run_state"]["run_mode"] == "queue_only"
+    assert body["run_state"]["lifecycle_status"] == "queued"
+    assert body["delivery_readiness"]["can_generate_draft"] is True
+    assert body["delivery_readiness"]["can_deliver_formal_report"] is False
+    assert body["export_readiness"]["can_export_formal_package"] is False
+
+
+def test_task_evaluation_and_export_share_readiness_after_claim_review(tmp_path):
+    service = build_service(tmp_path)
+    service.create_task({"task_id": "task-readiness-shared", "symbol": "NVDA", "period": "FY2024"})
+    with service.session() as session:
+        task = session.scalar(select(ReportTask).where(ReportTask.task_id == "task-readiness-shared"))
+        assert task is not None
+        apply_report_transition(task, "evidence_checking")
+        apply_report_transition(task, "generating")
+        apply_report_transition(task, "quality_checking")
+        apply_report_transition(task, "generation_completed")
+        metadata = dict(task.metadata_json or {})
+        metadata["pre_generation_evidence_gate"] = {
+            "status": "success",
+            "blocked": False,
+            "draft_ready": True,
+            "delivery_ready": True,
+        }
+        metadata["quality_result"] = {"delivery_gate": {"delivery_pass": True}, "top_quality_issues": []}
+        task.metadata_json = metadata
+        task.quality_score = 0.92
+        session.add(ReportArtifact(task_id=task.task_id, artifact_type="markdown", path="report.md"))
+        claim = ReportClaim(
+            task_id=task.task_id,
+            claim_text="Revenue increased.",
+            review_status="pending",
+            verification_status="supported",
+        )
+        session.add(claim)
+        session.commit()
+        claim_id = claim.id
+
+    app = create_fastapi_app(
+        output_dir=str(tmp_path / "legacy_outputs"),
+        report_dir=str(tmp_path / "legacy_reports"),
+        memory_root=str(tmp_path / "legacy_memory"),
+        report_task_service=service,
+    )
+    with TestClient(app) as client:
+        task_before = client.get("/api/report-tasks/task-readiness-shared").json()
+        export_before = client.get("/api/exports/task-readiness-shared").json()
+        approved = client.post(f"/api/claims/{claim_id}/approve", json={"reviewer": "analyst"})
+        task_after = client.get("/api/report-tasks/task-readiness-shared").json()
+        export_after = client.get("/api/exports/task-readiness-shared").json()
+        evaluation = client.get("/api/evaluation/summary").json()
+
+    assert task_before["delivery_readiness"]["can_deliver_formal_report"] is False
+    assert export_before["official_export_ready"] is False
+    assert task_before["delivery_readiness"]["blocking_reasons"] == export_before["blocked_reasons"]
+    assert approved.status_code == 200
+    assert task_after["delivery_readiness"]["can_deliver_formal_report"] is True
+    assert export_after["official_export_ready"] is True
+    assert task_after["delivery_readiness"]["blocking_reasons"] == export_after["blocked_reasons"] == []
+    assert evaluation["metrics"]["delivery_pass_count"] == 1
+
+
+def test_report_task_api_cancel_and_archive_lifecycle(tmp_path):
+    with build_client(tmp_path) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-api-cancel", "symbol": "AAPL", "period": "FY2024", "run_immediately": False},
+        )
+        cancelled = client.post("/api/report-tasks/task-api-cancel/cancel", json={"reason": "用户取消"})
+        conflict = client.post("/api/report-tasks/task-api-cancel/cancel", json={})
+        archived = client.post("/api/report-tasks/task-api-cancel/archive", json={"reason": "清理误建任务"})
+        retry_archived = client.post("/api/report-tasks/task-api-cancel/retry", json={})
+        archive_again = client.post("/api/report-tasks/task-api-cancel/archive", json={})
+        listed = client.get("/api/report-tasks")
+        archived_list = client.get("/api/report-tasks", params={"status": "archived"})
+
+    assert created.status_code == 201
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["current_stage"] == "cancelled"
+    assert cancelled.json()["events"][-1]["stage"] == "cancelled"
+    assert conflict.status_code == 409
+
+    assert archived.status_code == 200
+    assert archived.json()["status"] == "archived"
+    assert archived.json()["metadata"]["archived_from_status"] == "cancelled"
+    assert retry_archived.status_code == 409
+    assert archive_again.status_code == 409
+    assert listed.json()["total"] == 0
+    assert archived_list.json()["total"] == 1
+
+
+def test_report_task_api_rejects_cancel_running_task(tmp_path):
+    service = build_service(tmp_path)
+    app = create_fastapi_app(
+        output_dir=str(tmp_path / "legacy_outputs"),
+        report_dir=str(tmp_path / "legacy_reports"),
+        memory_root=str(tmp_path / "legacy_memory"),
+        report_task_service=service,
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-api-running-cancel", "symbol": "AAPL", "period": "FY2024", "run_immediately": False},
+        )
+        with service.session() as session:
+            task = session.scalar(select(ReportTask).where(ReportTask.task_id == "task-api-running-cancel"))
+            assert task is not None
+            task.status = "running"
+            task.current_stage = "orchestrator"
+            session.commit()
+        cancelled = client.post("/api/report-tasks/task-api-running-cancel/cancel", json={"reason": "用户取消"})
+
+    assert created.status_code == 201
+    assert cancelled.status_code == 409
+
+
+def test_report_task_api_start_queued_task(tmp_path):
+    with build_client(tmp_path) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-api-start", "symbol": "MSFT", "period": "FY2024", "run_immediately": False},
+        )
+        started = client.post("/api/report-tasks/task-api-start/start", json={"run_async": False})
+
+    assert created.status_code == 201
+    assert created.json()["status"] == "queued"
+    assert started.status_code == 200
+    body = started.json()
+    assert body["status"] == "completed"
+    stages = [event["stage"] for event in body["events"]]
+    assert "start" in stages
+    assert stages[-1] == "completed"
 
 
 def test_report_task_api_preserves_legacy_run_route(monkeypatch, tmp_path):
@@ -83,6 +267,7 @@ def test_report_task_api_preserves_legacy_run_route(monkeypatch, tmp_path):
             output_root=tmp_path / "task_outputs",
             report_root=tmp_path / "task_reports",
             orchestrator_factory=FakeOrchestrator,
+            quality_runner=passing_quality_runner,
         ),
     )
 

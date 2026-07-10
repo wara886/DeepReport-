@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from statistics import median
 from typing import Any, Dict, List
-from urllib import request as __req_lib
+from urllib import request as _req_lib
 from urllib.parse import urlencode as _urlencode
 
 import pandas as pd
@@ -35,8 +35,13 @@ def build_peer_comparison(
     symbol: str,
     period: str,
     raw_data_root: str | Path = "data/raw/real_data",
+    allow_external_discovery: bool = False,
 ) -> Dict[str, Any]:
-    """Build a local peer table from companies in the same sector when possible."""
+    """Build a peer table without silently inventing or fetching fallback peers.
+
+    External discovery is opt-in so report generation and tests remain deterministic.
+    Missing peer evidence is returned as an explicit, market-scoped data gap.
+    """
 
     symbol = str(symbol or "").upper()
     market_info = infer_market_from_symbol(symbol)
@@ -44,25 +49,22 @@ def build_peer_comparison(
     rows = _load_company_financial_rows(raw_data_root=raw_data_root, period=period)
     target = next((row for row in rows if row.get("symbol") == symbol), None)
     if not target:
-        # No local data — try Yahoo/web discovery
-        try:
-            discovered = _discover_peers_via_search(symbol=symbol, period=period)
-            if discovered.get("peer_count", 0) > 0 or discovered.get("target_row"):
-                return discovered
-        except Exception as exc:
-            logger.warning("Peer discovery via search failed for %s: %s", symbol, exc)
-        # Per-market fallback messages
-        if market in {"cn_a", "hk"}:
-            return {
-                "target_symbol": symbol,
-                "target_market": market,
-                "peer_rows": [],
-                "peer_count": 0,
-                "ranking": {},
-                "source": "local_only_market_isolated",
-                "failure_reason": "no_local_same_market_peer_data",
-            }
-        return {"target_symbol": symbol, "peer_rows": [], "peer_count": 0, "ranking": {}}
+        if allow_external_discovery:
+            try:
+                discovered = _discover_peers_via_search(symbol=symbol, period=period)
+                if discovered.get("peer_count", 0) > 0 or discovered.get("target_row"):
+                    return discovered
+            except Exception as exc:
+                logger.warning("Peer discovery via search failed for %s: %s", symbol, exc)
+        return {
+            "target_symbol": symbol,
+            "target_market": market,
+            "peer_rows": [],
+            "peer_count": 0,
+            "ranking": {},
+            "source": "local_only_market_isolated",
+            "failure_reason": "no_local_same_market_peer_data",
+        }
 
     target_sector = str(target.get("sector") or "")
     target_industry = str(target.get("industry") or "")
@@ -79,8 +81,8 @@ def build_peer_comparison(
     ranking = _rank_target(peer_rows, symbol=symbol)
     peer_count = max(len(peer_rows) - 1, 0)
 
-    # If local data has no real peers, fall back to Yahoo+web discovery
-    if peer_count == 0:
+    # External discovery is an explicit operation, not an invisible fallback.
+    if peer_count == 0 and allow_external_discovery:
         try:
             discovered = _discover_peers_via_search(symbol=symbol, period=period)
             if discovered.get("peer_count", 0) > 0:
@@ -448,6 +450,7 @@ def perform_company_valuation(
     period: str,
     records: List[Dict[str, Any]] | None = None,
     raw_data_root: str | Path = "data/raw/real_data",
+    allow_external_market_data: bool = False,
 ) -> Dict[str, Any]:
     """Perform a first-pass company valuation from local financial evidence."""
 
@@ -503,6 +506,25 @@ def perform_company_valuation(
             },
             missing_inputs=["annual_or_ttm_free_cash_flow"],
         )
+    if revenue > 0 and free_cash_flow / revenue > 100:
+        return {
+            "symbol": symbol,
+            "period": period,
+            "valuation_available": False,
+            "error": "valuation_guardrail_failed",
+            "guardrail": {
+                "passed": False,
+                "errors": ["dcf_value_to_revenue_above_guardrail"],
+                "warnings": [],
+                "limits": {"max_free_cash_flow_to_revenue": 100},
+            },
+            "peer_context": peer_payload,
+            "input_summary": {
+                "revenue_billion": revenue,
+                "net_income_billion": net_income,
+                "free_cash_flow_billion": free_cash_flow,
+            },
+        }
     market_context = _market_context_from_records(records=records or [], symbol=symbol, period=period)
     market = infer_market_from_symbol(symbol).get("market", "")
     official_records = [
@@ -596,7 +618,7 @@ def perform_company_valuation(
         return _valuation_unavailable(
             symbol=symbol,
             period=period,
-            error="blocked_due_to_incomplete_inputs",
+            error="valuation_input_invalid",
             peer_payload=peer_payload,
             input_summary={
                 "revenue_billion": revenue,
@@ -626,8 +648,8 @@ def perform_company_valuation(
     fcf_growth = _bounded(revenue_growth / 100, 0.02, 0.20)
 
     # ---- override with real market data when available ----
-    _risk_free = _get_fred_risk_free_rate()
-    _market_multiples = _get_yahoo_market_multiples(symbol)
+    _risk_free = _get_fred_risk_free_rate() if allow_external_market_data else None
+    _market_multiples = _get_yahoo_market_multiples(symbol) if allow_external_market_data else {}
     _pe_base = _market_multiples.get("pe") or 18
     _ps_base = _market_multiples.get("ps") or 4
     pe_multiple = round(_bounded(_pe_base * growth_premium * margin_premium, 8, 50), 2)

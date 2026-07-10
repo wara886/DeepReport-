@@ -38,8 +38,8 @@ class TestHtmlBlockerDisplay:
             quality_blocked=True,
         )
         assert "blocker-tag" in html or "质量诊断" in html
-        assert "governance_section_gap" in html
-        assert "peer_universe_mismatch" in html
+        assert "Governance Section Gap" in html
+        assert "Peer Universe Mismatch" in html
 
     def test_blocked_confidence_shows_gate_message(self):
         """Diagnostic confidence should show quality message, not '基于数据覆盖与引用分析'."""

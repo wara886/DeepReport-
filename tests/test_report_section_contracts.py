@@ -31,6 +31,7 @@ from src.report.contract_builder import (
     _build_ownership_governance,
     _build_risk_factors,
     _build_strategy_business,
+    _clip_at_sentence_boundary,
 )
 from src.report.citation_binder import CitationBinder
 
@@ -129,6 +130,62 @@ class TestSectionContractData:
 
 class TestContractBuilder:
     """Test the contract builder with A-share PDF summaries."""
+
+    def test_sentence_boundary_clipping_keeps_report_facts_readable(self):
+        text = (
+            "公司主营业务覆盖高端白酒生产、品牌运营和渠道管理。"
+            "直销与批发代理渠道共同贡献收入，产品结构保持稳定。"
+            "风险主要来自需求波动、渠道库存和消费场景变化。"
+        )
+
+        clipped = _clip_at_sentence_boundary(text, 45)
+
+        assert clipped.endswith("。")
+        assert not clipped.endswith("保持稳。")
+        assert "公司主营业务" in clipped
+
+    def test_long_business_pdf_summary_is_not_cut_mid_sentence(self):
+        contracts = ReportSectionContracts()
+        long_summary = (
+            "公司主营业务覆盖高端白酒生产、品牌运营和渠道管理。"
+            "直销与批发代理渠道共同贡献收入，产品结构保持稳定。"
+            "公司持续推进数字化渠道建设和消费者运营，提高终端触达效率。"
+        ) * 8
+        _build_business_overview(
+            contracts,
+            [_make_pdf_summary("business_overview", long_summary, "ev_biz_long")],
+            [],
+            [],
+            {"company_profile": {}},
+            {"symbol": "600519.SS", "period": "FY2025"},
+        )
+
+        c = contracts.get("business_overview")
+        assert c is not None and c.facts
+        assert c.facts[0].text.endswith("。")
+        assert not c.facts[0].text.endswith("稳定")
+        assert "公司主营业务" in c.facts[0].text
+
+    def test_long_risk_pdf_summary_is_not_cut_mid_sentence(self):
+        contracts = ReportSectionContracts()
+        long_risk = (
+            "公司面临宏观需求波动、渠道库存变化和监管政策调整风险。"
+            "若消费场景恢复不及预期，收入增速和利润率可能承压。"
+            "公司通过价格体系管理和渠道巡检降低经营波动。"
+        ) * 8
+        _build_risk_factors(
+            contracts,
+            [_make_pdf_summary("risk_factors", long_risk, "ev_risk_long")],
+            [],
+            [],
+            {},
+            {"symbol": "600519.SS", "period": "FY2025"},
+        )
+
+        c = contracts.get("risk_factors")
+        assert c is not None and c.facts
+        assert c.facts[0].text.endswith("。")
+        assert "需求波动" in c.facts[0].text
 
     def test_business_overview_binds_only_pdf_evidence(self):
         """Business overview must only use PDF source types, not financial tables."""

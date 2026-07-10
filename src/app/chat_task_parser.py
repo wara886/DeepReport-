@@ -404,8 +404,6 @@ def llm_parse_chat_task(
     rule_task = parse_chat_task(message, current_symbol, current_period, today)
     has_report_terms = _has_report_intent(text)
     has_gen_terms = _has_generation_intent(text)
-    if rule_task.symbol and rule_task.period and has_report_terms and has_gen_terms and rule_task.confidence >= 0.8:
-        return rule_task
     if not has_report_terms and not has_gen_terms:
         return rule_task
 

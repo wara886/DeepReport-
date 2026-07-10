@@ -31,15 +31,20 @@ def test_source_authority_policy_marks_a_share_disclosures_as_primary():
             "source_url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/report.pdf",
             "title": "贵州茅台2025年年度报告",
         },
-        {
-            "source_type": "eastmoney_financials",
-            "source_url": "https://data.eastmoney.com/bbsj/600519.html",
-            "title": "600519 Eastmoney income financial table",
-        },
     ]:
         grade = grade_source_authority(record)
         assert grade["authority_level"] == "primary"
         assert "revenue" in grade["allowed_claim_types"]
+
+    eastmoney = grade_source_authority(
+        {
+            "source_type": "eastmoney_financials",
+            "source_url": "https://data.eastmoney.com/bbsj/600519.html",
+            "title": "600519 Eastmoney income financial table",
+        }
+    )
+    assert eastmoney["authority_level"] == "market_data"
+    assert "revenue" in eastmoney["allowed_claim_types"]
 
 
 def test_source_authority_policy_limits_market_data_to_market_claims():

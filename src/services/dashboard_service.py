@@ -15,6 +15,9 @@ from src.db.models import (
     Document,
     DocumentProcessingStep,
     EvidenceItem,
+    FinancialFact,
+    InvestmentSignal,
+    LLMRun,
     ReportArtifact,
     ReportClaim,
     ReportTask,
@@ -42,7 +45,12 @@ class DashboardService:
 
     def summary(self) -> dict[str, Any]:
         with self.session_factory() as session:
-            task_status = _counter(session.execute(select(ReportTask.status, func.count()).group_by(ReportTask.status)).all())
+            active_task_condition = ReportTask.status != "archived"
+            task_status = _counter(
+                session.execute(
+                    select(ReportTask.status, func.count()).where(active_task_condition).group_by(ReportTask.status)
+                ).all()
+            )
             source_distribution = _counter(
                 session.execute(select(EvidenceItem.source_type, func.count()).group_by(EvidenceItem.source_type)).all(),
                 empty_key="unknown",
@@ -54,16 +62,30 @@ class DashboardService:
             verified_claims = _verified_claim_count(session)
             total_claims = _count(session, ReportClaim.id)
             quality_scores = list(
-                session.scalars(select(ReportTask.quality_score).where(ReportTask.quality_score.is_not(None))).all()
+                session.scalars(
+                    select(ReportTask.quality_score).where(
+                        active_task_condition,
+                        ReportTask.quality_score.is_not(None),
+                    )
+                ).all()
             )
             completed_tasks = int(task_status.get("completed", 0))
             failed_tasks = int(task_status.get("failed", 0))
             total_tasks = sum(task_status.values())
+            llm_total = _count(session, LLMRun.id)
+            llm_failed = _count_where(session, LLMRun.id, LLMRun.status != "success")
+            llm_latency_values = [
+                value
+                for value in session.scalars(select(LLMRun.latency_ms).where(LLMRun.latency_ms.is_not(None))).all()
+                if isinstance(value, int)
+            ]
+            llm_cost = float(session.scalar(select(func.coalesce(func.sum(LLMRun.cost_usd), 0.0))) or 0.0)
 
             return {
                 "company_count": _count(session, Company.id),
                 "document_count": _count(session, Document.id),
                 "evidence_count": _count(session, EvidenceItem.id),
+                "financial_fact_count": _count(session, FinancialFact.id),
                 "claim_count": total_claims,
                 "review_pending_claim_count": _count_where(session, ReportClaim.id, ReportClaim.review_status == "pending"),
                 "verified_claim_count": verified_claims,
@@ -73,6 +95,11 @@ class DashboardService:
                 "data_source_distribution": source_distribution,
                 "artifact_distribution": artifact_distribution,
                 "failed_task_count": failed_tasks,
+                "llm_run_count": llm_total,
+                "llm_failed_run_count": llm_failed,
+                "llm_failure_rate": _ratio(llm_failed, llm_total),
+                "average_llm_latency_ms": round(sum(llm_latency_values) / len(llm_latency_values), 2) if llm_latency_values else None,
+                "llm_cost_usd": round(llm_cost, 6),
             }
 
     def funnel(self) -> dict[str, Any]:
@@ -82,8 +109,8 @@ class DashboardService:
                 "parse_success": _document_step_success_count(session, "parse", fallback_status="parsed"),
                 "table_extract_success": _document_step_success_count(session, "table_extract"),
                 "chunk_vectorized": _document_step_success_count(session, "chunk"),
-                "financial_fact_extracted": _distinct_evidence_linked_claim_count(session, claim_type="financial"),
-                "investment_signal_generated": _count_where(session, ReportClaim.id, ReportClaim.claim_type == "signal"),
+                "financial_fact_extracted": _count(session, FinancialFact.id),
+                "investment_signal_generated": _investment_signal_count(session),
                 "report_claim_generated": _count(session, ReportClaim.id),
                 "claim_verified": _verified_claim_count(session),
                 "pending_review": _count_where(session, ReportClaim.id, ReportClaim.review_status == "pending"),
@@ -98,6 +125,13 @@ def _count(session: Session, column: Any) -> int:
 
 def _count_where(session: Session, column: Any, condition: Any) -> int:
     return int(session.scalar(select(func.count(column)).where(condition)) or 0)
+
+
+def _investment_signal_count(session: Session) -> int:
+    signals = _count(session, InvestmentSignal.id)
+    if signals:
+        return signals
+    return _count_where(session, ReportClaim.id, ReportClaim.claim_type == "signal")
 
 
 def _counter(rows: list[tuple[Any, int]], *, empty_key: str = "unknown") -> dict[str, int]:

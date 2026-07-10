@@ -37,11 +37,28 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     html = page.text
     assert "慧研投研工作台" in html
     assert "投研首页" in html
+    assert "投研空间" in html
+    assert "股票池管理" in html
+    assert "创建投研空间" in html
+    assert "添加股票池公司" in html
     assert "创建研报任务" in html
     assert "公司或股票代码" in html
     assert "查询期间" in html
     assert "报告类型" in html
     assert "运行方式" in html
+    assert "任务操作" in html
+    assert "研究问题" in html
+    assert "质量诊断" in html
+    assert "交付门禁" in html
+    assert "失败分类" in html
+    assert "主要问题" in html
+    assert "撰写智能体" in html
+    assert "校验智能体" in html
+    assert "数据源范围" in html
+    assert "启动" in html
+    assert "取消" in html
+    assert "重试" in html
+    assert "归档" in html
     assert "taskCompanyInput" in html
     assert "companyCandidates" in html
     assert "data-open-create-task" in html
@@ -53,6 +70,9 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "主张状态分布" in html
     assert "处理链路" in html
     assert "当前暂无真实处理数据" in html
+    assert "当前真实统计尚未形成完整累计漏斗" in html
+    assert "请切换到“处理链路”查看真实阶段计数" in html
+    assert "isValidFunnelSeries" in html
     assert "最大流失步骤" in html
     assert "funnel-layer" in html
     assert "funnelVisual" in html
@@ -65,6 +85,24 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert 'getJson("/api/dashboard/summary")' in html
     assert 'getJson("/api/dashboard/funnel")' in html
     assert 'getJson("/api/report-tasks?limit=6")' in html
+    assert 'getJson("/api/workspaces")' in html
+    assert "/api/workspaces/${encodeURIComponent(workspaceId)}/companies" in html
+    assert "resolveCompanyForTask" in html
+    assert 'start: "start"' in html
+    assert 'cancel: "cancel"' in html
+    assert 'archive: "archive"' in html
+    assert "scheduleTaskRefresh" in html
+    assert 'terminalTaskStatuses' in html
+    assert 'quality_failed: "质量未通过"' in html
+    assert 'quality_gate: "质量门禁"' in html
+    assert 'chunk_vectorize: "切分向量化"' in html
+    assert 'report_artifact: "研报任务产物"' in html
+    assert 'medium: "中可信"' in html
+    assert "stepMetadataText" in html
+    assert "产物类型：" in html
+    assert "证据绑定" in html
+    assert "shortTaskId" in html
+    assert "确认${labels[action]}该研报任务" in html
     assert "/api/report-tasks" in html
     assert "/api/latest" not in html
 

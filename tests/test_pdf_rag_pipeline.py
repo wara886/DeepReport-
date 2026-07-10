@@ -208,6 +208,33 @@ def test_noise_filter_does_not_globally_ban_directors_inside_governance_section(
     assert usable
     assert usable[0]["section_type"] == "ownership_governance"
     assert "董事会" in usable[0]["text_clean"]
+    assert usable[0]["chunk_type"] == "paragraph"
+    assert usable[0]["source_document_type"] == "annual_report_pdf"
+    assert usable[0]["chunking_strategy"] == "pdf_structural_semantic_overlap_v1"
+    assert usable[0]["metadata"]["section_schema_version"] == "pdf_rag_v2.1"
+    assert "治理结构" in usable[0]["meta_tags"]
+
+
+def test_long_pdf_section_overlap_keeps_sentence_boundary_and_metadata():
+    long_text = "\n".join(
+        f"第 {idx} 段。公司收入表现保持稳定，现金流覆盖经营投入，风险披露提示需求波动。"
+        for idx in range(1, 90)
+    )
+    chunks, _ = build_pdf_chunks(
+        text_by_page={10: long_text},
+        section_map={"management_discussion": {"title": "管理层讨论与分析", "pages": (10, 10)}},
+        symbol="600519.SS",
+        period="FY2025",
+        report_market="cn_a",
+    )
+
+    usable = [chunk for chunk in chunks if chunk["usable_for_generation"]]
+    assert len(usable) > 1
+    assert all(chunk["page_no"] == 10 for chunk in usable)
+    assert all(chunk["source_type"] == "cninfo_announcement" for chunk in usable)
+    assert all("收入表现" in chunk["meta_tags"] for chunk in usable)
+    assert all(not chunk["text"].startswith("入表现") for chunk in usable[1:])
+    assert any(chunk["text"].startswith("第") or chunk["text"].startswith("公司") for chunk in usable[1:])
 
 
 def test_business_summary_gap_mentions_specific_missing_business_fields():

@@ -88,6 +88,7 @@ git push origin main
    - `src/evaluation/multi_agent_harness.py`
    - 当前 quality gates、official-source routing、evidence/claims/report artifacts 相关代码。
 2. **确认无用的旧代码可以删除**，但删除前必须全仓搜索引用，确保测试通过。
+
 3. **不确定是否仍有复用价值的旧代码，集中归档**：
 
 ```text
@@ -109,6 +110,125 @@ docs/implementation_notes/legacy_cleanup.md
 说明内容：移动了什么、为什么移动、新路径是什么、有没有影响测试、如何恢复。
 
 ---
+
+### 1.3 当前执行状态（2026-07-10 更新）
+
+当前仓库实际推进状态如下，后续 Codex 继续执行时必须以本节为准，避免重复实现已经完成的 P0/P1 功能。
+
+| 阶段 | 当前状态 | 说明 |
+| --- | --- | --- |
+| P0 最小可演示投研工作台 | 已完成并提交 | 已具备工作台外壳、投研首页、任务创建/取消、文档处理、证据库、Claim 复核、导出入口、严格漏斗和基础用户流。 |
+| P1 投研空间、数据源、采集、手动导入、词典、PromptOps、Harness、财务事实 | 已完成核心闭环，已做收尾提交 | 已补齐数据源健康、补采集闭环、PromptOps 版本管理、Harness 观测、质量证明解释、任务分析链路总览、文档空状态引导。 |
+| P2 Hybrid RAG、实体库、关系图谱、投资线索 | P2.1-P2.5 核心闭环已完成 | 已具备检索诊断、引用使用闭环、任务级实体记忆、投资线索、投资逻辑链和风险传导链；后续继续做质量回归，不优先引入复杂图数据库。 |
+| P3 评测中心、导出中心与生产化 | P3.1/P3.2 已进入，P3.3 待完成 | 已有单任务诊断、回归矩阵、Formal-18/Quick-9/回归集产物导入，以及 Markdown/HTML/JSON/CSV 正式包预览和下载；PDF/DOCX 与统一生产可观测仍待完成。 |
+| R0 统一 Agent Runtime | R0.1/R0.2 核心已完成 | 已新增 `ReportRunState`、合法状态迁移、统一 readiness，并由 LangGraph 接管 evidence、generation、quality、finalize、human review 节点；已接 SQLite checkpoint、失败节点恢复和 Claim interrupt/resume。 |
+
+最近关键提交：
+
+- `fc93229 fix(p0): stabilize workbench task and import feedback`
+- `ce2b39e fix(p1): tighten workbench quality and remediation flows`
+- `09abf38 fix(p1): polish workbench closure experience`
+- `f60a57b feat(p2.5): add investment argument chain`
+- 本地待推送提交已继续补齐 canonical PDF chunk、检索 metadata、评测矩阵、benchmark 导入和正式导出包。
+
+P1 收尾验收已运行：
+
+```bash
+pytest -q tests/test_workbench_frontend_script.py tests/test_web_evaluation_center.py tests/test_task_analysis_api.py
+pytest -q tests/test_report_task_status_lifecycle.py tests/test_evaluation_api.py tests/test_promptops_api.py tests/test_ingestion_batch_lifecycle.py tests/test_web_promptops.py
+python tmp/current_workbench_user_walkthrough.py
+```
+
+验收结果：
+
+- 单元 / 前端静态 / API 回归：通过。
+- 浏览器模拟用户走查：`ok: True`，无控制台错误，无评测页后端变量名裸露。
+- 运行产物 `tmp/`、`data/vector_db/` 不进入提交。
+
+进入 P2 前的产品边界：
+
+1. 继续沿用参考视频的叙事：数据源采集 → 结构化处理 → 记忆沉淀 → 关系分析 → 风险/线索发现 → 人工复核 → 报告输出。
+2. 前端必须保持产品化中文表达，不能把后端字段名、调试 token、内部 key 直接展示给用户。
+3. P2 首要目标是证明“生成研报为什么可信”：证据召回质量、引用覆盖、检索失败降级、质量评测闭环。
+4. P2 不优先做复杂 Neo4j/Milvus 迁移；可以保留 PostgreSQL + Chroma 的渐进方案，先把接口契约和测试打稳。
+5. 每完成一个 P2.x 小模块，必须先做单元测试和一次真实用户浏览器走查，再提交。
+
+### 1.4 统一 Agent Runtime 收口计划（2026-07-10 启动）
+
+#### 问题复述
+
+P0/P1 功能反复出现的根因不是页面功能缺失，而是任务状态、证据门禁、质量门禁、Claim 复核、Artifact、正式导出和前端标签分别判断“是否完成/是否可交付”。`completed` 曾同时被理解为“生成结束”和“可以正式交付”，导致任务列表、质量中心和导出中心结论不一致。
+
+#### R0.1：状态与交付合同（已完成）
+
+- 新增 `src/runtime/report_run_state.py`，定义金融研报 canonical lifecycle：排队、证据检查、证据阻塞、生成、质量检查、质量阻塞、生成完成、失败、取消和归档。
+- 所有 `ReportTaskService` 生命周期写入通过 `apply_report_transition()`，旧 `status/current_stage` 继续保留为兼容投影。
+- `POST /api/report-tasks` 默认只创建并排队；只有显式 `run_immediately=true` 才进入生成，前端的“立即生成”模式继续显式传参。
+- 统一输出 `run_state`、`delivery_readiness`、`export_readiness`，区分：可生成草稿、可进入人工复核、可正式交付、可正式导出。
+- 正式交付同时检查任务阶段、证据门禁、质量门禁、Claim 审核/校验和报告 Artifact；不能再用 `task.status == completed` 单独判断。
+- `ReportTaskService`、`EvaluationService`、`ExportService` 和工作台任务页复用同一 readiness；Claim 审核完成后这些入口同步变化。
+- 保留旧任务兼容：历史 `completed` 任务缺少 runtime/gate 元数据时可推断旧门禁结论，但返回 legacy inference warning。
+
+R0.1 定向验收范围：
+
+```bash
+pytest -q --disable-warnings \
+  tests/test_report_runtime_state.py \
+  tests/test_report_task_api.py \
+  tests/test_report_task_status_lifecycle.py \
+  tests/test_report_task_quality_gate.py \
+  tests/test_report_task_evidence_gate.py \
+  tests/test_report_task_artifact_import.py \
+  tests/test_export_entry_api.py \
+  tests/test_evaluation_api.py \
+  tests/test_workbench_frontend_script.py
+```
+
+#### R0.2：LangGraph 渐进接入（核心已完成）
+
+1. 以现有 `ReportRunState` 作为唯一 graph state schema，没有在 LangGraph 内新增第二套任务业务状态。
+2. 新增 `src/runtime/langgraph_report_runtime.py`，将任务拆为 `evidence → generation → quality → finalize → human_review` 节点；节点只能返回受白名单限制的 typed patch。
+3. evidence 节点阻塞后直接结束，不进入生成；finalize 后仅在存在待复核 Claim 时进入 human review interrupt。
+4. 使用 SQLite checkpointer，以 `task_id` 作为 `thread_id`；checkpoint 文件可跨 runtime 实例恢复。
+5. 真实 `ReportTaskService.run_task()` 默认由 LangGraph 编排；保留 `langgraph_runtime_enabled=False` 的旧流水线兼容开关。
+6. 生成节点或质量节点失败后，任务会记录 `runtime_failure.checkpoint_available`；`POST /api/report-tasks/{task_id}/runtime/retry` 从失败节点继续，不重复已完成的证据节点。
+7. Claim 复核通过后，`POST /api/report-tasks/{task_id}/runtime/resume` 使用 interrupt/resume 继续；`GET /api/report-tasks/{task_id}/runtime` 返回当前 checkpoint、待执行节点和 interrupt payload。
+8. 工作台任务操作新增“复核完成，继续工作流”和“从失败节点继续”，仍以统一 readiness 判断正式交付。
+9. KG、长期记忆继续作为 projection，不成为任务主状态或当前任务完成条件。
+
+依赖兼容说明：
+
+- 当前仓库仍使用 LangChain 0.2.x；LangGraph 1.2.x 会把 `langchain-core` 升级到 1.x，与现有 RAG、Ragas、LangChain Community 依赖冲突。
+- R0.2 因此固定使用 `langgraph>=0.2.76,<0.3.0` 和 `langgraph-checkpoint-sqlite>=2.0.11,<3.0.0`。该版本已具备本阶段需要的 StateGraph、Command、checkpoint 和 interrupt，不在本阶段升级整个 LangChain/RAG 栈。
+
+R0.2 定向验收范围：
+
+```bash
+pytest -q --disable-warnings \
+  tests/test_langgraph_report_runtime.py \
+  tests/test_report_task_langgraph_runtime.py \
+  tests/test_report_runtime_state.py \
+  tests/test_report_task_api.py \
+  tests/test_report_task_status_lifecycle.py \
+  tests/test_report_task_quality_gate.py \
+  tests/test_report_task_evidence_gate.py \
+  tests/test_report_task_artifact_import.py \
+  tests/test_workbench_frontend_script.py \
+  tests/test_web_report_task_evidence_gate.py
+```
+
+全量回归说明：
+
+- 已完成聊天任务解析、报告阻塞文案、估值错误分类、同行 fallback、HTML 图表序列化、跨公司证据污染、Verifier 重写、ReAct 分析、乱码识别和旧状态合同治理。
+- 外部同行发现、Yahoo 估值倍数和 FRED 利率改为显式 opt-in；默认测试和离线报告不会再因隐藏网络 fallback 卡在 SSL/yfinance 等待。
+- 2026-07-10 全量收集 855 项；`pytest -q --disable-warnings --maxfail=20` 全部通过（4 项按既有条件 skip）。
+
+#### R0.3：生产化与 P3 收尾（下一阶段）
+
+- 补 PDF/DOCX 正式导出，并继续遵守统一 ExportReadiness。
+- `request_id/run_id/task_id` 贯穿 API、LangGraph 节点、LLM、工具和结构化日志。
+- 补 checkpoint 恢复、重复执行幂等、人工复核恢复、成本/延迟聚合和失败降级测试。
+- 修复仓库既有全量回归债务后，完成阶段提交、推送和合并 `main`。
 
 ## 2. 参考视频二次复核结果：不能遗漏的产品能力
 
@@ -413,15 +533,33 @@ data_sources
 ingestion_batches
 - id
 - batch_id
-- datasource_id
 - workspace_id
+- data_source_id
+- source_key
+- name
+- target_type
+- symbol
+- period
+- query
 - status
-- total_count
+- retry_count
+- item_count
 - success_count
 - failed_count
 - started_at
 - finished_at
 - error_message
+- metadata JSONB
+- created_at
+
+ingestion_batch_events
+- id
+- batch_id
+- stage
+- status
+- message
+- metadata JSONB
+- created_at
 
 documents
 - id
@@ -582,6 +720,21 @@ llm_runs
 - Vector DB 负责 chunk embedding；证据元数据仍以 PostgreSQL 为准。
 - Elasticsearch/OpenSearch 用于公告标题、财报正文、公司名称、关键词检索。
 - Neo4j 是 P2 增强，不阻塞 P0/P1。
+
+### 7.3 工作台记忆系统
+
+参考视频中的“记忆系统”不是单独的聊天记忆页，而是分布在配置、清洗结果、风险线索、人工复核、PromptOps、实体库和导出中心里的结构化业务记忆。DeepReport- 金融版需要按以下层次沉淀：
+
+- **工作空间记忆**：投研空间、股票池、公司别名、关注指标、风险类型、证据阈值、默认数据源。
+- **数据源/批次记忆**：数据源配置、启用状态、凭证状态、采集批次、运行日志、失败原因、重试次数。
+- **文档处理记忆**：原始文档、解析状态、表格抽取、切分向量化、证据化、Claim 绑定、处理步骤详情。
+- **证据/事实/Claim 记忆**：证据片段、财务事实、Claim、Claim-Evidence 绑定、校验结果、质量门禁结果。
+- **人工复核记忆**：`review_records` 保存通过、驳回、编辑、重生成请求的修改前后内容、理由、审核人和时间。
+- **Prompt/LLM 运行记忆**：`prompt_versions` 和 `llm_runs` 保存 Prompt 版本、输入输出 JSON、Schema 校验、模型、成本、时延、失败和 fallback。
+- **词典/实体图谱记忆**：金融词典、别名库、实体、实体关系、事件链和投资逻辑链。
+- **评测/回放记忆**：评测样例、运行结果、失败样例、回归对比、导出包版本。
+
+关键原则：记忆可以用于路由、召回、检索扩展、失败规避和复核提示，但**不能直接替代证据**。进入正式研报的事实必须来自可追溯来源、财务事实表或人工确认记录。
 
 ---
 
@@ -946,9 +1099,72 @@ git commit -m "chore(p1): finish datasource promptops and harness layer"
 git push origin feat/fin-research-agent-workbench-v2
 ```
 
+### P1 收尾验收记录（已完成）
+
+P1 当前不是“再补更多功能”，而是已经完成核心闭环后的收尾状态。实际完成内容包括：
+
+- 投研空间 / 股票池 / 公司别名：已具备页面入口、配置能力和任务创建时的公司名称 / 股票代码解析。
+- 数据源管理：已具备启用状态、凭证/健康状态、最近批次、失败诊断、补采集入口。
+- 采集任务中心：已具备批次创建、状态展示、失败诊断和补采集回流入口。
+- 手动导入：已支持文本、URL、PDF 路径导入，导入后进入文档处理链路。
+- 金融词典：已覆盖公司别名、财务指标、行业术语、风险词等结构化记忆入口。
+- LLM Harness：已具备调用记录、超时、重试、fallback、schema 校验、token/成本/时延观测基础。
+- PromptOps：已具备 Prompt 版本管理、活动版本解析、运行记录查看，且不是纯前端文本框。
+- 财务事实中心：已支持事实导入、证据绑定、期间/币种/单位展示。
+- P1 收尾体验：任务详情新增分析链路总览，研报质量证明新增“为什么是这个质量分 / 还差什么”，文档详情空状态新增业务解释和下一步按钮。
+
+P1 已验证命令：
+
+```bash
+pytest -q tests/test_workbench_frontend_script.py tests/test_web_evaluation_center.py tests/test_task_analysis_api.py
+pytest -q tests/test_report_task_status_lifecycle.py tests/test_evaluation_api.py tests/test_promptops_api.py tests/test_ingestion_batch_lifecycle.py tests/test_web_promptops.py
+python tmp/current_workbench_user_walkthrough.py
+```
+
+当前 P1 剩余风险不应阻塞进入 P2，但要在 P2 中持续观察：
+
+1. 部分数据源仍是“配置 / 诊断 / 补采集”闭环，真实外部采集稳定性还需要更多真实样本验证。
+2. Harness 已有观测能力，但复杂多模型路由和大规模回放还属于 P3 生产化增强。
+3. 研报质量证明已能解释质量分，但质量本身仍依赖 P2 的证据召回和引用覆盖率提升。
+
 ---
 
 ## P2：Hybrid RAG、实体库、关系图谱与投资线索
+
+### P2 进入原则（2026-07-09 更新）
+
+P2 的第一目标不是“看起来更复杂”，而是让研报质量可验证、证据召回可评测、分析链路可追溯。参考视频里的关系链和记忆系统要映射为金融场景的证据链、事实链、投资逻辑链和风险传导链。
+
+进入 P2 后的优先级：
+
+1. **P2.1 Hybrid RAG / 证据召回质量闭环**
+   - 先做 dense + BM25 + RRF 融合的统一检索接口。
+   - 保留现有 `retrieve_evidence_with_mode` 兼容，避免破坏已完成前端和任务分析包。
+   - 必须增加检索回退测试、RRF 融合测试、引用覆盖率测试。
+   - 判断标准：同一个研报任务能展示“召回了哪些证据、为什么选这些、缺哪些来源、召回失败如何降级”。
+
+2. **P2.2 生成前证据门禁**
+   - 把 P2.1 的证据召回覆盖率接入研报任务运行前置检查。
+   - 证据不足时必须给出来源缺口、推荐动作和可审计事件；强制门禁开启时不应继续生成看似完整的研报。
+   - 判断标准：用户创建任务后，系统能解释“是否有足够证据进入生成、缺哪些权威来源、下一步该补采集还是去证据库复核”。
+
+3. **P2.3 实体库 / 关系存储收口**
+   - 不急于接 Neo4j，先把 PostgreSQL 的实体和关系抽取、去重、upsert、证据绑定做稳定。
+   - 判断标准：用户点进公司、证据或线索时，能看到实体记忆如何由文档/证据沉淀而来。
+
+4. **P2.4 投资线索中心增强**
+   - 在线索页补“为什么出现这个线索”：关联事实、证据、阈值、影响方向。
+   - 判断标准：线索能进入研报任务上下文，并在质量证明或任务分析链路里被追踪。
+
+5. **P2.5 投资逻辑链 / 风险传导链**
+   - 在已有链路雏形上补证据绑定和节点详情，不做纯视觉大图优先。
+   - 判断标准：用户能从风险线索追溯到财务事实、来源证据、Claim 和报告章节。
+
+P2 暂不做：
+
+- 不优先迁移到 Neo4j。
+- 不优先迁移到 Milvus / OpenSearch，除非 Chroma / 当前检索层无法满足接口测试。
+- 不新增脱离研报质量目标的大屏、动画图谱或无业务闭环的可视化。
 
 ### P2.1 Hybrid RAG 迁移
 
@@ -958,30 +1174,79 @@ git push origin feat/fin-research-agent-workbench-v2
 - 测试：`tests/test_rrf_fusion.py`、`tests/test_hybrid_retriever_contract.py`、`tests/test_retrieval_fallback_when_vector_unavailable.py`。
 - 提交：`feat(p2.1): add hybrid rag retrieval layer`。
 
-### P2.2 实体库和关系图谱
+### P2.2 生成前证据门禁
+
+- 在 `ReportTaskService.run_task()` 中先执行生成前证据门禁，再进入多智能体生成。
+- 门禁复用 P2.1 的 `build_retrieval_coverage` 合同，输出候选证据数、命中证据数、必需来源、缺口和推荐动作。
+- 支持 `enforce_evidence_gate` 强制拦截、`allow_weak_evidence` 弱证据放行、`skip_evidence_gate` 明确跳过。
+- 测试：`tests/test_report_task_evidence_gate.py`、`tests/test_report_task_status_lifecycle.py`。
+- 提交：`feat(p2.2): add pre-generation evidence gate`。
+
+#### P2.1/P2.2 补强进度（2026-07-09）
+
+- 已完成 P2.2 前端承接：创建研报任务弹窗新增“生成前证据门禁”策略；任务表和任务详情不再显示 `evidence_gate_failed` 这类后端阶段名，改为产品化中文阶段。
+- 任务详情已新增“生成前证据门禁”卡片，展示门禁结论、候选证据、命中来源、缺失来源、建议来源、阻塞原因和推荐动作。
+- 已完成证据召回诊断补强：`/api/report-tasks/{task_id}/analysis` 新增 `retrieval_diagnostics`，区分“暂无候选资料”“有资料但期间/查询未命中”“缺少必要权威来源”“证据可用”。
+- 任务详情已新增“证据召回诊断”卡片，展示查询口径、候选资料池、命中证据、来源缺口、候选/命中样例和处理入口。
+- 已完成 P2.1 引用覆盖率闭环：`/api/report-tasks/{task_id}/analysis` 新增 `citation_usage`，从 `citations.json` 和 `report.md` 校验“Claim 绑定证据”是否真正进入报告正文。
+- 任务详情已新增“引用覆盖闭环”卡片，展示正文已使用引用、可追溯主张、缺引用主张、未进入正文的引用和处理入口；质量证明新增“报告引用使用”检查项。
+- 最新小块验收命令：`pytest -q tests/test_task_analysis_api.py tests/test_workbench_frontend_script.py tests/test_web_report_task_evidence_gate.py`。
+- 阶段回归命令：`pytest -q tests/test_report_task_evidence_gate.py tests/test_report_task_status_lifecycle.py tests/test_report_task_api.py tests/test_report_task_quality_gate.py tests/test_task_analysis_api.py tests/test_evidence_api.py tests/test_hybrid_retriever_contract.py tests/test_web_evaluation_center.py tests/test_web_report_task_links.py tests/test_web_report_task_evidence_gate.py`；`python tmp/deep_p2_workbench_walkthrough.py`。
+
+### P2.3 实体库和关系图谱
 
 - 先用 PostgreSQL 存 `entities`、`entity_relations`。
-- 后接 Neo4j。
+- Neo4j 暂不作为 P2.3 阻塞项；先把 PostgreSQL 实体关系、证据绑定、任务级记忆沉淀和前端可解释链路做稳定。
 - 实体类型：公司、股票代码、行业、产品、客户、供应商、高管、财务指标、文档、风险事件、新闻事件、同行公司。
 - 关系类型：`BELONGS_TO`、`PUBLISHED`、`HAS_PRODUCT`、`HAS_METRIC`、`HAS_EVENT`、`PEER_OF`、`SUPPLIES_TO`、`MENTIONED_IN`。
 - 测试：`tests/test_entity_extraction_schema.py`、`tests/test_entity_relation_upsert.py`。
-- 提交：`feat(p2.2): add entity and relation store`。
+- 提交：`feat(p2.3): add entity and relation store`。
 
-### P2.3 投资线索中心
+#### P2.3 补强进度（2026-07-09）
+
+- 已完成任务级结构化记忆沉淀：新增 `POST /api/entities/extract-from-task`，从任务证据池、Claim 证据绑定和文档批次中收集证据，复用现有实体/关系 upsert 规则，保证重复执行幂等。
+- 已完成任务分析包记忆摘要：`/api/report-tasks/{task_id}/analysis` 新增 `entity_memory`，展示来源证据数、实体数、关系数、实体类型分布、关系类型分布和样例。
+- 任务详情新增“结构化记忆”卡片，支持一键“沉淀当前任务证据”，并提供实体库、关系图谱跳转；分析链路从五步升级为“数据进入 → 记忆沉淀 → 结构化处理 → 线索发现 → 主张复核 → 报告输出”。
+- 已补测试：`tests/test_entity_relation_upsert.py` 覆盖任务级沉淀 API 幂等性，`tests/test_task_analysis_api.py` 覆盖 `entity_memory`，`tests/test_web_report_task_evidence_gate.py` 覆盖前端卡片和接口路径。
+- 最新验收命令：`pytest -q tests/test_entity_relation_upsert.py tests/test_task_analysis_api.py tests/test_workbench_frontend_script.py tests/test_web_report_task_evidence_gate.py tests/test_web_evaluation_center.py`；P2 回归命令见 P2.1/P2.2 补强进度。
+
+### P2.4 投资线索中心
 
 - 规则线索 + LLM 摘要。
 - 规则线索先实现：`margin_decline`、`cashflow_gap`、`official_source_missing`、`currency_mismatch`、`valuation_blocked`、`revenue_growth_acceleration`。
 - 线索可以进入研报任务上下文。
 - 测试：`tests/test_signal_rules.py`、`tests/test_signal_evidence_binding.py`、`tests/test_signal_to_report_context.py`。
-- 提交：`feat(p2.3): add investment signal center`。
+- 提交：`feat(p2.4): add investment signal center`。
 
-### P2.4 投资逻辑链 / 风险传导链
+P2.4 收尾进度：
+
+- 已复用现有规则线索中心，不重建新模块；`/api/investment-signals/generate`、`/api/investment-signals`、`/api/investment-signals/{id}/add-to-task` 已形成基础闭环。
+- 线索序列化新增产品化字段：`priority_label`、`recommended_action`、`decision_use`、`research_brief`，前端不直接暴露后端规则变量名作为主要解释。
+- `/api/report-tasks/{task_id}/analysis` 新增 `signal_summary`，展示线索总数、高优先级、已进入上下文、风险/机会分布、证据绑定、重点线索和推荐动作。
+- 任务详情新增“投资线索闭环”卡片，可一键“生成当前任务线索”，并跳转到投资线索、财务事实和主张复核。
+- 投资线索详情页新增“线索研判摘要”“建议动作”“研报用途”，统一保留“仅供研究，不构成投资建议”边界。
+- 这里的“LLM 摘要”先落为可测试的规则研判摘要；真实 LLM 生成应等 PromptOps / Harness 质量追踪稳定后再接入。
+- 最新验收命令：`pytest -q tests/test_signal_rules.py tests/test_signal_evidence_binding.py tests/test_signal_to_report_context.py tests/test_task_analysis_api.py tests/test_workbench_frontend_script.py tests/test_web_report_task_evidence_gate.py tests/test_web_evidence_center.py`。
+
+### P2.5 投资逻辑链 / 风险传导链
 
 - 对应视频中的“剧本对抗”，但金融项目不要使用黑灰产命名。
 - 页面展示：实体 → 事件 → 财务事实 → 投资线索 → Claim → 报告章节。
 - 重点是证据链与论证链，不是炫酷大图。
 - 测试：`tests/test_argument_chain_api.py`、`tests/test_risk_chain_evidence_binding.py`。
-- 提交：`feat(p2.4): add investment argument chain`。
+- 提交：`feat(p2.5): add investment argument chain`。
+
+P2.5 收尾进度：
+
+- 已在 `/api/report-tasks/{task_id}/analysis` 中增强 `argument_chain`：保留原有 `nodes` / `edges`，新增 `flow`、`readiness`、`gaps`、`recommended_actions`，按“实体 → 事件 → 财务事实 → 投资线索 → Claim → 报告章节”展示研报论证闭环。
+- 已增强 `risk_chain`：新增 `exposure_paths`、`readiness`、`gaps`、`recommended_actions`，每条风险线索展示“证据/财务事实 → 投资线索 → Claim → 报告章节”的传导路径。
+- 风险链口径统一为“支撑绑定”：有原始证据时显示证据，有结构化财务事实时显示财务事实；避免真实任务中线索已绑定事实、风险链却误报 0 的体验问题。
+- 任务详情页新增六段式投资逻辑链和风险传导路径展示，避免直接暴露后端变量名，优先展示中文阶段、缺口和下一步动作。
+- 已补健壮性：证据序列化会过滤孤立 Claim 关联，避免脏数据导致任务分析页 500。
+- 已补测试：`tests/test_argument_chain_api.py`、`tests/test_risk_chain_evidence_binding.py`，并扩展 `tests/test_web_report_task_evidence_gate.py` 覆盖前端产品化文案。
+- 最新验收命令：`pytest -q tests/test_argument_chain_api.py tests/test_risk_chain_evidence_binding.py tests/test_task_analysis_api.py tests/test_workbench_frontend_script.py tests/test_web_report_task_evidence_gate.py`。
+- P2 回归命令：`pytest -q tests/test_entity_relation_upsert.py tests/test_task_analysis_api.py tests/test_signal_rules.py tests/test_signal_evidence_binding.py tests/test_signal_to_report_context.py tests/test_workbench_frontend_script.py tests/test_web_report_task_evidence_gate.py tests/test_web_evaluation_center.py tests/test_web_evidence_center.py tests/test_hybrid_retriever_contract.py tests/test_report_task_evidence_gate.py tests/test_evidence_api.py tests/test_argument_chain_api.py tests/test_risk_chain_evidence_binding.py`。
+- 浏览器走查：系统 Chrome 打开 `http://127.0.0.1:7862/workbench`，进入研报任务详情，确认投资逻辑链六段可见，风险传导链显示“支撑绑定 5 / 13”，并能区分“已绑定财务事实”和“支撑待补齐”。截图：`tmp/p25_task_detail_final.png`。
 
 ### P2 阶段提交
 
