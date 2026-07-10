@@ -21,6 +21,7 @@ def main() -> int:
     parser.add_argument("--real-artifacts", action="store_true", help="Re-score existing generated report artifacts instead of synthetic fixed samples.")
     parser.add_argument("--source-root", action="append", default=[], help="Artifact root to scan; can be passed multiple times.")
     parser.add_argument("--max-per-market", type=int, default=2)
+    parser.add_argument("--repair", action="store_true", help="Repair thin existing report sections before re-scoring real artifacts.")
     args = parser.parse_args()
 
     if args.real_artifacts:
@@ -28,6 +29,7 @@ def main() -> int:
             output_root=args.output_root,
             source_roots=args.source_root or None,
             max_per_market=args.max_per_market,
+            repair=args.repair,
         )
     else:
         result = run_market_quality_regression(output_root=args.output_root)

@@ -1959,6 +1959,9 @@ def hard_backfill_quality_sections(
 
 CORE_AUTO_REWRITE_SECTIONS = {
     "executive_summary",
+    "business_overview",
+    "financial_analysis",
+    "peer_compare",
     "valuation",
     "risks",
     "conclusion",
@@ -2061,6 +2064,30 @@ def _build_core_section_rewrite(
             f"从已校验主张看，{claim_basis}；从结构化指标看，{metric_basis}。"
             "因此，执行摘要不直接给出强买卖结论，而是把判断限定在已披露资料能够支撑的范围内：先确认业务和财务趋势，再结合估值输入、竞争格局与风险约束判断正式交付条件。"
             f"后续若要形成正式可交付观点，需要继续核对官方披露、报告期口径和引用覆盖，避免把未验证信息写成确定结论。{citation_tail}"
+        ).strip()
+    if section == "business_overview":
+        return (
+            f"业务概览以公司已披露经营信息和证据池为边界，当前可引用依据包括：{evidence_basis}。"
+            f"从主张层看，{claim_basis}；这些信息用于界定公司所处行业、主要产品或服务、客户需求以及收入形成方式。"
+            "正式研报需要把业务画像和财务表现连接起来：业务规模决定收入弹性，竞争格局影响利润率，客户结构和监管环境则影响现金流稳定性。"
+            "因此，本节不把公司简介写成孤立背景，而是作为后续财务分析、估值观察和风险评估的基础。"
+            f"若后续补齐更多官方披露，应进一步拆分主营板块、区域结构和关键经营指标。{citation_tail}"
+        ).strip()
+    if section == "financial_analysis":
+        return (
+            f"财务分析以三表和结构化指标为核心，当前可使用的指标包括：{metric_basis}。"
+            f"结合证据池，{evidence_basis}；结合主张层，{claim_basis}。"
+            "正式分析不能只罗列收入或利润，而要说明利润表、资产负债表和现金流量表之间的勾稽关系：收入代表经营规模，利润率反映盈利质量，资产和权益反映安全垫，经营现金流反映利润兑现能力。"
+            "如果收入增长但现金流承压，需要跟踪应收、库存、资本开支或费用投放；如果现金流和资产结构同步改善，盈利质量才更有支撑。"
+            f"本节结论仍受官方口径、报告期匹配和表格来源限制，正式交付前需要继续复核原始披露。{citation_tail}"
+        ).strip()
+    if section == "peer_compare":
+        return (
+            f"同行对比以可比口径为前提，当前证据基础包括：{evidence_basis}。"
+            "在没有完整同业样本、统一会计期间和同口径估值倍数时，本节不输出绝对强弱排序，也不把第三方行情数据直接等同于正式投研结论。"
+            f"可形成的分析边界是：将公司收入质量、利润率、现金流和估值约束放在同一框架中观察，并说明比较结论依赖哪些数据输入。"
+            f"从主张层看，{claim_basis}；若后续补齐同行官方披露和市场估值数据，可进一步比较成长性、盈利稳定性、资本效率和估值溢价。"
+            f"当前版本保留审慎比较口径，避免用不完整数据制造确定性结论。{citation_tail}"
         ).strip()
     if section == "valuation":
         return (

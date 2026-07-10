@@ -15,6 +15,7 @@ from typing import Any
 
 from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
 from src.evaluation.report_quality import evaluate_report_quality_from_paths, write_quality_outputs_for_paths
+from src.evaluation.real_artifact_remediation import repair_real_report_artifact
 
 
 DEFAULT_CASES = [
@@ -64,6 +65,7 @@ def run_real_artifact_quality_regression(
     output_root: str | Path = "data/evaluation/p1_real_artifact_quality_regression",
     source_roots: list[str | Path] | None = None,
     max_per_market: int = 2,
+    repair: bool = False,
 ) -> dict[str, Any]:
     """Re-score existing generated report artifacts by market."""
 
@@ -74,7 +76,7 @@ def run_real_artifact_quality_regression(
     rows: list[dict[str, Any]] = []
     selected = _select_real_artifact_runs(source_roots or DEFAULT_REAL_ARTIFACT_ROOTS, max_per_market=max_per_market)
     for item in selected:
-        rows.append(_evaluate_existing_artifact_run(item, suite_dir=suite_dir))
+        rows.append(_evaluate_existing_artifact_run(item, suite_dir=suite_dir, repair=repair))
     summary = _summarize(rows)
     _write_outputs(suite_dir=suite_dir, rows=rows, summary=summary)
     return {
@@ -151,16 +153,19 @@ def _reports_dir_for_outputs(outputs: Path) -> Path:
     return outputs.parent / "reports"
 
 
-def _evaluate_existing_artifact_run(item: dict[str, Any], *, suite_dir: Path) -> dict[str, Any]:
+def _evaluate_existing_artifact_run(item: dict[str, Any], *, suite_dir: Path, repair: bool = False) -> dict[str, Any]:
     outputs = Path(item["outputs_dir"])
     reports = Path(item["reports_dir"])
+    remediation: dict[str, Any] = {}
+    if repair:
+        remediation = repair_real_report_artifact(outputs, reports, run_dir=outputs.parent)
     quality = evaluate_report_quality_from_paths(outputs, reports, outputs.parent)
     write_quality_outputs_for_paths(outputs, reports, quality)
     gate = build_delivery_gate_from_outputs(outputs, outputs.parent)
     write_delivery_gate_for_outputs(outputs, gate)
     claims = _as_list(_read_json(outputs / "claims.json", []))
     citations = _as_list(_read_json(outputs / "citations.json", []))
-    return {
+    row = {
         "case_id": str(item["case_id"]),
         "market": str(item["market"]),
         "company_name": str(item["company_name"]),
@@ -177,6 +182,11 @@ def _evaluate_existing_artifact_run(item: dict[str, Any], *, suite_dir: Path) ->
         "citation_coverage_rate": _citation_coverage_rate(claims, citations),
         "failure_categories": _failure_categories(quality, gate),
     }
+    if remediation:
+        row["remediation_changed"] = bool(remediation.get("changed"))
+        row["remediation_before_content_depth_blockers"] = remediation.get("before", {}).get("content_depth_blockers")
+        row["remediation_after_content_depth_blockers"] = remediation.get("after", {}).get("content_depth_blockers")
+    return row
 
 
 def _market_from_symbol(symbol: str) -> str:

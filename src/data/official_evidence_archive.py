@@ -120,6 +120,68 @@ def build_official_evidence_artifacts(
             "pdf_manifest": [dict(row) for row in (pdf_manifest or []) if isinstance(row, dict)],
         },
         "evidence_coverage": assessment,
+        "official_evidence_backfill_plan": build_official_evidence_backfill_plan(assessment),
+    }
+
+
+def build_official_evidence_backfill_plan(coverage: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert official evidence gaps into source-specific acquisition work."""
+
+    market = str(coverage.get("market") or "unknown")
+    symbol = str(coverage.get("symbol") or "")
+    period = str(coverage.get("period") or "")
+    missing = {str(item) for item in coverage.get("missing_requirements", []) if str(item)}
+    source_plan = _official_source_plan(market=market, symbol=symbol, period=period)
+    tasks: List[Dict[str, Any]] = []
+    if "period_matched_official_filing" in missing:
+        tasks.append(
+            {
+                "task_type": "fetch_official_filing",
+                "priority": "P0",
+                "source_keys": source_plan["source_keys"],
+                "query": source_plan["filing_query"],
+                "expected_artifacts": ["official PDF/HTML filing", "period metadata", "source_url"],
+                "blocks_formal_delivery": True,
+            }
+        )
+    statement_gap = sorted(STATEMENT_TYPES & missing)
+    if statement_gap:
+        tasks.append(
+            {
+                "task_type": "extract_financial_statements",
+                "priority": "P0",
+                "source_keys": source_plan["source_keys"] + source_plan["structured_source_keys"],
+                "query": source_plan["statement_query"],
+                "missing_statements": statement_gap,
+                "expected_artifacts": ["tables.json rows", "statement source lineage", "period match"],
+                "blocks_formal_delivery": True,
+            }
+        )
+    if "official_pdf_page_citations" in missing:
+        tasks.append(
+            {
+                "task_type": "parse_pdf_page_anchors",
+                "priority": "P1",
+                "source_keys": source_plan["source_keys"],
+                "query": source_plan["page_anchor_query"],
+                "expected_artifacts": ["page number", "section/table anchor", "content_sha256"],
+                "blocks_formal_delivery": True,
+            }
+        )
+    return {
+        "schema_version": "official_evidence_backfill_plan.v1",
+        "symbol": symbol,
+        "market": market,
+        "period": period,
+        "backfill_required": bool(tasks),
+        "formal_delivery_allowed_now": bool(coverage.get("formal_delivery_allowed", False)),
+        "formal_delivery_allowed_after_backfill": True,
+        "tasks": tasks,
+        "recommended_actions": list(coverage.get("recommended_actions", [])),
+        "notes": (
+            "This plan is acquisition guidance only. It must create real evidence records before "
+            "formal delivery gates can pass."
+        ),
     }
 
 
@@ -240,6 +302,40 @@ def _recommended_actions(missing: Iterable[str], *, market: str) -> List[str]:
     if "official_pdf_page_citations" in missing_set:
         actions.append("Re-parse the official PDF and retain page anchors for cited financial tables.")
     return actions
+
+
+def _official_source_plan(*, market: str, symbol: str, period: str) -> Dict[str, Any]:
+    if market == "hk":
+        return {
+            "source_keys": ["hkex_announcements", "exchange_announcements"],
+            "structured_source_keys": ["hk_financials"],
+            "filing_query": f"{symbol} {period} annual report results announcement HKEX",
+            "statement_query": f"{symbol} {period} income statement balance sheet cash flow HKEX annual report",
+            "page_anchor_query": f"{symbol} {period} HKEX annual report financial statements pages",
+        }
+    if market == "cn_a":
+        return {
+            "source_keys": ["cninfo_announcements", "exchange_announcements"],
+            "structured_source_keys": ["eastmoney_financials"],
+            "filing_query": f"{symbol} {period} 年报 季报 巨潮资讯 交易所公告",
+            "statement_query": f"{symbol} {period} 利润表 资产负债表 现金流量表 巨潮资讯",
+            "page_anchor_query": f"{symbol} {period} 年报 财务报表 页码 巨潮资讯",
+        }
+    if market == "us":
+        return {
+            "source_keys": ["sec_edgar"],
+            "structured_source_keys": ["sec_companyfacts"],
+            "filing_query": f"{symbol} {period} 10-K 10-Q SEC EDGAR",
+            "statement_query": f"{symbol} {period} income statement balance sheet cash flow SEC",
+            "page_anchor_query": f"{symbol} {period} SEC filing financial statements pages",
+        }
+    return {
+        "source_keys": ["local_evidence", "serper", "tavily"],
+        "structured_source_keys": [],
+        "filing_query": f"{symbol} {period} official annual report",
+        "statement_query": f"{symbol} {period} financial statements official",
+        "page_anchor_query": f"{symbol} {period} annual report financial statements pages",
+    }
 
 
 def _statement_types(tables: Iterable[Dict[str, Any]], allowed_evidence_ids: set[str] | None = None) -> set[str]:

@@ -52,6 +52,10 @@ def test_cn_official_evidence_marks_missing_statements_for_degraded_delivery(tmp
     assert "cash_flow_statement" in coverage["missing_requirements"]
     assert coverage["blocking_reasons"]
     assert coverage["recommended_actions"]
+    plan = payload["official_evidence_backfill_plan"]
+    assert plan["backfill_required"] is True
+    assert any("cninfo_announcements" in task["source_keys"] for task in plan["tasks"])
+    assert any(task["task_type"] == "extract_financial_statements" for task in plan["tasks"])
 
     path = archive_official_evidence_manifest(payload["official_evidence_manifest"], root=tmp_path)
     archived = json.loads(open(path, encoding="utf-8").read())
@@ -86,6 +90,10 @@ def test_hk_annual_delivery_rejects_mismatched_official_period():
     assert coverage["degrade_required"] is True
     assert coverage["formal_delivery_allowed"] is False
     assert "period_matched_official_filing" in coverage["missing_requirements"]
+    plan = payload["official_evidence_backfill_plan"]
+    assert plan["backfill_required"] is True
+    assert any("hkex_announcements" in task["source_keys"] for task in plan["tasks"])
+    assert any("HKEX" in task["query"] for task in plan["tasks"])
 
 
 def test_cn_annual_delivery_requires_verified_source_period():

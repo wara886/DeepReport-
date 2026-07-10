@@ -2,6 +2,7 @@ import json
 
 from src.evaluation.benchmark_summary_importer import load_benchmark_summaries
 from src.evaluation.market_quality_regression import run_market_quality_regression, run_real_artifact_quality_regression
+from src.evaluation.real_artifact_remediation import repair_real_report_artifact
 
 
 def test_market_quality_regression_writes_benchmark_compatible_outputs(tmp_path):
@@ -63,6 +64,79 @@ def test_real_artifact_quality_regression_rescores_existing_outputs(tmp_path):
     assert all(row["status"] == "evaluated" for row in rows)
     assert all(row["objective_quality_score"] > 0 for row in rows)
     assert all((tmp_path / "outputs_user" / "runs" / row["case_id"].removeprefix("real_") / "outputs" / "quality_report.json").exists() for row in rows)
+
+
+def test_real_artifact_remediation_rewrites_thin_core_sections(tmp_path):
+    outputs = tmp_path / "outputs_user" / "runs" / "thin-amd" / "outputs"
+    reports = tmp_path_reports_for_outputs(outputs)
+    _write_real_artifact(outputs, symbol="AMD", period="FY2024")
+    reports.joinpath("report.md").write_text(
+        """# AMD FY2024
+
+## 执行摘要
+摘要太短。
+
+## 业务概览
+业务概览正常覆盖产品、客户、行业竞争和披露边界，说明公司业务画像和投资者需要理解的核心经营约束。[ev_1]
+
+## 三表摘要
+利润表显示收入，资产负债表显示权益，现金流量表显示经营现金流，三表摘要对齐报告期并绑定证据。[ev_1]
+
+## 财务分析
+财务分析说明收入、权益和经营现金流之间的关系，强调盈利质量、资产安全垫和现金转换能力。该段用于复算报告正文是否具备足够解释深度，并能支持后续估值和风险判断。[ev_1]
+
+## 同行对比
+同行对比说明可比公司边界、指标口径和估值差异，不直接套用单一倍数。该段用于检查横向比较是否有明确边界和结论约束。[ev_1]
+
+## 估值观察
+估值观察与
+
+## 风险评估
+风险太短。
+
+## 投资结论
+结论太短。
+
+## 合规披露
+本文仅用于系统质量回归和研发验证，不构成投资建议。
+""",
+        encoding="utf-8",
+    )
+
+    result = repair_real_report_artifact(outputs, reports, run_dir=outputs.parent)
+    repaired = reports.joinpath("report.md").read_text(encoding="utf-8")
+
+    assert result["changed"] is True
+    assert result["before"]["content_depth_blockers"] > result["after"]["content_depth_blockers"]
+    assert result["after"]["content_depth_blockers"] == 0
+    assert "投资结论维持审慎观察" in repaired
+    assert "估值弹性应主要绑定收入增速" in repaired
+    assert "估值观察与" not in repaired
+    assert outputs.joinpath("real_artifact_remediation.json").exists()
+
+
+def test_real_artifact_regression_can_repair_before_rescoring(tmp_path):
+    source_root = tmp_path / "outputs_user" / "runs"
+    outputs = source_root / "amd-thin" / "outputs"
+    reports = tmp_path_reports_for_outputs(outputs)
+    _write_real_artifact(outputs, symbol="AMD", period="FY2024")
+    reports.joinpath("report.md").write_text(
+        "# AMD FY2024\n\n## 执行摘要\n短。\n\n## 估值观察\n估值与\n\n## 风险评估\n短。\n\n## 投资结论\n短。\n",
+        encoding="utf-8",
+    )
+
+    result = run_real_artifact_quality_regression(
+        output_root=tmp_path / "real_regression",
+        source_roots=[source_root],
+        max_per_market=1,
+        repair=True,
+    )
+    rows_path = tmp_path / "real_regression" / result["suite_id"] / "benchmark_runs.jsonl"
+    rows = [json.loads(line) for line in rows_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    assert rows[0]["remediation_changed"] is True
+    assert rows[0]["remediation_after_content_depth_blockers"] == 0
+    assert outputs.joinpath("real_artifact_remediation.json").exists()
 
 
 def _write_real_artifact(outputs, *, symbol: str, period: str) -> None:
