@@ -31,6 +31,144 @@ Alphabet Inc. (GOOGL) 的核心业务覆盖搜索、广告、云和 Other Bets�
     assert any(issue["category"] == "cross_report_symbol_pollution" for issue in report["issues"])
 
 
+def test_quality_evaluator_blocks_official_evidence_identity_pollution(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="0700.HK",
+        period="FY2025",
+        report_md="""
+# 0700.HK FY2025 公司研报
+
+## 执行摘要
+腾讯控股财务数据需要官方来源复核。
+## 业务概览
+腾讯主营社交、游戏、广告和金融科技业务。
+## 三表摘要
+三表摘要已覆盖收入、利润和现金流。
+## 财务分析
+财务分析围绕收入、利润和现金流。
+## 同行对比
+同行比较围绕互联网平台公司。
+## 估值观察
+估值观察围绕收入和利润。
+## 估值敏感性
+敏感性围绕利润率和折现率。
+## 风险评估
+风险覆盖监管、竞争和宏观。
+## 投资结论
+基于估值和风险，维持中性观察。
+""",
+        evidence=[
+            {
+                "evidence_id": "hkex_wrong_pdf",
+                "source_type": "hkex_announcement",
+                "symbol": "0700.HK",
+                "period": "FY2025",
+                "title": "ANNUAL RESULTS FOR THE YEAR ENDED 31 MARCH 2025",
+                "content": "Century Entertainment International Holdings Limited annual results revenue and cash.",
+                "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0626/2025062600015.pdf",
+            }
+        ],
+        claims=[{"claim_id": "cl_1", "section_name": "financial_analysis", "claim_text": "腾讯收入增长。", "evidence_ids": ["hkex_wrong_pdf"]}],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert any(issue["category"] == "evidence_identity_pollution" for issue in report["issues"])
+
+
+def test_quality_evaluator_blocks_fy_source_end_date_mismatch(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="AAPL",
+        period="FY2024",
+        report_md="""
+# AAPL FY2024 公司研报
+
+## 执行摘要
+AAPL FY2024 报告引用结构化财务数据。
+## 业务概览
+Apple Inc. 业务覆盖硬件、软件和服务。
+## 三表摘要
+收入、净利润和经营现金流均已列示。
+## 财务分析
+财务分析覆盖收入、净利润和现金流。
+## 同行对比
+同行比较围绕消费电子公司。
+## 估值观察
+估值观察围绕 P/E、P/S 和 DCF。
+## 估值敏感性
+敏感性围绕增长和折现率。
+## 风险评估
+风险覆盖需求、竞争和监管。
+## 投资结论
+基于估值和风险，维持中性观察。
+""",
+        evidence=[
+            {
+                "evidence_id": "aapl_yahoo_wrong_fy",
+                "source_type": "market_api",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "title": "AAPL Yahoo Finance financial data",
+                "content": "FY2024 income: end_date=2025-09-30, revenue=416161000000.0",
+                "metadata": {"financials": {"income_history": [{"end_date": "2025-09-30", "Total Revenue": 416161000000.0}]}},
+            }
+        ],
+        claims=[{"claim_id": "cl_1", "section_name": "financial_analysis", "claim_text": "AAPL FY2024 revenue was 416.16B.", "evidence_ids": ["aapl_yahoo_wrong_fy"]}],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert any(issue["category"] == "source_period_mismatch" for issue in report["issues"])
+
+
+def test_quality_evaluator_allows_official_fiscal_year_end_date_alias(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="AAPL",
+        period="FY2024",
+        report_md="""
+# AAPL FY2024 公司研报
+
+## 执行摘要
+AAPL FY2024 报告引用 SEC 财政年数据。
+## 业务概览
+Apple Inc. 业务覆盖硬件、软件和服务。
+## 三表摘要
+收入、净利润和经营现金流均已列示。
+## 财务分析
+财务分析覆盖收入、净利润和现金流。
+## 同行对比
+同行比较围绕消费电子公司。
+## 估值观察
+估值观察围绕 P/E、P/S 和 DCF。
+## 估值敏感性
+敏感性围绕增长和折现率。
+## 风险评估
+风险覆盖需求、竞争和监管。
+## 投资结论
+基于估值和风险，维持中性观察。
+""",
+        evidence=[
+            {
+                "evidence_id": "aapl_sec_fy2024",
+                "source_type": "sec_edgar",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "title": "Apple 2024 Form 10-K",
+                "content": "Apple fiscal 2024 Form 10-K revenue.",
+                "metadata": {"financials": {"income_history": [{"end_date": "2024-09-28", "fy": 2024, "fp": "FY"}]}},
+            }
+        ],
+        claims=[{"claim_id": "cl_1", "section_name": "financial_analysis", "claim_text": "AAPL FY2024 revenue came from SEC.", "evidence_ids": ["aapl_sec_fy2024"]}],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "source_period_mismatch" for issue in report["issues"])
+
+
 def test_quality_does_not_flag_internal_metric_key_outside_report_body(tmp_path):
     run_dir = _write_run(
         tmp_path,
@@ -800,6 +938,9 @@ def _write_run(
     charts=None,
     claims=None,
     citations=None,
+    evidence=None,
+    symbol="AMD",
+    period="2025Q4",
 ):
     run_dir = tmp_path / "sample_run"
     outputs = run_dir / "company" / "outputs"
@@ -810,7 +951,7 @@ def _write_run(
         {"claim_id": "cl_1", "claim_text": "业务覆盖 CPU/GPU", "evidence_ids": ["ev_1"], "confidence": 0.9},
         {"claim_id": "cl_2", "claim_text": "估值使用 P/E", "evidence_ids": ["ev_2"], "confidence": 0.85},
     ]
-    evidence = [
+    evidence = evidence if evidence is not None else [
         {"evidence_id": "ev_1", "source_type": "sec_edgar", "trust_level": "primary", "title": "SEC filing"},
         {"evidence_id": "ev_2", "source_type": "yahoo_finance", "trust_level": "secondary", "title": "Market snapshot"},
     ]
@@ -828,7 +969,7 @@ def _write_run(
         {"evidence_id": "ev_2", "claim_ids": ["cl_2"], "title": "Market snapshot"},
     ]
     files = {
-        "run_summary.json": {"symbol": "AMD", "period": "2025Q4", "verification_passed": True},
+        "run_summary.json": {"symbol": symbol, "period": period, "verification_passed": True},
         "claims.json": claims,
         "evidence.json": evidence,
         "citations.json": citations,

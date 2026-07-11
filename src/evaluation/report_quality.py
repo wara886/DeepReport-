@@ -112,6 +112,7 @@ def evaluate_report_quality_from_paths(
     _check_developer_placeholder_leakage(artifacts, issues)
     _check_mojibake_policy(artifacts, issues)
     _check_claim_citation_policy(artifacts, issues)
+    _check_evidence_identity_policy(artifacts, issues)
     _check_official_source_distribution_policy(artifacts, issues)
     _check_business_overview_wrong_section_policy(artifacts, issues)
     _valuation_consistency_check(artifacts, issues)
@@ -952,6 +953,67 @@ def _check_cross_report_symbol_pollution(artifacts: Dict[str, Any], issues: List
         _issue(issues, "blocker", "cross_report_symbol_pollution", f"unexpected ticker-like symbols in final html: {unexpected[:8]}")
 
 
+def _check_evidence_identity_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    expected_symbol = _expected_symbol(artifacts)
+    if not expected_symbol:
+        return
+    expected_terms = _identity_terms_for_symbol(expected_symbol, artifacts)
+    if not expected_terms:
+        return
+    polluted: list[str] = []
+    for record in artifacts.get("evidence", []):
+        if not isinstance(record, dict):
+            continue
+        evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
+        source_type = str(record.get("source_type") or "").lower()
+        if source_type not in {"hkex_announcement", "cninfo_announcement", "exchange_announcement", "pdf_section"}:
+            continue
+        text = " ".join(
+            [
+                str(record.get("title") or ""),
+                str(record.get("content") or ""),
+                str(record.get("source_url") or ""),
+            ]
+        ).lower()
+        if not text.strip():
+            continue
+        if any(term in text for term in expected_terms):
+            continue
+        polluted.append(evidence_id or str(record.get("title") or source_type))
+    if polluted:
+        _issue(
+            issues,
+            "fatal",
+            "evidence_identity_pollution",
+            f"official/pdf evidence does not mention target company {expected_symbol}: {polluted[:5]}",
+        )
+
+
+def _identity_terms_for_symbol(symbol: str, artifacts: Dict[str, Any]) -> set[str]:
+    symbol_text = str(symbol or "").strip().lower()
+    terms = {symbol_text}
+    if "." in symbol_text:
+        terms.add(symbol_text.split(".", 1)[0].lstrip("0") or symbol_text.split(".", 1)[0])
+    summary = artifacts.get("summary", {}) if isinstance(artifacts.get("summary"), dict) else {}
+    entity = summary.get("entity_resolution", {}) if isinstance(summary.get("entity_resolution"), dict) else {}
+    for raw in [entity.get("company_name"), entity.get("resolved_name")]:
+        name = str(raw or "").strip().lower()
+        if not name:
+            continue
+        terms.add(name)
+        simplified = re.sub(r"\b(holdings|holding|limited|ltd|inc|corp|corporation|company|co)\b\.?", "", name, flags=re.I)
+        simplified = " ".join(simplified.split())
+        if len(simplified) >= 4:
+            terms.add(simplified)
+        for token in re.split(r"[^a-z0-9]+", name):
+            if len(token) >= 5:
+                terms.add(token)
+    # Known bilingual aliases used by local real-data fixtures and HK reports.
+    if symbol_text == "0700.hk":
+        terms.update({"tencent", "腾讯"})
+    return {term for term in terms if len(term) >= 3}
+
+
 def _check_peer_metric_contamination(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
     text = _section_body(_report_text(artifacts), ("同行对比", "peer compare", "Peer Comparison"))
     if not text:
@@ -1357,6 +1419,15 @@ def _period_alignment_score(artifacts: Dict[str, Any], issues: List[Dict[str, An
     summary_period = str(artifacts["summary"].get("period") or "").upper()
     if not summary_period:
         return 0.7
+    fy_mismatches = _fy_end_date_mismatches(artifacts, summary_period)
+    if fy_mismatches:
+        _issue(
+            issues,
+            "blocker",
+            "source_period_mismatch",
+            f"target fiscal period {summary_period} conflicts with source end dates: {fy_mismatches[:5]}",
+        )
+        return 0.45
     mismatches = []
     for claim in artifacts["claims"]:
         if not isinstance(claim, dict):
@@ -1392,6 +1463,83 @@ def _period_alignment_score(artifacts: Dict[str, Any], issues: List[Dict[str, An
         )
         return 0.7 if has_delay_note else 0.45
     return 1.0
+
+
+def _fy_end_date_mismatches(artifacts: Dict[str, Any], summary_period: str) -> list[str]:
+    match = re.fullmatch(r"FY(20\d{2})", str(summary_period or "").upper())
+    if not match:
+        return []
+    target_year = int(match.group(1))
+    mismatches: list[str] = []
+    for source_name, item in _iter_period_records(artifacts):
+        end_date = _record_end_date(item)
+        if not end_date:
+            continue
+        if _record_has_fiscal_alias(item, summary_period):
+            continue
+        if end_date[:4].isdigit() and int(end_date[:4]) != target_year:
+            label = str(item.get("evidence_id") or item.get("source_evidence_id") or item.get("table_id") or source_name)
+            mismatches.append(f"{label}:{end_date}")
+    return list(dict.fromkeys(mismatches))
+
+
+def _iter_period_records(artifacts: Dict[str, Any]):
+    for key in ["evidence", "tables"]:
+        for item in artifacts.get(key, []):
+            if not isinstance(item, dict):
+                continue
+            yield key, item
+            rows = item.get("rows")
+            if isinstance(rows, list):
+                for row in rows:
+                    if isinstance(row, dict):
+                        yield key, row
+            metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            financials = metadata.get("financials") if isinstance(metadata.get("financials"), dict) else {}
+            for nested_key in ["income_history", "balance_history", "cashflow_history", "cash_flow_history"]:
+                rows = financials.get(nested_key)
+                if isinstance(rows, list):
+                    for row in rows:
+                        if isinstance(row, dict):
+                            yield f"{key}.{nested_key}", row
+    metrics = artifacts.get("financial_metrics", {})
+    metric_rows = metrics if isinstance(metrics, list) else metrics.get("metrics", []) if isinstance(metrics, dict) else []
+    if isinstance(metric_rows, list):
+        for item in metric_rows:
+            if isinstance(item, dict):
+                yield "financial_metrics", item
+
+
+def _record_end_date(item: Dict[str, Any]) -> str:
+    for key in ["end_date", "report_date", "end", "date"]:
+        value = str(item.get(key) or "").strip()
+        if re.fullmatch(r"20\d{2}-\d{2}-\d{2}", value):
+            return value
+    return ""
+
+
+def _record_has_fiscal_alias(item: Dict[str, Any], summary_period: str) -> bool:
+    metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    target = re.fullmatch(r"FY(20\d{2})", str(summary_period or "").upper())
+    target_year = int(target.group(1)) if target else None
+    for source in [item, metadata]:
+        for key in ["fy", "fiscal_year"]:
+            try:
+                if target_year is not None and int(str(source.get(key) or "").strip()) == target_year:
+                    return True
+            except ValueError:
+                continue
+        for key in ["fiscal_period", "fiscalPeriod", "fiscal_year_label"]:
+            if str(source.get(key) or "").strip().upper() == summary_period:
+                return True
+        fp = str(source.get("fp") or source.get("fiscal_quarter") or "").strip().upper()
+        if target_year is not None and fp == "FY":
+            try:
+                if int(str(source.get("fy") or source.get("fiscal_year") or "").strip()) == target_year:
+                    return True
+            except ValueError:
+                continue
+    return False
 
 
 def _collect_data_periods(artifacts: Dict[str, Any]) -> set[str]:
