@@ -46,6 +46,23 @@ class ReviewArtifactOrchestrator:
             ),
             encoding="utf-8",
         )
+        (self.output_dir / "financial_metrics.json").write_text(
+            json.dumps(
+                {
+                    "metrics": [
+                        {
+                            "metric_name": "revenue",
+                            "value": 100.0,
+                            "unit": "USD_million",
+                            "source_type": "sec_companyfacts",
+                            "source_evidence_id": "ev-runtime",
+                            "period_match": True,
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         return {"verification_passed": True}
 
 
@@ -148,8 +165,9 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
         "finalize",
         "human_review",
     }
-    assert body["task"]["metadata"]["report_runtime"]["canonical_metrics"]["status"] in {"ready", "missing"}
+    assert body["task"]["metadata"]["report_runtime"]["canonical_metrics"]["status"] == "ready"
     assert body["task"]["metadata"]["report_runtime"]["section_verification"]["status"] in {"passed", "needs_repair"}
+    assert any(artifact["artifact_type"] == "canonical_metrics" for artifact in body["task"]["artifacts"])
     assert any(event["stage"] == "claim_review" and event["status"] == "resumed" for event in body["task"]["events"])
 
 

@@ -19,6 +19,7 @@ from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.app.chat_task_parser import latest_completed_period
 from src.app.web_ui import run_delivery_quality_pipeline
 from src.data.company_universe import infer_market_from_symbol
+from src.data.canonical_metrics import write_canonical_metrics_artifact
 from src.data.source_authority import grade_source_authority
 from src.db.init_db import init_db
 from src.db.models import (
@@ -258,9 +259,7 @@ class ReportTaskService:
 
     def _graph_build_canonical_metrics_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
-        metadata = self._task_metadata(task_id)
-        output_dir = Path(str(metadata.get("output_dir") or ""))
-        summary = _build_canonical_metrics_manifest(output_dir)
+        summary = self._refresh_canonical_metrics(task_id)
         self._update_runtime_metadata(task_id, "canonical_metrics", summary)
         self._record_runtime_stage(
             task_id,
@@ -312,6 +311,7 @@ class ReportTaskService:
             session.commit()
         self._run_orchestrator(task_id=task_id, metadata=metadata)
         self._enhance_artifacts_with_task_evidence(task_id)
+        self._refresh_canonical_metrics(task_id)
         self.import_artifacts(task_id)
         return self._current_run_state_patch(task_id)
 
@@ -370,6 +370,22 @@ class ReportTaskService:
         with self.session() as session:
             task = self._get_task_for_update(session, task_id)
             return dict(task.metadata_json or {})
+
+    def _refresh_canonical_metrics(self, task_id: str) -> dict[str, Any]:
+        metadata = self._task_metadata(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        financial_metrics = _read_json_any(output_dir / "financial_metrics.json", default={})
+        tables = _read_json_any(output_dir / "tables.json", default=[])
+        artifact = write_canonical_metrics_artifact(
+            output_dir,
+            financial_metrics=financial_metrics,
+            tables=tables,
+            symbol=str(metadata.get("symbol") or ""),
+            period=str(metadata.get("period") or ""),
+        )
+        summary = _canonical_metrics_summary(output_dir=output_dir, artifact=artifact)
+        self._update_runtime_metadata(task_id, "canonical_metrics", summary)
+        return summary
 
     def _update_runtime_metadata(self, task_id: str, key: str, value: dict[str, Any]) -> None:
         with self.session() as session:
@@ -1689,6 +1705,9 @@ def _write_json_list(path: Path, records: list[dict[str, Any]]) -> None:
 
 
 def _build_canonical_metrics_manifest(output_dir: Path) -> dict[str, Any]:
+    existing = _read_json_object(output_dir / "canonical_metrics.json")
+    if existing:
+        return _canonical_metrics_summary(output_dir=output_dir, artifact=existing)
     metrics_payload = _read_json_any(output_dir / "financial_metrics.json", default={})
     tables = _read_json_list(output_dir / "tables.json")
     metric_rows: list[dict[str, Any]] = []
@@ -1731,6 +1750,29 @@ def _build_canonical_metrics_manifest(output_dir: Path) -> dict[str, Any]:
         "metric_names": metric_names[:40],
         "official_metric_count": official_metric_count,
         "source_files": {
+            "financial_metrics": str(output_dir / "financial_metrics.json"),
+            "tables": str(output_dir / "tables.json"),
+        },
+    }
+
+
+def _canonical_metrics_summary(*, output_dir: Path, artifact: dict[str, Any]) -> dict[str, Any]:
+    coverage = artifact.get("coverage") if isinstance(artifact.get("coverage"), dict) else {}
+    metrics = artifact.get("metrics") if isinstance(artifact.get("metrics"), list) else []
+    canonical = artifact.get("canonical_metrics") if isinstance(artifact.get("canonical_metrics"), dict) else {}
+    metric_names = sorted(canonical) if canonical else sorted(
+        str(item.get("metric_name") or "") for item in metrics if isinstance(item, dict) and item.get("metric_name")
+    )
+    return {
+        "schema_version": "canonical_metrics_runtime.v1",
+        "status": "ready" if metric_names else "missing",
+        "metric_count": int(artifact.get("metric_count") or len(metric_names)),
+        "candidate_count": int(artifact.get("candidate_count") or 0),
+        "metric_names": metric_names[:40],
+        "missing_core_metrics": list(coverage.get("missing_core_metrics") or []),
+        "conflict_count": int(artifact.get("conflict_count") or 0),
+        "source_files": {
+            "canonical_metrics": str(output_dir / "canonical_metrics.json"),
             "financial_metrics": str(output_dir / "financial_metrics.json"),
             "tables": str(output_dir / "tables.json"),
         },

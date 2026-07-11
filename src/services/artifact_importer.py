@@ -41,6 +41,7 @@ OUTPUT_ARTIFACTS = {
     "claims.json": "claims",
     "tables.json": "tables",
     "financial_metrics.json": "financial_metrics",
+    "canonical_metrics.json": "canonical_metrics",
     "valuation_model.json": "valuation_model",
     "valuation_sensitivity.json": "valuation_sensitivity",
     "verification_report.json": "verification_report",
