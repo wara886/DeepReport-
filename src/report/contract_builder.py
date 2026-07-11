@@ -193,7 +193,7 @@ def build_report_section_contracts(
     # ── Build each section contract ──
     _build_executive_summary(contracts, evidence_records, financial_metrics, section_dossiers, financial_evidence_ids)
     _build_business_overview(contracts, pdf_section_summaries, pdf_section_chunks,
-                             evidence_records, analysis_artifacts, state,
+                             evidence_records, analysis_artifacts, state, section_dossiers,
                              annual_report_sections=annual_report_sections)
     _build_ownership_governance(contracts, pdf_section_summaries, pdf_section_chunks,
                                 evidence_records, state,
@@ -204,7 +204,7 @@ def build_report_section_contracts(
     _build_three_statement_summary(contracts, financial_metrics, tables, financial_evidence_ids, currency_context)
     _build_financial_analysis(contracts, financial_metrics, tables, evidence_records, section_dossiers, financial_evidence_ids, currency_context)
     _build_peer_compare(contracts, peer_rows, analysis_artifacts, blackboard, symbol)
-    _build_valuation(contracts, valuation_model, financial_metrics, financial_evidence_ids, currency_context)
+    _build_valuation(contracts, valuation_model, financial_metrics, financial_evidence_ids, currency_context, section_dossiers)
     _build_valuation_sensitivity(contracts, valuation_model, valuation_sensitivity)
     _build_risk_factors(contracts, pdf_section_summaries, pdf_section_chunks,
                         evidence_records, analysis_artifacts, state,
@@ -269,6 +269,7 @@ def _build_business_overview(
     evidence_records: List[Dict[str, Any]],
     analysis_artifacts: Dict[str, Any],
     state: Dict[str, Any],
+    section_dossiers: Dict[str, Any] | None = None,
     annual_report_sections: List[Dict[str, Any]] = None,
 ) -> None:
     c = contracts.ensure("business_overview")
@@ -278,6 +279,7 @@ def _build_business_overview(
 
     if annual_report_sections is None:
         annual_report_sections = []
+    section_dossiers = section_dossiers or {}
 
     biz_chunks = _filter_chunks_by_type(pdf_section_chunks, {
         "business_overview", "business", "strategy_business",
@@ -365,6 +367,16 @@ def _build_business_overview(
                 c.add_blocked_reason("business_overview_used_profile_fallback")
             else:
                 c.add_blocked_reason("business_overview_pdf_chunks_not_found")
+
+    if c.status == "gap":
+        _apply_dossier_pack_fallback(
+            c,
+            section_dossiers,
+            "business_overview",
+            fact_type="business_profile_pack",
+            source_type=SRC_YAHOO_PROFILE,
+            min_chars=30,
+        )
 
     for fact in c.facts:
         frags = text_contains_fragments(fact.text)
@@ -807,6 +819,7 @@ def _build_valuation(
     financial_metrics: Dict[str, Any],
     financial_evidence_ids: List[str],
     currency_context: CurrencyContext,
+    section_dossiers: Dict[str, Any],
 ) -> None:
     c = contracts.ensure("valuation")
     c.allowed_source_types = [SRC_VALUATION_MODEL, SRC_FINANCIAL_METRIC, SRC_MARKET_DATA]
@@ -814,7 +827,27 @@ def _build_valuation(
     c.render_policy["allow_llm_rewrite"] = True
 
     if not valuation_model:
-        c.add_blocked_reason("valuation_model_not_available")
+        metrics_text = _format_key_metrics(financial_metrics)
+        if metrics_text:
+            c.add_fact(
+                "valuation_metric_boundary",
+                "估值观察缺少完整目标价模型，但可基于已验证财务指标形成方向性估值边界：" + metrics_text,
+                evidence_ids=financial_evidence_ids[:6],
+                source_types=[SRC_FINANCIAL_METRIC],
+            )
+            c.status = "partial"
+            c.add_quality_flag("valuation_directional_only")
+        else:
+            _apply_dossier_pack_fallback(
+                c,
+                section_dossiers,
+                "valuation",
+                fact_type="valuation_boundary_pack",
+                source_type=SRC_FINANCIAL_METRIC,
+                min_chars=30,
+            )
+        if c.status == "gap":
+            c.add_blocked_reason("valuation_model_not_available")
         return
 
     status = str(valuation_model.get("valuation_status", "") or "")
@@ -875,7 +908,27 @@ def _build_valuation(
     elif facts_added >= 1:
         c.status = "partial"
     else:
-        c.add_blocked_reason("valuation_no_metrics_available")
+        metrics_text = _format_key_metrics(financial_metrics)
+        if metrics_text:
+            c.add_fact(
+                "valuation_metric_boundary",
+                "估值观察缺少完整目标价模型，但可基于已验证财务指标形成方向性估值边界：" + metrics_text,
+                evidence_ids=financial_evidence_ids[:6],
+                source_types=[SRC_FINANCIAL_METRIC],
+            )
+            c.status = "partial"
+            c.add_quality_flag("valuation_directional_only")
+        else:
+            _apply_dossier_pack_fallback(
+                c,
+                section_dossiers,
+                "valuation",
+                fact_type="valuation_boundary_pack",
+                source_type=SRC_FINANCIAL_METRIC,
+                min_chars=30,
+            )
+        if c.status == "gap":
+            c.add_blocked_reason("valuation_no_metrics_available")
 
 
 def _build_valuation_sensitivity(
@@ -1996,3 +2049,48 @@ def _clear_not_found_blockers_after_pdf_fallback(contract: SectionEvidenceContra
         and "pdf_sections_not_found" not in str(reason)
         and "pdf_chunks_not_found" not in str(reason)
     ]
+
+
+def _apply_dossier_pack_fallback(
+    contract: SectionEvidenceContract,
+    section_dossiers: Dict[str, Any],
+    section_key: str,
+    *,
+    fact_type: str,
+    source_type: str,
+    min_chars: int = 40,
+) -> None:
+    """Turn existing section dossier material into a bounded evidence pack.
+
+    This is not a substitute for official PDF evidence. It prevents false gap
+    states when the dossier already contains product/user-facing facts or
+    deterministic writing guidance that can support a draft section.
+    """
+
+    dossier = _safe_dict(section_dossiers, section_key)
+    if not dossier:
+        return
+    texts: List[str] = []
+    for key in ("key_facts", "suggested_paragraphs", "deterministic_blocks"):
+        for item in _safe_list(dossier, key):
+            text = str(item or "").strip()
+            if len(text) >= min_chars and not _is_pdf_gap_summary(text):
+                texts.append(_clip_at_sentence_boundary(text, 500))
+    if not texts:
+        return
+    seen: set[str] = set()
+    for text in texts[:3]:
+        if text in seen:
+            continue
+        seen.add(text)
+        contract.add_fact(fact_type, text, source_types=[source_type])
+    if contract.facts:
+        contract.status = "partial" if len(contract.facts) < 2 else "supported"
+        contract.add_quality_flag(f"{section_key}_uses_section_evidence_pack")
+        contract.blocked_reasons = [
+            reason
+            for reason in contract.blocked_reasons
+            if "not_found" not in str(reason)
+            and "no_metrics_available" not in str(reason)
+            and "used_profile_fallback" not in str(reason)
+        ]

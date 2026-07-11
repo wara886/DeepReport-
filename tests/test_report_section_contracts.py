@@ -358,6 +358,45 @@ class TestContractBuilder:
                     "investment_conclusion", "period_note", "currency_data_quality"]:
             assert contracts.get(sk) is not None, f"Missing section: {sk}"
 
+    def test_section_dossier_pack_prevents_false_business_and_valuation_gaps(self):
+        contracts = build_report_section_contracts(
+            state={"symbol": "0700.HK", "period": "FY2025"},
+            evidence_records=[],
+            analysis_artifacts={
+                "financial_metrics": {
+                    "metrics": [
+                        {
+                            "metric_name": "revenue",
+                            "value": 100,
+                            "unit": "亿港元",
+                            "source_type": "hk_financials",
+                            "source_evidence_id": "ev_metric",
+                        }
+                    ]
+                }
+            },
+            section_dossiers={
+                "business_overview": {
+                    "key_facts": [
+                        "公司业务概览可基于产品、用户场景、收入结构和平台生态展开，当前证据包可支持方向性业务分析。"
+                    ]
+                },
+                "valuation": {
+                    "suggested_paragraphs": [
+                        "估值观察应先说明收入、利润和现金流质量，再披露缺少目标价模型时只能形成方向性估值边界。"
+                    ]
+                },
+            },
+            citations=[],
+        )
+
+        business = contracts.get("business_overview")
+        valuation = contracts.get("valuation")
+        assert business.status in {"partial", "supported"}
+        assert valuation.status in {"partial", "supported"}
+        assert "business_overview_pdf_chunks_not_found" not in business.blocked_reasons
+        assert "valuation_no_metrics_available" not in valuation.blocked_reasons
+
 
 class TestCleanPdfBoilerplate:
 

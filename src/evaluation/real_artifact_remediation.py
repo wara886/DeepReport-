@@ -18,6 +18,11 @@ from src.agents.final_answer_agent import (
 from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
 from src.evaluation.quality_remediation import build_quality_remediation_plan_from_outputs, write_quality_remediation_plan_for_outputs
 from src.evaluation.report_quality import evaluate_report_quality_from_paths, write_quality_outputs_for_paths
+from src.evaluation.section_repair import repair_failed_sections_for_outputs
+from src.evaluation.section_verification import write_section_verification
+from src.data.canonical_metrics import write_canonical_metrics_artifact
+from src.report.citation_binder import CitationBinder
+from src.report.contract_builder import build_report_section_contracts
 
 
 def repair_real_report_artifact(
@@ -38,12 +43,19 @@ def repair_real_report_artifact(
     run_root = Path(run_dir) if run_dir is not None else outputs.parent
     report_path = reports / "report.md"
     before_markdown = _read_text(report_path)
+    _refresh_real_artifact_contracts(outputs=outputs, reports=reports)
     before_quality = evaluate_report_quality_from_paths(outputs, reports, run_root)
     write_quality_outputs_for_paths(outputs, reports, before_quality)
     before_gate = build_delivery_gate_from_outputs(outputs, run_root)
     write_delivery_gate_for_outputs(outputs, before_gate)
     plan = build_quality_remediation_plan_from_outputs(outputs, run_root)
     write_quality_remediation_plan_for_outputs(outputs, plan)
+    before_section_verification = write_section_verification(
+        outputs,
+        markdown=before_markdown,
+        report_section_contracts=_read_json(outputs / "report_section_contracts.json", {}),
+        quality_remediation_plan={},
+    )
 
     if not before_markdown.strip():
         return _result(
@@ -92,6 +104,13 @@ def repair_real_report_artifact(
             encoding="utf-8",
         )
         _update_report_json(reports / "report.json", repaired)
+
+    section_repair = repair_failed_sections_for_outputs(
+        output_dir=outputs,
+        report_dir=reports,
+        section_verification=before_section_verification,
+    )
+    changed = changed or bool(section_repair.get("repaired"))
 
     after_quality = evaluate_report_quality_from_paths(outputs, reports, run_root)
     write_quality_outputs_for_paths(outputs, reports, after_quality)
@@ -147,6 +166,56 @@ def _result(
             "official_evidence_blockers": _issue_count(after_quality, "official_evidence"),
         },
     }
+
+
+def _refresh_real_artifact_contracts(*, outputs: Path, reports: Path) -> None:
+    run_summary = _read_json(outputs / "run_summary.json", {})
+    symbol = str(run_summary.get("symbol") or run_summary.get("canonical_symbol") or "")
+    period = str(run_summary.get("period") or "")
+    financial_metrics = _read_json(outputs / "financial_metrics.json", {})
+    tables = _read_json(outputs / "tables.json", [])
+    canonical = write_canonical_metrics_artifact(
+        outputs,
+        financial_metrics=financial_metrics,
+        tables=tables,
+        symbol=symbol,
+        period=period,
+    )
+    evidence_records = _read_list(outputs / "evidence.json")
+    claims = _read_list(outputs / "claims.json")
+    section_dossiers = _read_json(outputs / "section_dossiers.json", {})
+    analysis_artifacts = {
+        "financial_metrics": canonical,
+        "raw_financial_metrics": financial_metrics,
+        "tables": tables,
+        "claims": claims,
+        "section_dossiers": section_dossiers,
+        "valuation_model": _read_json(outputs / "valuation_model.json", {}),
+        "valuation_sensitivity": _read_json(outputs / "valuation_sensitivity.json", {}),
+        "peer_analysis": _read_json(outputs / "peer_analysis.json", {}),
+        "currency_audit": _read_json(outputs / "currency_audit.json", {}),
+        "pdf_section_summaries": _read_json(outputs / "pdf_section_summaries.json", []),
+        "pdf_section_chunks": _read_json(outputs / "pdf_section_chunks.json", []),
+    }
+    state = {
+        "symbol": symbol,
+        "period": period,
+        "claims": claims,
+        "analysis_artifacts": analysis_artifacts,
+        "section_dossiers": section_dossiers if isinstance(section_dossiers, dict) else {},
+        "entity_resolution": _read_json(outputs / "entity_resolution.json", {}),
+    }
+    contracts = build_report_section_contracts(
+        state=state,
+        evidence_records=evidence_records,
+        analysis_artifacts=analysis_artifacts,
+        section_dossiers=section_dossiers if isinstance(section_dossiers, dict) else {},
+        citations=_read_list(outputs / "citations.json"),
+    )
+    binder = CitationBinder(evidence_records)
+    binder.bind_all(contracts)
+    contracts.to_json_file(str(outputs / "report_section_contracts.json"))
+    binder.write_artifacts(str(outputs))
 
 
 def _issue_count(report: dict[str, Any], category: str) -> int:

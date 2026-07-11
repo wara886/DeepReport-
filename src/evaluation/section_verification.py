@@ -73,7 +73,17 @@ def build_section_verification(
             status = "failed"
             reasons.append("unfinished_sentence_tail")
         contract = contracts.get(section_key) if isinstance(contracts.get(section_key), dict) else {}
-        if contract.get("blocked_reasons") or contract.get("quality_flags") or contract.get("status") == "gap":
+        hard_blocked_reasons = [
+            str(reason)
+            for reason in contract.get("blocked_reasons", [])
+            if not _nonblocking_contract_reason(str(reason))
+        ]
+        hard_quality_flags = [
+            str(flag)
+            for flag in contract.get("quality_flags", [])
+            if not _nonblocking_contract_flag(str(flag))
+        ]
+        if hard_blocked_reasons or hard_quality_flags or contract.get("status") == "gap":
             status = "failed"
             reasons.append("contract_blocked")
         section_results[section_key] = {
@@ -184,3 +194,20 @@ def _string_list(value: Any) -> list[str]:
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return []
+
+
+def _nonblocking_contract_reason(reason: str) -> bool:
+    return reason in {
+        "business_overview_used_profile_fallback",
+        "risk_industry_fallback_used",
+    } or reason.startswith("valuation_model_status:")
+
+
+def _nonblocking_contract_flag(flag: str) -> bool:
+    return (
+        flag.endswith("_uses_section_evidence_pack")
+        or flag.endswith("_evidence_fallback")
+        or flag == "valuation_directional_only"
+        or flag.endswith("_pdf_summary_fallback")
+        or flag.endswith("_pdf_chunk_fallback")
+    )

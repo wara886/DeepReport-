@@ -71,3 +71,26 @@ def test_section_verification_blocks_contract_gaps_and_writes_artifact(tmp_path)
     assert artifact["status"] == "failed"
     assert parsed["failed_sections"] == ["risks", "valuation"]
     assert any(issue["source"] == "quality_remediation_plan" for issue in parsed["issues"])
+
+
+def test_section_verification_allows_nonblocking_section_pack_fallback_flags():
+    artifact = build_section_verification(
+        markdown=_full_report(),
+        report_section_contracts={
+            "contracts": {
+                "business_overview": {
+                    "status": "partial",
+                    "blocked_reasons": ["business_overview_used_profile_fallback"],
+                    "quality_flags": ["business_overview_evidence_fallback"],
+                },
+                "valuation": {
+                    "status": "partial",
+                    "blocked_reasons": [],
+                    "quality_flags": ["valuation_directional_only"],
+                },
+            }
+        },
+    )
+
+    assert artifact["status"] == "passed"
+    assert artifact["formal_delivery_allowed"] is True
