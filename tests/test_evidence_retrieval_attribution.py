@@ -42,6 +42,33 @@ def test_attribution_detects_retrieval_no_candidates_and_similarity_unavailable(
     assert "source_data_missing" in causes
 
 
+def test_attribution_marks_bm25_only_when_candidates_return_without_vector_scores(tmp_path):
+    outputs, reports = _dirs(tmp_path)
+    _write(
+        outputs,
+        "search_meta.json",
+        {
+            "engine_meta": {
+                "local_evidence": {
+                    "mode": "bm25",
+                    "source_record_count": 3,
+                    "candidate_count": 3,
+                    "returned_hit_count": 2,
+                    "chunking_enabled": True,
+                    "vector_hit_count": 0,
+                }
+            }
+        },
+    )
+    _write(outputs, "evidence.json", [{"evidence_id": "ev1", "source_type": "cninfo_announcement", "period": "FY2025", "symbol": "600519.SS"}])
+    _write(outputs, "section_dossiers.json", {"valuation": {"supporting_evidence_ids": ["ev1"]}})
+
+    artifact = build_evidence_retrieval_attribution(outputs, reports_dir=reports)
+
+    assert artifact["retrieval_summary"]["similarity_status"] == "bm25_only"
+    assert "similarity_bm25_only" in artifact["section_results"]["valuation"]["root_causes"]
+
+
 def test_attribution_detects_low_vector_similarity_and_chunk_metadata_gap(tmp_path):
     outputs, reports = _dirs(tmp_path)
     _write(
@@ -108,6 +135,65 @@ def test_attribution_detects_writer_not_using_available_evidence(tmp_path):
     artifact = build_evidence_retrieval_attribution(outputs, reports_dir=reports)
 
     assert artifact["section_results"]["valuation"]["root_cause"] == "writer_not_using_available_evidence"
+
+
+def test_attribution_records_section_pack_similarity_and_report_usage(tmp_path):
+    outputs, reports = _dirs(tmp_path)
+    _write(
+        outputs,
+        "search_meta.json",
+        {
+            "engine_meta": {
+                "local_evidence": {
+                    "source_record_count": 2,
+                    "candidate_count": 2,
+                    "returned_hit_count": 2,
+                    "vector_hit_count": 2,
+                    "vector_score_max": 0.66,
+                    "chunking_enabled": True,
+                }
+            }
+        },
+    )
+    _write(
+        outputs,
+        "evidence.json",
+        [
+            {
+                "evidence_id": "ev_used",
+                "source_type": "sec_edgar",
+                "period": "FY2024",
+                "symbol": "AAPL",
+                "chunk_id": "c1",
+                "vector_score": 0.66,
+                "metadata": {"section_type": "valuation"},
+            },
+            {
+                "evidence_id": "ev_unused",
+                "source_type": "sec_edgar",
+                "period": "FY2024",
+                "symbol": "AAPL",
+                "chunk_id": "c2",
+                "vector_score": 0.41,
+                "metadata": {"section_type": "valuation"},
+            },
+        ],
+    )
+    _write(outputs, "section_dossiers.json", {"valuation": {"supporting_evidence_ids": ["ev_used", "ev_unused"]}})
+    _write(outputs, "report_section_contracts.json", {"contracts": {"valuation": {"status": "supported", "citation_evidence_ids": ["ev_used", "ev_unused"]}}})
+    (reports / "report.md").write_text("## 估值观察\n\n估值分析引用 ev_used 作为证据。", encoding="utf-8")
+
+    artifact = build_evidence_retrieval_attribution(outputs, reports_dir=reports)
+    usage = artifact["section_results"]["valuation"]["section_evidence_pack_usage"]
+
+    assert usage["section_evidence_count"] == 2
+    assert usage["used_in_report_count"] == 1
+    assert usage["used_in_report_rate"] == 0.5
+    assert usage["section_top_similarity"] == 0.66
+    assert {row["evidence_id"]: row["used_in_report"] for row in usage["evidence"]} == {
+        "ev_used": True,
+        "ev_unused": False,
+    }
 
 
 def test_attribution_detects_stale_review_after_section_verification_passed(tmp_path):

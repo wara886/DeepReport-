@@ -2,7 +2,7 @@ import json
 
 from src.evaluation.benchmark_summary_importer import load_benchmark_summaries
 from src.evaluation.market_quality_regression import run_market_quality_regression, run_real_artifact_quality_regression
-from src.evaluation.real_artifact_remediation import repair_real_report_artifact
+from src.evaluation.real_artifact_remediation import _refresh_local_retrieval_from_backfill, repair_real_report_artifact
 
 
 def test_market_quality_regression_writes_benchmark_compatible_outputs(tmp_path):
@@ -137,6 +137,87 @@ def test_real_artifact_regression_can_repair_before_rescoring(tmp_path):
     assert rows[0]["remediation_changed"] is True
     assert rows[0]["remediation_after_content_depth_blockers"] == 0
     assert outputs.joinpath("real_artifact_remediation.json").exists()
+
+
+def test_real_artifact_remediation_refreshes_local_retrieval_from_backfill_curated(tmp_path):
+    outputs = tmp_path / "outputs_user" / "runs" / "hk-backfill" / "outputs"
+    outputs.mkdir(parents=True, exist_ok=True)
+    outputs.joinpath("run_summary.json").write_text(
+        json.dumps({"symbol": "0700.HK", "period": "FY2025"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    outputs.joinpath("search_meta.json").write_text(
+        json.dumps({"engine_meta": {"local_evidence": {"candidate_count": 0, "failure_reason": "no_records_for_symbol_period"}}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    outputs.joinpath("official_backfill_curated.jsonl").write_text(
+        json.dumps(
+            {
+                "evidence_id": "hkex_pdf_section_1",
+                "sample_id": "hkex_pdf_section_1",
+                "source_type": "pdf_section",
+                "symbol": "0700.HK",
+                "period": "FY2025",
+                "title": "Tencent annual report risk section",
+                "content": "Tencent annual report revenue profit cash flow risk valuation official annual report.",
+                "source_url": "https://www1.hkexnews.hk/tencent.pdf",
+                "trust_level": "high",
+                "section_type": "risk_factors",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    _refresh_local_retrieval_from_backfill(outputs)
+    meta = json.loads(outputs.joinpath("search_meta.json").read_text(encoding="utf-8"))
+    local = meta["engine_meta"]["local_evidence"]
+
+    assert local["candidate_count"] >= 1
+    assert local["returned_hit_count"] >= 1
+    assert local["official_backfill_curated"].endswith("official_backfill_curated.jsonl")
+    assert "hkex_pdf_section_1" in local["returned_evidence_ids"]
+
+
+def test_real_artifact_remediation_builds_curated_from_existing_official_evidence(tmp_path):
+    outputs = tmp_path / "outputs_user" / "runs" / "a-backfill" / "outputs"
+    outputs.mkdir(parents=True, exist_ok=True)
+    outputs.joinpath("run_summary.json").write_text(
+        json.dumps({"symbol": "600519.SS", "period": "FY2025"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    outputs.joinpath("search_meta.json").write_text(
+        json.dumps({"engine_meta": {"local_evidence": {"candidate_count": 0}}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    outputs.joinpath("evidence.json").write_text(
+        json.dumps(
+            [
+                {
+                    "evidence_id": "cninfo_pdf_section_1",
+                    "sample_id": "cninfo_pdf_section_1",
+                    "source_type": "pdf_section",
+                    "symbol": "600519.SS",
+                    "period": "FY2025",
+                    "title": "贵州茅台年度报告财务章节",
+                    "content": "贵州茅台 FY2025 年度报告披露 revenue profit cash flow risk valuation official annual report.",
+                    "source_url": "http://static.cninfo.com.cn/report.pdf",
+                    "trust_level": "high",
+                    "metadata": {"section_type": "financial_statements"},
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    _refresh_local_retrieval_from_backfill(outputs)
+    meta = json.loads(outputs.joinpath("search_meta.json").read_text(encoding="utf-8"))
+
+    assert outputs.joinpath("official_backfill_curated.jsonl").exists()
+    assert meta["engine_meta"]["local_evidence"]["candidate_count"] >= 1
+    assert "cninfo_pdf_section_1" in meta["engine_meta"]["local_evidence"]["returned_evidence_ids"]
 
 
 def _write_real_artifact(outputs, *, symbol: str, period: str) -> None:

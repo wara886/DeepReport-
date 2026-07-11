@@ -323,7 +323,18 @@ def _case_artifacts(case: dict[str, Any]) -> dict[str, Any]:
     outputs = {
         "run_summary.json": {"symbol": symbol, "period": period, "market": market, "verification_passed": True, "entity_resolution": {"resolved_symbol": symbol, "confidence": 0.95}},
         "claims.json": claims,
-        "evidence.json": [{"evidence_id": evidence_id, "source_type": source_type, "trust_level": "official", "title": f"{company} {period} {source_name} disclosure", "period": period, "content": "official evidence"}],
+        "evidence.json": [
+            {
+                "evidence_id": evidence_id,
+                "sample_id": evidence_id,
+                "source_type": source_type,
+                "trust_level": "official",
+                "title": f"{company}（{symbol}）{period} {source_name} disclosure",
+                "symbol": symbol,
+                "period": period,
+                "content": f"{company}（{symbol}）{period} official evidence from {source_name}.",
+            }
+        ],
         "citations.json": [{"evidence_id": evidence_id, "claim_ids": [claim["claim_id"] for claim in claims], "used_in_report": True, "title": source_name}],
         "tables.json": tables,
         "financial_metrics.json": {"metrics": tables},

@@ -48,6 +48,7 @@ def build_evidence_retrieval_attribution(
     section_verification = _as_dict(_read_json(outputs / "section_verification.json", {}))
     llm_review = _as_dict(_read_json(outputs / "llm_quality_review.json", {}))
     quality_report = _as_dict(_read_json(outputs / "quality_report.json", {}))
+    report_text = _load_report_text(outputs=outputs, reports_dir=reports_dir)
 
     retrieval = _retrieval_summary(search_meta)
     metadata_quality = _chunk_metadata_quality(evidence, search_meta)
@@ -67,6 +68,7 @@ def build_evidence_retrieval_attribution(
             retrieval=retrieval,
             metadata_quality=metadata_quality,
             canonical_conflicts=canonical_conflicts,
+            report_text=report_text,
         )
 
     cause_counts = Counter(
@@ -146,6 +148,7 @@ def _section_result(
     retrieval: dict[str, Any],
     metadata_quality: dict[str, Any],
     canonical_conflicts: int,
+    report_text: str,
 ) -> dict[str, Any]:
     dossier = _as_dict(section_dossiers.get(section_key))
     contract = _as_dict(contracts.get(section_key))
@@ -155,6 +158,7 @@ def _section_result(
         section_evidence = _fallback_structured_evidence(evidence)
     official_count = sum(1 for item in section_evidence if _is_official_source(item))
     structured_count = sum(1 for item in section_evidence if _is_structured_source(item))
+    pack_usage = _section_pack_usage(section_evidence=section_evidence, report_text=report_text)
     contract_status = str(contract.get("status") or "")
     contract_blockers = _as_list_of_str(contract.get("blocked_reasons"))
     section_verification_status = _section_verification_status(section_verification, section_key)
@@ -171,7 +175,7 @@ def _section_result(
         causes.append("retrieval_no_candidates")
     elif retrieval.get("local_returned_count", 0) <= 0 and retrieval.get("local_candidate_count", 0) > 0 and not section_evidence:
         causes.append("retrieval_no_hits")
-    if retrieval.get("similarity_status") in {"unavailable", "low"}:
+    if retrieval.get("similarity_status") in {"unavailable", "low", "bm25_only"}:
         causes.append(f"similarity_{retrieval['similarity_status']}")
     if metadata_quality.get("status") == "poor" and (section_evidence or retrieval.get("chunking_enabled")):
         causes.append("chunk_metadata_missing")
@@ -190,6 +194,8 @@ def _section_result(
     if issues and (section_evidence or structured_count > 0 or official_count > 0):
         if section_verification_status == "passed" and any(_looks_like_stale_depth_issue(issue) for issue in issues):
             causes.append("review_stale_or_overstrict")
+        elif pack_usage["section_evidence_count"] and pack_usage["used_in_report_count"] <= 0:
+            causes.append("writer_not_using_available_evidence")
         else:
             causes.append("writer_not_using_available_evidence")
     if not causes:
@@ -215,9 +221,51 @@ def _section_result(
         "section_verification_status": section_verification_status,
         "review_issue_count": len(issues),
         "top_similarity": retrieval.get("vector_score_max"),
+        "section_top_similarity": pack_usage.get("section_top_similarity"),
         "similarity_available": retrieval.get("similarity_status") != "unavailable",
         "similarity_status": retrieval.get("similarity_status"),
         "chunk_metadata_quality": metadata_quality,
+        "section_evidence_pack_usage": pack_usage,
+    }
+
+
+def _section_pack_usage(*, section_evidence: list[dict[str, Any]], report_text: str) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    used_count = 0
+    scores: list[float] = []
+    for item in section_evidence:
+        evidence_id = _evidence_id(item)
+        metadata = _as_dict(item.get("metadata"))
+        score = _first_float(
+            item.get("vector_score"),
+            item.get("rerank_score"),
+            item.get("final_score"),
+            item.get("score"),
+            metadata.get("vector_score"),
+            metadata.get("rerank_score"),
+            metadata.get("final_score"),
+        )
+        if score is not None:
+            scores.append(score)
+        used = bool(evidence_id and evidence_id in report_text)
+        if used:
+            used_count += 1
+        rows.append(
+            {
+                "evidence_id": evidence_id,
+                "source_type": str(item.get("source_type") or ""),
+                "title": str(item.get("title") or "")[:160],
+                "vector_score": score,
+                "used_in_report": used,
+            }
+        )
+    return {
+        "section_evidence_count": len(section_evidence),
+        "used_in_report_count": used_count,
+        "used_in_report_rate": round(used_count / len(section_evidence), 4) if section_evidence else 0.0,
+        "section_top_similarity": max(scores) if scores else None,
+        "section_mean_similarity": round(sum(scores) / len(scores), 6) if scores else None,
+        "evidence": rows[:12],
     }
 
 
@@ -235,6 +283,8 @@ def _retrieval_summary(search_meta: Any) -> dict[str, Any]:
     similarity_status = "unavailable"
     if vector_score_max is not None:
         similarity_status = "low" if vector_score_max < 0.10 and local_candidate_count > 0 else "ok"
+    elif local_returned_count > 0 and local_candidate_count > 0:
+        similarity_status = "bm25_only"
     elif local_candidate_count <= 0:
         similarity_status = "unavailable"
     elif vector_hit_count <= 0:
@@ -368,6 +418,7 @@ def _primary_cause(causes: list[str]) -> str:
         "retrieval_no_candidates",
         "retrieval_no_hits",
         "similarity_low",
+        "similarity_bm25_only",
         "similarity_unavailable",
         "chunk_metadata_missing",
         "section_pack_not_built",
@@ -390,6 +441,7 @@ def _cause_label(cause: str) -> str:
         "retrieval_no_candidates": "向量/本地证据库没有候选材料",
         "retrieval_no_hits": "有候选材料但检索未命中",
         "similarity_low": "向量相似度偏低",
+        "similarity_bm25_only": "仅记录关键词召回分数",
         "similarity_unavailable": "未记录向量相似度",
         "chunk_metadata_missing": "chunk 元数据不足",
         "section_pack_not_built": "章节证据包未构建",
@@ -408,6 +460,7 @@ def _recommended_action(cause: str) -> str:
         "retrieval_no_candidates": "检查 PDF/表格是否已切分并写入本地证据库或向量库，确认 symbol/period 过滤条件。",
         "retrieval_no_hits": "检查查询扩展、metadata filter、section_type 和 period 过滤是否过窄。",
         "similarity_low": "检查 embedding 模型、query 改写、chunk 粒度和元标签；不要用 RRF 分数替代 cosine/vector 相似度。",
+        "similarity_bm25_only": "当前已有本地候选和关键词召回结果；下一步应启用按任务隔离的向量索引并记录 vector_score，而不是继续补数据源。",
         "similarity_unavailable": "补充 vector_score_max/vector_score_mean 记录，确认当前是否退化到 BM25 或纯规则召回。",
         "chunk_metadata_missing": "补齐 chunk_id、section_type、symbol、period、page/table_id 等元数据后重建索引。",
         "section_pack_not_built": "检查 build_section_packs / contract_builder 节点，确保每个核心章节都有 evidence pack。",
@@ -480,6 +533,39 @@ def _metadata_present_rate(rows: list[dict[str, Any]], key: str) -> float:
 def _looks_like_stale_depth_issue(issue: dict[str, Any]) -> bool:
     text = str(issue.get("message") or "").lower()
     return any(token in text for token in ("内容空洞", "暂不展开", "placeholder", "too generic", "hollow"))
+
+
+def _load_report_text(*, outputs: Path, reports_dir: str | Path | None) -> str:
+    candidates: list[Path] = []
+    if reports_dir is not None:
+        reports = Path(reports_dir)
+        if reports.is_dir():
+            candidates.extend(sorted(reports.glob("*.md")))
+            candidates.extend(sorted(reports.glob("*.html")))
+        elif reports.exists():
+            candidates.append(reports)
+    for name in ("final_report.md", "report.md", "final_report.html", "report.html"):
+        candidates.append(outputs / name)
+        candidates.append(outputs.parent / "reports" / name)
+    chunks: list[str] = []
+    seen: set[Path] = set()
+    for path in candidates:
+        if path in seen or not path.exists() or not path.is_file():
+            continue
+        seen.add(path)
+        try:
+            chunks.append(path.read_text(encoding="utf-8", errors="ignore"))
+        except OSError:
+            continue
+    return "\n".join(chunks)
+
+
+def _first_float(*values: Any) -> float | None:
+    for value in values:
+        parsed = _safe_float(value)
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def _dedupe_causes(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

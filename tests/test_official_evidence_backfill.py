@@ -2,6 +2,7 @@ import json
 
 from src.data.official_evidence_archive import build_official_evidence_artifacts
 from src.data.official_evidence_backfill import execute_official_evidence_backfill
+from src.retrieval.evidence_store import EvidenceStore
 
 
 def test_backfill_executor_turns_cn_plan_into_official_coverage(tmp_path):
@@ -71,9 +72,15 @@ def test_backfill_executor_uses_pdf_page_anchored_statement_tables(monkeypatch, 
     coverage = json.loads((outputs / "evidence_coverage.json").read_text(encoding="utf-8"))
 
     assert result["pdf_record_count"] == 4
+    assert result["curated_record_count"] >= 5
     assert coverage["pdf_page_anchor_count"] >= 1
     assert coverage["has_official_pdf_three_statements"] is True
     assert coverage["formal_delivery_allowed"] is True
+    store = EvidenceStore.from_curated_parquet(outputs)
+    loaded = {record.evidence_id: record for record in store.records}
+    assert "hkex_annual" in loaded
+    assert any(record.source_type == "pdf_section" and record.section_type == "financial_statements" for record in store.records)
+    assert any(record.source_type == "pdf_statement_table" and record.table_id == "pdf_income_statement" for record in store.records)
 
 
 def test_backfill_executor_keeps_hk_formal_blocked_without_official_announcement(tmp_path):

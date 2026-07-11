@@ -28,6 +28,8 @@ from src.evaluation.report_quality import evaluate_report_quality_from_paths, wr
 from src.evaluation.section_repair import repair_failed_sections_for_outputs
 from src.evaluation.section_verification import write_section_verification
 from src.data.canonical_metrics import write_canonical_metrics_artifact
+from src.data.official_evidence_backfill import write_official_backfill_curated_records
+from src.retrieval.retrieve import retrieve_evidence_with_mode
 from src.report.citation_binder import CitationBinder
 from src.report.contract_builder import build_report_section_contracts
 
@@ -51,6 +53,7 @@ def repair_real_report_artifact(
     report_path = reports / "report.md"
     before_markdown = _read_text(report_path)
     _sync_derived_evidence_and_claim_bindings(outputs)
+    _refresh_local_retrieval_from_backfill(outputs)
     before_markdown = _sync_report_body_after_evidence_binding(outputs, reports, before_markdown)
     _refresh_real_artifact_contracts(outputs=outputs, reports=reports)
     write_evidence_retrieval_attribution(outputs, reports_dir=reports, run_dir=run_root)
@@ -234,6 +237,66 @@ def _refresh_real_artifact_contracts(*, outputs: Path, reports: Path) -> None:
     binder.bind_all(contracts)
     contracts.to_json_file(str(outputs / "report_section_contracts.json"))
     binder.write_artifacts(str(outputs))
+
+
+def _refresh_local_retrieval_from_backfill(outputs: Path) -> None:
+    curated_path = outputs / "official_backfill_curated.jsonl"
+    if not curated_path.exists() or curated_path.stat().st_size <= 0:
+        count = write_official_backfill_curated_records(outputs)
+        if count <= 0 or not curated_path.exists() or curated_path.stat().st_size <= 0:
+            return
+    run_summary = _read_json(outputs / "run_summary.json", {})
+    symbol = str(run_summary.get("symbol") or run_summary.get("canonical_symbol") or "")
+    period = str(run_summary.get("period") or "")
+    query = f"{symbol} {period} revenue profit cash flow risk valuation official annual report"
+    try:
+        hits, meta = retrieve_evidence_with_mode(
+            query=query,
+            topk=12,
+            symbol=symbol,
+            period=period,
+            curated_dir=str(outputs),
+            ranking_mode="bm25",
+            use_chunks=True,
+            log=False,
+        )
+    except Exception as exc:
+        meta = {
+            "mode": "bm25",
+            "mode_effective": "failed",
+            "failure_reason": "official_backfill_curated_retrieval_failed",
+            "error": str(exc),
+        }
+        hits = []
+    search_meta = _read_json(outputs / "search_meta.json", {})
+    if not isinstance(search_meta, dict):
+        search_meta = {}
+    engine_meta = search_meta.get("engine_meta") if isinstance(search_meta.get("engine_meta"), dict) else {}
+    meta = dict(meta)
+    meta["curated_dir"] = str(outputs)
+    meta["official_backfill_curated"] = str(curated_path)
+    returned_ids: list[str] = []
+    for item in hits:
+        if not isinstance(item, dict):
+            continue
+        for value in [
+            item.get("evidence_id"),
+            item.get("sample_id"),
+            item.get("chunk_id"),
+            item.get("parent_evidence_id"),
+            item.get("parent_sample_id"),
+        ]:
+            text = str(value or "")
+            if text and text not in returned_ids:
+                returned_ids.append(text)
+    meta["returned_evidence_ids"] = returned_ids
+    engine_meta["local_evidence"] = meta
+    search_meta["engine_meta"] = engine_meta
+    engines = search_meta.get("engines") if isinstance(search_meta.get("engines"), list) else []
+    if "local_evidence" not in engines:
+        engines.append("local_evidence")
+    search_meta["engines"] = engines
+    (outputs / "search_meta.json").write_text(json.dumps(search_meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _sync_derived_evidence_and_claim_bindings(outputs: Path) -> None:

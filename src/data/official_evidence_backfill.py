@@ -150,6 +150,8 @@ def execute_official_evidence_backfill(
     _write_json(outputs / "official_evidence_backfill_plan.json", official_artifacts["official_evidence_backfill_plan"])
     _write_json(outputs / "pdf_manifest.json", pdf_artifacts.get("pdf_manifest", []))
     _write_json(outputs / "pdf_sections.json", pdf_artifacts.get("pdf_sections", []))
+    curated_path = outputs / "official_backfill_curated.jsonl"
+    curated_count = write_official_backfill_curated_records(outputs, records=merged_records)
     summary = {
         "schema_version": "official_evidence_backfill_run.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -164,6 +166,8 @@ def execute_official_evidence_backfill(
         "intake_rejections": intake_rejections,
         "pdf_meta": pdf_artifacts.get("meta", {}),
         "table_count": len(tables),
+        "curated_record_count": curated_count,
+        "curated_records_path": str(curated_path),
         "attempts": attempts,
         "coverage": official_artifacts["evidence_coverage"],
         "backfill_remaining": official_artifacts["official_evidence_backfill_plan"],
@@ -436,3 +440,53 @@ def _read_json(path: Path, default: Any) -> Any:
 
 def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+
+
+def write_official_backfill_curated_records(output_dir: str | Path, records: list[dict[str, Any]] | None = None) -> int:
+    """Write backfilled official evidence as local-retrieval compatible JSONL."""
+
+    outputs = Path(output_dir)
+    rows = records if records is not None else _read_list(outputs / "evidence.json")
+    return _write_curated_records(outputs / "official_backfill_curated.jsonl", rows)
+
+
+def _write_curated_records(path: Path, records: list[dict[str, Any]]) -> int:
+    rows = [_curated_record(row) for row in records if _is_curated_backfill_record(row)]
+    path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False, default=str) for row in rows) + ("\n" if rows else ""),
+        encoding="utf-8",
+    )
+    return len(rows)
+
+
+def _is_curated_backfill_record(record: dict[str, Any]) -> bool:
+    source_type = str(record.get("source_type") or "").lower()
+    return source_type in {
+        "sec_companyfacts",
+        "sec_filing",
+        "cninfo_announcement",
+        "exchange_announcement",
+        "hkex_announcement",
+        "hkex_annual_report",
+        "pdf_section",
+        "pdf_statement_table",
+        "eastmoney_financials",
+        "hk_financials",
+    }
+
+
+def _curated_record(record: dict[str, Any]) -> dict[str, Any]:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    curated = dict(record)
+    curated.setdefault("sample_id", curated.get("evidence_id") or curated.get("chunk_id") or "")
+    curated.setdefault("evidence_id", curated.get("sample_id") or curated.get("chunk_id") or "")
+    curated.setdefault("trust_level", "high")
+    curated.setdefault("metadata", metadata)
+    if metadata:
+        for key in ("section_type", "table_id", "page", "source_evidence_id"):
+            if metadata.get(key) not in (None, "", []):
+                curated.setdefault(key, metadata.get(key))
+        if metadata.get("page") not in (None, ""):
+            curated.setdefault("page_no", metadata.get("page"))
+    curated["content"] = str(curated.get("content") or "")[:12000]
+    return curated
