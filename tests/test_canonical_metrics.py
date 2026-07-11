@@ -36,8 +36,46 @@ def test_canonical_metrics_prefers_official_pdf_over_market_api_and_records_conf
     assert revenue["value"] == 95.0
     assert revenue["source_type"] == "pdf_statement_table"
     assert artifact["conflict_count"] == 1
+    assert artifact["resolved_conflict_count"] == 1
+    assert artifact["unresolved_conflict_count"] == 0
+    assert artifact["conflicts"][0]["resolution_status"] == "resolved"
     assert artifact["conflicts"][0]["winner"]["source_evidence_id"] == "pdf_table_income"
     assert artifact["conflicts"][0]["losers"][0]["source_evidence_id"] == "yahoo_financials"
+
+
+def test_canonical_metrics_keeps_equal_authority_value_mismatch_unresolved():
+    artifact = build_canonical_metrics_artifact(
+        financial_metrics={
+            "metrics": [
+                {
+                    "metric_name": "revenue",
+                    "value": 660257.0,
+                    "unit": "CNY_million",
+                    "source_type": "pdf_statement_table",
+                    "source_evidence_id": "hkex_income_page_1",
+                    "period_match": True,
+                    "confidence": 0.9,
+                },
+                {
+                    "metric_name": "revenue",
+                    "value": 609015.0,
+                    "unit": "CNY_million",
+                    "source_type": "pdf_statement_table",
+                    "source_evidence_id": "hkex_income_page_2",
+                    "period_match": True,
+                    "confidence": 0.88,
+                },
+            ]
+        },
+        tables=[],
+        symbol="0700.HK",
+        period="FY2024",
+    )
+
+    assert artifact["conflict_count"] == 1
+    assert artifact["resolved_conflict_count"] == 0
+    assert artifact["unresolved_conflict_count"] == 1
+    assert artifact["conflicts"][0]["resolution_status"] == "unresolved"
 
 
 def test_canonical_metrics_uses_table_rows_as_candidates():

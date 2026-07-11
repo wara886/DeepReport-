@@ -65,17 +65,22 @@ def build_canonical_metrics_artifact(
         winner["selection_reason"] = _selection_reason(winner)
         canonical[metric_name] = winner
         losers = [dict(row) for row in ranked[1:]]
-        if _has_value_conflict(winner, losers):
+        conflicting_losers = _value_conflicts(winner, losers)
+        if conflicting_losers:
+            resolution_status, resolution_reason = _conflict_resolution(winner, conflicting_losers)
             conflicts.append(
                 {
                     "metric_name": metric_name,
                     "winner": _compact_candidate(winner),
-                    "losers": [_compact_candidate(row) for row in losers[:5]],
+                    "losers": [_compact_candidate(row) for row in conflicting_losers[:5]],
                     "conflict_type": "multi_source_value_mismatch",
+                    "resolution_status": resolution_status,
+                    "resolution_reason": resolution_reason,
                 }
             )
 
     missing_core = sorted(CORE_CANONICAL_METRICS - set(canonical))
+    unresolved_conflicts = [item for item in conflicts if item.get("resolution_status") == "unresolved"]
     return {
         "schema_version": "canonical_metrics.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -89,6 +94,8 @@ def build_canonical_metrics_artifact(
         "metrics": list(canonical.values()),
         "conflicts": conflicts,
         "conflict_count": len(conflicts),
+        "resolved_conflict_count": len(conflicts) - len(unresolved_conflicts),
+        "unresolved_conflict_count": len(unresolved_conflicts),
         "coverage": {
             "required_metrics": sorted(CORE_CANONICAL_METRICS),
             "present_metrics": sorted(canonical),
@@ -245,18 +252,38 @@ def _candidate_sort_key(row: dict[str, Any]) -> tuple[int, int, float, str]:
     )
 
 
-def _has_value_conflict(winner: dict[str, Any], losers: Iterable[dict[str, Any]]) -> bool:
+def _value_conflicts(winner: dict[str, Any], losers: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     winner_value = _float_or_none(winner.get("value"))
     if winner_value is None:
-        return False
+        return []
+    conflicts: list[dict[str, Any]] = []
     for loser in losers:
         loser_value = _float_or_none(loser.get("value"))
         if loser_value is None:
             continue
         tolerance = max(1.0, abs(winner_value) * 0.01)
         if abs(winner_value - loser_value) > tolerance:
-            return True
-    return False
+            conflicts.append(loser)
+    return conflicts
+
+
+def _conflict_resolution(winner: dict[str, Any], losers: list[dict[str, Any]]) -> tuple[str, str]:
+    """Distinguish auditable source differences from unresolved formal conflicts."""
+
+    winner_priority = int(winner.get("priority") or 99)
+    winner_currency = str(winner.get("currency") or "").upper()
+    winner_unit = str(winner.get("unit") or "").lower()
+    for loser in losers:
+        loser_priority = int(loser.get("priority") or 99)
+        loser_currency = str(loser.get("currency") or "").upper()
+        loser_unit = str(loser.get("unit") or "").lower()
+        if loser_priority <= winner_priority:
+            return "unresolved", "conflicting candidate has equal or higher source authority"
+        if winner_currency and loser_currency and winner_currency != loser_currency:
+            return "unresolved", "conflicting candidates use different currencies"
+        if winner_unit and loser_unit and winner_unit != loser_unit:
+            return "unresolved", "conflicting candidates use different units or scales"
+    return "resolved", "higher-authority canonical source selected over lower-priority candidates"
 
 
 def _compact_candidate(row: dict[str, Any]) -> dict[str, Any]:

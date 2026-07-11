@@ -402,7 +402,10 @@ def _section_verification_status(section_verification: dict[str, Any], section_k
 
 
 def _canonical_conflict_count(canonical_metrics: dict[str, Any], llm_review: dict[str, Any]) -> int:
-    count = _safe_int(canonical_metrics.get("conflict_count", 0))
+    if "unresolved_conflict_count" in canonical_metrics:
+        count = _safe_int(canonical_metrics.get("unresolved_conflict_count", 0))
+    else:
+        count = _safe_int(canonical_metrics.get("conflict_count", 0))
     numeric_issue_count = sum(
         1
         for issue in _as_list(llm_review.get("issues"))
