@@ -13,6 +13,8 @@ class DenseRetriever:
         self.index_factory = index_factory or ChromaIndex
 
     def search(self, query: str, *, topk: int = 10) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        if not self.records:
+            return [], {"backend": "no_records", "hit_count": 0, "available": False}
         try:
             index = self.index_factory()
             index.add_records(self.records)

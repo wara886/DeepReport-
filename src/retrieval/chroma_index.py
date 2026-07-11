@@ -28,10 +28,16 @@ class ChromaIndex:
                          例如: "data/vector_db"
     """
 
-    def __init__(self, model_name: str = DEFAULT_EMBEDDING_MODEL, persistent_path: str | None = "data/vector_db"):
+    def __init__(
+        self,
+        model_name: str = DEFAULT_EMBEDDING_MODEL,
+        persistent_path: str | None = "data/vector_db",
+        collection_name: str = "finsight_local_evidence",
+    ):
         ensure_model_cache_env()
         self.model_name = model_name
         self.persistent_path = persistent_path
+        self.collection_name = collection_name
         self._records: List[EvidenceRecord] = []
         self._vectors: List[List[float]] = []
         self._backend = "memory"
@@ -46,7 +52,7 @@ class ChromaIndex:
             else:
                 self._client = chromadb.EphemeralClient()
                 self._backend = "chromadb"
-            self._collection = self._client.get_or_create_collection(name="finsight_local_evidence")
+            self._collection = self._client.get_or_create_collection(name=collection_name)
         except Exception:
             self._client = None
             self._collection = None
@@ -68,7 +74,7 @@ class ChromaIndex:
 
         if self._collection is not None:
             self._collection.upsert(
-                ids=[record.sample_id or f"record_{index}" for index, record in enumerate(self._records)],
+                ids=_unique_record_ids(self._records),
                 documents=docs,
                 embeddings=embeddings,
                 metadatas=[_sanitize_metadata(record.to_dict()) for record in self._records],
@@ -90,7 +96,7 @@ class ChromaIndex:
             output = []
             for metadata, distance in zip(metadatas, distances):
                 row = dict(metadata or {})
-                row["vector_score"] = max(0.0, 1.0 - float(distance or 0.0))
+                row["vector_score"] = _vector_score_from_metadata(row, query_vector, fallback_distance=distance, records=self._records, vectors=self._vectors)
                 output.append(row)
             scores = [float(row.get("vector_score", 0.0)) for row in output]
             log_vector_search(logger, query, topk, len(output), scores, backend=self.backend)
@@ -177,4 +183,42 @@ def _sanitize_metadata(metadata: Dict[str, object]) -> Dict[str, object]:
             output[key] = str(value)
         else:
             output[key] = str(value)
+    return output
+
+
+def _vector_score_from_metadata(
+    metadata: Dict[str, object],
+    query_vector: Sequence[float],
+    *,
+    fallback_distance: object,
+    records: Sequence[EvidenceRecord],
+    vectors: Sequence[Sequence[float]],
+) -> float:
+    sample_id = str(metadata.get("sample_id") or "")
+    evidence_id = str(metadata.get("evidence_id") or "")
+    chunk_id = str(metadata.get("chunk_id") or "")
+    for record, vector in zip(records, vectors):
+        record_sample_id = str(getattr(record, "sample_id", "") or "")
+        record_evidence_id = str(getattr(record, "evidence_id", "") or record_sample_id)
+        record_chunk_id = str(getattr(record, "chunk_id", "") or record_sample_id)
+        if sample_id and sample_id == record_sample_id:
+            return cosine_similarity(query_vector, vector)
+        if evidence_id and evidence_id == record_evidence_id:
+            return cosine_similarity(query_vector, vector)
+        if chunk_id and chunk_id == record_chunk_id:
+            return cosine_similarity(query_vector, vector)
+    try:
+        return max(0.0, 1.0 - float(fallback_distance or 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _unique_record_ids(records: Sequence[EvidenceRecord]) -> List[str]:
+    seen: Dict[str, int] = {}
+    output: List[str] = []
+    for index, record in enumerate(records):
+        raw_id = str(record.sample_id or record.evidence_id or f"record_{index}")
+        count = seen.get(raw_id, 0)
+        seen[raw_id] = count + 1
+        output.append(raw_id if count == 0 else f"{raw_id}__dup_{count}")
     return output

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Tuple
+import hashlib
+from typing import Any, Dict, List, Optional, Tuple
 
+from src.rag.dense_retriever import DenseRetriever
 from src.rag.hybrid_retriever import HybridRetriever
 from src.rag.reranker_adapter import RerankerAdapter
 from src.retrieval.bm25_index import BM25Index
@@ -51,6 +53,8 @@ def retrieve_evidence_with_mode(
     reranker_checkpoint_path: str = "data/outputs/checkpoints/reranker_checkpoint.json",
     use_chunks: bool = False,
     log: bool = True,
+    vector_persistent_path: str | None = "data/vector_db",
+    vector_collection_name: str = "finsight_local_evidence",
 ) -> Tuple[List[Dict[str, object]], Dict[str, object]]:
     mode = ranking_mode.strip().lower()
     if mode in {"vector", "hybrid", "hybrid_rerank"}:
@@ -64,6 +68,8 @@ def retrieve_evidence_with_mode(
             reranker_checkpoint_path=reranker_checkpoint_path,
             use_chunks=use_chunks,
             log=log,
+            vector_persistent_path=vector_persistent_path,
+            vector_collection_name=vector_collection_name,
         )
 
     store = EvidenceStore.from_curated_parquet(curated_dir=curated_dir)
@@ -247,9 +253,17 @@ def _retrieve_evidence_with_hybrid_layer(
     reranker_checkpoint_path: str,
     use_chunks: bool,
     log: bool,
+    vector_persistent_path: str | None,
+    vector_collection_name: str,
 ) -> Tuple[List[Dict[str, object]], Dict[str, object]]:
+    if vector_persistent_path is None and vector_collection_name == "finsight_local_evidence":
+        vector_collection_name = _isolated_collection_name(curated_dir)
     reranker = RerankerAdapter(checkpoint_path=reranker_checkpoint_path) if ranking_mode == "hybrid_rerank" else None
-    hits, meta = HybridRetriever(curated_dir=curated_dir, reranker=reranker).search(
+    hits, meta = HybridRetriever(
+        curated_dir=curated_dir,
+        dense_retriever_cls=_dense_retriever_cls(vector_persistent_path, vector_collection_name),
+        reranker=reranker,
+    ).search(
         query,
         topk=topk,
         symbol=symbol,
@@ -289,6 +303,25 @@ def _retrieve_evidence_with_hybrid_layer(
             period=period or "",
         )
     return hits, meta
+
+
+def _dense_retriever_cls(vector_persistent_path: str | None, vector_collection_name: str) -> Any:
+    class ConfiguredDenseRetriever(DenseRetriever):
+        def __init__(self, records: list[Any]) -> None:
+            super().__init__(
+                records,
+                index_factory=lambda: ChromaIndex(
+                    persistent_path=vector_persistent_path,
+                    collection_name=vector_collection_name,
+                ),
+            )
+
+    return ConfiguredDenseRetriever
+
+
+def _isolated_collection_name(curated_dir: str) -> str:
+    digest = hashlib.sha1(str(curated_dir).encode("utf-8")).hexdigest()[:16]
+    return f"finsight_task_{digest}"
 
 
 def _legacy_vector_backend_name(raw: str) -> str:

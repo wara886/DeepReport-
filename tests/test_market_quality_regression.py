@@ -176,6 +176,8 @@ def test_real_artifact_remediation_refreshes_local_retrieval_from_backfill_curat
 
     assert local["candidate_count"] >= 1
     assert local["returned_hit_count"] >= 1
+    assert local["mode"] == "hybrid"
+    assert local["vector_score_max"] is not None
     assert local["official_backfill_curated"].endswith("official_backfill_curated.jsonl")
     assert "hkex_pdf_section_1" in local["returned_evidence_ids"]
 
@@ -217,6 +219,7 @@ def test_real_artifact_remediation_builds_curated_from_existing_official_evidenc
 
     assert outputs.joinpath("official_backfill_curated.jsonl").exists()
     assert meta["engine_meta"]["local_evidence"]["candidate_count"] >= 1
+    assert meta["engine_meta"]["local_evidence"]["vector_score_max"] is not None
     assert "cninfo_pdf_section_1" in meta["engine_meta"]["local_evidence"]["returned_evidence_ids"]
 
 

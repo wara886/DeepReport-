@@ -256,13 +256,14 @@ def _refresh_local_retrieval_from_backfill(outputs: Path) -> None:
             symbol=symbol,
             period=period,
             curated_dir=str(outputs),
-            ranking_mode="bm25",
+            ranking_mode="hybrid",
             use_chunks=True,
             log=False,
+            vector_persistent_path=None,
         )
     except Exception as exc:
         meta = {
-            "mode": "bm25",
+            "mode": "hybrid",
             "mode_effective": "failed",
             "failure_reason": "official_backfill_curated_retrieval_failed",
             "error": str(exc),
