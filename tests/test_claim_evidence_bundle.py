@@ -65,6 +65,37 @@ def test_derived_evidence_from_valuation():
     assert "DCF sensitive" in str(ve["limitations"])
 
 
+def test_derived_evidence_from_valuation_model_and_sensitivity():
+    state: Dict[str, Any] = {
+        "symbol": "AAPL",
+        "period": "FY2024",
+        "claims": [],
+        "evidence_records": [{"evidence_id": "ev_cash_flow"}],
+        "analysis_artifacts": {
+            "valuation_model": {
+                "dcf_model": {"equity_value_billion": 2452.91},
+                "target_price": 167.01,
+            },
+            "valuation_sensitivity": {
+                "scenario_values": {
+                    "bear": {"equity_value_billion": 1986.77},
+                    "base": {"equity_value_billion": 2452.91},
+                    "bull": {"equity_value_billion": 3086.92},
+                }
+            },
+        },
+        "research_blackboard": {},
+    }
+
+    derived = build_derived_evidence(state)
+    by_id = {item["evidence_id"]: item for item in derived}
+
+    assert "internal_valuation_AAPL_FY2024_v1" in by_id
+    assert "internal_valuation_sensitivity_AAPL_FY2024_v1" in by_id
+    assert by_id["internal_valuation_sensitivity_AAPL_FY2024_v1"]["source_type"] == "internal_model"
+    assert "ev_cash_flow" in str(by_id["internal_valuation_sensitivity_AAPL_FY2024_v1"]["input_evidence_ids"])
+
+
 def test_derived_evidence_from_peer_analysis():
     """build_derived_evidence extracts peer analysis from research_blackboard."""
     state: Dict[str, Any] = {

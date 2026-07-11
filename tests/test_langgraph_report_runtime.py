@@ -9,6 +9,8 @@ def initial_state():
     return {
         "schema_version": "report_run_state.v1",
         "task_id": "task-langgraph",
+        "request_id": "request-langgraph",
+        "run_id": "run-langgraph",
         "symbol": "NVDA",
         "period": "FY2024",
         "report_type": "equity_research",
@@ -109,11 +111,19 @@ def test_langgraph_runtime_runs_typed_nodes_and_interrupts_for_claim_review():
     assert completed["review_decision"]["approved"] is True
     assert [item["node"] for item in completed["runtime_events"]] == [
         "evidence",
+        "official_evidence_backfill",
+        "build_canonical_metrics",
+        "build_section_evidence_packs",
         "generation",
+        "verify_sections",
+        "repair_failed_sections",
         "quality",
         "finalize",
         "human_review",
     ]
+    assert all(item["request_id"] == "request-langgraph" for item in completed["runtime_events"])
+    assert all(item["run_id"] == "run-langgraph" for item in completed["runtime_events"])
+    assert all(item["duration_ms"] >= 0 for item in completed["runtime_events"])
     assert runtime.snapshot(thread_id="task-langgraph")["next"] == []
 
 
@@ -168,6 +178,41 @@ def test_failed_node_can_retry_from_checkpoint_without_repeating_completed_nodes
     completed = runtime.retry_from_checkpoint(thread_id="task-retry")
 
     assert generation_calls == 2
+    assert calls == ["evidence", "generation", "quality", "finalize"]
+    assert completed["delivery_readiness"]["can_deliver_formal_report"] is True
+
+
+def test_failed_canonical_metrics_node_has_own_checkpoint():
+    calls = []
+    canonical_calls = 0
+    base = successful_handlers(calls, pending_review=False)
+
+    def flaky_canonical(_state):
+        nonlocal canonical_calls
+        canonical_calls += 1
+        if canonical_calls == 1:
+            raise RuntimeError("canonical metrics failed")
+        return {}
+
+    handlers = CallbackReportGraphHandlers(
+        base.evidence,
+        base.generation,
+        base.quality,
+        base.finalize,
+        build_canonical_metrics_callback=flaky_canonical,
+    )
+    runtime = LangGraphReportRuntime(handlers)
+
+    with pytest.raises(RuntimeError, match="canonical metrics failed"):
+        runtime.invoke(initial_state(), thread_id="task-canonical-retry")
+
+    snapshot = runtime.snapshot(thread_id="task-canonical-retry")
+    assert snapshot["next"] == ["build_canonical_metrics"]
+    assert calls == ["evidence"]
+
+    completed = runtime.retry_from_checkpoint(thread_id="task-canonical-retry")
+
+    assert canonical_calls == 2
     assert calls == ["evidence", "generation", "quality", "finalize"]
     assert completed["delivery_readiness"]["can_deliver_formal_report"] is True
 

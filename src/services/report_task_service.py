@@ -19,6 +19,9 @@ from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.app.chat_task_parser import latest_completed_period
 from src.app.web_ui import run_delivery_quality_pipeline
 from src.data.company_universe import infer_market_from_symbol
+from src.data.canonical_metrics import write_canonical_metrics_artifact
+from src.data.official_evidence_archive import build_official_evidence_artifacts
+from src.data.official_evidence_backfill import execute_official_evidence_backfill
 from src.data.source_authority import grade_source_authority
 from src.db.init_db import init_db
 from src.db.models import (
@@ -33,6 +36,9 @@ from src.db.models import (
 from src.db.session import create_engine_for_url
 from src.llm.harness import serialize_llm_run
 from src.llm.harness import LLMHarness
+from src.evaluation.evidence_retrieval_attribution import write_evidence_retrieval_attribution
+from src.evaluation.section_repair import repair_failed_sections_for_outputs
+from src.evaluation.section_verification import write_section_verification
 from src.rag.retrieval_diagnostics import build_retrieval_coverage
 from src.report.citation_manager import build_citation_artifacts
 from src.report.compliance_disclosure import append_compliance_disclosures
@@ -158,6 +164,8 @@ class ReportTaskService:
         try:
             if self.langgraph_runtime_enabled:
                 initial_state = self.get_task(task_id)["run_state"]
+                initial_state["request_id"] = str(metadata.get("request_id") or task_id)
+                initial_state["run_id"] = str(metadata.get("run_id") or task_id)
                 runtime_result = self._get_langgraph_runtime().invoke(initial_state, thread_id=task_id)
                 self._record_runtime_result(task_id, runtime_result)
             else:
@@ -219,6 +227,11 @@ class ReportTaskService:
                     quality_callback=self._graph_quality_node,
                     finalize_callback=self._graph_finalize_node,
                     review_callback=self._graph_review_node,
+                    official_evidence_backfill_callback=self._graph_official_evidence_backfill_node,
+                    build_canonical_metrics_callback=self._graph_build_canonical_metrics_node,
+                    build_section_evidence_packs_callback=self._graph_build_section_evidence_packs_node,
+                    verify_sections_callback=self._graph_verify_sections_node,
+                    repair_failed_sections_callback=self._graph_repair_failed_sections_node,
                 )
                 self._langgraph_runtime = LangGraphReportRuntime(
                     handlers,
@@ -236,6 +249,46 @@ class ReportTaskService:
                 task.finished_at = None
                 session.commit()
         self.run_evidence_gate(task_id)
+        return self._current_run_state_patch(task_id)
+
+    def _graph_official_evidence_backfill_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        summary = self._run_official_evidence_backfill(task_id)
+        self._record_runtime_stage(
+            task_id,
+            stage="official_evidence_backfill",
+            status="success" if summary.get("status") in {"not_required", "completed", "remote_disabled"} else "warning",
+            message="官方证据补齐检查完成" if summary.get("status") != "failed" else "官方证据补齐执行失败",
+            metadata=summary,
+        )
+        return self._current_run_state_patch(task_id)
+
+    def _graph_build_canonical_metrics_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        summary = self._refresh_canonical_metrics(task_id)
+        self._update_runtime_metadata(task_id, "canonical_metrics", summary)
+        self._record_runtime_stage(
+            task_id,
+            stage="build_canonical_metrics",
+            status="success",
+            message="正式指标候选池已建立",
+            metadata=summary,
+        )
+        return self._current_run_state_patch(task_id)
+
+    def _graph_build_section_evidence_packs_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        summary = _build_section_pack_manifest(output_dir)
+        self._update_runtime_metadata(task_id, "section_evidence_packs", summary)
+        self._record_runtime_stage(
+            task_id,
+            stage="build_section_evidence_packs",
+            status="success",
+            message="章节证据包索引已建立",
+            metadata=summary,
+        )
         return self._current_run_state_patch(task_id)
 
     def _graph_generation_node(self, state: ReportGraphState) -> dict[str, Any]:
@@ -264,7 +317,63 @@ class ReportTaskService:
             session.commit()
         self._run_orchestrator(task_id=task_id, metadata=metadata)
         self._enhance_artifacts_with_task_evidence(task_id)
+        self._run_official_evidence_backfill(task_id)
+        self._refresh_canonical_metrics(task_id)
         self.import_artifacts(task_id)
+        return self._current_run_state_patch(task_id)
+
+    def _graph_verify_sections_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        report_dir = Path(str(metadata.get("report_dir") or ""))
+        summary = _build_section_verification_manifest(output_dir=output_dir, report_dir=report_dir)
+        self._update_runtime_metadata(task_id, "section_verification", summary)
+        self._record_runtime_stage(
+            task_id,
+            stage="verify_sections",
+            status="success" if not summary.get("failed_sections") else "warning",
+            message="章节结构合同检查完成",
+            metadata=summary,
+        )
+        return self._current_run_state_patch(task_id)
+
+    def _graph_repair_failed_sections_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        section_verification = dict(_dict_path(metadata, "report_runtime").get("section_verification") or {})
+        failed_sections = list(section_verification.get("failed_sections") or [])
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        report_dir = Path(str(metadata.get("report_dir") or ""))
+        repair = repair_failed_sections_for_outputs(
+            output_dir=output_dir,
+            report_dir=report_dir,
+            section_verification=_read_json_object(output_dir / "section_verification.json") or section_verification,
+        )
+        verification = _build_section_verification_manifest(output_dir=output_dir, report_dir=report_dir)
+        self._update_runtime_metadata(task_id, "section_verification", verification)
+        summary = {
+            "schema_version": "section_repair_runtime.v1",
+            "status": repair.get("status", "unknown"),
+            "failed_section_count_before": len(failed_sections),
+            "failed_sections_before": failed_sections,
+            "failed_section_count_after": len(verification.get("failed_sections") or []),
+            "failed_sections_after": list(verification.get("failed_sections") or []),
+            "repaired": bool(repair.get("repaired", False)),
+            "repair_strategy": "deterministic_section_rewrite",
+            "source_files": {
+                "section_repair": str(output_dir / "section_repair.json"),
+                "section_verification": str(output_dir / "section_verification.json"),
+            },
+        }
+        self._update_runtime_metadata(task_id, "section_repair", summary)
+        self._record_runtime_stage(
+            task_id,
+            stage="repair_failed_sections",
+            status="success" if not summary.get("failed_sections_after") else "warning",
+            message="章节返工调度检查完成",
+            metadata=summary,
+        )
         return self._current_run_state_patch(task_id)
 
     def _graph_quality_node(self, state: ReportGraphState) -> dict[str, Any]:
@@ -277,8 +386,61 @@ class ReportTaskService:
                 task.finished_at = None
                 session.commit()
         self.run_quality_gate(task_id)
+        self._refresh_retrieval_attribution(task_id)
         self.import_artifacts(task_id)
         return self._current_run_state_patch(task_id)
+
+    def _task_metadata(self, task_id: str) -> dict[str, Any]:
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            return dict(task.metadata_json or {})
+
+    def _refresh_canonical_metrics(self, task_id: str) -> dict[str, Any]:
+        metadata = self._task_metadata(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        financial_metrics = _read_json_any(output_dir / "financial_metrics.json", default={})
+        tables = _read_json_any(output_dir / "tables.json", default=[])
+        artifact = write_canonical_metrics_artifact(
+            output_dir,
+            financial_metrics=financial_metrics,
+            tables=tables,
+            symbol=str(metadata.get("symbol") or ""),
+            period=str(metadata.get("period") or ""),
+        )
+        summary = _canonical_metrics_summary(output_dir=output_dir, artifact=artifact)
+        self._update_runtime_metadata(task_id, "canonical_metrics", summary)
+        return summary
+
+    def _update_runtime_metadata(self, task_id: str, key: str, value: dict[str, Any]) -> None:
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            metadata = dict(task.metadata_json or {})
+            runtime = dict(metadata.get("report_runtime") or {})
+            runtime[key] = value
+            metadata["report_runtime"] = runtime
+            task.metadata_json = metadata
+            session.commit()
+
+    def _record_runtime_stage(
+        self,
+        task_id: str,
+        *,
+        stage: str,
+        status: str,
+        message: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        with self.session() as session:
+            session.add(
+                ReportTaskEvent(
+                    task_id=task_id,
+                    stage=stage,
+                    status=status,
+                    message=message,
+                    metadata_json=metadata or {},
+                )
+            )
+            session.commit()
 
     def _graph_finalize_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
@@ -343,6 +505,16 @@ class ReportTaskService:
             runtime = dict(metadata.get("report_runtime") or {})
             runtime["checkpoint_status"] = "interrupted" if interrupts else "completed"
             runtime["interrupts"] = interrupts
+            events = list(result.get("runtime_events") or [])
+            runtime["events"] = events
+            runtime["node_latency_ms"] = {
+                str(item.get("node")): float(item.get("duration_ms") or 0.0)
+                for item in events
+                if isinstance(item, dict) and item.get("node")
+            }
+            runtime["total_node_latency_ms"] = round(sum(runtime["node_latency_ms"].values()), 3)
+            runtime["request_id"] = str(result.get("request_id") or metadata.get("request_id") or task_id)
+            runtime["run_id"] = str(result.get("run_id") or metadata.get("run_id") or task_id)
             metadata["report_runtime"] = runtime
             task.metadata_json = metadata
             if interrupts:
@@ -379,6 +551,8 @@ class ReportTaskService:
             session.commit()
         self._run_orchestrator(task_id=task_id, metadata=metadata)
         self._enhance_artifacts_with_task_evidence(task_id)
+        self._run_official_evidence_backfill(task_id)
+        self._refresh_retrieval_attribution(task_id, metadata=metadata)
         self.import_artifacts(task_id)
         quality_result = self.run_quality_gate(task_id)
         self.import_artifacts(task_id)
@@ -535,9 +709,12 @@ class ReportTaskService:
             config_path=self.config_path,
             memory_enabled=bool(metadata.get("memory_enabled", False)),
         )
+        attribution = self._refresh_retrieval_attribution(task_id, metadata=metadata)
         llm_run_id = self._record_quality_gate_harness_run(task_id, metadata=metadata, quality_result=result)
         score = _quality_score_from_result(result)
         delivery_pass = _dict_path(result, "delivery_gate").get("delivery_pass")
+        if delivery_pass is not True:
+            _mark_report_html_as_delivery_blocked(report_dir, result)
         with self.session() as session:
             task = self._get_task_for_update(session, task_id)
             if score is not None:
@@ -555,12 +732,159 @@ class ReportTaskService:
                         "delivery_pass": delivery_pass,
                         "quality_score": score,
                         "top_quality_issues": _top_quality_issues(result),
+                        "retrieval_attribution": attribution,
                         "llm_run_id": llm_run_id,
                     },
                 )
             )
             session.commit()
-        return result
+            return result
+
+    def _refresh_retrieval_attribution(self, task_id: str, *, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        metadata = dict(metadata or self._task_metadata(task_id))
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        report_dir = Path(str(metadata.get("report_dir") or ""))
+        if not str(output_dir):
+            return {"schema_version": "retrieval_attribution_runtime.v1", "status": "missing_output_dir"}
+        paths = write_evidence_retrieval_attribution(output_dir, reports_dir=report_dir, run_dir=output_dir.parent)
+        artifact = _read_json_object(output_dir / "evidence_retrieval_attribution.json")
+        roots = artifact.get("overall_root_causes") if isinstance(artifact.get("overall_root_causes"), list) else []
+        top = roots[0] if roots and isinstance(roots[0], dict) else {}
+        retrieval = artifact.get("retrieval_summary") if isinstance(artifact.get("retrieval_summary"), dict) else {}
+        summary = {
+            "schema_version": "retrieval_attribution_runtime.v1",
+            "status": artifact.get("status", "ready") if artifact else "missing",
+            "top_root_cause": top.get("cause"),
+            "top_root_cause_label": top.get("label"),
+            "similarity_status": retrieval.get("similarity_status"),
+            "vector_score_max": retrieval.get("vector_score_max"),
+            "local_candidate_count": retrieval.get("local_candidate_count"),
+            "local_returned_count": retrieval.get("local_returned_count"),
+            "source_file": paths.get("evidence_retrieval_attribution"),
+        }
+        self._update_runtime_metadata(task_id, "retrieval_attribution", summary)
+        self._record_runtime_stage(
+            task_id,
+            stage="retrieval_attribution",
+            status="success" if summary["status"] == "ready" else "warning",
+            message="证据召回归因诊断已生成",
+            metadata=summary,
+        )
+        return summary
+
+    def _run_official_evidence_backfill(self, task_id: str) -> dict[str, Any]:
+        metadata = self._task_metadata(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        symbol = str(metadata.get("symbol") or "")
+        period = str(metadata.get("period") or "")
+        if not output_dir or not symbol or not period:
+            summary = {
+                "schema_version": "official_evidence_backfill_runtime.v1",
+                "status": "skipped",
+                "reason": "missing_task_context",
+                "blocks_generation": False,
+            }
+            self._update_runtime_metadata(task_id, "official_evidence_backfill", summary)
+            return summary
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        existing_records = _read_json_list(output_dir / "evidence.json")
+        existing_tables = _read_json_list(output_dir / "tables.json")
+        if not existing_records:
+            with self.session() as session:
+                task = self._get_task_for_update(session, task_id)
+                evidence_items = self._evidence_candidates_for_gate(session, task=task, metadata=metadata)
+                existing_records = [
+                    _artifact_record_from_evidence(item, task=task, metadata=metadata)
+                    for item in evidence_items
+                ]
+            if existing_records:
+                _write_json_list(output_dir / "evidence.json", existing_records)
+
+        official_artifacts = build_official_evidence_artifacts(
+            existing_records,
+            symbol=symbol,
+            period=period,
+            tables=existing_tables,
+        )
+        coverage = official_artifacts["evidence_coverage"]
+        plan = official_artifacts["official_evidence_backfill_plan"]
+        _write_json_object(output_dir / "official_evidence_manifest.json", official_artifacts["official_evidence_manifest"])
+        _write_json_object(output_dir / "evidence_coverage.json", coverage)
+        _write_json_object(output_dir / "official_evidence_backfill_plan.json", plan)
+
+        if not bool(plan.get("backfill_required")):
+            summary = {
+                "schema_version": "official_evidence_backfill_runtime.v1",
+                "status": "not_required",
+                "symbol": symbol,
+                "period": period,
+                "formal_delivery_allowed": bool(coverage.get("formal_delivery_allowed")),
+                "missing_requirements": list(coverage.get("missing_requirements") or []),
+                "blocks_generation": False,
+                "source_file": str(output_dir / "official_evidence_backfill_plan.json"),
+            }
+            self._update_runtime_metadata(task_id, "official_evidence_backfill", summary)
+            return summary
+
+        if not bool(metadata.get("enable_remote_data", False)):
+            summary = {
+                "schema_version": "official_evidence_backfill_runtime.v1",
+                "status": "remote_disabled",
+                "symbol": symbol,
+                "period": period,
+                "formal_delivery_allowed": bool(coverage.get("formal_delivery_allowed")),
+                "missing_requirements": list(coverage.get("missing_requirements") or []),
+                "task_count": len(plan.get("tasks") or []),
+                "blocks_generation": False,
+                "source_file": str(output_dir / "official_evidence_backfill_plan.json"),
+            }
+            self._update_runtime_metadata(task_id, "official_evidence_backfill", summary)
+            return summary
+
+        try:
+            result = execute_official_evidence_backfill(
+                symbol=symbol,
+                period=period,
+                output_dir=output_dir,
+                existing_records=existing_records,
+                existing_tables=existing_tables,
+                plan=plan,
+            )
+        except Exception as exc:  # noqa: BLE001 - source acquisition is best-effort before draft generation.
+            summary = {
+                "schema_version": "official_evidence_backfill_runtime.v1",
+                "status": "failed",
+                "symbol": symbol,
+                "period": period,
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+                "blocks_generation": False,
+                "source_file": str(output_dir / "official_evidence_backfill_plan.json"),
+            }
+            self._update_runtime_metadata(task_id, "official_evidence_backfill", summary)
+            return summary
+
+        remaining = result.get("backfill_remaining") if isinstance(result.get("backfill_remaining"), dict) else {}
+        coverage_after = result.get("coverage") if isinstance(result.get("coverage"), dict) else {}
+        summary = {
+            "schema_version": "official_evidence_backfill_runtime.v1",
+            "status": "completed",
+            "symbol": symbol,
+            "period": period,
+            "acquired_record_count": int(result.get("acquired_record_count") or 0),
+            "merged_record_count": int(result.get("merged_record_count") or 0),
+            "pdf_record_count": int(result.get("pdf_record_count") or 0),
+            "table_count": int(result.get("table_count") or 0),
+            "formal_delivery_allowed": bool(coverage_after.get("formal_delivery_allowed")),
+            "missing_requirements": list(coverage_after.get("missing_requirements") or []),
+            "remaining_task_count": len(remaining.get("tasks") or []),
+            "attempts": list(result.get("attempts") or []),
+            "blocks_generation": False,
+            "source_file": str(output_dir / "official_evidence_backfill_run.json"),
+        }
+        self._update_runtime_metadata(task_id, "official_evidence_backfill", summary)
+        return summary
 
     def _enhance_artifacts_with_task_evidence(self, task_id: str) -> None:
         """Attach persisted task evidence to generated artifacts before import/quality gates."""
@@ -829,6 +1153,7 @@ class ReportTaskService:
                 ).all()
             )
             payload["quality_diagnostics"] = build_quality_diagnostics(task, llm_runs)
+            payload["runtime_observability"] = build_runtime_observability(task, llm_runs)
             return payload
 
     def get_artifacts(self, task_id: str) -> dict[str, Any]:
@@ -856,6 +1181,7 @@ class ReportTaskService:
         artifacts = [serialize_artifact(item) for item in sorted(task.artifacts, key=lambda item: item.id or 0)]
         events = [serialize_event(item) for item in sorted(task.events, key=lambda item: item.id or 0)]
         run_state = build_report_run_state(task)
+        metadata = task.metadata_json or {}
         return {
             "id": task.id,
             "task_id": task.task_id,
@@ -871,7 +1197,12 @@ class ReportTaskService:
             "started_at": _dt(task.started_at),
             "finished_at": _dt(task.finished_at),
             "error_message": task.error_message,
-            "metadata": task.metadata_json or {},
+            "metadata": metadata,
+            "trace_context": {
+                "request_id": str(metadata.get("request_id") or task.task_id),
+                "run_id": str(metadata.get("run_id") or task.task_id),
+                "task_id": task.task_id,
+            },
             "events": events,
             "artifacts": artifacts,
             "report_links": _report_links(artifacts),
@@ -1547,6 +1878,147 @@ def _write_json_list(path: Path, records: list[dict[str, Any]]) -> None:
     path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _write_json_object(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _build_canonical_metrics_manifest(output_dir: Path) -> dict[str, Any]:
+    existing = _read_json_object(output_dir / "canonical_metrics.json")
+    if existing:
+        return _canonical_metrics_summary(output_dir=output_dir, artifact=existing)
+    metrics_payload = _read_json_any(output_dir / "financial_metrics.json", default={})
+    tables = _read_json_list(output_dir / "tables.json")
+    metric_rows: list[dict[str, Any]] = []
+    if isinstance(metrics_payload, dict):
+        raw_metrics = metrics_payload.get("metrics")
+        if isinstance(raw_metrics, list):
+            metric_rows = [dict(item) for item in raw_metrics if isinstance(item, dict)]
+        else:
+            for key, value in metrics_payload.items():
+                if isinstance(value, dict):
+                    row = dict(value)
+                    row.setdefault("metric_name", key)
+                    metric_rows.append(row)
+    statements = sorted(
+        {
+            str(table.get("table_type") or table.get("statement") or "")
+            for table in tables
+            if str(table.get("table_type") or table.get("statement") or "")
+        }
+    )
+    metric_names = sorted(
+        {
+            str(row.get("metric_name") or row.get("metric_key") or row.get("line_item") or "")
+            for row in metric_rows
+            if str(row.get("metric_name") or row.get("metric_key") or row.get("line_item") or "")
+        }
+    )
+    official_metric_count = sum(
+        1
+        for row in metric_rows
+        if str(row.get("source_type") or "").lower()
+        in {"sec_companyfacts", "sec_filing", "cninfo_announcement", "hkex_announcement", "pdf_statement_table"}
+    )
+    return {
+        "schema_version": "canonical_metrics_runtime.v1",
+        "status": "ready" if metric_rows or tables else "missing",
+        "metric_count": len(metric_rows),
+        "table_count": len(tables),
+        "statement_types": statements,
+        "metric_names": metric_names[:40],
+        "official_metric_count": official_metric_count,
+        "source_files": {
+            "financial_metrics": str(output_dir / "financial_metrics.json"),
+            "tables": str(output_dir / "tables.json"),
+        },
+    }
+
+
+def _canonical_metrics_summary(*, output_dir: Path, artifact: dict[str, Any]) -> dict[str, Any]:
+    coverage = artifact.get("coverage") if isinstance(artifact.get("coverage"), dict) else {}
+    metrics = artifact.get("metrics") if isinstance(artifact.get("metrics"), list) else []
+    canonical = artifact.get("canonical_metrics") if isinstance(artifact.get("canonical_metrics"), dict) else {}
+    metric_names = sorted(canonical) if canonical else sorted(
+        str(item.get("metric_name") or "") for item in metrics if isinstance(item, dict) and item.get("metric_name")
+    )
+    return {
+        "schema_version": "canonical_metrics_runtime.v1",
+        "status": "ready" if metric_names else "missing",
+        "metric_count": int(artifact.get("metric_count") or len(metric_names)),
+        "candidate_count": int(artifact.get("candidate_count") or 0),
+        "metric_names": metric_names[:40],
+        "missing_core_metrics": list(coverage.get("missing_core_metrics") or []),
+        "conflict_count": int(artifact.get("conflict_count") or 0),
+        "source_files": {
+            "canonical_metrics": str(output_dir / "canonical_metrics.json"),
+            "financial_metrics": str(output_dir / "financial_metrics.json"),
+            "tables": str(output_dir / "tables.json"),
+        },
+    }
+
+
+def _build_section_pack_manifest(output_dir: Path) -> dict[str, Any]:
+    contracts = _read_json_object(output_dir / "report_section_contracts.json")
+    section_dossiers = _read_json_object(output_dir / "section_dossiers.json")
+    contract_map = contracts.get("contracts") if isinstance(contracts.get("contracts"), dict) else {}
+    pack_keys = sorted(set(contract_map) | set(section_dossiers))
+    blocked_sections = sorted(
+        key
+        for key, value in contract_map.items()
+        if isinstance(value, dict) and (value.get("blocked_reasons") or value.get("status") == "gap")
+    )
+    citation_ready = sum(
+        1
+        for value in contract_map.values()
+        if isinstance(value, dict) and value.get("citation_evidence_ids")
+    )
+    return {
+        "schema_version": "section_evidence_pack_runtime.v1",
+        "status": "ready" if pack_keys else "missing",
+        "section_count": len(pack_keys),
+        "sections": pack_keys,
+        "blocked_sections": blocked_sections,
+        "citation_ready_section_count": citation_ready,
+        "source_files": {
+            "report_section_contracts": str(output_dir / "report_section_contracts.json"),
+            "section_dossiers": str(output_dir / "section_dossiers.json"),
+        },
+    }
+
+
+def _build_section_verification_manifest(*, output_dir: Path, report_dir: Path) -> dict[str, Any]:
+    contracts = _read_json_object(output_dir / "report_section_contracts.json")
+    remediation = _read_json_object(output_dir / "quality_remediation_plan.json")
+    markdown = ""
+    report_md = report_dir / "report.md"
+    if report_md.exists():
+        markdown = report_md.read_text(encoding="utf-8")
+    artifact = write_section_verification(
+        output_dir,
+        markdown=markdown,
+        report_section_contracts=contracts,
+        quality_remediation_plan=remediation,
+    )
+    return {
+        "schema_version": "section_verification_runtime.v1",
+        "artifact_schema_version": artifact.get("schema_version"),
+        "status": artifact.get("status", "failed"),
+        "formal_delivery_allowed": bool(artifact.get("formal_delivery_allowed", False)),
+        "contract_count": len(contracts.get("contracts") if isinstance(contracts.get("contracts"), dict) else {}),
+        "failed_section_count": len(artifact.get("failed_sections") or []),
+        "failed_sections": list(artifact.get("failed_sections") or []),
+        "issue_count": int(artifact.get("issue_count") or 0),
+        "report_markdown_chars": len(markdown),
+        "source_files": {
+            "report_section_contracts": str(output_dir / "report_section_contracts.json"),
+            "quality_remediation_plan": str(output_dir / "quality_remediation_plan.json"),
+            "section_verification": str(output_dir / "section_verification.json"),
+            "report_md": str(report_md),
+        },
+    }
+
+
 def _report_title_from_markdown(markdown: str) -> str:
     for line in str(markdown or "").splitlines():
         if line.startswith("# "):
@@ -1559,6 +2031,26 @@ def _strip_report_title(markdown: str) -> str:
     if lines and lines[0].startswith("# "):
         return "\n".join(lines[1:])
     return str(markdown or "")
+
+
+def _mark_report_html_as_delivery_blocked(report_dir: Path, quality_result: dict[str, Any]) -> None:
+    report_dir = Path(report_dir)
+    html_path = report_dir / "report.html"
+    markdown_path = report_dir / "report.md"
+    if not html_path.exists() and not markdown_path.exists():
+        return
+    markdown = markdown_path.read_text(encoding="utf-8") if markdown_path.exists() else html_path.read_text(encoding="utf-8")
+    title = _report_title_from_markdown(markdown) or "研报草稿"
+    blockers = [str(item.get("message") or item.get("category") or item) for item in _top_quality_issues(quality_result)[:5]]
+    html = render_professional_html_report(
+        markdown=markdown,
+        title=title,
+        delivery_status="blocked_quality_gate_failed",
+        top_blockers=blockers,
+        quality_blocked=True,
+    )
+    html_path.parent.mkdir(parents=True, exist_ok=True)
+    html_path.write_text(html, encoding="utf-8")
 
 
 def _dedupe(values: list[str]) -> list[str]:
@@ -1636,6 +2128,49 @@ def build_quality_diagnostics(task: ReportTask, llm_runs: list[LLMRun]) -> dict[
         "agent_runs": [run for run in llm_payloads if str(run.get("prompt_key") or "").startswith("agent.")],
         "llm_run_count": len(llm_payloads),
         "failed_llm_run_count": sum(1 for run in llm_payloads if run.get("status") == "failed"),
+    }
+
+
+def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun]) -> dict[str, Any]:
+    """Aggregate request tracing, node latency, and LLM usage for one task."""
+
+    metadata = task.metadata_json or {}
+    runtime = metadata.get("report_runtime") if isinstance(metadata.get("report_runtime"), dict) else {}
+    events = runtime.get("events") if isinstance(runtime.get("events"), list) else []
+    node_latency = runtime.get("node_latency_ms") if isinstance(runtime.get("node_latency_ms"), dict) else {}
+    prompt_tokens = sum(int(item.prompt_tokens or 0) for item in llm_runs)
+    completion_tokens = sum(int(item.completion_tokens or 0) for item in llm_runs)
+    total_tokens = sum(int(item.total_tokens or 0) for item in llm_runs)
+    cost_raw = sum(float(item.cost_usd or 0.0) for item in llm_runs)
+    cost_usd = round(cost_raw, 8)
+    run_count_sum = len(llm_runs)
+    pricing_status = "not_configured" if cost_raw == 0.0 and run_count_sum > 0 else "available" if cost_raw > 0 else "no_runs"
+    llm_latency_ms = sum(int(item.latency_ms or 0) for item in llm_runs)
+    elapsed_ms = None
+    if task.started_at and task.finished_at:
+        elapsed_ms = round((task.finished_at - task.started_at).total_seconds() * 1000, 3)
+    return {
+        "schema_version": "report_runtime_observability.v1",
+        "trace_context": {
+            "request_id": str(metadata.get("request_id") or task.task_id),
+            "run_id": str(metadata.get("run_id") or task.task_id),
+            "task_id": task.task_id,
+        },
+        "checkpoint_status": runtime.get("checkpoint_status", "not_started"),
+        "last_node": events[-1].get("node") if events and isinstance(events[-1], dict) else None,
+        "node_latency_ms": node_latency,
+        "total_node_latency_ms": round(sum(float(value or 0.0) for value in node_latency.values()), 3),
+        "task_elapsed_ms": elapsed_ms,
+        "llm": {
+            "run_count": run_count_sum,
+            "failed_run_count": sum(1 for item in llm_runs if item.status == "failed"),
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost_usd": cost_usd,
+            "pricing_status": pricing_status,
+            "latency_ms": llm_latency_ms,
+        },
     }
 
 

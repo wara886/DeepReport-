@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 from typing import Any, Dict, Iterable, List
 
+from src.data.canonical_metrics import canonical_metrics_as_financial_metrics
 from src.agents.research_blackboard import quality_generalization_checks
 from src.report.mojibake_guard import build_mojibake_quality_issue, looks_like_mojibake
 from src.utils.config import load_config
@@ -111,6 +112,7 @@ def evaluate_report_quality_from_paths(
     _check_developer_placeholder_leakage(artifacts, issues)
     _check_mojibake_policy(artifacts, issues)
     _check_claim_citation_policy(artifacts, issues)
+    _check_evidence_identity_policy(artifacts, issues)
     _check_official_source_distribution_policy(artifacts, issues)
     _check_business_overview_wrong_section_policy(artifacts, issues)
     _valuation_consistency_check(artifacts, issues)
@@ -253,13 +255,18 @@ def _mirror_reports_dir(outputs_dir: Path) -> Path:
 
 
 def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
+    canonical_metrics = _read_json(paths.outputs_dir / "canonical_metrics.json", {})
+    raw_financial_metrics = _read_json(paths.outputs_dir / "financial_metrics.json", {})
+    financial_metrics = canonical_metrics_as_financial_metrics(canonical_metrics, fallback=raw_financial_metrics)
     return {
         "summary": _read_json(paths.outputs_dir / "run_summary.json", {}),
         "claims": _as_list(_read_json(paths.outputs_dir / "claims.json", [])),
         "evidence": _as_list(_read_json(paths.outputs_dir / "evidence.json", [])),
         "citations": _as_list(_read_json(paths.outputs_dir / "citations.json", [])),
         "tables": _as_list(_read_json(paths.outputs_dir / "tables.json", [])),
-        "financial_metrics": _read_json(paths.outputs_dir / "financial_metrics.json", {}),
+        "financial_metrics": financial_metrics,
+        "canonical_metrics": canonical_metrics,
+        "raw_financial_metrics": raw_financial_metrics,
         "currency_audit": _read_json(paths.outputs_dir / "currency_audit.json", {}),
         "valuation_model": _read_json(paths.outputs_dir / "valuation_model.json", {}),
         "valuation_sensitivity": _read_json(paths.outputs_dir / "valuation_sensitivity.json", {}),
@@ -281,6 +288,9 @@ def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
         "section_dossiers": _read_json(paths.outputs_dir / "section_dossiers.json", {}),
         # Contract-first artifacts (optional — only present in contract-mode runs)
         "report_section_contracts": _read_json(paths.outputs_dir / "report_section_contracts.json", {}),
+        "section_verification": _read_json(paths.outputs_dir / "section_verification.json", {}),
+        "section_repair": _read_json(paths.outputs_dir / "section_repair.json", {}),
+        "evidence_retrieval_attribution": _read_json(paths.outputs_dir / "evidence_retrieval_attribution.json", {}),
         "citation_map": _read_json(paths.outputs_dir / "citation_map.json", {}),
         "citation_binding_audit": _read_json(paths.outputs_dir / "citation_binding_audit.json", {}),
     }
@@ -399,6 +409,9 @@ SECTION_HEADING_MAP = {
 TEMPLATE_PHRASES = [
     "template_placeholder_long_term",
     "template_placeholder_listed_company",
+    "本节暂不展开详细分析",
+    "evidence_not_available",
+    "valuation_sensitivity_not_available",
     "持续深耕",
     "巩固核心竞争力",
 ]
@@ -407,6 +420,12 @@ HALF_SENTENCE_MARKERS = [
     "half_sentence",
     "incomplete",
     "needs_attention",
+]
+
+HALF_SENTENCE_REGEXES = [
+    r"(?:与|及|和|并|或|、|：|，|,)\s*$",
+    r"(?:本报告|本节|公司|风险|估值|结论)[^。\n]{8,80}(?:与|及|和|并|或|、|：|，|,)\s*$",
+    r"(?:分别披露|主要包括|主要来自|体现为|取决于)[^。\n]{0,80}$",
 ]
 
 # Internal debug/ID patterns that must never appear in the final report body
@@ -457,12 +476,12 @@ CHART_INTERNAL_LABEL_PATTERNS = [
 
 
 def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:
-    """Check each core section for minimum content depth using section_dossiers."""
+    """Check every core section against the formal delivery section contract."""
     section_dossiers = artifacts.get("section_dossiers", {})
-    if not isinstance(section_dossiers, dict) or not section_dossiers:
-        return 1.0  # no dossiers available, skip check
-
+    if not isinstance(section_dossiers, dict):
+        section_dossiers = {}
     text = _report_text(artifacts)
+    body_text = str(artifacts.get("report_md") or text)
     total_checks = len(CONTENT_DEPTH_THRESHOLDS)
     passes = 0
 
@@ -472,32 +491,39 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
             continue
         body = _section_body(text, (heading,))
         if not body:
-            _issue(issues, "warning", "content_depth", f"section {heading} missing content depth")
+            _issue(issues, "blocker", "content_depth", f"{heading} section missing")
             continue
         chinese_chars = len(re.sub(r"[\s\n\r#\-*:：，、。）（\[\]【】\"''a-zA-Z0-9]", "", body))
         if chinese_chars >= threshold:
-            passes += 1
-        else:
-            dossier = section_dossiers.get(section_key, {})
-            if not isinstance(dossier, dict):
+            if not _section_has_truncation(body):
                 passes += 1
                 continue
-            min_content_level = dossier.get("min_content_level", "")
-            if min_content_level == "data_gap":
-                passes += 1  # data_gap sections are allowed to be short
-                continue
-            _issue(issues, "blocker", "content_depth",
-                   f"{heading} content insufficient: only {chinese_chars} chars (threshold {threshold})")
+        dossier = section_dossiers.get(section_key, {})
+        if isinstance(dossier, dict) and dossier.get("min_content_level") == "data_gap":
+            passes += 1
+            continue
+        if chinese_chars < threshold:
+            _issue(
+                issues,
+                "blocker",
+                "content_depth",
+                f"{heading} content insufficient: only {chinese_chars} chars (threshold {threshold})",
+            )
+        if _section_has_truncation(body):
+            _issue(issues, "blocker", "content_depth", f"{heading} appears truncated or ends with an unfinished phrase")
 
     # Template phrase detection
     for phrase in TEMPLATE_PHRASES:
-        if phrase in text:
+        if phrase in body_text:
             _issue(issues, "blocker", "content_depth", f"report contains template phrase: {phrase}")
 
     # Half-sentence detection
     for marker in HALF_SENTENCE_MARKERS:
-        if marker in text:
+        if marker in body_text:
             _issue(issues, "blocker", "content_depth", f"report contains half-sentence marker: {marker}")
+    for pattern in HALF_SENTENCE_REGEXES:
+        if re.search(pattern, body_text.strip(), flags=re.MULTILINE):
+            _issue(issues, "blocker", "content_depth", f"report contains unfinished sentence pattern: {pattern}")
 
     # Debug/internal ID leakage detection
     for pattern in DEBUG_LEAK_PATTERNS:
@@ -505,13 +531,14 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
             _issue(issues, "blocker", "content_depth", f"report contains debug leakage: {pattern}")
     if _contains_any(text, ("Item 1A", "Risk Factors", "Management's Discussion", "Our business", "We face intense competition")) and len(re.findall(r"\b[A-Za-z]{5,}\b", text)) > 120:
         _issue(issues, "blocker", "raw_english_annual_section_leak", "report appears to contain raw English annual-report sections")
+    report_body_text = "\n".join([str(artifacts.get("report_md") or ""), str(artifacts.get("report_html") or "")])
     for key in ("revenue_growth_pct", "adjusted_net_income", "non_recurring_gain"):
-        if key in text:
+        if key in report_body_text:
             _issue(issues, "blocker", "internal_metric_key_leak", f"internal metric key leaked: {key}")
 
     # Raw SEC companyfacts dump detection
     for pat in COMPANYFACTS_DUMP_PATTERNS_RE:
-        if re.search(pat, text):
+        if re.search(pat, body_text):
             _issue(issues, "blocker", "content_depth", f"report contains raw companyfacts dump: {pat}")
 
     # Internal ID in rendered HTML
@@ -533,6 +560,18 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
     if total_checks == 0:
         return 1.0
     return round(passes / total_checks, 4)
+
+
+def _section_has_truncation(body: str) -> bool:
+    lines = [line.strip() for line in str(body or "").splitlines() if line.strip()]
+    if not lines:
+        return False
+    tail = lines[-1]
+    if tail.startswith("|"):
+        return False
+    if tail.endswith(("。", "！", "？", ".", "!", "?", "）", ")", "]", "】")):
+        return False
+    return bool(re.search(r"(?:与|及|和|并|或|、|：|，|,)$", tail) or len(tail) >= 12)
 
 
 def _has_orphan_numeric_summary(text: str) -> bool:
@@ -638,13 +677,16 @@ def _check_delivery_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any
         _issue(issues, "blocker", "delivery_policy", "investment conclusion has direction but lacks reason, growth driver, competitive pressure or valuation constraint")
 
     evidence_coverage = artifacts.get("evidence_coverage", {}) if isinstance(artifacts.get("evidence_coverage"), dict) else {}
-    if evidence_coverage.get("degrade_required") is True:
-        missing = ", ".join(str(item) for item in evidence_coverage.get("missing_requirements", [])[:6])
+    if evidence_coverage.get("formal_delivery_allowed") is False or evidence_coverage.get("degrade_required") is True:
+        reasons = evidence_coverage.get("blocking_reasons")
+        if not isinstance(reasons, list) or not reasons:
+            reasons = evidence_coverage.get("missing_requirements", [])
+        missing = ", ".join(str(item) for item in reasons[:6]) if isinstance(reasons, list) else str(reasons)
         _issue(
             issues,
             "blocker",
             "official_evidence",
-            f"Official evidence is insufficient for formal A/H delivery; degrade strong conclusions: {missing}",
+            f"Official evidence is insufficient for formal delivery; generate draft only until fixed: {missing}",
         )
 
 
@@ -694,9 +736,10 @@ def _check_cross_market_regressions(
         and int(local_meta.get("source_record_count") or 0) == 0
         and str(local_meta.get("mode_effective") or "") != "unavailable"
     ):
+        severity = "warning" if _artifact_has_evidence_records(artifacts) else "blocker"
         _issue(
             issues,
-            "blocker",
+            severity,
             "retrieval_unavailable_misreported",
             "local retrieval reports a vector/hybrid mode although no candidate records were loaded",
         )
@@ -706,13 +749,25 @@ def _check_cross_market_regressions(
     peer = contracts_data.get("peer_compare", {}) if isinstance(contracts_data, dict) else {}
     if isinstance(peer, dict) and str(peer.get("status") or "") == "supported":
         text = str(peer.get("deterministic_text") or "")
+        report_peer_body = _section_body(_report_text(artifacts), ("同行对比", "同行比较", "peer_compare", "peer comparison"))
+        boundary_disclosed = _contains_any(
+            report_peer_body,
+            (
+                "没有完整同业样本",
+                "同业样本不足",
+                "不输出绝对强弱排序",
+                "保留审慎比较口径",
+                "补齐同行",
+                "peer data gap",
+            ),
+        )
         rows = [line for line in text.splitlines() if line.startswith("|")][2:]
         populated = [
             line for line in rows
             if any(token.strip() for token in line.split("|")[3:7])
             and "目标公司" not in line
         ]
-        if not populated:
+        if not populated and not boundary_disclosed:
             _issue(issues, "blocker", "peer_supported_without_metrics", "peer comparison is supported without a populated non-target peer row")
 
     summary = artifacts.get("summary", {}) if isinstance(artifacts.get("summary"), dict) else {}
@@ -896,6 +951,67 @@ def _check_cross_report_symbol_pollution(artifacts: Dict[str, Any], issues: List
     unexpected = sorted(symbol for symbol in cleaned if symbol and symbol not in approved)
     if unexpected:
         _issue(issues, "blocker", "cross_report_symbol_pollution", f"unexpected ticker-like symbols in final html: {unexpected[:8]}")
+
+
+def _check_evidence_identity_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
+    expected_symbol = _expected_symbol(artifacts)
+    if not expected_symbol:
+        return
+    expected_terms = _identity_terms_for_symbol(expected_symbol, artifacts)
+    if not expected_terms:
+        return
+    polluted: list[str] = []
+    for record in artifacts.get("evidence", []):
+        if not isinstance(record, dict):
+            continue
+        evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
+        source_type = str(record.get("source_type") or "").lower()
+        if source_type not in {"hkex_announcement", "cninfo_announcement", "exchange_announcement", "pdf_section"}:
+            continue
+        text = " ".join(
+            [
+                str(record.get("title") or ""),
+                str(record.get("content") or ""),
+                str(record.get("source_url") or ""),
+            ]
+        ).lower()
+        if not text.strip():
+            continue
+        if any(term in text for term in expected_terms):
+            continue
+        polluted.append(evidence_id or str(record.get("title") or source_type))
+    if polluted:
+        _issue(
+            issues,
+            "fatal",
+            "evidence_identity_pollution",
+            f"official/pdf evidence does not mention target company {expected_symbol}: {polluted[:5]}",
+        )
+
+
+def _identity_terms_for_symbol(symbol: str, artifacts: Dict[str, Any]) -> set[str]:
+    symbol_text = str(symbol or "").strip().lower()
+    terms = {symbol_text}
+    if "." in symbol_text:
+        terms.add(symbol_text.split(".", 1)[0].lstrip("0") or symbol_text.split(".", 1)[0])
+    summary = artifacts.get("summary", {}) if isinstance(artifacts.get("summary"), dict) else {}
+    entity = summary.get("entity_resolution", {}) if isinstance(summary.get("entity_resolution"), dict) else {}
+    for raw in [entity.get("company_name"), entity.get("resolved_name")]:
+        name = str(raw or "").strip().lower()
+        if not name:
+            continue
+        terms.add(name)
+        simplified = re.sub(r"\b(holdings|holding|limited|ltd|inc|corp|corporation|company|co)\b\.?", "", name, flags=re.I)
+        simplified = " ".join(simplified.split())
+        if len(simplified) >= 4:
+            terms.add(simplified)
+        for token in re.split(r"[^a-z0-9]+", name):
+            if len(token) >= 5:
+                terms.add(token)
+    # Known bilingual aliases used by local real-data fixtures and HK reports.
+    if symbol_text == "0700.hk":
+        terms.update({"tencent", "腾讯"})
+    return {term for term in terms if len(term) >= 3}
 
 
 def _check_peer_metric_contamination(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
@@ -1142,6 +1258,16 @@ def _only_local_sources(engines: List[str]) -> bool:
     return not any(engine in remote for engine in engines)
 
 
+def _artifact_has_evidence_records(artifacts: Dict[str, Any]) -> bool:
+    evidence = artifacts.get("evidence")
+    if isinstance(evidence, list) and any(isinstance(item, dict) for item in evidence):
+        return True
+    claims = artifacts.get("claims")
+    if isinstance(claims, list):
+        return any(isinstance(item, dict) and item.get("evidence_ids") for item in claims)
+    return False
+
+
 def _required_gate_checks(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> Dict[str, Any]:
     text = _report_text(artifacts)
     tables = artifacts["tables"]
@@ -1270,7 +1396,7 @@ def _blackboard_valuation_gap_is_explained(artifacts: Dict[str, Any]) -> bool:
 
 
 def _investment_conclusion_has_direction_and_reason(text: str) -> bool:
-    body = _section_body(text, ("investment_conclusion", "recommendation", "rating", "投资建议", "评级"))
+    body = _section_body(text, ("investment_conclusion", "recommendation", "rating", "投资结论", "投资建议", "评级"))
     if not body:
         return False
     has_direction = _contains_any(body, ("neutral", "cautious", "positive", "buy", "hold", "sell", "watch", "中性", "买入", "持有", "卖出"))
@@ -1293,6 +1419,15 @@ def _period_alignment_score(artifacts: Dict[str, Any], issues: List[Dict[str, An
     summary_period = str(artifacts["summary"].get("period") or "").upper()
     if not summary_period:
         return 0.7
+    fy_mismatches = _fy_end_date_mismatches(artifacts, summary_period)
+    if fy_mismatches:
+        _issue(
+            issues,
+            "blocker",
+            "source_period_mismatch",
+            f"target fiscal period {summary_period} conflicts with source end dates: {fy_mismatches[:5]}",
+        )
+        return 0.45
     mismatches = []
     for claim in artifacts["claims"]:
         if not isinstance(claim, dict):
@@ -1328,6 +1463,83 @@ def _period_alignment_score(artifacts: Dict[str, Any], issues: List[Dict[str, An
         )
         return 0.7 if has_delay_note else 0.45
     return 1.0
+
+
+def _fy_end_date_mismatches(artifacts: Dict[str, Any], summary_period: str) -> list[str]:
+    match = re.fullmatch(r"FY(20\d{2})", str(summary_period or "").upper())
+    if not match:
+        return []
+    target_year = int(match.group(1))
+    mismatches: list[str] = []
+    for source_name, item in _iter_period_records(artifacts):
+        end_date = _record_end_date(item)
+        if not end_date:
+            continue
+        if _record_has_fiscal_alias(item, summary_period):
+            continue
+        if end_date[:4].isdigit() and int(end_date[:4]) != target_year:
+            label = str(item.get("evidence_id") or item.get("source_evidence_id") or item.get("table_id") or source_name)
+            mismatches.append(f"{label}:{end_date}")
+    return list(dict.fromkeys(mismatches))
+
+
+def _iter_period_records(artifacts: Dict[str, Any]):
+    for key in ["evidence", "tables"]:
+        for item in artifacts.get(key, []):
+            if not isinstance(item, dict):
+                continue
+            yield key, item
+            rows = item.get("rows")
+            if isinstance(rows, list):
+                for row in rows:
+                    if isinstance(row, dict):
+                        yield key, row
+            metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            financials = metadata.get("financials") if isinstance(metadata.get("financials"), dict) else {}
+            for nested_key in ["income_history", "balance_history", "cashflow_history", "cash_flow_history"]:
+                rows = financials.get(nested_key)
+                if isinstance(rows, list):
+                    for row in rows:
+                        if isinstance(row, dict):
+                            yield f"{key}.{nested_key}", row
+    metrics = artifacts.get("financial_metrics", {})
+    metric_rows = metrics if isinstance(metrics, list) else metrics.get("metrics", []) if isinstance(metrics, dict) else []
+    if isinstance(metric_rows, list):
+        for item in metric_rows:
+            if isinstance(item, dict):
+                yield "financial_metrics", item
+
+
+def _record_end_date(item: Dict[str, Any]) -> str:
+    for key in ["end_date", "report_date", "end", "date"]:
+        value = str(item.get(key) or "").strip()
+        if re.fullmatch(r"20\d{2}-\d{2}-\d{2}", value):
+            return value
+    return ""
+
+
+def _record_has_fiscal_alias(item: Dict[str, Any], summary_period: str) -> bool:
+    metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    target = re.fullmatch(r"FY(20\d{2})", str(summary_period or "").upper())
+    target_year = int(target.group(1)) if target else None
+    for source in [item, metadata]:
+        for key in ["fy", "fiscal_year"]:
+            try:
+                if target_year is not None and int(str(source.get(key) or "").strip()) == target_year:
+                    return True
+            except ValueError:
+                continue
+        for key in ["fiscal_period", "fiscalPeriod", "fiscal_year_label"]:
+            if str(source.get(key) or "").strip().upper() == summary_period:
+                return True
+        fp = str(source.get("fp") or source.get("fiscal_quarter") or "").strip().upper()
+        if target_year is not None and fp == "FY":
+            try:
+                if int(str(source.get("fy") or source.get("fiscal_year") or "").strip()) == target_year:
+                    return True
+            except ValueError:
+                continue
+    return False
 
 
 def _collect_data_periods(artifacts: Dict[str, Any]) -> set[str]:

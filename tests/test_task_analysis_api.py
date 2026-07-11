@@ -236,6 +236,59 @@ def test_report_task_analysis_detects_report_citation_usage_gap(tmp_path):
     assert checks["citation_usage"]["title"] == "报告引用使用"
 
 
+def test_report_task_analysis_exposes_official_evidence_delivery_gate(tmp_path):
+    client, service = build_client(tmp_path)
+    seed_analysis_package(service)
+    output_dir = tmp_path / "official_gap_outputs"
+    output_dir.mkdir()
+    with service.session() as session:
+        task = session.query(ReportTask).filter(ReportTask.task_id == "task-analysis").one()
+        metadata = dict(task.metadata_json or {})
+        metadata["output_dir"] = str(output_dir)
+        metadata["pre_generation_evidence_gate"] = {
+            "status": "success",
+            "blocked": False,
+            "draft_ready": True,
+            "delivery_ready": True,
+            "summary": "生成前证据门禁通过。",
+            "coverage": {"candidate_count": 1, "returned_sources": ["sec_edgar"]},
+        }
+        task.metadata_json = metadata
+        session.commit()
+
+    (output_dir / "evidence_coverage.json").write_text(
+        json.dumps(
+            {
+                "symbol": "NVDA",
+                "market": "us",
+                "period": "FY2024",
+                "official_record_count": 0,
+                "required_official_sources": ["SEC EDGAR 10-K/10-Q or SEC Company Facts matching the requested fiscal period"],
+                "missing_requirements": ["period_matched_official_filing"],
+                "blocking_reasons": ["missing period-matched SEC filing or SEC Company Facts"],
+                "recommended_actions": ["Fetch the matching SEC EDGAR filing or SEC Company Facts for this fiscal period."],
+                "draft_generation_allowed": True,
+                "formal_delivery_allowed": False,
+                "degrade_required": True,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    with client:
+        response = client.get("/api/report-tasks/task-analysis/analysis")
+
+    assert response.status_code == 200
+    gate = response.json()["task"]["metadata"]["pre_generation_evidence_gate"]
+    assert gate["draft_ready"] is True
+    assert gate["delivery_ready"] is False
+    assert gate["official_evidence_coverage"]["formal_delivery_allowed"] is False
+    assert gate["delivery_blocked_reasons"][0]["label"] == "官方证据不足"
+    assert "SEC" in gate["delivery_blocked_reasons"][0]["description"]
+    assert gate["recommended_actions"][0]["view"] == "datasources"
+
+
 def test_report_task_analysis_retrieval_diagnostics_separates_pool_from_period_hits(tmp_path):
     client, service = build_client(tmp_path)
     with service.session() as session:

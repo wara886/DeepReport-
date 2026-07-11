@@ -95,6 +95,51 @@ def test_financial_gate_failures_route_to_data_and_claim_owners(tmp_path):
     assert "StatementAgent" not in agents
 
 
+def test_content_depth_failures_route_to_section_rewrite(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    (outputs / "run_summary.json").write_text(
+        json.dumps({"symbol": "AAPL", "period": "FY2024"}),
+        encoding="utf-8",
+    )
+    (outputs / "quality_report.json").write_text(
+        json.dumps({"objective_pass": False, "total_score": 0.7}),
+        encoding="utf-8",
+    )
+    (outputs / "llm_quality_review.json").write_text(
+        json.dumps({"llm_review_pass": False, "issues": []}),
+        encoding="utf-8",
+    )
+    (outputs / "delivery_gate.json").write_text(
+        json.dumps(
+            {
+                "delivery_pass": False,
+                "issues": [
+                    {
+                        "severity": "blocker",
+                        "category": "content_depth",
+                        "message": "估值观察 appears truncated or ends with an unfinished phrase",
+                    },
+                    {
+                        "severity": "blocker",
+                        "category": "content_depth",
+                        "message": "投资结论 content insufficient: only 22 chars (threshold 160)",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    plan = build_quality_remediation_plan(tmp_path / "run")
+    agents = [item["agent"] for item in plan["responsible_agents"]]
+
+    assert "valuation" in plan["failed_sections"]
+    assert "investment_conclusion" in plan["failed_sections"]
+    assert "FinalAnswerAgent" in agents
+    assert any("formal section contract" in item.lower() for item in plan["required_fixes"])
+
+
 def test_durable_memory_persists_quality_feedback_constraints(tmp_path):
     store = DurableMemoryStore(root=tmp_path / "memory")
     plan = {

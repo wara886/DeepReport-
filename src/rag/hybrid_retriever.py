@@ -98,6 +98,7 @@ class HybridRetriever:
             "returned_hit_count": len(returned),
             "bm25_hit_count": len(bm25_hits),
             "dense_hit_count": len(dense_hits),
+            "vector_hit_count": len(dense_hits),
             "graph_hit_count": len(graph_hits),
             "chunking_enabled": use_chunks,
             "chunk_count": record_count if use_chunks else 0,
@@ -114,6 +115,7 @@ class HybridRetriever:
             "load_errors": store_meta.get("load_errors", []),
             "failure_reason": _failure_reason(records=records, returned=returned, symbol=symbol, period=period),
         }
+        _add_component_score_stats(meta, returned)
         meta["coverage"] = build_retrieval_coverage(
             candidates=[record.to_dict() for record in records],
             returned=returned,
@@ -214,3 +216,20 @@ def _section_boost_for_hit(hit: dict[str, Any], intents: list[str]) -> float:
         if tags.intersection(target_tags):
             boost += 0.02
     return min(boost, 0.08)
+
+
+def _add_component_score_stats(meta: dict[str, Any], hits: list[dict[str, Any]]) -> None:
+    for field in ("bm25_score", "vector_score", "graph_score", "rerank_score", "final_score"):
+        scores: list[float] = []
+        for hit in hits:
+            value = hit.get(field)
+            if value is None:
+                continue
+            try:
+                scores.append(float(value))
+            except (TypeError, ValueError):
+                continue
+        prefix = field.removesuffix("_score")
+        meta[f"{prefix}_score_min"] = min(scores) if scores else None
+        meta[f"{prefix}_score_max"] = max(scores) if scores else None
+        meta[f"{prefix}_score_mean"] = (sum(scores) / len(scores)) if scores else None

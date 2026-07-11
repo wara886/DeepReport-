@@ -120,8 +120,8 @@ docs/implementation_notes/legacy_cleanup.md
 | P0 最小可演示投研工作台 | 已完成并提交 | 已具备工作台外壳、投研首页、任务创建/取消、文档处理、证据库、Claim 复核、导出入口、严格漏斗和基础用户流。 |
 | P1 投研空间、数据源、采集、手动导入、词典、PromptOps、Harness、财务事实 | 已完成核心闭环，已做收尾提交 | 已补齐数据源健康、补采集闭环、PromptOps 版本管理、Harness 观测、质量证明解释、任务分析链路总览、文档空状态引导。 |
 | P2 Hybrid RAG、实体库、关系图谱、投资线索 | P2.1-P2.5 核心闭环已完成 | 已具备检索诊断、引用使用闭环、任务级实体记忆、投资线索、投资逻辑链和风险传导链；后续继续做质量回归，不优先引入复杂图数据库。 |
-| P3 评测中心、导出中心与生产化 | P3.1/P3.2 已进入，P3.3 待完成 | 已有单任务诊断、回归矩阵、Formal-18/Quick-9/回归集产物导入，以及 Markdown/HTML/JSON/CSV 正式包预览和下载；PDF/DOCX 与统一生产可观测仍待完成。 |
-| R0 统一 Agent Runtime | R0.1/R0.2 核心已完成 | 已新增 `ReportRunState`、合法状态迁移、统一 readiness，并由 LangGraph 接管 evidence、generation、quality、finalize、human review 节点；已接 SQLite checkpoint、失败节点恢复和 Claim interrupt/resume。 |
+| P3 评测中心、导出中心与生产化 | P3.1-P3.3 核心已完成 | 已有单任务诊断、回归矩阵、Formal-18/Quick-9/回归集产物导入，以及 Markdown/HTML/PDF/DOCX/JSON/CSV 正式包、幂等 manifest 和运行观测。 |
+| R0 统一 Agent Runtime | R0.1-R0.3 核心已完成 | 已新增 `ReportRunState`、合法状态迁移、统一 readiness，由 LangGraph 接管节点，并接入 checkpoint、失败恢复、Claim interrupt/resume、trace context、节点耗时和成本聚合。 |
 
 最近关键提交：
 
@@ -223,12 +223,14 @@ pytest -q --disable-warnings \
 - 外部同行发现、Yahoo 估值倍数和 FRED 利率改为显式 opt-in；默认测试和离线报告不会再因隐藏网络 fallback 卡在 SSL/yfinance 等待。
 - 2026-07-10 全量收集 855 项；`pytest -q --disable-warnings --maxfail=20` 全部通过（4 项按既有条件 skip）。
 
-#### R0.3：生产化与 P3 收尾（下一阶段）
+#### R0.3：生产化与 P3 收尾（核心已完成）
 
-- 补 PDF/DOCX 正式导出，并继续遵守统一 ExportReadiness。
-- `request_id/run_id/task_id` 贯穿 API、LangGraph 节点、LLM、工具和结构化日志。
-- 补 checkpoint 恢复、重复执行幂等、人工复核恢复、成本/延迟聚合和失败降级测试。
-- 修复仓库既有全量回归债务后，完成阶段提交、推送和合并 `main`。
+- PDF/DOCX 已进入正式导出包，并继续遵守统一 ExportReadiness；PDF 使用 ReportLab 生成，已完成中文页面渲染检查。
+- 导出包新增 `formal_export_manifest.v1`、文件 SHA-256 与 package digest；相同包重复执行直接复用已有文件。
+- `request_id/run_id/task_id` 已贯穿 FastAPI 请求头、任务 metadata、LangGraph state/runtime event、正式导出和任务详情。
+- 节点耗时、任务总耗时、LLM 运行数、Token、成本和时延聚合到 `runtime_observability`。
+- Claim 全部复核后如仍存在证据/质量阻塞，状态改为 `remediation_required`，不再误显示“需要人工复核”。
+- 新增 PDF、正式导出幂等、request ID、节点耗时和人工恢复测试；下一步按三市场 UX 审计继续处理数据权威性、单位合同和修复闭环。
 
 ## 2. 参考视频二次复核结果：不能遗漏的产品能力
 

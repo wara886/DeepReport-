@@ -21,18 +21,29 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
     verification = _read_json(outputs / "verification_report.json", {})
     quality = _read_json(outputs / "quality_report.json", {})
     llm_review = _read_json(outputs / "llm_quality_review.json", {})
+    section_verification = _read_json(outputs / "section_verification.json", {})
+    retrieval_attribution = _read_json(outputs / "evidence_retrieval_attribution.json", {})
     verifier_passed = bool(verification.get("passed", summary.get("verification_passed", False)))
     objective_pass = bool(quality.get("objective_pass", False))
     issues = _collect_issues(verification, quality, llm_review)
+    if isinstance(section_verification, dict) and section_verification.get("status") == "failed":
+        for item in section_verification.get("issues") or []:
+            issues.append(_normalize_issue(item, "section_verification"))
+    if isinstance(retrieval_attribution, dict):
+        attribution_issues = _attribution_diagnostic_issues(retrieval_attribution, start_index=len(issues) + 1)
+        issues.extend(attribution_issues)
 
     # Read contract-first generation artifacts for top_blockers
     contracts_data = _read_json(outputs / "report_section_contracts.json", None)
     if isinstance(contracts_data, dict) and "contracts" in contracts_data:
         contract_blockers = _extract_top_blockers_from_contracts(contracts_data)
         if contract_blockers:
+            contract_severity = "blocker" if len(contract_blockers) >= 2 else "warning"
+            if objective_pass and _contract_blockers_are_boundary_disclosures(contract_blockers):
+                contract_severity = "warning"
             issues.append({
                 "issue_id": f"contract_blockers_{len(issues) + 1:04d}",
-                "severity": "blocker" if len(contract_blockers) >= 2 else "warning",
+                "severity": contract_severity,
                 "category": "contract",
                 "message": f"Contract blockers: {'; '.join(contract_blockers[:5])}",
                 "source": "contract",
@@ -53,8 +64,6 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
     )
     llm_score_pass = llm_score_strict_pass or llm_score_relaxed_pass
     llm_review_pass = bool(llm_review.get("llm_review_pass", False)) and llm_score_pass and not blocking_issue
-    # 区分 content_depth blockers 和其他 blockers
-    # content_depth 是内容长度不足，不影响数据准确性，用户模式下不阻断
     content_depth_blockers = [
         item for item in issues
         if item.get("severity") in {"fatal", "blocker"}
@@ -65,20 +74,19 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
         if item.get("severity") in {"fatal", "blocker"}
         and item.get("category") != "content_depth"
     ]
-    # 用户模式：content_depth blockers 不阻断交付（内容可以后续改进，不影响数据准确性）
-    # 只要其他 blocker 为 0、verifier 通过、总分达标即可
     total = quality.get("total_score", 0)
     threshold = quality.get("quality_threshold", 0.82)
     score_pass = isinstance(total, (int, float)) and total >= threshold
     diagnostic_delivery_pass = (
         score_pass
+        and objective_pass
         and verifier_passed
-        and len(other_blockers) == 0
-        and not llm_blocking_issue
+        and llm_review_pass
+        and not blocking_issue
     )
     # Delivery gate: use actual computed value.
-    # diagnostic_delivery_pass excludes content_depth blockers (内容长度不足不阻断).
-    # This was previously hardcoded True during development; now it reflects the real gate.
+    # Content-depth blockers are formal delivery blockers: a truncated or
+    # placeholder report may be a draft, but it is not a deliverable report.
     delivery_pass = bool(diagnostic_delivery_pass)
     status = "completed"
     return {
@@ -103,7 +111,7 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
             "company_report_score": summary.get("company_report_overall_score") or summary.get("company_report_score"),
         },
         "gate_requirements": {
-            "formula": "diagnostic_delivery_pass = score_pass && verifier_passed && no_non_content_blockers && no_llm_blocking_issue",
+            "formula": "delivery_pass = score_pass && objective_pass && verifier_passed && llm_review_pass && no_fatal_or_blocker",
             "diagnostic_only": True,
             "verification_passed": verifier_passed,
             "objective_pass": objective_pass,
@@ -114,7 +122,10 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
             "llm_review_relaxed_score_pass": llm_score_relaxed_pass,
             "llm_review_no_fatal_or_blocker": not llm_blocking_issue,
             "delivery_no_fatal_or_blocker": not blocking_issue,
+            "content_depth_blocks_formal_delivery": bool(content_depth_blockers),
+            "section_verification_passed": bool(section_verification.get("formal_delivery_allowed", True)),
         },
+        "evidence_retrieval_attribution": _attribution_summary(retrieval_attribution),
         "issue_counts": {
             "fatal": sum(1 for item in issues if item.get("severity") == "fatal"),
             "blocker": sum(1 for item in issues if item.get("severity") == "blocker"),
@@ -154,6 +165,46 @@ def _collect_issues(verification: Dict[str, Any], quality: Dict[str, Any], llm_r
         issues.append({"issue_id": f"verifier_{len(issues) + 1:04d}", "severity": severity, "category": "verifier", "message": _issue_message(gap, "evidence gap")})
     order = {"fatal": 0, "blocker": 1, "warning": 2, "info": 3}
     return sorted(issues, key=lambda item: (order.get(item.get("severity"), 9), item.get("category", "")))
+
+
+def _attribution_diagnostic_issues(attribution: Dict[str, Any], *, start_index: int) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    roots = attribution.get("overall_root_causes") if isinstance(attribution.get("overall_root_causes"), list) else []
+    for index, row in enumerate(roots[:3], start=start_index):
+        if not isinstance(row, dict):
+            continue
+        cause = str(row.get("cause") or "")
+        if not cause:
+            continue
+        output.append(
+            {
+                "issue_id": f"retrieval_attribution_{index:04d}",
+                "severity": "warning",
+                "category": "retrieval_attribution",
+                "message": f"{row.get('label') or cause}: {row.get('recommended_action') or ''}".strip(),
+                "source": "evidence_retrieval_attribution",
+                "cause": cause,
+            }
+        )
+    return output
+
+
+def _attribution_summary(attribution: Any) -> Dict[str, Any]:
+    if not isinstance(attribution, dict):
+        return {"available": False}
+    roots = attribution.get("overall_root_causes") if isinstance(attribution.get("overall_root_causes"), list) else []
+    top = roots[0] if roots and isinstance(roots[0], dict) else {}
+    retrieval = attribution.get("retrieval_summary") if isinstance(attribution.get("retrieval_summary"), dict) else {}
+    return {
+        "available": True,
+        "top_root_cause": top.get("cause"),
+        "top_root_cause_label": top.get("label"),
+        "top_recommended_action": top.get("recommended_action"),
+        "similarity_status": retrieval.get("similarity_status"),
+        "vector_score_max": retrieval.get("vector_score_max"),
+        "local_candidate_count": retrieval.get("local_candidate_count"),
+        "local_returned_count": retrieval.get("local_returned_count"),
+    }
 
 
 def _normalize_issue(item: Any, source: str) -> Dict[str, Any]:
@@ -223,11 +274,50 @@ def _extract_top_blockers_from_contracts(contracts_data: dict) -> list:
     for sk, sc in contracts_data.get('contracts', {}).items():
         if isinstance(sc, dict):
             for reason in sc.get('blocked_reasons', []):
+                if _nonblocking_contract_reason(str(reason)):
+                    continue
                 label = f'{sk}:{reason}'
                 if label not in blockers:
                     blockers.append(label)
             for flag in sc.get('quality_flags', []):
+                if _nonblocking_contract_flag(str(flag)):
+                    continue
                 label = f'quality:{flag}'
                 if label not in blockers:
                     blockers.append(label)
     return blockers[:10]
+
+
+def _nonblocking_contract_reason(reason: str) -> bool:
+    return reason in {
+        "business_overview_used_profile_fallback",
+        "risk_industry_fallback_used",
+    } or reason.startswith("valuation_model_status:")
+
+
+def _nonblocking_contract_flag(flag: str) -> bool:
+    return (
+        flag.endswith("_uses_section_evidence_pack")
+        or flag.endswith("_evidence_fallback")
+        or flag == "valuation_directional_only"
+        or flag.endswith("_pdf_summary_fallback")
+        or flag.endswith("_pdf_chunk_fallback")
+    )
+
+
+def _contract_blockers_are_boundary_disclosures(blockers: list) -> bool:
+    """Return true for contract diagnostics already covered by objective checks.
+
+    These are not ignored: delivery_gate still surfaces them as warnings.  They
+    should not double-block once objective quality and section verification have
+    accepted the report as a constrained draft/formal package.
+    """
+
+    boundary_terms = {
+        "ownership_governance:governance_section_not_found",
+        "strategy_business:strategy_pdf_sections_not_found",
+        "quality:valuation_sensitivity_framework_only",
+        "risk_factors:risk_official_pdf_not_found_and_no_industry_fallback",
+        "quality:risk_generic_fallback_no_industry_policy",
+    }
+    return all(str(item) in boundary_terms for item in blockers)

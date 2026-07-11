@@ -1,5 +1,6 @@
 import json
 
+from src.agents.final_answer_agent import auto_rewrite_core_sections
 from src.evaluation.report_quality import _check_delivery_policy, evaluate_report_quality, write_quality_outputs
 
 
@@ -30,6 +31,177 @@ Alphabet Inc. (GOOGL) 的核心业务覆盖搜索、广告、云和 Other Bets�
     assert any(issue["category"] == "cross_report_symbol_pollution" for issue in report["issues"])
 
 
+def test_quality_evaluator_blocks_official_evidence_identity_pollution(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="0700.HK",
+        period="FY2025",
+        report_md="""
+# 0700.HK FY2025 公司研报
+
+## 执行摘要
+腾讯控股财务数据需要官方来源复核。
+## 业务概览
+腾讯主营社交、游戏、广告和金融科技业务。
+## 三表摘要
+三表摘要已覆盖收入、利润和现金流。
+## 财务分析
+财务分析围绕收入、利润和现金流。
+## 同行对比
+同行比较围绕互联网平台公司。
+## 估值观察
+估值观察围绕收入和利润。
+## 估值敏感性
+敏感性围绕利润率和折现率。
+## 风险评估
+风险覆盖监管、竞争和宏观。
+## 投资结论
+基于估值和风险，维持中性观察。
+""",
+        evidence=[
+            {
+                "evidence_id": "hkex_wrong_pdf",
+                "source_type": "hkex_announcement",
+                "symbol": "0700.HK",
+                "period": "FY2025",
+                "title": "ANNUAL RESULTS FOR THE YEAR ENDED 31 MARCH 2025",
+                "content": "Century Entertainment International Holdings Limited annual results revenue and cash.",
+                "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0626/2025062600015.pdf",
+            }
+        ],
+        claims=[{"claim_id": "cl_1", "section_name": "financial_analysis", "claim_text": "腾讯收入增长。", "evidence_ids": ["hkex_wrong_pdf"]}],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert any(issue["category"] == "evidence_identity_pollution" for issue in report["issues"])
+
+
+def test_quality_evaluator_blocks_fy_source_end_date_mismatch(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="AAPL",
+        period="FY2024",
+        report_md="""
+# AAPL FY2024 公司研报
+
+## 执行摘要
+AAPL FY2024 报告引用结构化财务数据。
+## 业务概览
+Apple Inc. 业务覆盖硬件、软件和服务。
+## 三表摘要
+收入、净利润和经营现金流均已列示。
+## 财务分析
+财务分析覆盖收入、净利润和现金流。
+## 同行对比
+同行比较围绕消费电子公司。
+## 估值观察
+估值观察围绕 P/E、P/S 和 DCF。
+## 估值敏感性
+敏感性围绕增长和折现率。
+## 风险评估
+风险覆盖需求、竞争和监管。
+## 投资结论
+基于估值和风险，维持中性观察。
+""",
+        evidence=[
+            {
+                "evidence_id": "aapl_yahoo_wrong_fy",
+                "source_type": "market_api",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "title": "AAPL Yahoo Finance financial data",
+                "content": "FY2024 income: end_date=2025-09-30, revenue=416161000000.0",
+                "metadata": {"financials": {"income_history": [{"end_date": "2025-09-30", "Total Revenue": 416161000000.0}]}},
+            }
+        ],
+        claims=[{"claim_id": "cl_1", "section_name": "financial_analysis", "claim_text": "AAPL FY2024 revenue was 416.16B.", "evidence_ids": ["aapl_yahoo_wrong_fy"]}],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert any(issue["category"] == "source_period_mismatch" for issue in report["issues"])
+
+
+def test_quality_evaluator_allows_official_fiscal_year_end_date_alias(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="AAPL",
+        period="FY2024",
+        report_md="""
+# AAPL FY2024 公司研报
+
+## 执行摘要
+AAPL FY2024 报告引用 SEC 财政年数据。
+## 业务概览
+Apple Inc. 业务覆盖硬件、软件和服务。
+## 三表摘要
+收入、净利润和经营现金流均已列示。
+## 财务分析
+财务分析覆盖收入、净利润和现金流。
+## 同行对比
+同行比较围绕消费电子公司。
+## 估值观察
+估值观察围绕 P/E、P/S 和 DCF。
+## 估值敏感性
+敏感性围绕增长和折现率。
+## 风险评估
+风险覆盖需求、竞争和监管。
+## 投资结论
+基于估值和风险，维持中性观察。
+""",
+        evidence=[
+            {
+                "evidence_id": "aapl_sec_fy2024",
+                "source_type": "sec_edgar",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "title": "Apple 2024 Form 10-K",
+                "content": "Apple fiscal 2024 Form 10-K revenue.",
+                "metadata": {"financials": {"income_history": [{"end_date": "2024-09-28", "fy": 2024, "fp": "FY"}]}},
+            }
+        ],
+        claims=[{"claim_id": "cl_1", "section_name": "financial_analysis", "claim_text": "AAPL FY2024 revenue came from SEC.", "evidence_ids": ["aapl_sec_fy2024"]}],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "source_period_mismatch" for issue in report["issues"])
+
+
+def test_quality_does_not_flag_internal_metric_key_outside_report_body(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="# Test\n\n## 执行摘要\n完整。\n## 财务分析\n收入和净利润均已说明。\n## 风险评估\n完整。\n## 投资结论\n维持中性，基于估值和风险约束。",
+    )
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "financial_metrics.json").write_text(
+        json.dumps({"metrics": [{"metric_name": "adjusted_net_income", "value": 10, "source_type": "market_api"}]}),
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "internal_metric_key_leak" for issue in report["issues"])
+
+
+def test_quality_retrieval_unavailable_is_warning_when_evidence_records_exist(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="# Test\n\n## 执行摘要\n完整。\n## 财务分析\n收入和净利润均已说明。\n## 风险评估\n完整。\n## 投资结论\n维持中性，基于估值和风险约束。",
+    )
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "search_meta.json").write_text(
+        json.dumps({"engine_meta": {"local_evidence": {"mode": "hybrid", "source_record_count": 0}}}),
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+    issue = next(issue for issue in report["issues"] if issue["category"] == "retrieval_unavailable_misreported")
+
+    assert issue["severity"] == "warning"
+
+
 def test_quality_evaluator_blocks_html_table_markdown_residue(tmp_path):
     run_dir = _write_run(tmp_path, report_md="# Test\n\n## 执行摘要\n完整。\n## 风险评估\n完整。\n## 投资结论\n完整。")
     reports = run_dir / "company" / "reports"
@@ -38,6 +210,100 @@ def test_quality_evaluator_blocks_html_table_markdown_residue(tmp_path):
     report = evaluate_report_quality(run_dir)
 
     assert any(issue["category"] == "html_table_integrity" for issue in report["issues"])
+
+
+def test_quality_half_sentence_check_ignores_javascript_trailing_commas(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# AMD 2025Q4 公司研报
+
+## 执行摘要
+报告基于官方证据和结构化财务指标形成中性观察评级，覆盖业务、财务、估值和风险。
+
+## 业务概览
+公司业务覆盖数据中心、客户端和嵌入式产品，收入质量需要结合需求和竞争观察。
+
+## 财务分析
+收入、利润和经营现金流均用于判断盈利质量，现金流转换率是关键约束。
+
+## 估值观察
+估值判断基于收入增速、利润率、现金流质量和风险溢价，不输出无证据目标价。
+
+## 风险评估
+主要风险包括需求波动、竞争压力、库存变化和估值倍数回落。
+
+## 投资结论
+维持中性观察评级，基于收入、现金流和估值约束，同时关注竞争和风险变化。
+
+## 合规披露
+本文仅供参考，不构成投资建议；不存在利益冲突，保持独立性披露。
+""",
+    )
+    reports = run_dir / "company" / "reports"
+    (reports / "report.html").write_text(
+        "<html><body><script>const config = {data: item.data, labels: item.labels,};</script></body></html>",
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(
+        issue["category"] == "content_depth" and "unfinished sentence pattern" in issue["message"]
+        for issue in report["issues"]
+    )
+
+
+def test_quality_allows_peer_metric_gap_when_report_discloses_boundary(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# AAPL FY2025 公司研报
+
+## 执行摘要
+报告基于财务、风险、估值和同业边界形成中性观察评级。
+
+## 业务概览
+公司业务覆盖硬件、软件和服务生态，收入质量需要结合需求和竞争观察。
+
+## 财务分析
+收入、利润和经营现金流均用于判断盈利质量，现金流转换率是关键约束。
+
+## 同行对比
+同行对比以可比口径为前提，当前没有完整同业样本，因此不输出绝对强弱排序，保留审慎比较口径。
+
+## 估值观察
+估值判断基于收入增速、利润率、现金流质量和风险溢价，不输出无证据目标价。
+
+## 风险评估
+主要风险包括需求波动、竞争压力、库存变化和估值倍数回落。
+
+## 投资结论
+维持中性观察评级，基于收入、现金流和估值约束，同时关注竞争和风险变化。
+
+## 合规披露
+本文仅供参考，不构成投资建议；不存在利益冲突，保持独立性披露。
+""",
+    )
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "report_section_contracts.json").write_text(
+        json.dumps(
+            {
+                "contracts": {
+                    "peer_compare": {
+                        "status": "supported",
+                        "deterministic_text": "| 公司 | 收入增速 | 毛利率 | 净利率 | ROE |\n| --- | --- | --- | --- | --- |\n| Apple Inc. | 10% | 40% | 20% | 30% |",
+                    }
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "peer_supported_without_metrics" for issue in report["issues"])
 
 
 def test_quality_evaluator_blocks_escaped_html_table_markup(tmp_path):
@@ -146,22 +412,25 @@ def test_quality_evaluator_passes_complete_company_report(tmp_path):
 # AMD 2025Q4 公司研报
 
 ## 执行摘要
-AMD 数据中心、客户端、游戏和嵌入式业务共同构成主营业务，本文基于 SEC 与行情来源形成中性投资结论。
+AMD 数据中心、客户端、游戏和嵌入式业务共同构成主营业务，本文基于 SEC 与行情来源形成中性投资结论。报告期内收入、利润、现金流和资产负债结构均围绕 2025Q4 口径展开，核心判断是公司仍具备产品组合优化和数据中心需求拉动的经营韧性，但估值已经反映较高增长预期。正式结论采用审慎表述：认可业务弹性，同时要求持续跟踪毛利率、库存和资本开支变化。
 
-## 主营业务与业务画像
-公司产品覆盖 CPU、GPU、数据中心加速卡和嵌入式芯片，并与 NVIDIA、Intel、Broadcom 做同行比较。
+## 业务概览
+公司产品覆盖 CPU、GPU、数据中心加速卡和嵌入式芯片，收入来源横跨数据中心、客户端、游戏和嵌入式业务。业务画像重点在于高性能计算产品和企业级客户需求，数据中心业务对整体收入增速和毛利率影响更大。客户端与游戏业务受消费电子周期影响较明显，嵌入式业务则提供相对稳定的工业和边缘计算需求。整体来看，公司商业模式依赖产品迭代、渠道覆盖、供应链执行和生态合作，长期竞争力来自架构迭代、软件生态和客户认证周期。
 
-## 财务分析与三表摘要
-收入和利润以亿美元展示，现金流和资产负债表口径与 2025Q4 对齐，毛利率为 50%。
+## 财务分析
+收入和利润以亿美元展示，现金流和资产负债表口径与 2025Q4 对齐，毛利率为 50%。利润表关注收入增速、毛利率和费用率变化，资产负债表关注现金、存货和股东权益结构，现金流量表关注经营现金流能否支撑研发投入和资本开支。若经营现金流持续高于净利润，盈利质量更稳健；若存货增加快于收入增长，则需要警惕需求放缓或产品迭代造成的减值压力。综合三表看，公司仍处于增长投入期，财务质量需要结合收入结构和现金转换率判断，并进一步观察研发投入效率、应收账款周转、自由现金流稳定性和资产周转效率，避免只看利润忽略现金。
 
-## 估值与敏感性
-估值使用 P/E 约为 20x 和 P/B 约为 5x，敏感性分析覆盖收入增速、毛利率和费用率情景。
+## 同行对比
+同行比较以 NVIDIA、Intel、Broadcom 等半导体公司为参考，但不同公司在 GPU、CPU、网络芯片和企业软件暴露度上存在差异。对 AMD 而言，最重要的可比维度包括收入增速、毛利率、研发投入强度、数据中心业务占比和库存周转。若公司毛利率低于高端 GPU 龙头，但收入增速和现金流改善更快，则估值应体现成长弹性与竞争压力并存。同行对比不能简单给出同一倍数结论，必须说明业务结构和利润率差异。
 
-## 投资建议
-维持中性评级，投资结论是估值与增长预期大体匹配。
+## 估值观察
+估值使用 P/E 约为 20x 和 P/B 约为 5x，敏感性分析覆盖收入增速、毛利率和费用率情景。当前估值判断重点不是单一倍数高低，而是增长假设能否被收入结构、毛利率改善和现金流质量支撑。如果数据中心业务继续扩大且费用率保持稳定，估值中枢有支撑；如果竞争加剧导致毛利率下行，估值溢价会收缩。DCF 输入仍需完整预测和折现率假设，因此本节只输出区间化观察，不给出确定性目标价，并把估值弹性主要绑定到收入增速、毛利率和现金流转换率。
 
-## 风险提示
-风险提示包括行业竞争、AI GPU 供给、库存和宏观需求风险。
+## 风险评估
+风险提示包括行业竞争、AI GPU 供给、库存和宏观需求风险。第一，AI 芯片和服务器 CPU 市场竞争激烈，竞争对手产品迭代可能压缩价格和毛利率。第二，供应链和先进制程产能如果出现约束，可能影响交付节奏和收入确认。第三，客户端与游戏需求受宏观消费周期影响，弱需求会放大库存和渠道折扣风险。第四，估值较依赖长期增长假设，若收入增速或现金流低于预期，市场可能重新定价。第五，出口管制、客户集中度和研发投入回报不确定性也会影响长期盈利弹性。
+
+## 投资结论
+维持中性观察评级，投资结论是估值与增长预期大体匹配。上行触发因素包括数据中心收入持续超预期、毛利率改善、经营现金流增强以及库存周转稳定。下行触发因素包括竞争导致价格压力、客户端需求恢复不及预期、资本开支拖累自由现金流，以及估值倍数回落。综合来看，公司经营质量具备韧性，但正式投资判断仍应以后续官方财报、现金流趋势和估值输入复核为前提。基于当前证据，报告更适合支持审慎跟踪和复核，而不是直接形成激进买入结论。
 
 ## 合规披露
 资料来源：SEC EDGAR、Yahoo Finance。本文仅供参考，不构成投资建议；不存在利益冲突，保持独立性披露。
@@ -226,6 +495,90 @@ def test_quality_policy_blocks_ah_formal_delivery_when_official_evidence_is_inco
     )
 
     assert any(issue["category"] == "official_evidence" and issue["severity"] == "blocker" for issue in issues)
+
+
+def test_quality_policy_blocks_formal_delivery_from_coverage_contract():
+    issues = []
+    _check_delivery_policy(
+        {
+            "summary": {"symbol": "AMD", "entity_resolution": {"resolved_symbol": "AMD", "confidence": 0.9}},
+            "search_meta": {},
+            "report_md": "risk valuation source gap",
+            "report_html": "",
+            "evidence_coverage": {
+                "draft_generation_allowed": True,
+                "formal_delivery_allowed": False,
+                "blocking_reasons": ["missing period-matched SEC filing or SEC Company Facts"],
+                "recommended_actions": ["Fetch the matching SEC EDGAR filing."],
+            },
+        },
+        issues,
+    )
+
+    messages = "\n".join(issue["message"] for issue in issues)
+    assert any(issue["category"] == "official_evidence" and issue["severity"] == "blocker" for issue in issues)
+    assert "formal delivery" in messages
+    assert "draft only" in messages
+    assert "A/H" not in messages
+
+
+def test_auto_rewrite_core_sections_reduces_content_depth_blockers(tmp_path):
+    original = """
+# AMD FY2024 公司研报
+
+## 执行摘要
+短。
+
+## 业务概览
+AMD 的业务覆盖数据中心、客户端、游戏和嵌入式板块，产品包括 CPU、GPU、加速卡和嵌入式芯片。公司经营表现需要结合产品周期、客户需求、供应链和竞争格局判断。该部分用于说明业务边界和主要收入驱动，不直接替代财务和估值判断。
+
+## 财务分析
+收入、利润和现金流需要结合利润表、资产负债表和现金流量表分析。若收入增长但现金流承压，需要关注应收账款、库存和资本开支；若毛利率改善且费用率稳定，则盈利质量更具支撑。报告期内财务判断仍应以官方披露和结构化指标复核为前提。
+
+## 同行对比
+同行比较应关注 NVIDIA、Intel、Broadcom 等公司在产品结构、毛利率、研发投入、数据中心暴露度和库存周期上的差异。不同公司业务结构不同，不能直接套用单一估值倍数，需要结合收入质量和利润率水平比较。
+
+## 估值观察
+本报告分别披露相对估值与
+
+## 风险评估
+风险较多。
+
+## 投资结论
+观察。
+"""
+    repaired = auto_rewrite_core_sections(
+        original,
+        claims=[
+            {"section_name": "valuation", "claim_text": "估值需要同时参考收入增速、毛利率和现金流质量。", "evidence_ids": ["ev_val"]},
+            {"section_name": "risks", "claim_text": "需求放缓和竞争加剧可能压缩利润率。", "evidence_ids": ["ev_risk"]},
+            {"section_name": "conclusion", "claim_text": "基于估值约束和风险边界，维持审慎观察。", "evidence_ids": ["ev_conclusion"]},
+        ],
+        evidence_records=[{"evidence_id": "ev_sec", "title": "FY2024 Form 10-K", "source_type": "sec_edgar", "period": "FY2024"}],
+        financial_metrics={"metrics": [{"metric_name": "收入", "value": 100, "unit": "亿美元", "period": "FY2024", "source_type": "sec_edgar"}]},
+        quality_remediation_plan={"quality_feedback_used": True, "failed_sections": ["valuation", "risk", "investment_conclusion", "executive_summary"]},
+    )
+    run_dir = _write_run(
+        tmp_path,
+        report_md=repaired,
+        claims=[
+            {"claim_id": "cl_val", "claim_text": "估值需要同时参考收入增速、毛利率和现金流质量。", "evidence_ids": ["ev_val"]},
+            {"claim_id": "cl_risk", "claim_text": "需求放缓和竞争加剧可能压缩利润率。", "evidence_ids": ["ev_risk"]},
+            {"claim_id": "cl_conclusion", "claim_text": "基于估值约束和风险边界，维持审慎观察。", "evidence_ids": ["ev_conclusion"]},
+        ],
+    )
+
+    report = evaluate_report_quality(run_dir)
+    content_depth_messages = [
+        issue["message"]
+        for issue in report["issues"]
+        if issue["category"] == "content_depth"
+    ]
+
+    assert not any("执行摘要 content insufficient" in msg for msg in content_depth_messages)
+    assert not any("估值观察 appears truncated" in msg for msg in content_depth_messages)
+    assert not any("风险评估 content insufficient" in msg for msg in content_depth_messages)
+    assert not any("投资结论 content insufficient" in msg for msg in content_depth_messages)
 
 
 def test_quality_evaluator_reads_nested_statement_rows_and_cashflow_gap(tmp_path):
@@ -313,6 +666,40 @@ def test_quality_evaluator_fails_when_tables_exist_but_body_omits_three_statemen
     report = evaluate_report_quality(run_dir)
 
     assert report["required_checks"]["details"]["has_three_table_summary"] is False
+
+
+def test_quality_evaluator_blocks_placeholder_section_markers(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# AAPL 2025Q4 公司研报
+
+## 执行摘要
+执行摘要包含财务、估值和风险概览。
+## 业务概览
+业务覆盖硬件、软件和服务。
+## 三表摘要
+本节暂不展开详细分析（evidence_not_available）。
+## 同行对比
+同行比较围绕收入、利润率和估值。
+## 估值观察
+估值观察围绕现金流和市值。
+## 估值敏感性
+本节暂不展开详细分析（valuation_sensitivity_not_available）。
+## 风险评估
+风险覆盖需求、竞争和监管。
+## 投资结论
+维持中性观察，等待官方证据补齐。
+""",
+    )
+
+    report = evaluate_report_quality(run_dir)
+    messages = [issue["message"] for issue in report["issues"] if issue["category"] == "content_depth"]
+
+    assert report["objective_pass"] is False
+    assert any("本节暂不展开详细分析" in message for message in messages)
+    assert any("evidence_not_available" in message for message in messages)
+    assert any("valuation_sensitivity_not_available" in message for message in messages)
 
 
 def test_quality_evaluator_blocks_framework_only_sections_and_weak_conclusion(tmp_path):
@@ -551,6 +938,9 @@ def _write_run(
     charts=None,
     claims=None,
     citations=None,
+    evidence=None,
+    symbol="AMD",
+    period="2025Q4",
 ):
     run_dir = tmp_path / "sample_run"
     outputs = run_dir / "company" / "outputs"
@@ -561,7 +951,7 @@ def _write_run(
         {"claim_id": "cl_1", "claim_text": "业务覆盖 CPU/GPU", "evidence_ids": ["ev_1"], "confidence": 0.9},
         {"claim_id": "cl_2", "claim_text": "估值使用 P/E", "evidence_ids": ["ev_2"], "confidence": 0.85},
     ]
-    evidence = [
+    evidence = evidence if evidence is not None else [
         {"evidence_id": "ev_1", "source_type": "sec_edgar", "trust_level": "primary", "title": "SEC filing"},
         {"evidence_id": "ev_2", "source_type": "yahoo_finance", "trust_level": "secondary", "title": "Market snapshot"},
     ]
@@ -579,7 +969,7 @@ def _write_run(
         {"evidence_id": "ev_2", "claim_ids": ["cl_2"], "title": "Market snapshot"},
     ]
     files = {
-        "run_summary.json": {"symbol": "AMD", "period": "2025Q4", "verification_passed": True},
+        "run_summary.json": {"symbol": symbol, "period": period, "verification_passed": True},
         "claims.json": claims,
         "evidence.json": evidence,
         "citations.json": citations,
@@ -660,6 +1050,87 @@ def test_content_depth_gate_flags_sparse_sections(tmp_path):
     assert "content_depth" in categories, f"Expected content_depth issues, got categories: {categories}"
 
 
+def test_content_depth_gate_runs_without_section_dossiers(tmp_path):
+    """Core section contract must still run when section_dossiers.json is absent."""
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""# Test
+
+## 执行摘要
+短。
+
+## 业务概览
+短。
+
+## 财务分析
+短。
+
+## 同行对比
+短。
+
+## 估值观察
+短。
+
+## 风险评估
+短。
+
+## 投资结论
+短。
+""",
+    )
+
+    report = evaluate_report_quality(run_dir)
+    assert report["objective_pass"] is False
+    cd_issues = [i for i in report.get("issues", []) if i["category"] == "content_depth"]
+    assert any("执行摘要 content insufficient" in i["message"] for i in cd_issues)
+    assert any("投资结论 content insufficient" in i["message"] for i in cd_issues)
+
+
+def test_content_depth_gate_blocks_truncated_core_section(tmp_path):
+    """Half-sentence truncation in a core section blocks formal delivery."""
+    long_text = "公司收入、利润、现金流和资产负债结构均已形成可追溯分析，经营质量说明较完整。" * 8
+    run_dir = _write_run_with_dossiers(
+        tmp_path,
+        report_md=f"""# Test
+
+## 执行摘要
+{long_text}
+
+## 业务概览
+{long_text}
+
+## 财务分析
+{long_text}
+
+## 同行对比
+{long_text}
+
+## 估值观察
+本报告分别披露相对估值与
+
+## 风险评估
+{long_text}
+
+## 投资结论
+{long_text}
+""",
+        section_dossiers={
+            "executive_summary": {"min_content_level": "full"},
+            "business_overview": {"min_content_level": "full"},
+            "financial_analysis": {"min_content_level": "full"},
+            "peer_compare": {"min_content_level": "full"},
+            "valuation": {"min_content_level": "full"},
+            "risks": {"min_content_level": "full"},
+            "conclusion": {"min_content_level": "full"},
+        },
+    )
+
+    report = evaluate_report_quality(run_dir)
+    cd_issues = [i for i in report.get("issues", []) if i["category"] == "content_depth"]
+    assert report["objective_pass"] is False
+    assert any("估值观察 appears truncated" in i["message"] for i in cd_issues)
+
+
 def test_content_depth_allows_data_gap_sections(tmp_path):
     """Sections with data_gap mark are not penalized for being short."""
     run_dir = _write_run_with_dossiers(
@@ -673,13 +1144,13 @@ def test_content_depth_allows_data_gap_sections(tmp_path):
 短文本，但应被 data_gap 豁免，不影响评分。
 
 ## 财务分析
-本期公司收入同比增长百分之二十四，达到三十五点四亿美元，其中数据中心业务占比首次超过客户端业务成为最大收入来源。毛利率提升至百分之五十二点一，同比提升一点八个百分点，主要受益于高毛利的数据中心 GPU 出货占比提升。经营现金流十二点三亿美元，自由现金流九点八亿美元，均同比改善。资产负债方面总资产八十亿美元，股东权益五十亿美元，资产负债率约百分之三十七点五。盈利质量方面 ROE 约为百分之十五，ROA 约为百分之九，均处于健康水平。整体来看公司财务表现稳健，盈利能力和现金流生成能力均在改善。
+本期公司收入同比增长百分之二十四，达到三十五点四亿美元，其中数据中心业务占比首次超过客户端业务成为最大收入来源。毛利率提升至百分之五十二点一，同比提升一点八个百分点，主要受益于高毛利的数据中心 GPU 出货占比提升。经营现金流十二点三亿美元，自由现金流九点八亿美元，均同比改善。资产负债方面总资产八十亿美元，股东权益五十亿美元，资产负债率约百分之三十七点五。盈利质量方面 ROE 约为百分之十五，ROA 约为百分之九，均处于健康水平。整体来看公司财务表现稳健，盈利能力和现金流生成能力均在改善，费用率变化也未显著削弱利润弹性。
 
 ## 同行对比
 短文本，但应被 data_gap 豁免，不影响评分。
 
 ## 估值观察
-本期采用 P/E、P/B 和 DCF 三种方法对公司进行估值。P/E 约为三十倍，基于过去十二个月净利润计算。P/B 约为十倍，反映市场对公司资产质量的定价。DCF 估值为一百八十亿美元，假设加权平均资本成本为百分之十，终端增长率为百分之三。综合估值在一百五十到二百亿美元区间。当前市值与模型估值差异在合理范围内，三种方法结果相互印证。估值差异主要来源于不同方法对增长假设和风险溢价的敏感度不同，投资者应参考多种方法综合判断。
+本期采用 P/E、P/B 和 DCF 三种方法对公司进行估值。P/E 约为三十倍，基于过去十二个月净利润计算。P/B 约为十倍，反映市场对公司资产质量的定价。DCF 估值为一百八十亿美元，假设加权平均资本成本为百分之十，终端增长率为百分之三。综合估值在一百五十到二百亿美元区间。当前市值与模型估值差异在合理范围内，三种方法结果相互印证。估值差异主要来源于不同方法对增长假设和风险溢价的敏感度不同，投资者应参考多种方法综合判断，并关注假设调整带来的估值区间变化。
 
 ## 风险评估
 公司面临多方面的风险因素。行业竞争加剧风险：AI 芯片市场份额争夺日趋激烈，主要竞争对手持续推出新产品。毛利率波动风险：产品组合变化可能影响整体毛利率水平，高毛利产品占比下降将压缩盈利空间。资本开支压力：为保持技术竞争力，公司持续加大研发和产能投入，可能对自由现金流形成压力。估值回调风险：当前估值倍数处于历史中高水平，市场情绪变化可能引发估值回调。数据覆盖限制：本报告风险分析基于公开披露信息，部分风险因素可能未被完整覆盖，投资者应结合自身判断做出决策。

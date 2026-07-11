@@ -16,6 +16,7 @@ import pandas as pd
 import yfinance as yf
 
 from src.data.company_universe import resolve_company_identifier, resolve_symbol
+from src.data.evidence_intake_gate import evidence_rejection_reason, record_mentions_target_company
 from src.data.independent_sources import fetch_macro_evidence, fetch_sec_companyfacts_evidence
 from src.data.source_quality import apply_source_quality
 from src.data.yahoo_finance import yahoo_financials_to_evidence, yahoo_snapshot_to_evidence
@@ -362,8 +363,12 @@ def hkex_announcement_search(
         row.setdefault("metadata", {})
         if isinstance(row["metadata"], dict):
             row["metadata"]["engine"] = "hkex_announcements"
-        if not _record_matches_requested_company(row, symbol=symbol, raw_data_root=raw_data_root):
+        reason = evidence_rejection_reason(row, symbol=str(symbol or ""), period=str(period or ""))
+        if reason:
             rejected_identity_count += 1
+            row.setdefault("metadata", {})
+            if isinstance(row["metadata"], dict):
+                row["metadata"]["rejection_reason"] = reason
             continue
         hits.append(apply_source_quality(row))
     hits = _filter_period_announcement_hits(hits, period)
@@ -1466,6 +1471,8 @@ def _filter_period_announcement_hits(hits: List[Dict[str, Any]], period: str | N
 def _record_matches_requested_company(record: Dict[str, Any], symbol: str | None, raw_data_root: str = "data/raw/real_data") -> bool:
     requested = str(symbol or record.get("symbol") or "").strip()
     if not requested:
+        return True
+    if record_mentions_target_company(record, symbol=requested):
         return True
     profile = resolve_company_identifier(requested, raw_data_root=raw_data_root) or {}
     terms = _company_identity_terms(requested, str(profile.get("company_name") or ""))

@@ -134,7 +134,7 @@ def test_export_package_excludes_rejected_and_pending_claims(temp_db_engine, tmp
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body["formats"]) >= {"json", "markdown", "html", "claims_csv", "evidence_csv", "facts_csv", "review_csv"}
+    assert set(body["formats"]) >= {"json", "markdown", "html", "pdf", "docx", "claims_csv", "evidence_csv", "facts_csv", "review_csv"}
     payload = body["json"]
     assert payload["readiness"]["official_export_ready"] is False
     assert payload["readiness"]["approved_claim_count"] == 1
@@ -157,16 +157,41 @@ def test_export_package_files_are_written_and_downloadable(temp_db_engine, tmp_p
     with client:
         write_response = client.post("/api/exports/task-export/package/files")
         download_response = client.get("/api/exports/task-export/package/files/claims.csv")
+        pdf_response = client.get("/api/exports/task-export/package/files/report_package.pdf")
+        docx_response = client.get("/api/exports/task-export/package/files/report_package.docx")
         missing_response = client.get("/api/exports/task-export/package/files/secret.txt")
 
     assert write_response.status_code == 200
     body = write_response.json()
     filenames = {item["filename"] for item in body["files"]}
-    assert {"package.json", "report_package.md", "report_package.html", "claims.csv", "evidence.csv", "financial_facts.csv", "review_records.csv"}.issubset(filenames)
+    assert {"package.json", "report_package.md", "report_package.html", "report_package.pdf", "report_package.docx", "claims.csv", "evidence.csv", "financial_facts.csv", "review_records.csv", "export_manifest.json"}.issubset(filenames)
     assert all(item["download_url"].startswith("/api/exports/task-export/package/files/") for item in body["files"])
     assert download_response.status_code == 200
     assert "Approved claim." in download_response.text
+    assert pdf_response.status_code == 200
+    assert pdf_response.content.startswith(b"%PDF")
+    assert docx_response.status_code == 200
+    assert docx_response.content.startswith(b"PK")
     assert missing_response.status_code == 404
+
+
+def test_formal_export_reuses_identical_package(temp_db_engine, tmp_path):
+    service, client = build_export_client(temp_db_engine, tmp_path)
+    seed_export_task(service)
+
+    with client:
+        first = client.post("/api/exports/task-export/package/files")
+        second = client.post("/api/exports/task-export/package/files")
+
+    assert first.status_code == 200
+    assert first.json()["idempotent_reuse"] is False
+    assert second.status_code == 200
+    assert second.json()["idempotent_reuse"] is True
+    assert second.json()["trace_context"] == {
+        "request_id": "task-export",
+        "run_id": "task-export",
+        "task_id": "task-export",
+    }
 
 
 def test_formal_export_files_are_blocked_until_canonical_readiness_passes(temp_db_engine, tmp_path):

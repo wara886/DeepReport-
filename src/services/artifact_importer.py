@@ -41,6 +41,7 @@ OUTPUT_ARTIFACTS = {
     "claims.json": "claims",
     "tables.json": "tables",
     "financial_metrics.json": "financial_metrics",
+    "canonical_metrics.json": "canonical_metrics",
     "valuation_model.json": "valuation_model",
     "valuation_sensitivity.json": "valuation_sensitivity",
     "verification_report.json": "verification_report",
@@ -48,6 +49,9 @@ OUTPUT_ARTIFACTS = {
     "quality_report.json": "quality_report",
     "llm_quality_review.json": "llm_quality_review",
     "quality_remediation_plan.json": "quality_remediation_plan",
+    "section_verification.json": "section_verification",
+    "section_repair.json": "section_repair",
+    "evidence_retrieval_attribution.json": "evidence_retrieval_attribution",
     "performance_trace.json": "performance_trace",
 }
 

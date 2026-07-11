@@ -6,6 +6,7 @@ from collections import Counter
 from collections.abc import Callable
 import csv
 from datetime import datetime
+import hashlib
 from io import StringIO
 import json
 from pathlib import Path
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from src.db.models import ClaimEvidence, EvidenceItem, FinancialFact, ReportArtifact, ReportClaim, ReportTask, ReviewRecord
 from src.runtime.report_run_state import build_report_run_state
+from src.report import export_markdown_to_docx, export_markdown_to_pdf
 from src.services.report_task_service import serialize_artifact
 
 
@@ -99,7 +101,7 @@ class ExportService:
             "blocked_reasons": blocked_reasons,
             "delivery_readiness": run_state["delivery_readiness"],
             "export_readiness": export_readiness,
-            "formal_export_note": "正式导出包已接入 Markdown、HTML、JSON 和 CSV；PDF/DOCX 可基于同一导出包继续生成。",
+            "formal_export_note": "正式导出包已接入 Markdown、HTML、PDF、DOCX、JSON 和 CSV，并统一遵守 ExportReadiness。",
         }
         if include_claims:
             payload["claims"] = [serialize_claim(claim) for claim in sorted(task.claims, key=lambda item: item.id or 0)]
@@ -126,6 +128,11 @@ class ExportService:
             review_records = _package_review_records(session, ordered_claims)
 
             json_payload = {
+                "trace_context": {
+                    "request_id": str((task.metadata_json or {}).get("request_id") or task.task_id),
+                    "run_id": str((task.metadata_json or {}).get("run_id") or task.task_id),
+                    "task_id": task.task_id,
+                },
                 "task": _package_task(task),
                 "readiness": {
                     "official_export_ready": entry["official_export_ready"],
@@ -148,7 +155,7 @@ class ExportService:
 
         return {
             "task_id": task_id,
-            "formats": ["json", "markdown", "html", "claims_csv", "evidence_csv", "facts_csv", "review_csv"],
+            "formats": ["json", "markdown", "html", "pdf", "docx", "claims_csv", "evidence_csv", "facts_csv", "review_csv"],
             "json": json_payload,
             "markdown": _render_package_markdown(json_payload),
             "html": _render_package_html(json_payload),
@@ -167,6 +174,19 @@ class ExportService:
             raise ExportNotReady(task_id, list(readiness["blocked_reasons"]))
         target_dir = self.package_root / _safe_task_dir(task_id)
         target_dir.mkdir(parents=True, exist_ok=True)
+        package_digest = _package_digest(package)
+        existing_manifest = _read_json(target_dir / "export_manifest.json")
+        if existing_manifest.get("package_digest") == package_digest:
+            existing_files = existing_manifest.get("files") if isinstance(existing_manifest.get("files"), list) else []
+            if existing_files and all((target_dir / str(item.get("filename") or "")).is_file() for item in existing_files):
+                return {
+                    "task_id": task_id,
+                    "package_dir": str(target_dir),
+                    "files": existing_files,
+                    "readiness": readiness,
+                    "trace_context": package["json"]["trace_context"],
+                    "idempotent_reuse": True,
+                }
         files = {
             "json": ("package.json", json.dumps(package["json"], ensure_ascii=False, indent=2)),
             "markdown": ("report_package.md", package["markdown"]),
@@ -189,11 +209,55 @@ class ExportService:
                     "size_bytes": path.stat().st_size,
                 }
             )
+        title = f"{package['json']['task']['symbol']} {package['json']['task']['period']} 金融研究报告"
+        export_metadata = {
+            "task_id": task_id,
+            "request_id": package["json"]["trace_context"]["request_id"],
+            "run_id": package["json"]["trace_context"]["run_id"],
+            "quality_score": package["json"]["task"].get("quality_score"),
+        }
+        binary_exports = [
+            ("pdf", "report_package.pdf", export_markdown_to_pdf(package["markdown"], target_dir / "report_package.pdf", title=title, metadata=export_metadata)),
+            ("docx", "report_package.docx", export_markdown_to_docx(package["markdown"], target_dir / "report_package.docx", title=title, metadata=export_metadata)),
+        ]
+        for key, filename, path in binary_exports:
+            written.append(
+                {
+                    "format": key,
+                    "filename": filename,
+                    "path": str(path),
+                    "download_url": f"/api/exports/{task_id}/package/files/{filename}",
+                    "size_bytes": path.stat().st_size,
+                }
+            )
+        for item in written:
+            item["sha256"] = _sha256(Path(item["path"]))
+        manifest_path = target_dir / "export_manifest.json"
+        manifest_payload = {
+            "schema_version": "formal_export_manifest.v1",
+            "package_digest": package_digest,
+            "trace_context": package["json"]["trace_context"],
+            "files": written,
+        }
+        manifest_path.write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        manifest_item = {
+            "format": "manifest",
+            "filename": "export_manifest.json",
+            "path": str(manifest_path),
+            "download_url": f"/api/exports/{task_id}/package/files/export_manifest.json",
+            "size_bytes": manifest_path.stat().st_size,
+            "sha256": _sha256(manifest_path),
+        }
+        written.append(manifest_item)
+        manifest_payload["files"] = written
+        manifest_path.write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return {
             "task_id": task_id,
             "package_dir": str(target_dir),
             "files": written,
             "readiness": package["json"]["readiness"],
+            "trace_context": package["json"]["trace_context"],
+            "idempotent_reuse": False,
         }
 
     def get_package_file(self, task_id: str, filename: str) -> Path:
@@ -205,6 +269,9 @@ class ExportService:
             "evidence.csv",
             "financial_facts.csv",
             "review_records.csv",
+            "report_package.pdf",
+            "report_package.docx",
+            "export_manifest.json",
         }
         if filename not in allowed:
             raise FileNotFoundError(filename)
@@ -233,6 +300,33 @@ class ExportService:
 def export_blockers(task: ReportTask, claim_counts: Counter[str]) -> list[str]:
     del claim_counts  # Kept for the public compatibility signature.
     return list(build_report_run_state(task)["export_readiness"]["blocking_reasons"])
+
+
+def _package_digest(package: dict[str, Any]) -> str:
+    payload = {
+        "json": package["json"],
+        "markdown": package["markdown"],
+        "html": package["html"],
+        "csv": package["csv"],
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def serialize_claim(claim: ReportClaim) -> dict[str, Any]:

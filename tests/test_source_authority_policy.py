@@ -142,6 +142,71 @@ def test_verifier_warns_for_period_matched_structured_financial_fallback():
     assert any("structured financial data as a fallback" in warning for warning in result["warnings"])
 
 
+def test_verifier_warns_for_capex_abs_sign_structured_fallback_with_lineage():
+    claim = ClaimItem(
+        claim_id="cl_cash_flow",
+        section_name="financial_statements",
+        claim_text="AAPL FY2024 operating cash flow was 111.482B, free cash flow was 98.767B, and capex was 12.715B. [yahoo_fy]",
+        evidence_ids=["yahoo_fy"],
+        numeric_values={
+            "operating_cash_flow": 111482000000.0,
+            "free_cash_flow": 98767000000.0,
+            "capex": 12715000000.0,
+        },
+        confidence=0.8,
+        metric_lineage_ids=["aapl_fy2024_capex_yahoo_fy"],
+    )
+    evidence = [
+        {
+            "evidence_id": "yahoo_fy",
+            "source_type": "market_api",
+            "source_url": "https://finance.yahoo.com/quote/AAPL/financials",
+            "content": "Cash flow: operating=111482000000, capex=-12715000000, freeCashFlow=98767000000",
+            "metadata": {"financials": {"cash_flow_history": [{"operating": 111482000000.0, "capex": -12715000000.0, "freeCashFlow": 98767000000.0}]}},
+        }
+    ]
+
+    result = Verifier().verify(
+        claims=[claim],
+        markdown="# Executive Summary\n\n## Financial Analysis\n\n## Financial Statements\n\nAAPL cash flow. [yahoo_fy]\n\n## Risk Assessment\n",
+        evidence_records=evidence,
+    )
+
+    assert result["passed"] is True
+    assert not result["errors"]
+    assert any("structured financial data as a fallback" in warning for warning in result["warnings"])
+
+
+def test_verifier_warns_for_structured_financial_fallback_without_metric_lineage():
+    claim = ClaimItem(
+        claim_id="cl_revenue",
+        section_name="financial_analysis",
+        claim_text="NVDA 2026Q1 revenue was 81.615B. [yahoo_quarter]",
+        evidence_ids=["yahoo_quarter"],
+        numeric_values={"revenue": 81615000000.0},
+        confidence=0.8,
+    )
+    evidence = [
+        {
+            "evidence_id": "yahoo_quarter",
+            "source_type": "market_api",
+            "source_url": "https://finance.yahoo.com/quote/NVDA/financials",
+            "content": "Latest income: revenue=81615000000, netIncome=58321000000",
+            "metadata": {"financials": {"revenue": 81615000000.0}},
+        }
+    ]
+
+    result = Verifier().verify(
+        claims=[claim],
+        markdown="# Executive Summary\n\n## Financial Analysis\n\nNVDA revenue was 81.615B. [yahoo_quarter]\n\n## Risk Assessment\n",
+        evidence_records=evidence,
+    )
+
+    assert result["passed"] is True
+    assert not result["errors"]
+    assert any("structured financial data as a fallback" in warning for warning in result["warnings"])
+
+
 def test_verifier_accepts_core_financial_claim_with_primary_evidence():
     claim = ClaimItem(
         claim_id="cl_revenue",

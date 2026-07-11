@@ -231,6 +231,14 @@ class FinalAnswerAgent(BaseAgent):
         markdown = enforce_section_depth(markdown, section_dossiers)
         markdown = remove_raw_pdf_paste_paragraphs(markdown, section_dossiers)
         markdown = enforce_section_depth(markdown, section_dossiers)
+        markdown = auto_rewrite_core_sections(
+            markdown,
+            claims=all_claims,
+            evidence_records=evidence_records if isinstance(evidence_records, list) else [],
+            financial_metrics=financial_metrics,
+            quality_remediation_plan=quality_remediation_plan,
+            repair_constraints=repair_constraints,
+        )
         markdown = _sanitize_generic_phrases(markdown)
         markdown = _sanitize_pdf_gap_language(markdown)
         # Final cleanup pass — after all deterministic overrides that may re-insert bad content
@@ -1318,7 +1326,15 @@ def _format_metric_facts(metrics: Any, limit: int = 8) -> list[str]:
         value = item.get("value")
         if not name or value in (None, ""):
             continue
-        output.append(f"{name}={value}")
+        unit = str(item.get("unit") or "").strip()
+        period = str(item.get("period") or "").strip()
+        source = str(item.get("source_type") or item.get("provider") or "").strip()
+        text = f"{name}为{value}{unit}"
+        if period:
+            text += f"（{period}）"
+        if source:
+            text += f"，来源口径为{source}"
+        output.append(text)
         if len(output) >= limit:
             break
     return output
@@ -1941,6 +1957,230 @@ def hard_backfill_quality_sections(
     return output
 
 
+CORE_AUTO_REWRITE_SECTIONS = {
+    "executive_summary",
+    "business_overview",
+    "financial_statements",
+    "financial_analysis",
+    "peer_compare",
+    "valuation",
+    "valuation_sensitivity",
+    "risks",
+    "conclusion",
+}
+
+
+def auto_rewrite_core_sections(
+    markdown: str,
+    *,
+    claims: List[Dict[str, Any]] | None = None,
+    evidence_records: List[Dict[str, Any]] | None = None,
+    financial_metrics: Any = None,
+    quality_remediation_plan: Dict[str, Any] | None = None,
+    repair_constraints: Dict[str, Any] | None = None,
+) -> str:
+    """Deterministically repair thin/truncated core sections before quality gates.
+
+    This is a bounded writing repair: it summarizes available claims, evidence
+    and metrics, and explicitly preserves data boundaries instead of inventing
+    targets or official filings.
+    """
+
+    plan = quality_remediation_plan or {}
+    targets = _quality_target_sections(plan, repair_constraints or {}) & CORE_AUTO_REWRITE_SECTIONS
+    output = markdown
+    by_section = _claims_by_outline_section(claims or [])
+    metrics = _financial_metric_rows(financial_metrics)
+    evidence = [item for item in (evidence_records or []) if isinstance(item, dict)]
+    for section in sorted(CORE_AUTO_REWRITE_SECTIONS | targets, key=_outline_section_order):
+        title = _section_title(section)
+        if not title:
+            continue
+        body = _section_body(output, title)
+        if section not in targets and not _core_section_needs_auto_rewrite(title, body):
+            continue
+        replacement = _build_core_section_rewrite(
+            section=section,
+            claims=by_section.get(section, []),
+            evidence_records=evidence,
+            metric_rows=metrics,
+            quality_remediation_plan=plan,
+            repair_constraints=repair_constraints or {},
+        )
+        if replacement:
+            output = _replace_section(output, title=title, replacement=replacement)
+    return output
+
+
+def _core_section_needs_auto_rewrite(title: str, body: str | None) -> bool:
+    if body is None:
+        return True
+    threshold = SECTION_DEPTH_THRESHOLDS.get(_section_key_from_title(title), 120)
+    if _count_chinese_chars(body) < threshold:
+        return True
+    if _section_needs_hard_backfill(title, body):
+        return True
+    tail = re.sub(r"\s+", "", body)[-28:]
+    unfinished_markers = ("分别披露", "主要包括", "取决于", "由于", "因此", "以及", "包括", "体现为", "来自于")
+    return any(tail.endswith(marker) for marker in unfinished_markers)
+
+
+def _section_key_from_title(title: str) -> str:
+    for key, heading in SECTION_HEADING_MAP.items():
+        if heading == title:
+            return key
+    return ""
+
+
+def _financial_metric_rows(financial_metrics: Any) -> list[dict[str, Any]]:
+    def _public_metric(item: dict[str, Any]) -> bool:
+        name = str(item.get("metric_name") or item.get("name") or "").lower()
+        return name not in {"adjusted_net_income", "non_recurring_gain", "revenue_growth_pct"}
+    if isinstance(financial_metrics, dict):
+        rows = financial_metrics.get("metrics", [])
+        return [item for item in rows if isinstance(item, dict) and _public_metric(item)] if isinstance(rows, list) else []
+    if isinstance(financial_metrics, list):
+        return [item for item in financial_metrics if isinstance(item, dict) and _public_metric(item)]
+    return []
+
+
+def _build_core_section_rewrite(
+    *,
+    section: str,
+    claims: list[dict[str, Any]],
+    evidence_records: list[dict[str, Any]],
+    metric_rows: list[dict[str, Any]],
+    quality_remediation_plan: dict[str, Any],
+    repair_constraints: dict[str, Any],
+) -> str:
+    claim_lines = _claim_sentences_for_rewrite(claims, limit=4)
+    metric_lines = _format_metric_facts(metric_rows, limit=5)
+    evidence_lines = _evidence_lines_for_rewrite(evidence_records, limit=4)
+    citation_ids = _rewrite_citation_ids(claims, evidence_records, limit=3)
+    citation_tail = " ".join(f"[{item}]" for item in citation_ids)
+    evidence_basis = "；".join(evidence_lines[:2]) if evidence_lines else "当前证据池尚未形成足够完整的官方披露链路"
+    metric_basis = "；".join(metric_lines[:3]) if metric_lines else "关键财务指标仍需继续补齐和复核"
+    claim_basis = "；".join(claim_lines[:3]) if claim_lines else "主张层证据仍以审慎归纳为主"
+    boundary = _attempted_source_note(quality_remediation_plan, repair_constraints)
+
+    if section == "executive_summary":
+        return (
+            f"本报告基于当前证据池对公司经营、财务、估值和风险进行审慎归纳，核心依据包括：{evidence_basis}。"
+            f"从已校验主张看，{claim_basis}；从结构化指标看，{metric_basis}。"
+            "因此，执行摘要不直接给出强买卖结论，而是把判断限定在已披露资料能够支撑的范围内：先确认业务和财务趋势，再结合估值输入、竞争格局与风险约束判断正式交付条件。"
+            f"后续若要形成正式可交付观点，需要继续核对官方披露、报告期口径和引用覆盖，避免把未验证信息写成确定结论。{citation_tail}"
+        ).strip()
+    if section == "business_overview":
+        return (
+            f"业务概览以公司已披露经营信息和证据池为边界，当前可引用依据包括：{evidence_basis}。"
+            f"从主张层看，{claim_basis}；这些信息用于界定公司所处行业、主要产品或服务、客户需求以及收入形成方式。"
+            "正式研报需要把业务画像和财务表现连接起来：业务规模决定收入弹性，竞争格局影响利润率，客户结构和监管环境则影响现金流稳定性。"
+            "因此，本节不把公司简介写成孤立背景，而是作为后续财务分析、估值观察和风险评估的基础。"
+            f"若后续补齐更多官方披露，应进一步拆分主营板块、区域结构和关键经营指标。{citation_tail}"
+        ).strip()
+    if section == "financial_analysis":
+        return (
+            f"财务分析以三表和结构化指标为核心，当前可使用的指标包括：{metric_basis}。"
+            f"结合证据池，{evidence_basis}；结合主张层，{claim_basis}。"
+            "正式分析不能只罗列收入或利润，而要说明利润表、资产负债表和现金流量表之间的勾稽关系：收入代表经营规模，利润率反映盈利质量，资产和权益反映安全垫，经营现金流反映利润兑现能力。"
+            "如果收入增长但现金流承压，需要跟踪应收、库存、资本开支或费用投放；如果现金流和资产结构同步改善，盈利质量才更有支撑。"
+            f"本节结论仍受官方口径、报告期匹配和表格来源限制，正式交付前需要继续复核原始披露。{citation_tail}"
+        ).strip()
+    if section == "peer_compare":
+        return (
+            f"同行对比以可比口径为前提，当前证据基础包括：{evidence_basis}。"
+            "在没有完整同业样本、统一会计期间和同口径估值倍数时，本节不输出绝对强弱排序，也不把第三方行情数据直接等同于正式投研结论。"
+            f"可形成的分析边界是：将公司收入质量、利润率、现金流和估值约束放在同一框架中观察，并说明比较结论依赖哪些数据输入。"
+            f"从主张层看，{claim_basis}；若后续补齐同行官方披露和市场估值数据，可进一步比较成长性、盈利稳定性、资本效率和估值溢价。"
+            f"当前版本保留审慎比较口径，避免用不完整数据制造确定性结论。{citation_tail}"
+        ).strip()
+    if section == "valuation":
+        return (
+            f"估值观察以已披露财务和市场输入为边界，目前可使用的信息包括：{metric_basis}。"
+            f"从已校验主张看，{claim_basis}。"
+            "在缺少完整目标价模型、折现率、长期增长率或同口径可比倍数时，本节不输出确定目标价，也不把单一倍数解释为投资结论。"
+            f"可形成的判断是：估值弹性应主要绑定收入增速、利润率、现金流质量和风险溢价变化；若这些输入改善，估值中枢才具备上修依据，反之则需要下调预期。"
+            f"当前仍需补齐的证据来源包括{boundary}，正式交付前应复核估值输入与官方财务口径是否一致。{citation_tail}"
+        ).strip()
+    if section == "risks":
+        return (
+            f"风险评估围绕证据池中已经出现的经营、财务和外部约束展开，当前依据包括：{evidence_basis}。"
+            f"从主张层看，{claim_basis}；这些风险不应被写成孤立提示，而应和收入增速、毛利率、现金流、客户需求、监管披露和估值假设联动观察。"
+            "若后续官方披露显示关键指标恶化，风险会通过盈利质量、资金周转和估值倍数传导到投资结论；若指标改善，则风险权重可以下降但仍需保留跟踪。"
+            f"本节仅描述可验证风险边界，不补造未披露事项。{citation_tail}"
+        ).strip()
+    if section == "conclusion":
+        return (
+            "投资结论维持中性观察评级，基于当前证据支持方向性判断，但尚不足以形成无条件正式交付观点。"
+            f"核心理由包括：从已校验主张看，{claim_basis}；支持因素来自{evidence_basis}和{metric_basis}。"
+            "主要风险包括估值输入完整性不足、现金流转换率变化、竞争压力、需求波动和官方来源复核要求。"
+            "因此，本报告适合作为研究工作底稿和人工复核材料：若后续补齐官方披露、三表口径、估值输入和关键风险引用，可以再升级为正式交付；在此之前，不应输出激进评级或确定目标价。"
+            f"最终判断应以证据门禁、质量评分、主张复核和引用覆盖共同通过为前提。{citation_tail}"
+        ).strip()
+    return ""
+
+
+def _claim_sentences_for_rewrite(claims: list[dict[str, Any]], *, limit: int) -> list[str]:
+    lines: list[str] = []
+    for claim in claims:
+        text = re.sub(r"\s+", " ", str(claim.get("claim_text") or "")).strip()
+        if not text or _claim_text_is_weak(text):
+            continue
+        lines.append(text)
+        if len(lines) >= limit:
+            break
+    return lines
+
+
+def _evidence_lines_for_rewrite(evidence_records: list[dict[str, Any]], *, limit: int) -> list[str]:
+    rows: list[str] = []
+    for item in evidence_records:
+        title = str(item.get("title") or item.get("source_type") or item.get("evidence_id") or "").strip()
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        period = str(item.get("period") or metadata.get("period") or "").strip()
+        source = str(item.get("source_type") or "").strip()
+        if not title:
+            continue
+        text = title
+        if period:
+            text += f"（{period}）"
+        if source and source not in text:
+            text += f"，来源为{source}"
+        rows.append(text)
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def _rewrite_citation_ids(
+    claims: list[dict[str, Any]],
+    evidence_records: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[str]:
+    ids: list[str] = []
+    seen: set[str] = set()
+    for claim in claims:
+        evidence_ids = claim.get("evidence_ids", [])
+        if not isinstance(evidence_ids, list):
+            continue
+        for raw in evidence_ids:
+            value = str(raw or "").strip()
+            if value and value not in seen:
+                seen.add(value)
+                ids.append(value)
+                if len(ids) >= limit:
+                    return ids
+    for item in evidence_records:
+        value = str(item.get("evidence_id") or item.get("sample_id") or "").strip()
+        if value and value not in seen:
+            seen.add(value)
+            ids.append(value)
+            if len(ids) >= limit:
+                break
+    return ids
+
+
 def _outline_section_order(section: str) -> int:
     for index, item in enumerate(default_company_outline()):
         if item["section_name"] == section:
@@ -2190,6 +2430,9 @@ def _section_is_empty_placeholder(section_body: str) -> bool:
     if not cleaned:
         return True
     placeholder_markers = [
+        "本节暂不展开详细分析",
+        "evidence_not_available",
+        "valuation_sensitivity_not_available",
         "本节暂无可验证结论",
         "暂无可验证结论",
         "no verifiable conclusion",

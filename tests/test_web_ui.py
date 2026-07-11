@@ -454,11 +454,12 @@ def test_delivery_rework_loop_reruns_when_gate_fails(tmp_path, monkeypatch):
         run_kwargs={"research_topic": "x", "symbol": "AAPL", "period": "2025Q4"},
     )
 
-    assert orchestrator.calls == 0
-    assert result["reworked"] is False
-    assert result["quality_result"]["delivery_gate"]["delivery_pass"] is False
+    assert orchestrator.calls == 1
+    assert result["reworked"] is True
+    assert result["quality_result"]["delivery_gate"]["delivery_pass"] is True
     history = json.loads((output_root / "delivery_rework_history.json").read_text(encoding="utf-8"))
-    assert history[0]["delivery_pass_after_round"] is False
+    assert history[0]["rework_mode"] == "full_pipeline_rerun"
+    assert history[0]["delivery_pass_after_round"] is True
 
 
 def test_delivery_rework_loop_prefers_owner_routed_repair(tmp_path, monkeypatch):
@@ -507,11 +508,14 @@ def test_delivery_rework_loop_prefers_owner_routed_repair(tmp_path, monkeypatch)
         run_kwargs={"research_topic": "x", "symbol": "AAPL", "period": "2025Q4"},
     )
 
-    assert result["reworked"] is False
+    assert result["reworked"] is True
+    assert result["quality_result"]["delivery_gate"]["delivery_pass"] is True
     history = json.loads((output_root / "delivery_rework_history.json").read_text(encoding="utf-8"))
     assert history[0]["trigger"] == "quality_diagnostic"
-    assert history[0]["status"] == "skipped"
-    assert history[0]["delivery_pass_after_round"] is False
+    assert history[0]["status"] == "completed"
+    assert history[0]["rework_mode"] == "owner_routed"
+    assert history[0]["delivery_pass_after_round"] is True
+    assert history[0]["llm_repair_attempted"] is True
 
 
 def test_delivery_rework_loop_escalates_data_failures_after_owner_repair(tmp_path, monkeypatch):
@@ -566,12 +570,13 @@ def test_delivery_rework_loop_escalates_data_failures_after_owner_repair(tmp_pat
         run_kwargs={"research_topic": "x", "symbol": "NVDA", "period": "2026Q1"},
     )
 
-    assert fake_orchestrator.run_count == 0
-    assert result["quality_result"]["delivery_gate"]["delivery_pass"] is False
+    assert fake_orchestrator.run_count == 1
+    assert result["quality_result"]["delivery_gate"]["delivery_pass"] is True
     history = json.loads((output_root / "delivery_rework_history.json").read_text(encoding="utf-8"))
     assert history[0]["trigger"] == "quality_diagnostic"
-    assert history[0]["status"] == "skipped"
-    assert history[0]["delivery_pass_after_round"] is False
+    assert history[0]["status"] == "completed"
+    assert history[0]["rework_mode"] == "owner_routed_plus_full_pipeline_rerun"
+    assert history[0]["delivery_pass_after_round"] is True
 
 
 def test_delivery_rework_loop_records_skipped_when_orchestrator_missing(tmp_path):
@@ -593,7 +598,7 @@ def test_delivery_rework_loop_records_skipped_when_orchestrator_missing(tmp_path
     assert result["reworked"] is False
     assert history[0]["status"] == "skipped"
     assert history[0]["handled"] is False
-    assert "diagnostic-only" in history[0]["unfixable_reasons"][0]
+    assert "orchestrator unavailable" in history[0]["unfixable_reasons"][0]
 
 
 def test_render_index_html_contains_chat_first_controls():

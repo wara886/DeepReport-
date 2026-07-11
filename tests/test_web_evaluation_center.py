@@ -10,7 +10,7 @@ def test_workbench_evaluation_center_is_productized_and_loads_api():
     assert "/api/evaluation/summary" in html
     assert "交付通过率" in html
     assert "已质检任务" in html
-    assert "已进入质检任务均值" in html
+    assert "内容完整度评分" in html
     assert "引用支持率" in html
     assert "模型运行成功率" in html
     assert "最近研报质量" in html
@@ -57,7 +57,7 @@ def test_workbench_evaluation_center_is_productized_and_loads_api():
     assert "来源追踪号" in html
     assert "质量闭环待加强" in html
     assert "loadEvaluation" in html
-    assert 'data-view="evaluation"><span>评测中心</span><span class="tag preview">预览</span></button>' in html
+    assert 'data-view="evaluation"><span>评测中心</span><span class="tag available">可用</span></button>' in html
 
 
 def test_workbench_p1_closure_copy_and_task_linkage_are_productized():
@@ -77,3 +77,17 @@ def test_workbench_p1_closure_copy_and_task_linkage_are_productized():
     assert "documentEvidenceEmptyState" in html
     assert 'claim: "主张"' in html
     assert 'claim: "Claim"' not in html
+
+
+def test_workbench_demo_mode_defaults_to_real_chain_and_maps_internal_terms():
+    html = render_workbench_html()
+
+    assert '<button class="active" data-funnel-tab="chain">真实处理链路</button>' in html
+    assert '<button data-funnel-tab="funnel">示意漏斗</button>' in html
+    assert '<div class="funnel-view active" id="chainTab">' in html
+    assert 'content_depth: "正文完整度不足"' in html
+    assert 'llm_review: "智能复核问题"' in html
+    assert 'verifier: "主张校验问题"' in html
+    assert '"agent.analyze": "分析智能体"' in html
+    assert 'data-view="documents"><span>文档处理中心</span><span class="tag available">可用</span></button>' in html
+    assert 'data-view="export"><span>导出中心</span><span class="tag available">可用</span></button>' in html

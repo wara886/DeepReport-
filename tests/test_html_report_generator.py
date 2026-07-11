@@ -26,6 +26,21 @@ def test_professional_html_report_embeds_chartjs_payload():
     assert "参考来源" in html
 
 
+def test_quality_blocked_chinese_report_is_labeled_as_draft_blocked():
+    html = render_professional_html_report(
+        markdown="# 测试报告\n\n## 执行摘要\n\n本节暂不展开详细分析。",
+        title="测试报告",
+        delivery_status="blocked_quality_gate_failed",
+        quality_blocked=True,
+        top_blockers=["执行摘要过短", "估值章节截断"],
+    )
+
+    assert "草稿研报（正式交付阻塞）" in html
+    assert "草稿生成，正式交付阻塞" in html
+    assert "当前报告为草稿版本" in html
+    assert "正常生成" not in html
+
+
 def test_chart_tabs_are_self_contained():
     """Chart tabs use custom data attributes and lazy render, no Bootstrap tab dependency."""
     html = render_professional_html_report(

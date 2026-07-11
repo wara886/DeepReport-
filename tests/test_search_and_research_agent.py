@@ -9,6 +9,7 @@ from src.search.search_manager import (
     cninfo_announcement_search,
     eastmoney_financials_search,
     exchange_announcement_search,
+    hkex_announcement_search,
     local_real_data_search,
     serper_search,
     tavily_search,
@@ -222,6 +223,34 @@ search:
     assert payload["meta"]["mode"] == "tavily"
     assert payload["hits"][0]["source_url"] == "https://example.com/aapl"
     assert payload["hits"][0]["source_type"] == "web_search"
+
+
+def test_hkex_announcement_search_rejects_wrong_company_tavily_pdf(monkeypatch):
+    def fake_tavily_search(**_kwargs):
+        return {
+            "hits": [
+                {
+                    "sample_id": "wrong_pdf",
+                    "title": "[PDF] ANNUAL RESULTS FOR THE YEAR ENDED 31 MARCH 2025",
+                    "content": "Century Entertainment International Holdings Limited annual results.",
+                    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/annual-results.pdf",
+                },
+                {
+                    "sample_id": "tencent_pdf",
+                    "title": "Tencent Holdings Limited annual results announcement 2025",
+                    "content": "Tencent Holdings Limited reports annual results and online games revenue.",
+                    "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/tencent.pdf",
+                },
+            ],
+            "meta": {"mode": "tavily"},
+        }
+
+    monkeypatch.setattr("src.search.search_manager.tavily_search", fake_tavily_search)
+
+    payload = hkex_announcement_search(query="Tencent annual report", symbol="0700.HK", period="FY2025", topk=5)
+
+    assert [item["sample_id"] for item in payload["hits"]] == ["tencent_pdf"]
+    assert payload["meta"]["identity_rejected_count"] == 1
 
 
 def test_serper_search_normalizes_response(monkeypatch, tmp_path):

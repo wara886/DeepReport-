@@ -2,6 +2,7 @@
 remove_debug_leakage, remove_internal_ids, remove_template_phrases."""
 
 from src.agents.final_answer_agent import (
+    auto_rewrite_core_sections,
     enforce_section_depth,
     remove_broken_or_half_sentences,
     remove_debug_leakage,
@@ -86,6 +87,62 @@ def test_enforce_section_depth_skips_data_gap():
     result = enforce_section_depth(markdown, section_dossiers)
     # Should NOT be replaced because min_content_level is data_gap
     assert "内容很少" in result
+
+
+def test_auto_rewrite_core_sections_repairs_thin_and_truncated_sections():
+    markdown = """# 测试报告
+
+## 执行摘要
+短。
+
+## 估值观察
+本报告分别披露相对估值与
+
+## 风险评估
+风险较多。
+
+## 投资结论
+观察。
+"""
+    claims = [
+        {
+            "section_name": "valuation",
+            "claim_text": "估值需要同时参考收入增速、毛利率和现金流质量。",
+            "evidence_ids": ["ev_val"],
+        },
+        {
+            "section_name": "risks",
+            "claim_text": "需求放缓和竞争加剧可能压缩利润率。",
+            "evidence_ids": ["ev_risk"],
+        },
+        {
+            "section_name": "conclusion",
+            "claim_text": "基于估值约束和风险边界，维持审慎观察。",
+            "evidence_ids": ["ev_conclusion"],
+        },
+    ]
+    result = auto_rewrite_core_sections(
+        markdown,
+        claims=claims,
+        evidence_records=[
+            {
+                "evidence_id": "ev_sec",
+                "title": "FY2024 Form 10-K",
+                "source_type": "sec_edgar",
+                "period": "FY2024",
+            }
+        ],
+        financial_metrics={"metrics": [{"metric_name": "收入", "value": 100, "unit": "亿元", "period": "FY2024", "source_type": "official_filing"}]},
+        quality_remediation_plan={"quality_feedback_used": True, "failed_sections": ["valuation", "risk", "investment_conclusion", "executive_summary"]},
+    )
+
+    assert "本报告分别披露相对估值与" not in result
+    assert "估值观察以已披露财务和市场输入为边界" in result
+    assert "风险评估围绕证据池" in result
+    assert "投资结论维持审慎观察" in result
+    assert "执行摘要不直接给出强买卖结论" in result
+    assert "[ev_val]" in result or "[ev_sec]" in result
+    assert "收入为100亿元" in result
 
 
 def test_remove_broken_half_sentences():

@@ -232,6 +232,14 @@ def _extract_sections(path: Path, evidence_id: str, source_url: str, max_pages: 
                             source_url=source_url,
                         )
                     )
+                tables.extend(
+                    _extract_statement_tables_from_text(
+                        page_text=text,
+                        page_number=page_index + 1,
+                        evidence_id=evidence_id,
+                        source_url=source_url,
+                    )
+                )
             return {"page_count": page_count, "pages_read": pages_read, "sections": sections, "tables": tables}
         finally:
             doc.close()
@@ -358,6 +366,7 @@ def _statement_table_artifact_from_data(
         "evidence_id": evidence_id,
         "source_url": source_url,
         "page": page_number,
+        "source_type": "pdf_statement_table",
         "table_index": table_index,
         "table_type": table_type,
         "rows": rows,
@@ -367,6 +376,71 @@ def _statement_table_artifact_from_data(
         "extraction_method": extraction_method,
         "confidence": _table_confidence(table_type, rows),
     }
+
+
+def _extract_statement_tables_from_text(
+    page_text: str,
+    page_number: int,
+    evidence_id: str,
+    source_url: str,
+) -> List[Dict[str, Any]]:
+    """Extract statement rows from text-only filing pages.
+
+    HKEX result announcements often render financial statements as aligned text
+    instead of PDF table objects. This keeps the same official page anchor and
+    only extracts rows whose labels and numbers are present on the page.
+    """
+
+    lines = [_normalize_cell(line) for line in str(page_text or "").splitlines()]
+    lines = [line for line in lines if line]
+    if not lines:
+        return []
+    normalized_text = " ".join(lines)
+    table_type = _classify_statement_text_page(normalized_text)
+    if not table_type:
+        return []
+    rows: List[Dict[str, Any]] = []
+    for index, line in enumerate(lines):
+        folded_line = _fold_wrapped_statement_line(lines, index)
+        label = _line_item_for_text_line(folded_line, table_type)
+        if not label:
+            continue
+        value = _first_numeric_from_text_line(folded_line)
+        if value is None:
+            continue
+        rows.append(
+            {
+                "statement": table_type,
+                "line_item": label,
+                "label": folded_line,
+                "value": value,
+                "raw_row": [folded_line],
+                "page": page_number,
+                "source_type": "pdf_statement_table",
+                "source_evidence_id": evidence_id,
+            }
+        )
+    rows = _dedupe_statement_rows(rows)
+    if not rows:
+        return []
+    table_id = f"pdf_txt_{hashlib.sha1(f'{evidence_id}|{page_number}|{table_type}|text'.encode('utf-8')).hexdigest()[:12]}"
+    return [
+        {
+            "table_id": table_id,
+            "evidence_id": evidence_id,
+            "source_url": source_url,
+            "page": page_number,
+            "source_type": "pdf_statement_table",
+            "table_index": 0,
+            "table_type": table_type,
+            "rows": rows,
+            "raw_rows": [[line] for line in lines[:60]],
+            "unit": _infer_unit(normalized_text, []),
+            "currency": _infer_currency(normalized_text, []),
+            "extraction_method": "pymupdf_text_statement_line_heuristic_v1",
+            "confidence": _table_confidence(table_type, rows),
+        }
+    ]
 
 
 def _normalize_table(data: List[Any]) -> List[List[str]]:
@@ -387,12 +461,62 @@ def _normalize_cell(value: Any) -> str:
 
 def _classify_statement_table(rows: List[List[str]], page_text: str) -> str:
     joined = " ".join([" ".join(row) for row in rows[:18]] + [page_text]).lower()
-    if any(term in joined for term in ["cash flow", "operating activities", "investing activities", "financing activities", "net cash"]):
+    if any(
+        term in joined
+        for term in [
+            "cash flow",
+            "cash flows",
+            "operating activities",
+            "investing activities",
+            "financing activities",
+            "net cash",
+            "net cash outflows from operating activities",
+        ]
+    ):
         return "cash_flow_statement"
-    if any(term in joined for term in ["balance sheet", "total assets", "total liabilities", "stockholders' equity", "shareholders' equity"]):
+    if any(
+        term in joined
+        for term in [
+            "balance sheet",
+            "statement of financial position",
+            "total assets",
+            "total liabilities",
+            "net liabilities",
+            "stockholders' equity",
+            "shareholders' equity",
+        ]
+    ):
         return "balance_sheet"
-    if any(term in joined for term in ["income statement", "statement of operations", "total revenues", "total revenue", "gross profit", "net income"]):
+    if any(
+        term in joined
+        for term in [
+            "income statement",
+            "statement of operations",
+            "statement of profit or loss",
+            "comprehensive income",
+            "total revenues",
+            "total revenue",
+            "gross profit",
+            "gross loss",
+            "net income",
+            "net loss",
+            "loss for the year",
+        ]
+    ):
         return "income_statement"
+    return ""
+
+
+def _classify_statement_text_page(page_text: str) -> str:
+    lowered = str(page_text or "").lower()
+    if "net cash outflows from operating activities" in lowered or "net cash inflows from operating activities" in lowered:
+        return "cash_flow_statement"
+    if "cash flow" in lowered or "cash flows" in lowered:
+        return "cash_flow_statement"
+    if "statement of profit or loss" in lowered or "statement of comprehensive income" in lowered:
+        return "income_statement"
+    if "statement of financial position" in lowered or "balance sheet" in lowered:
+        return "balance_sheet"
     return ""
 
 
@@ -400,23 +524,47 @@ LINE_ITEM_ALIASES = {
     "income_statement": [
         ("revenue", ["total revenues", "total revenue", "revenues", "revenue"]),
         ("gross_profit", ["gross profit"]),
+        ("gross_profit", ["gross loss"]),
         ("operating_income", ["income from operations", "operating income"]),
-        ("net_income", ["net income", "net earnings"]),
+        ("net_income", ["net income", "net earnings", "net loss", "loss for the year", "profit for the year"]),
     ],
     "balance_sheet": [
         ("total_assets", ["total assets"]),
         ("total_liabilities", ["total liabilities"]),
+        ("total_liabilities", ["net liabilities"]),
         ("equity", ["stockholders' equity", "shareholders' equity", "total equity"]),
+        ("equity", ["total deficit"]),
         ("cash_and_equivalents", ["cash and cash equivalents", "cash cash equivalents"]),
     ],
     "cash_flow_statement": [
         ("operating_cash_flow", ["net cash provided by operating activities", "net cash from operating activities", "operating cash flow"]),
+        ("operating_cash_flow", ["net cash inflows from operating activities", "net cash outflows from operating activities"]),
         ("investing_cash_flow", ["net cash used in investing activities", "net cash provided by investing activities"]),
         ("financing_cash_flow", ["net cash provided by financing activities", "net cash used in financing activities"]),
         ("capex", ["purchases of property", "capital expenditures", "property and equipment"]),
         ("free_cash_flow", ["free cash flow"]),
     ],
 }
+
+
+def _line_item_for_text_line(line: str, table_type: str) -> str:
+    normalized = str(line or "").lower()
+    for candidate, terms in LINE_ITEM_ALIASES.get(table_type, []):
+        if any(term in normalized for term in terms):
+            return candidate
+    return ""
+
+
+def _fold_wrapped_statement_line(lines: List[str], index: int) -> str:
+    line = lines[index]
+    if _first_numeric_from_text_line(line) is not None:
+        return line
+    folded = line
+    for next_line in lines[index + 1 : index + 4]:
+        folded = f"{folded} {next_line}".strip()
+        if _first_numeric_from_text_line(folded) is not None:
+            return folded
+    return folded
 
 
 def _statement_rows_from_table(rows: List[List[str]], table_type: str) -> List[Dict[str, Any]]:
@@ -463,6 +611,33 @@ def _first_numeric_from_row(row: List[str]) -> float | None:
     return numbers[0]
 
 
+def _first_numeric_from_text_line(line: str) -> float | None:
+    numbers = _numbers_from_text_line(line)
+    if not numbers:
+        return None
+    return numbers[0]
+
+
+def _numbers_from_text_line(line: str) -> List[float]:
+    text = str(line or "").replace("–", "0").replace("—", "0").replace("$", "")
+    output: List[float] = []
+    for match in re.finditer(r"\(?-?\d[\d,]*(?:\.\d+)?\)?", text):
+        raw = match.group(0)
+        if not raw:
+            continue
+        # Skip note/page/year-like small integers when a line has multiple numeric columns.
+        try:
+            number = _parse_number(raw)
+        except Exception:
+            number = None
+        if number is None:
+            continue
+        output.append(number)
+    if len(output) > 1 and abs(output[0]) < 100 and any(abs(item) >= 100 for item in output[1:]):
+        output = output[1:]
+    return output
+
+
 def _parse_number(value: str) -> float | None:
     text = str(value or "").strip()
     if not text:
@@ -499,6 +674,8 @@ def _infer_unit(page_text: str, rows: List[List[str]]) -> str:
     joined = " ".join([page_text] + [" ".join(row) for row in rows[:4]]).lower()
     if "in millions" in joined or "millions" in joined:
         return "millions"
+    if "hk$’000" in joined or "hk$'000" in joined or "rmb’000" in joined or "rmb'000" in joined:
+        return "thousands"
     if "in thousands" in joined or "thousands" in joined:
         return "thousands"
     return "raw"
@@ -506,6 +683,8 @@ def _infer_unit(page_text: str, rows: List[List[str]]) -> str:
 
 def _infer_currency(page_text: str, rows: List[List[str]]) -> str:
     joined = " ".join([page_text] + [" ".join(row) for row in rows[:4]]).lower()
+    if "hk$" in joined or "hong kong dollars" in joined:
+        return "HKD"
     if "$" in joined or "usd" in joined or "u.s. dollars" in joined:
         return "USD"
     if "rmb" in joined or "cny" in joined:

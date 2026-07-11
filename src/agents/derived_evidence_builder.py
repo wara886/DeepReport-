@@ -51,9 +51,11 @@ def build_derived_evidence(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     valuation = analysis_artifacts.get("valuation", {})
     if not isinstance(valuation, dict) or not valuation:
         valuation = blackboard.get("valuation_analysis", {})
+    if not isinstance(valuation, dict) or not valuation:
+        valuation = analysis_artifacts.get("valuation_model", {})
     if isinstance(valuation, dict) and valuation:
         content_parts = []
-        for method in ("dcf", "pe_ratio", "pb_ratio", "comparables"):
+        for method in ("dcf", "dcf_model", "pe_ratio", "pb_ratio", "relative_valuation", "comparables", "blended_equity_value_billion", "target_price"):
             val = valuation.get(method) or valuation.get(f"{method}_value")
             if val is not None:
                 content_parts.append(f"{method}: {val}")
@@ -68,6 +70,23 @@ def build_derived_evidence(state: Dict[str, Any]) -> List[Dict[str, Any]]:
             "assumptions": valuation.get("assumptions", ["标准估值模型假设"]),
             "limitations": valuation.get("limitations", ["估值依赖公开数据和模型假设"]),
             "generated_by_agent": "valuation_analysis",
+            "symbol": symbol,
+            "period": period,
+        })
+
+    sensitivity = analysis_artifacts.get("valuation_sensitivity", {})
+    if isinstance(sensitivity, dict) and sensitivity:
+        derived.append({
+            "evidence_id": f"internal_valuation_sensitivity_{symbol}_{period}_v1",
+            "source_type": "internal_model",
+            "trust_level": "derived",
+            "title": f"{symbol} {period} 估值敏感性分析",
+            "content": _fmt_dict_summary(sensitivity, max_keys=20),
+            "input_evidence_ids": _collect_evidence_ids(state),
+            "input_claim_ids": _collect_claim_ids(state),
+            "assumptions": ["基于估值模型情景假设生成敏感性结果"],
+            "limitations": ["敏感性结果依赖模型假设，不等同于外部披露事实"],
+            "generated_by_agent": "valuation_sensitivity",
             "symbol": symbol,
             "period": period,
         })

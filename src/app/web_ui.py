@@ -706,7 +706,7 @@ def create_ui_handler(
                     quality_result = {"delivery_gate": {"delivery_pass": False}, "top_quality_issues": []}
 
                 # ── 3. Delivery rework ───────────────────────────────
-                rework_max_rounds = 0 if mode == "user" else 1
+                rework_max_rounds = 1
                 deadline_exceeded = deadline_exceeded or _deadline_expired(execution_deadline)
                 if rework_max_rounds > 0 and not deadline_exceeded:
                     rework_result = run_delivery_rework_loop(
@@ -731,7 +731,7 @@ def create_ui_handler(
                                 "trigger": "quality_diagnostic",
                                 "status": "skipped",
                                 "handled": False,
-                                "unfixable_reasons": [f"user_fast_mode_skips_delivery_rework" if mode == "user" else "deadline_exceeded"],
+                                "unfixable_reasons": ["deadline_exceeded"],
                                 "delivery_pass_after_round": quality_result.get("delivery_gate", {}).get("delivery_pass", False) if isinstance(quality_result.get("delivery_gate"), dict) else False,
                             }],
                         )
@@ -1624,7 +1624,7 @@ def create_ui_handler(
                             quality_result = {"delivery_gate": {"delivery_pass": False}, "top_quality_issues": []}
 
                         # ── 3. Delivery rework ───────────────────────────────
-                        _chat_rework_max_rounds = 0 if mode == "user" else 1
+                        _chat_rework_max_rounds = 1
                         _chat_deadline_exceeded = _chat_deadline_exceeded or _deadline_expired(execution_deadline)
                         if _chat_rework_max_rounds > 0 and not _chat_deadline_exceeded:
                             rework_result = run_delivery_rework_loop(
@@ -1649,7 +1649,7 @@ def create_ui_handler(
                                         "trigger": "quality_diagnostic",
                                         "status": "skipped",
                                         "handled": False,
-                                        "unfixable_reasons": [f"user_fast_mode_skips_delivery_rework" if mode == "user" else "deadline_exceeded"],
+                                        "unfixable_reasons": ["deadline_exceeded"],
                                         "delivery_pass_after_round": quality_result.get("delivery_gate", {}).get("delivery_pass", False) if isinstance(quality_result.get("delivery_gate"), dict) else False,
                                     }],
                                 )
@@ -2297,21 +2297,11 @@ def run_delivery_rework_loop(
     max_rounds: int = 3,
     deadline: float | None = None,
 ) -> Dict[str, Any]:
-    """Keep delivery quality findings diagnostic-only without rerunning delivery."""
+    """Run targeted delivery rework before a report is marked formally blocked."""
 
     history: List[Dict[str, Any]] = []
     current_quality = dict(initial_quality_result or {})
     _normalize_delivery_gate(Path(output_path), current_quality)
-    history.append({
-        "round": 0,
-        "trigger": "quality_diagnostic",
-        "status": "skipped",
-        "handled": False,
-        "unfixable_reasons": ["delivery gate is diagnostic-only"],
-        "delivery_pass_after_round": current_quality.get("delivery_gate", {}).get("delivery_pass", False) if isinstance(current_quality.get("delivery_gate"), dict) else False,
-    })
-    _write_delivery_rework_history(Path(output_path), history)
-    return {"rounds": history, "quality_result": current_quality, "reworked": False}
 
     if orchestrator is None:
         gate = current_quality.get("delivery_gate", {}) if isinstance(current_quality.get("delivery_gate"), dict) else {}
@@ -3122,6 +3112,7 @@ def _delivery_revision_request(remediation: Dict[str, Any], objections: List[Dic
     lines = [
         "Delivery gate failed. Rewrite only with verified claims/evidence/blackboard facts.",
         "If inputs are missing, write a concrete data-gap impact note instead of placeholders.",
+        "Formal section contract: executive summary, financial analysis, valuation, risk, and investment conclusion must be complete paragraphs, not fragments, placeholders, or table-only sections.",
     ]
     if failed:
         lines.append("Failed sections: " + ", ".join(failed[:10]))

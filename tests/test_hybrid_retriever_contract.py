@@ -53,8 +53,11 @@ def test_hybrid_retriever_contract_returns_hits_and_meta(tmp_path):
     assert meta["mode"] == "hybrid"
     assert meta["mode_effective"] in {"hybrid", "bm25"}
     assert meta["bm25_hit_count"] >= 1
+    assert meta["vector_hit_count"] == meta["dense_hit_count"]
     assert meta["returned_hit_count"] >= 1
     assert meta["retrieval_available"] is True
+    assert "vector_score_max" in meta
+    assert "final_score_mean" in meta
     assert meta["coverage"]["evidence_ready"] is True
     assert meta["coverage"]["returned_count"] == meta["returned_hit_count"]
     assert "financials" in meta["coverage"]["returned_sources"]

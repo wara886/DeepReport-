@@ -51,6 +51,7 @@ class TaskAnalysisService:
 
     def get_analysis_package(self, task_id: str) -> dict[str, Any]:
         task_payload = self.report_task_service.get_task(task_id)
+        task_payload = _merge_official_evidence_gate(task_payload)
         with self.session_factory() as session:
             task = _get_task(session, task_id)
             symbol = str(task.symbol or "").strip().upper()
@@ -166,6 +167,81 @@ def _get_task(session: Session, task_id: str) -> ReportTask:
     if task is None:
         raise ReportTaskNotFound(task_id)
     return task
+
+
+def _merge_official_evidence_gate(task_payload: dict[str, Any]) -> dict[str, Any]:
+    metadata = task_payload.get("metadata") if isinstance(task_payload.get("metadata"), dict) else {}
+    output_dir = _path_from_metadata(metadata.get("output_dir"))
+    coverage = _read_json_dict(output_dir / "evidence_coverage.json") if output_dir is not None else {}
+    if not coverage:
+        return task_payload
+
+    gate = dict(metadata.get("pre_generation_evidence_gate") or {})
+    existing_summary = str(gate.get("summary") or "")
+    formal_ready = coverage.get("formal_delivery_allowed")
+    draft_allowed = coverage.get("draft_generation_allowed")
+    blocking_reasons = _official_evidence_blocking_reasons(coverage)
+    recommended_actions = _official_evidence_actions(coverage)
+    gate.update(
+        {
+            "status": gate.get("status") or ("success" if formal_ready is True else "warning"),
+            "blocked": bool(gate.get("blocked", False)),
+            "draft_ready": True if draft_allowed is None else bool(draft_allowed),
+            "delivery_ready": formal_ready is True,
+            "summary": existing_summary
+            or (
+                "官方证据覆盖满足正式交付要求。"
+                if formal_ready is True
+                else "可生成草稿，但正式交付仍需补齐官方披露和证据链路。"
+            ),
+            "official_evidence_coverage": coverage,
+            "delivery_blocked_reasons": blocking_reasons or gate.get("delivery_blocked_reasons") or gate.get("blocking_reasons") or [],
+            "recommended_actions": recommended_actions or gate.get("recommended_actions") or [],
+        }
+    )
+    gate.setdefault("coverage", {})
+    if isinstance(gate["coverage"], dict):
+        gate["coverage"] = {
+            **gate["coverage"],
+            "required_sources": coverage.get("required_official_sources") or gate["coverage"].get("required_sources") or [],
+            "missing_sources": coverage.get("missing_requirements") or gate["coverage"].get("missing_sources") or [],
+            "candidate_count": coverage.get("official_record_count", gate["coverage"].get("candidate_count", 0)),
+            "returned_sources": gate["coverage"].get("returned_sources") or [],
+        }
+
+    patched_metadata = dict(metadata)
+    patched_metadata["pre_generation_evidence_gate"] = gate
+    patched_task = dict(task_payload)
+    patched_task["metadata"] = patched_metadata
+    return patched_task
+
+
+def _official_evidence_blocking_reasons(coverage: dict[str, Any]) -> list[dict[str, Any]]:
+    if coverage.get("formal_delivery_allowed") is True:
+        return []
+    reasons = coverage.get("blocking_reasons")
+    if not isinstance(reasons, list) or not reasons:
+        reasons = coverage.get("missing_requirements") if isinstance(coverage.get("missing_requirements"), list) else []
+    return [
+        {
+            "type": "official_evidence_gap",
+            "label": "官方证据不足",
+            "description": str(reason),
+        }
+        for reason in reasons
+        if str(reason)
+    ]
+
+
+def _official_evidence_actions(coverage: dict[str, Any]) -> list[dict[str, str]]:
+    actions = coverage.get("recommended_actions")
+    if not isinstance(actions, list):
+        actions = []
+    return [
+        {"label": "补齐官方证据", "view": "datasources", "reason": str(action)}
+        for action in actions
+        if str(action)
+    ]
 
 
 def _claims_for_task(session: Session, task_id: str) -> list[ReportClaim]:
@@ -1020,6 +1096,14 @@ def _read_json_list(path: Path) -> list[dict[str, Any]]:
             if isinstance(rows, list):
                 return [item for item in rows if isinstance(item, dict)]
     return []
+
+
+def _read_json_dict(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _read_text(path: Path) -> str:

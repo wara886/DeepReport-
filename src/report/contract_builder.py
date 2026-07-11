@@ -193,7 +193,7 @@ def build_report_section_contracts(
     # ── Build each section contract ──
     _build_executive_summary(contracts, evidence_records, financial_metrics, section_dossiers, financial_evidence_ids)
     _build_business_overview(contracts, pdf_section_summaries, pdf_section_chunks,
-                             evidence_records, analysis_artifacts, state,
+                             evidence_records, analysis_artifacts, state, section_dossiers,
                              annual_report_sections=annual_report_sections)
     _build_ownership_governance(contracts, pdf_section_summaries, pdf_section_chunks,
                                 evidence_records, state,
@@ -203,8 +203,8 @@ def build_report_section_contracts(
                              annual_report_sections=annual_report_sections)
     _build_three_statement_summary(contracts, financial_metrics, tables, financial_evidence_ids, currency_context)
     _build_financial_analysis(contracts, financial_metrics, tables, evidence_records, section_dossiers, financial_evidence_ids, currency_context)
-    _build_peer_compare(contracts, peer_rows, analysis_artifacts, blackboard, symbol)
-    _build_valuation(contracts, valuation_model, financial_metrics, financial_evidence_ids, currency_context)
+    _build_peer_compare(contracts, peer_rows, analysis_artifacts, blackboard, symbol, section_dossiers)
+    _build_valuation(contracts, valuation_model, financial_metrics, financial_evidence_ids, currency_context, section_dossiers)
     _build_valuation_sensitivity(contracts, valuation_model, valuation_sensitivity)
     _build_risk_factors(contracts, pdf_section_summaries, pdf_section_chunks,
                         evidence_records, analysis_artifacts, state,
@@ -269,6 +269,7 @@ def _build_business_overview(
     evidence_records: List[Dict[str, Any]],
     analysis_artifacts: Dict[str, Any],
     state: Dict[str, Any],
+    section_dossiers: Dict[str, Any] | None = None,
     annual_report_sections: List[Dict[str, Any]] = None,
 ) -> None:
     c = contracts.ensure("business_overview")
@@ -278,6 +279,7 @@ def _build_business_overview(
 
     if annual_report_sections is None:
         annual_report_sections = []
+    section_dossiers = section_dossiers or {}
 
     biz_chunks = _filter_chunks_by_type(pdf_section_chunks, {
         "business_overview", "business", "strategy_business",
@@ -365,6 +367,16 @@ def _build_business_overview(
                 c.add_blocked_reason("business_overview_used_profile_fallback")
             else:
                 c.add_blocked_reason("business_overview_pdf_chunks_not_found")
+
+    if c.status == "gap":
+        _apply_dossier_pack_fallback(
+            c,
+            section_dossiers,
+            "business_overview",
+            fact_type="business_profile_pack",
+            source_type=SRC_YAHOO_PROFILE,
+            min_chars=30,
+        )
 
     for fact in c.facts:
         frags = text_contains_fragments(fact.text)
@@ -710,6 +722,7 @@ def _build_peer_compare(
     analysis_artifacts: Dict[str, Any],
     blackboard: Dict[str, Any],
     target_symbol: str,
+    section_dossiers: Dict[str, Any] | None = None,
 ) -> None:
     c = contracts.ensure("peer_compare")
     c.allowed_source_types = [SRC_PEER_DATA, SRC_MARKET_DATA]
@@ -717,8 +730,22 @@ def _build_peer_compare(
     c.render_policy["allow_llm_rewrite"] = True
 
     if not peer_rows:
-        c.add_blocked_reason("peer_rows_not_available")
-        c.status = "gap"
+        _apply_dossier_pack_fallback(
+            c,
+            section_dossiers=section_dossiers or _safe_dict(analysis_artifacts, "section_dossiers"),
+            section_key="peer_compare",
+            fact_type="peer_compare_boundary_pack",
+            source_type=SRC_PEER_DATA,
+            min_chars=30,
+        )
+        if c.status == "gap":
+            c.status = "fallback"
+            c.deterministic_text = (
+                "本轮未取得足够可比公司量化表，因此同行对比仅作为口径边界："
+                "需要按同市场、同业务结构、相近利润率和现金流质量筛选可比公司；"
+                "正式交付前应补齐可比公司的收入增速、毛利率、P/E、P/S 或 P/B 等指标。"
+            )
+            c.add_quality_flag("peer_compare_boundary_only")
         return
 
     # Get approved peer symbols
@@ -779,26 +806,34 @@ def _build_peer_compare(
             description="海外消费品参考组（非同业直接可比）",
         ))
 
-    if direct_peers:
+    if direct_peers and valid_peer_rows:
         c.status = "supported"
     elif cross_market:
         c.status = "partial"
         c.add_blocked_reason("peer_only_cross_market_reference")
     else:
-        c.status = "gap"
-        c.add_blocked_reason("peer_no_approved_symbols")
+        c.status = "fallback"
+        c.add_quality_flag("peer_compare_boundary_only")
     if not direct_peers and not cross_market:
-        c.add_blocked_reason("peer_only_target_row")
+        c.add_quality_flag("peer_only_target_row")
+        if peer_rows:
+            c.add_quality_flag("peer_no_metric_rows")
     if not valid_peer_rows and direct_peers:
         direct_peers.clear()
-        c.status = "gap"
-        c.add_blocked_reason("peer_no_metric_rows")
+        c.status = "fallback"
+        c.add_quality_flag("peer_no_metric_rows")
 
     # Store peer table markdown as deterministic text
-    if peer_rows:
+    if peer_rows and direct_peers and valid_peer_rows:
         table_md = _render_peer_table_markdown(peer_rows, direct_peers, cross_market, target_symbol)
         if table_md:
             c.deterministic_text = table_md
+    elif c.status == "fallback" and not c.deterministic_text:
+        c.deterministic_text = (
+            "本轮同行对比未取得可验证的非目标公司量化指标，因此不将同业表作为正式估值依据。"
+            "正式交付前需要补齐至少两家可比公司的收入增速、毛利率、净利率、ROE 或现金流指标，"
+            "并说明业务结构、市场口径和估值倍数差异。"
+        )
 
 
 def _build_valuation(
@@ -807,6 +842,7 @@ def _build_valuation(
     financial_metrics: Dict[str, Any],
     financial_evidence_ids: List[str],
     currency_context: CurrencyContext,
+    section_dossiers: Dict[str, Any],
 ) -> None:
     c = contracts.ensure("valuation")
     c.allowed_source_types = [SRC_VALUATION_MODEL, SRC_FINANCIAL_METRIC, SRC_MARKET_DATA]
@@ -814,7 +850,27 @@ def _build_valuation(
     c.render_policy["allow_llm_rewrite"] = True
 
     if not valuation_model:
-        c.add_blocked_reason("valuation_model_not_available")
+        metrics_text = _format_key_metrics(financial_metrics)
+        if metrics_text:
+            c.add_fact(
+                "valuation_metric_boundary",
+                "估值观察缺少完整目标价模型，但可基于已验证财务指标形成方向性估值边界：" + metrics_text,
+                evidence_ids=financial_evidence_ids[:6],
+                source_types=[SRC_FINANCIAL_METRIC],
+            )
+            c.status = "partial"
+            c.add_quality_flag("valuation_directional_only")
+        else:
+            _apply_dossier_pack_fallback(
+                c,
+                section_dossiers,
+                "valuation",
+                fact_type="valuation_boundary_pack",
+                source_type=SRC_FINANCIAL_METRIC,
+                min_chars=30,
+            )
+        if c.status == "gap":
+            c.add_blocked_reason("valuation_model_not_available")
         return
 
     status = str(valuation_model.get("valuation_status", "") or "")
@@ -875,7 +931,27 @@ def _build_valuation(
     elif facts_added >= 1:
         c.status = "partial"
     else:
-        c.add_blocked_reason("valuation_no_metrics_available")
+        metrics_text = _format_key_metrics(financial_metrics)
+        if metrics_text:
+            c.add_fact(
+                "valuation_metric_boundary",
+                "估值观察缺少完整目标价模型，但可基于已验证财务指标形成方向性估值边界：" + metrics_text,
+                evidence_ids=financial_evidence_ids[:6],
+                source_types=[SRC_FINANCIAL_METRIC],
+            )
+            c.status = "partial"
+            c.add_quality_flag("valuation_directional_only")
+        else:
+            _apply_dossier_pack_fallback(
+                c,
+                section_dossiers,
+                "valuation",
+                fact_type="valuation_boundary_pack",
+                source_type=SRC_FINANCIAL_METRIC,
+                min_chars=30,
+            )
+        if c.status == "gap":
+            c.add_blocked_reason("valuation_no_metrics_available")
 
 
 def _build_valuation_sensitivity(
@@ -893,8 +969,18 @@ def _build_valuation_sensitivity(
         if vm_status in ("rough_observation_only", "blocked_due_to_incomplete_inputs"):
             c.add_blocked_reason(f"valuation_sensitivity_blocked:{vm_status}")
             c.status = "fallback"
+            c.deterministic_text = (
+                "估值敏感性暂不输出DCF情景数值。本轮只保留变量边界：收入增速、毛利率、"
+                "经营现金流转换率、折现率和终值增长率是后续正式模型必须复核的关键输入。"
+            )
+            c.add_quality_flag("valuation_sensitivity_boundary_only")
         else:
-            c.add_blocked_reason("valuation_sensitivity_not_available")
+            c.status = "fallback"
+            c.deterministic_text = (
+                "估值敏感性数据尚未形成完整表格。本轮先说明敏感性框架：上行情景依赖收入增速、"
+                "利润率和现金流改善，下行情景主要来自需求放缓、费用率上升或估值倍数压缩。"
+            )
+            c.add_quality_flag("valuation_sensitivity_framework_only")
         return
 
     rows = _normalize_sensitivity_rows(valuation_sensitivity)
@@ -1021,8 +1107,21 @@ def _build_investment_conclusion(
     has_peers = bool(pc and pc.status not in ("gap",))
 
     if has_financial or has_valuation or has_peers:
-        c.add_fact("conclusion_basis", "综合财务质量、估值、同行与风险证据后形成审慎观察。",
-                   source_types=[SRC_FINANCIAL_METRIC])
+        evidence_ids = financial_evidence_ids[:5]
+        direction = _investment_direction(financial_metrics, valuation_model)
+        reasons = _investment_reason_text(financial_metrics, valuation_model, has_peers)
+        risks = "主要风险包括需求波动、竞争加剧、现金流转换率下降、估值倍数回落，以及官方披露口径尚需持续复核。"
+        c.add_fact(
+            "conclusion_basis",
+            f"投资结论：维持{direction}。{reasons}{risks}",
+            evidence_ids=evidence_ids,
+            source_types=[SRC_FINANCIAL_METRIC],
+        )
+        c.deterministic_text = (
+            f"维持{direction}，结论基于财务质量、估值约束、同行可比性和风险边界。"
+            f"{reasons}{risks}"
+            "正式交付前仍需确认所有核心数值来自 canonical metrics，并确保结论与引用证据一致。"
+        )
         c.status = "partial"
     else:
         c.add_blocked_reason("conclusion_insufficient_evidence")
@@ -1053,6 +1152,42 @@ def _build_period_note(
 
     if mismatch:
         c.add_quality_flag("period_mismatch")
+
+
+def _investment_direction(financial_metrics: Dict[str, Any], valuation_model: Dict[str, Any]) -> str:
+    flat = _normalize_metrics_flat(financial_metrics)
+    revenue = _safe_number(flat.get("revenue"))
+    net_income = _safe_number(flat.get("net_income"))
+    operating_cash_flow = _safe_number(flat.get("operating_cash_flow") or flat.get("cash_flow_operations"))
+    valuation_status = str(valuation_model.get("valuation_status") or "") if isinstance(valuation_model, dict) else ""
+    if valuation_status in {"blocked_due_to_incomplete_inputs", "rough_observation_only"}:
+        return "中性观察评级"
+    positives = sum(1 for value in (revenue, net_income, operating_cash_flow) if value is not None and value > 0)
+    negatives = sum(1 for value in (net_income, operating_cash_flow) if value is not None and value < 0)
+    if positives >= 2 and negatives == 0:
+        return "中性偏积极评级"
+    if negatives:
+        return "偏谨慎评级"
+    return "中性观察评级"
+
+
+def _investment_reason_text(financial_metrics: Dict[str, Any], valuation_model: Dict[str, Any], has_peers: bool) -> str:
+    flat = _normalize_metrics_flat(financial_metrics)
+    reasons: list[str] = []
+    if _safe_number(flat.get("revenue")) is not None:
+        reasons.append("收入指标已进入证据链，可用于判断业务规模和增长弹性")
+    if _safe_number(flat.get("net_income")) is not None:
+        reasons.append("利润指标可用于观察盈利质量和费用压力")
+    if _safe_number(flat.get("operating_cash_flow") or flat.get("cash_flow_operations")) is not None:
+        reasons.append("经营现金流可用于检验利润含金量")
+    if isinstance(valuation_model, dict) and valuation_model:
+        reasons.append("估值部分提供了倍数或模型边界，但仍需复核输入假设")
+    if has_peers:
+        reasons.append("同行对比用于约束估值口径，不能替代公司自身基本面判断")
+    if not reasons:
+        reasons.append("当前证据只能支持方向性复核，不能支持强评级")
+    selected = reasons[:3]
+    return "核心理由包括：" + "；".join(selected) + "。"
 
 
 def _build_currency_data_quality(
@@ -1996,3 +2131,48 @@ def _clear_not_found_blockers_after_pdf_fallback(contract: SectionEvidenceContra
         and "pdf_sections_not_found" not in str(reason)
         and "pdf_chunks_not_found" not in str(reason)
     ]
+
+
+def _apply_dossier_pack_fallback(
+    contract: SectionEvidenceContract,
+    section_dossiers: Dict[str, Any],
+    section_key: str,
+    *,
+    fact_type: str,
+    source_type: str,
+    min_chars: int = 40,
+) -> None:
+    """Turn existing section dossier material into a bounded evidence pack.
+
+    This is not a substitute for official PDF evidence. It prevents false gap
+    states when the dossier already contains product/user-facing facts or
+    deterministic writing guidance that can support a draft section.
+    """
+
+    dossier = _safe_dict(section_dossiers, section_key)
+    if not dossier:
+        return
+    texts: List[str] = []
+    for key in ("key_facts", "suggested_paragraphs", "deterministic_blocks"):
+        for item in _safe_list(dossier, key):
+            text = str(item or "").strip()
+            if len(text) >= min_chars and not _is_pdf_gap_summary(text):
+                texts.append(_clip_at_sentence_boundary(text, 500))
+    if not texts:
+        return
+    seen: set[str] = set()
+    for text in texts[:3]:
+        if text in seen:
+            continue
+        seen.add(text)
+        contract.add_fact(fact_type, text, source_types=[source_type])
+    if contract.facts:
+        contract.status = "partial" if len(contract.facts) < 2 else "supported"
+        contract.add_quality_flag(f"{section_key}_uses_section_evidence_pack")
+        contract.blocked_reasons = [
+            reason
+            for reason in contract.blocked_reasons
+            if "not_found" not in str(reason)
+            and "no_metrics_available" not in str(reason)
+            and "used_profile_fallback" not in str(reason)
+        ]
