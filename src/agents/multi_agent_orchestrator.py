@@ -42,6 +42,7 @@ from src.agents.research_blackboard import (
     update_blackboard_for_task,
 )
 from src.agents.verifier_agent import VerifierAgent
+from src.data.canonical_metrics import build_canonical_metrics_artifact, canonical_metrics_as_financial_metrics
 from src.data.company_universe import resolve_company_identifier, resolve_company_identifier_with_diagnostics
 from src.data.official_evidence_archive import archive_official_evidence_manifest, build_official_evidence_artifacts
 from src.data.pdf_artifacts import build_pdf_artifacts
@@ -568,7 +569,12 @@ class MultiAgentOrchestrator:
             enabled = self.CONTRACT_MODE_ENABLED_BY_MARKET.get(market, False)
 
             evidence_records = list(state.get("evidence_records", []))
-            analysis_artifacts = dict(state.get("analysis_artifacts", {}))
+            analysis_artifacts = self._apply_canonical_metrics(
+                state.get("analysis_artifacts", {}),
+                symbol=symbol,
+                period=str(state.get("period", "") or ""),
+            )
+            state["analysis_artifacts"] = analysis_artifacts
             section_dossiers = dict(state.get("section_dossiers", {}))
             citations = list(state.get("citations", []))
             audit.update({
@@ -669,6 +675,9 @@ class MultiAgentOrchestrator:
             import logging
             logging.getLogger(__name__).exception("Failed to build contracts and bind citations")
             return None, None
+
+    def _apply_canonical_metrics(self, analysis_artifacts: Any, *, symbol: str, period: str) -> Dict[str, Any]:
+        return _apply_canonical_metrics_to_artifacts(analysis_artifacts, symbol=symbol, period=period)
 
     def _run_static(
         self,
@@ -848,6 +857,7 @@ class MultiAgentOrchestrator:
         )
         claims = analyze_result.output.get("claims", [])
         analysis_artifacts = analyze_result.output.get("analysis_artifacts", {})
+        analysis_artifacts = self._apply_canonical_metrics(analysis_artifacts, symbol=symbol, period=period)
         static_state["claims"] = claims
         static_state["analysis_artifacts"] = analysis_artifacts
         research_blackboard = update_blackboard_for_task(
@@ -861,6 +871,10 @@ class MultiAgentOrchestrator:
         financial_metrics_path = self._write_json(
             "financial_metrics.json",
             analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
+        canonical_metrics_path = self._write_json(
+            "canonical_metrics.json",
+            analysis_artifacts.get("canonical_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
         )
         currency_audit_path = self._write_json(
             "currency_audit.json",
@@ -1262,6 +1276,7 @@ class MultiAgentOrchestrator:
             "claims": str(self.output_dir / "claims.json"),
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
             "financial_metrics": str(financial_metrics_path),
+            "canonical_metrics": str(canonical_metrics_path),
             "currency_audit": str(currency_audit_path),
             "rejected_metrics": str(rejected_metrics_path),
             "claim_rejection_report": str(claim_rejection_path),
@@ -1517,6 +1532,10 @@ class MultiAgentOrchestrator:
             "financial_metrics.json",
             analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
         )
+        canonical_metrics_path = self._write_json(
+            "canonical_metrics.json",
+            analysis_artifacts.get("canonical_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
+        )
         currency_audit_path = self._write_json(
             "currency_audit.json",
             analysis_artifacts.get("currency_audit", {}) if isinstance(analysis_artifacts, dict) else {},
@@ -1711,6 +1730,7 @@ class MultiAgentOrchestrator:
             "claims": str(self.output_dir / "claims.json"),
             "analysis_artifacts": str(self.output_dir / "analysis_artifacts.json"),
             "financial_metrics": str(financial_metrics_path),
+            "canonical_metrics": str(canonical_metrics_path),
             "currency_audit": str(currency_audit_path),
             "rejected_metrics": str(rejected_metrics_path),
             "claim_rejection_report": str(claim_rejection_path),
@@ -2210,8 +2230,15 @@ class MultiAgentOrchestrator:
         self._write_json("citations.json", list(state.get("citations", [])))
         self._write_json("search_meta.json", state.get("search_meta", {}))
         analysis = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
+        analysis = self._apply_canonical_metrics(
+            analysis,
+            symbol=str(state.get("symbol", "") or ""),
+            period=str(state.get("period", "") or ""),
+        )
+        state["analysis_artifacts"] = analysis
         self._write_json("tables.json", analysis.get("tables", []))
         self._write_json("financial_metrics.json", analysis.get("financial_metrics", {}))
+        self._write_json("canonical_metrics.json", analysis.get("canonical_metrics", {}))
         self._write_json("currency_audit.json", analysis.get("currency_audit", {}))
         self._write_json("valuation_model.json", analysis.get("valuation_model", {}))
         self._write_json("valuation_sensitivity.json", analysis.get("valuation_sensitivity", {}))
@@ -3176,6 +3203,12 @@ def enrich_task_parameters(
         state["section_dossiers"] = _dossiers
         params["section_dossiers"] = _dossiers
         analysis_artifacts = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
+        analysis_artifacts = _apply_canonical_metrics_to_artifacts(
+            analysis_artifacts,
+            symbol=str(state.get("symbol", "") or ""),
+            period=str(state.get("period", "") or ""),
+        )
+        state["analysis_artifacts"] = analysis_artifacts
         params.setdefault("tables", analysis_artifacts.get("tables", []))
         params.setdefault("financial_metrics", analysis_artifacts.get("financial_metrics", {}))
         params.setdefault("currency_audit", analysis_artifacts.get("currency_audit", {}))
@@ -3913,6 +3946,22 @@ def agent_key_for_task(task_type: str) -> str:
     if task_type not in mapping:
         raise KeyError(f"unsupported dynamic task_type: {task_type}")
     return mapping[task_type]
+
+
+def _apply_canonical_metrics_to_artifacts(analysis_artifacts: Any, *, symbol: str, period: str) -> Dict[str, Any]:
+    artifacts = dict(analysis_artifacts) if isinstance(analysis_artifacts, dict) else {}
+    raw_financial_metrics = artifacts.get("raw_financial_metrics", artifacts.get("financial_metrics", {}))
+    tables = artifacts.get("tables", []) if isinstance(artifacts.get("tables"), list) else []
+    canonical = build_canonical_metrics_artifact(
+        financial_metrics=raw_financial_metrics,
+        tables=tables,
+        symbol=symbol,
+        period=period,
+    )
+    artifacts["raw_financial_metrics"] = raw_financial_metrics
+    artifacts["canonical_metrics"] = canonical
+    artifacts["financial_metrics"] = canonical_metrics_as_financial_metrics(canonical, fallback=raw_financial_metrics)
+    return artifacts
 
 
 def _task_type_order(task_type: str) -> int:

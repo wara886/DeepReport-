@@ -111,6 +111,26 @@ def write_canonical_metrics_artifact(
     return artifact
 
 
+def canonical_metrics_as_financial_metrics(artifact: Any, fallback: Any | None = None) -> Any:
+    """Return a legacy financial_metrics-shaped payload backed by canonical winners."""
+
+    if not isinstance(artifact, dict):
+        return fallback if fallback is not None else {}
+    metrics = artifact.get("metrics")
+    if not isinstance(metrics, list):
+        canonical = artifact.get("canonical_metrics") if isinstance(artifact.get("canonical_metrics"), dict) else {}
+        metrics = list(canonical.values())
+    if not metrics:
+        return fallback if fallback is not None else {"metrics": [], "metric_count": 0}
+    output = dict(fallback) if isinstance(fallback, dict) else {}
+    output["metrics"] = [dict(item) for item in metrics if isinstance(item, dict)]
+    output["metric_count"] = len(output["metrics"])
+    output["canonical_source"] = "canonical_metrics.json"
+    output["canonical_conflicts"] = list(artifact.get("conflicts") or []) if isinstance(artifact.get("conflicts"), list) else []
+    output["coverage"] = dict(artifact.get("coverage") or {}) if isinstance(artifact.get("coverage"), dict) else {}
+    return output
+
+
 def _candidate_rows(*, financial_metrics: Any, tables: Any) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for metric in _metric_rows(financial_metrics):

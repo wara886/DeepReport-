@@ -1,4 +1,5 @@
 from src.data.canonical_metrics import build_canonical_metrics_artifact
+from src.evaluation.report_quality import load_quality_artifacts, resolve_run_paths
 
 
 def test_canonical_metrics_prefers_official_pdf_over_market_api_and_records_conflict():
@@ -64,3 +65,25 @@ def test_canonical_metrics_uses_table_rows_as_candidates():
 
     assert artifact["canonical_metrics"]["operating_cash_flow"]["value"] == -23882.0
     assert artifact["canonical_metrics"]["operating_cash_flow"]["source_table_id"] == "tbl_cash"
+
+
+def test_quality_artifact_loader_prefers_canonical_metrics(tmp_path):
+    run_dir = tmp_path / "run"
+    outputs = run_dir / "outputs"
+    reports = run_dir / "reports"
+    outputs.mkdir(parents=True)
+    reports.mkdir(parents=True)
+    (outputs / "financial_metrics.json").write_text(
+        '{"metrics":[{"metric_name":"revenue","value":100,"source_type":"market_api"}]}',
+        encoding="utf-8",
+    )
+    (outputs / "canonical_metrics.json").write_text(
+        '{"metrics":[{"metric_name":"revenue","value":95,"source_type":"pdf_statement_table"}],"canonical_metrics":{"revenue":{"metric_name":"revenue","value":95,"source_type":"pdf_statement_table"}}}',
+        encoding="utf-8",
+    )
+
+    artifacts = load_quality_artifacts(resolve_run_paths(run_dir))
+
+    assert artifacts["financial_metrics"]["metrics"][0]["value"] == 95
+    assert artifacts["financial_metrics"]["canonical_source"] == "canonical_metrics.json"
+    assert artifacts["raw_financial_metrics"]["metrics"][0]["value"] == 100

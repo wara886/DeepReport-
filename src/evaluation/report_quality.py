@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 from typing import Any, Dict, Iterable, List
 
+from src.data.canonical_metrics import canonical_metrics_as_financial_metrics
 from src.agents.research_blackboard import quality_generalization_checks
 from src.report.mojibake_guard import build_mojibake_quality_issue, looks_like_mojibake
 from src.utils.config import load_config
@@ -253,13 +254,18 @@ def _mirror_reports_dir(outputs_dir: Path) -> Path:
 
 
 def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
+    canonical_metrics = _read_json(paths.outputs_dir / "canonical_metrics.json", {})
+    raw_financial_metrics = _read_json(paths.outputs_dir / "financial_metrics.json", {})
+    financial_metrics = canonical_metrics_as_financial_metrics(canonical_metrics, fallback=raw_financial_metrics)
     return {
         "summary": _read_json(paths.outputs_dir / "run_summary.json", {}),
         "claims": _as_list(_read_json(paths.outputs_dir / "claims.json", [])),
         "evidence": _as_list(_read_json(paths.outputs_dir / "evidence.json", [])),
         "citations": _as_list(_read_json(paths.outputs_dir / "citations.json", [])),
         "tables": _as_list(_read_json(paths.outputs_dir / "tables.json", [])),
-        "financial_metrics": _read_json(paths.outputs_dir / "financial_metrics.json", {}),
+        "financial_metrics": financial_metrics,
+        "canonical_metrics": canonical_metrics,
+        "raw_financial_metrics": raw_financial_metrics,
         "currency_audit": _read_json(paths.outputs_dir / "currency_audit.json", {}),
         "valuation_model": _read_json(paths.outputs_dir / "valuation_model.json", {}),
         "valuation_sensitivity": _read_json(paths.outputs_dir / "valuation_sensitivity.json", {}),
