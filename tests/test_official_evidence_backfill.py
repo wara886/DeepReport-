@@ -29,6 +29,53 @@ def test_backfill_executor_turns_cn_plan_into_official_coverage(tmp_path):
     assert {table["table_type"] for table in tables} == {"income_statement", "balance_sheet", "cash_flow_statement"}
 
 
+def test_backfill_executor_uses_pdf_page_anchored_statement_tables(monkeypatch, tmp_path):
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    initial = build_official_evidence_artifacts([], symbol="0700.HK", period="FY2024", tables=[])
+    (outputs / "official_evidence_backfill_plan.json").write_text(
+        json.dumps(initial["official_evidence_backfill_plan"], ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    def fake_pdf_artifacts(records, cache_dir, max_pdfs=1, max_pages=20):
+        return {
+            "pdf_manifest": [{"status": "cached", "source_url": "https://www1.hkexnews.hk/report.pdf"}],
+            "pdf_sections": [
+                {
+                    "section_id": "financial_page",
+                    "evidence_id": "hkex_annual",
+                    "source_url": "https://www1.hkexnews.hk/report.pdf",
+                    "page": 88,
+                    "section_type": "financial_statements",
+                    "snippet": "Consolidated income statement, balance sheet and cash flow statement.",
+                    "extraction_method": "test",
+                }
+            ],
+            "pdf_tables": [
+                _pdf_table("income_statement", "revenue"),
+                _pdf_table("balance_sheet", "total_assets"),
+                _pdf_table("cash_flow_statement", "operating_cash_flow"),
+            ],
+            "meta": {"cached_pdf_count": 1, "statement_table_count": 3},
+        }
+
+    monkeypatch.setattr("src.data.official_evidence_backfill.build_pdf_artifacts", fake_pdf_artifacts)
+
+    result = execute_official_evidence_backfill(
+        symbol="0700.HK",
+        period="FY2024",
+        output_dir=outputs,
+        search_manager=FakeSearchManager(hkex_empty=False),
+    )
+    coverage = json.loads((outputs / "evidence_coverage.json").read_text(encoding="utf-8"))
+
+    assert result["pdf_record_count"] == 4
+    assert coverage["pdf_page_anchor_count"] >= 1
+    assert coverage["has_official_pdf_three_statements"] is True
+    assert coverage["formal_delivery_allowed"] is True
+
+
 def test_backfill_executor_keeps_hk_formal_blocked_without_official_announcement(tmp_path):
     outputs = tmp_path / "outputs"
     outputs.mkdir()
@@ -78,7 +125,23 @@ class FakeSearchManager:
         if engine == "eastmoney_financials":
             return _payload(engine, [_eastmoney_hit(symbol, period, kind) for kind in ("income", "balance", "cashflow")])
         if engine == "hkex_announcements":
-            return _payload(engine, [] if self.hkex_empty else [])
+            return _payload(
+                engine,
+                []
+                if self.hkex_empty
+                else [
+                    {
+                        "evidence_id": "hkex_annual",
+                        "symbol": symbol,
+                        "period": period,
+                        "source_type": "hkex_annual_report",
+                        "source_url": "https://www1.hkexnews.hk/report.pdf",
+                        "title": "Annual Report 2024",
+                        "content": "HKEX annual report",
+                        "metadata": {"provider": "HKEX", "page": 1},
+                    }
+                ],
+            )
         if engine == "hk_financials":
             return _payload(engine, [])
         return _payload(engine, [])
@@ -88,6 +151,20 @@ def _payload(engine, rows):
     return {
         "hits": [{"raw": row} for row in rows],
         "meta": {"engine_meta": {engine: {"record_count": len(rows)}}},
+    }
+
+
+def _pdf_table(table_type, line_item):
+    return {
+        "table_id": f"pdf_{table_type}",
+        "evidence_id": "hkex_annual",
+        "source_url": "https://www1.hkexnews.hk/report.pdf",
+        "page": 88,
+        "table_type": table_type,
+        "rows": [{"statement": table_type, "line_item": line_item, "value": 100.0}],
+        "unit": "millions",
+        "currency": "CNY",
+        "extraction_method": "test_pdf_table",
     }
 
 

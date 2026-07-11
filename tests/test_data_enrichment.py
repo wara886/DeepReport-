@@ -6,7 +6,7 @@ from src.data.financial_statement_metrics import build_standard_financial_metric
 from src.data import yahoo_finance as yahoo_finance_module
 from src.data.yahoo_finance import yahoo_financials_to_evidence
 from src.utils.periods import period_match
-from src.data.pdf_artifacts import build_pdf_artifacts, _extract_pdfplumber_statement_tables
+from src.data.pdf_artifacts import build_pdf_artifacts, _extract_pdfplumber_statement_tables, _extract_statement_tables_from_text
 from src.agents.multi_agent_orchestrator import _pdf_tables_as_evidence_records
 from src.agents.deep_analyze_agent import apply_evidence_gate, build_rule_claims, _infer_company_analysis_profile
 
@@ -729,6 +729,57 @@ def test_pdfplumber_statement_table_extractor_normalizes_income_table(monkeypatc
     assert tables[0]["extraction_method"] == "pdfplumber_extract_tables_statement_heuristic_v1"
     assert tables[0]["table_type"] == "income_statement"
     assert {row["line_item"] for row in tables[0]["rows"]} >= {"revenue", "gross_profit", "net_income"}
+
+
+def test_hkex_text_statement_pages_extract_page_anchored_rows():
+    income = _extract_statement_tables_from_text(
+        """
+        CONSOLIDATED STATEMENT OF PROFIT OR LOSS AND OTHER COMPREHENSIVE INCOME
+        FOR THE YEAR ENDED 31 MARCH 2025
+        2025 2024
+        Notes HK$'000 HK$'000
+        Revenue 5 - -
+        Gross loss (9,176) -
+        Loss for the year attributable to the owners of the Company (45,742) (24,209)
+        """,
+        page_number=2,
+        evidence_id="hkex_annual",
+        source_url="https://www1.hkexnews.hk/report.pdf",
+    )
+    balance = _extract_statement_tables_from_text(
+        """
+        CONSOLIDATED STATEMENT OF FINANCIAL POSITION
+        AT 31 MARCH 2025
+        2025 2024
+        Notes HK$'000 HK$'000
+        Cash and cash equivalents 4,133 3,937
+        NET LIABILITIES (125,518) (79,776)
+        TOTAL DEFICIT (125,518) (79,776)
+        """,
+        page_number=3,
+        evidence_id="hkex_annual",
+        source_url="https://www1.hkexnews.hk/report.pdf",
+    )
+    cashflow = _extract_statement_tables_from_text(
+        """
+        BASIS FOR DISCLAIMER OPINION
+        The Group had net cash outflows from operating activities of approximately HK$23,882,000
+        for the year ended 31 March 2025.
+        """,
+        page_number=15,
+        evidence_id="hkex_annual",
+        source_url="https://www1.hkexnews.hk/report.pdf",
+    )
+
+    tables = income + balance + cashflow
+    assert {table["table_type"] for table in tables} == {"income_statement", "balance_sheet", "cash_flow_statement"}
+    assert all(table["source_type"] == "pdf_statement_table" for table in tables)
+    assert all(table["page"] for table in tables)
+    assert income[0]["currency"] == "HKD"
+    assert income[0]["unit"] == "thousands"
+    assert {row["line_item"] for row in income[0]["rows"]} >= {"revenue", "gross_profit", "net_income"}
+    assert {row["line_item"] for row in balance[0]["rows"]} >= {"cash_and_equivalents", "total_liabilities", "equity"}
+    assert cashflow[0]["rows"][0]["line_item"] == "operating_cash_flow"
 
 
 def test_statement_rows_generate_three_statement_summary_claims_with_cashflow_gap():
