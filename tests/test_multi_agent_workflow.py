@@ -945,6 +945,29 @@ def test_final_answer_filters_diagnostic_and_unlineaged_valuation_claims():
     assert [item["section_name"] for item in filtered] == ["risk_factors"]
 
 
+def test_final_answer_keeps_evidence_backed_cautious_conclusion_without_metrics():
+    claims = [
+        {
+            "section_name": "conclusion",
+            "claim_text": "基于增长驱动和竞争风险，维持中性观察。[ev_conclusion]",
+            "numeric_values": {},
+            "evidence_ids": ["ev_conclusion"],
+        },
+        {
+            "section_name": "conclusion",
+            "claim_text": "Model conclusion: recommendation is neutral.",
+            "numeric_values": {},
+            "evidence_ids": ["ev_model"],
+        },
+    ]
+
+    filtered = _filter_reportable_claims(claims, {"metric_count": 0, "metrics": []})
+
+    assert [item["claim_text"] for item in filtered] == [
+        "基于增长驱动和竞争风险，维持中性观察。[ev_conclusion]"
+    ]
+
+
 def test_final_answer_overwrites_financial_sections_with_verified_lineage():
     draft = """# Report
 

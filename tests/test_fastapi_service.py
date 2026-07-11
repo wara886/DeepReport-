@@ -1,15 +1,12 @@
 import json
-import time
 from pathlib import Path
-from threading import Event
 
 from fastapi.testclient import TestClient
 
 from src.app.api_fastapi import create_fastapi_app
-from src.app.chat_task_parser import ParsedChatTask
 
 
-def test_fastapi_health_and_latest_preserve_workbench_contract(tmp_path):
+def test_fastapi_health_and_root_expose_current_workbench(tmp_path):
     outputs = tmp_path / "outputs"
     reports = tmp_path / "reports"
     outputs.mkdir()
@@ -21,16 +18,20 @@ def test_fastapi_health_and_latest_preserve_workbench_contract(tmp_path):
     with TestClient(app) as client:
         health = client.get("/health")
         api_health = client.get("/api/health")
-        latest = client.get("/api/latest")
         index = client.get("/")
+        workbench = client.get("/workbench")
+        legacy_latest = client.get("/api/latest")
+        legacy_chat = client.post("/api/chat", json={"message": "hello"})
 
     assert health.json()["status"] == "ok"
     assert api_health.status_code == 200
     assert api_health.json() == health.json()
-    assert latest.status_code == 200
-    assert latest.json()["summary"]["symbol"] == "TSLA"
     assert index.status_code == 200
     assert "text/html" in index.headers["content-type"]
+    assert "慧研投研工作台" in index.text
+    assert workbench.text == index.text
+    assert legacy_latest.status_code == 404
+    assert legacy_chat.status_code == 404
 
 
 def test_fastapi_artifacts_resolve_user_and_dev_run_roots(tmp_path, monkeypatch):
@@ -92,78 +93,3 @@ def test_fastapi_report_artifact_uses_delivery_gate_to_block_stale_normal_label(
     assert "草稿生成，正式交付阻塞" in response.text
     assert "正常生成" not in response.text
     assert "88%" not in response.text
-
-
-def test_fastapi_chat_does_not_create_report_run_for_general_dialogue(tmp_path):
-    outputs = tmp_path / "outputs"
-    reports = tmp_path / "reports"
-    app = create_fastapi_app(output_dir=str(outputs), report_dir=str(reports), memory_root=str(tmp_path / "memory"))
-
-    with TestClient(app) as client:
-        response = client.post(
-            "/api/chat",
-            json={"message": "hello", "allow_report_run": True, "memory_enabled": False},
-        )
-
-    assert response.status_code == 200
-    assert response.json()["mode"] == "general_chat"
-    assert not (outputs / "runs").exists()
-
-
-def test_fastapi_chat_background_report_returns_without_upstream_timeout(monkeypatch, tmp_path):
-    release = Event()
-
-    class FakeOrchestrator:
-        def __init__(self, output_dir, report_dir, **kwargs):
-            self.output_dir = output_dir
-            self.report_dir = report_dir
-
-        def run(self, **kwargs):
-            release.wait(timeout=5)
-            return {"verification_passed": True}
-
-    def fake_parse(*args, **kwargs):
-        return ParsedChatTask(
-            symbol="TSLA",
-            period="FY2024",
-            period_kind="fiscal_year",
-            research_topic="Generate TSLA FY2024 report",
-            confidence=0.99,
-            should_run=True,
-            needs_confirmation=False,
-            reason="test",
-        )
-
-    monkeypatch.setattr("src.app.web_ui.MultiAgentOrchestrator", FakeOrchestrator)
-    monkeypatch.setattr("src.app.web_ui.llm_parse_chat_task", fake_parse)
-    monkeypatch.setattr("src.app.web_ui.run_delivery_quality_pipeline", lambda *args, **kwargs: {})
-    monkeypatch.setattr("src.app.web_ui.run_delivery_rework_loop", lambda *args, **kwargs: {})
-    monkeypatch.setattr("src.app.web_ui.QueryUnderstanding.intent_classify", lambda self, msg: "report_generation")
-
-    outputs = tmp_path / "outputs"
-    reports = tmp_path / "reports"
-    app = create_fastapi_app(output_dir=str(outputs), report_dir=str(reports), memory_root=str(tmp_path / "memory"), mode="developer")
-
-    try:
-        with TestClient(app) as client:
-            started = time.monotonic()
-            response = client.post(
-                "/api/chat",
-                json={
-                    "message": "generate TSLA FY2024 report",
-                    "allow_report_run": True,
-                    "async_report_run": True,
-                    "memory_enabled": False,
-                    "enable_remote_data": False,
-                },
-            )
-            elapsed = time.monotonic() - started
-    finally:
-        release.set()
-
-    body = response.json()
-    assert response.status_code == 200
-    assert elapsed < 3
-    assert body["mode"] == "report_generation_running"
-    assert body["result"]["status"] == "running"
-    assert body["latest"]["active_runs"][0]["symbol"] == "TSLA"

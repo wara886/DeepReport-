@@ -522,17 +522,14 @@ def _filter_reportable_claims(claims: List[Dict[str, Any]], financial_metrics: A
             unsupported_numeric = bool(numeric_values)
             if unsupported_numeric:
                 continue
-        if not has_metric_lineage and section == "conclusion" and any(
-            marker in combined
-            for marker in [
-                "valuation",
-                "recommendation",
-                "model conclusion",
-                "中性观察",
-                "涓€ц瀵",
-            ]
-        ):
-            continue
+        if not has_metric_lineage and section == "conclusion":
+            evidence_ids = [str(item).strip() for item in claim.get("evidence_ids", []) if str(item).strip()]
+            synthetic_conclusion = any(marker in combined for marker in ["model conclusion", "涓€ц瀵"])
+            directional_conclusion = any(
+                marker in combined for marker in ["valuation", "recommendation", "中性观察"]
+            )
+            if synthetic_conclusion or numeric_values or (directional_conclusion and not evidence_ids):
+                continue
         output.append(claim)
     return output
 
@@ -1260,7 +1257,7 @@ HALF_SENTENCE_PATTERNS = [
     (r'(?:需要|需)关注[。，,．]', ''),
     (r'(?:需关注|需注意)[^。\n]{0,30}相关的[。，,．]', ''),
     (r'主要体现为[。，,．]', ''),
-    (r'包括：[^。\n]*。', ''),
+    (r'(?m)^\s*包括：[^。\n]*。\s*$', ''),
     (r'作为上市公司[。，,．]', ''),
     (r'具备完善的公司治理结构[。，,．]', '资料缺口：本节暂无充足的可验证证据支持详细分析。'),
     (r'未分类领域[。，,．]', ''),

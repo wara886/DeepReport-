@@ -43,7 +43,12 @@ from src.agents.research_blackboard import (
 )
 from src.agents.verifier_agent import VerifierAgent
 from src.data.canonical_metrics import build_canonical_metrics_artifact, canonical_metrics_as_financial_metrics
-from src.data.company_universe import resolve_company_identifier, resolve_company_identifier_with_diagnostics
+from src.data.company_universe import (
+    build_data_source_plan,
+    infer_market_from_symbol,
+    resolve_company_identifier,
+    resolve_company_identifier_with_diagnostics,
+)
 from src.data.official_evidence_archive import archive_official_evidence_manifest, build_official_evidence_artifacts
 from src.data.pdf_artifacts import build_pdf_artifacts
 from src.data.pdf_rag_pipeline import build_pdf_rag_artifacts
@@ -3619,28 +3624,10 @@ def _write_facts_extraction_audit_from_state(state: Dict[str, Any], audit: Dict[
 
 
 def _market_engines(symbol: str) -> list[str]:
-    """根据股票代码推断市场，返回该市场默认的搜索引擎列表。
+    """Return the canonical market-aware source plan."""
 
-    NOTE: web_ui.py 中的 A_SHARE_ENGINES / US_ENGINES / HK_ENGINES
-    是官方定义，修改引擎列表时两边需要同步更新。
-    """
-    upper = symbol.upper().strip()
-    if upper.endswith(".SS") or upper.endswith(".SZ"):
-        return [
-            "local_real_data", "cninfo_announcements", "exchange_announcements",
-            "eastmoney_financials", "sina_finance", "yahoo_finance", "eastmoney",
-            "local_evidence",
-        ]
-    if upper.endswith(".HK"):
-        return [
-            "local_real_data", "sina_finance", "yahoo_finance",
-            "tavily", "hkex_announcements", "hk_financials", "local_evidence",
-        ]
-    # US / default
-    return [
-        "local_real_data", "sec_edgar", "yahoo_finance",
-        "independent_macro", "local_evidence",
-    ]
+    market = infer_market_from_symbol(symbol)
+    return list(build_data_source_plan(symbol, market["market"], market["exchange"])["engines"])
 
 
 def _requires_sec_annual_report(symbol: str, period: str) -> bool:

@@ -16,8 +16,6 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
-from src.app.chat_task_parser import latest_completed_period
-from src.app.web_ui import run_delivery_quality_pipeline
 from src.data.company_universe import infer_market_from_symbol
 from src.data.canonical_metrics import write_canonical_metrics_artifact
 from src.data.official_evidence_archive import build_official_evidence_artifacts
@@ -39,6 +37,7 @@ from src.db.session import create_engine_for_url
 from src.llm.harness import serialize_llm_run
 from src.llm.harness import LLMHarness
 from src.evaluation.evidence_retrieval_attribution import write_evidence_retrieval_attribution
+from src.evaluation.delivery_pipeline import run_delivery_quality_pipeline
 from src.evaluation.section_repair import repair_failed_sections_for_outputs
 from src.evaluation.section_verification import write_section_verification
 from src.rag.retrieval_diagnostics import build_retrieval_coverage
@@ -60,6 +59,7 @@ from src.runtime.langgraph_report_runtime import (
     project_run_state_patch,
 )
 from src.services.artifact_importer import ArtifactImporter
+from src.utils.periods import latest_completed_period
 
 
 class ReportTaskNotFound(LookupError):

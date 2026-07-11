@@ -188,6 +188,17 @@ def test_remove_half_sentences_preserves_good_text():
     assert "自由现金流" in result
 
 
+def test_remove_half_sentences_preserves_substantive_includes_clause():
+    markdown = """## 投资结论
+
+核心理由包括：收入增长、现金流改善和估值约束。
+"""
+
+    result = remove_broken_or_half_sentences(markdown)
+
+    assert "核心理由包括：收入增长、现金流改善和估值约束。" in result
+
+
 def test_remove_debug_leakage_strips_internal_fields():
     """remove_debug_leakage removes debug/tracking field names."""
     markdown = """## 执行摘要

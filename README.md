@@ -25,7 +25,7 @@ official-source evidence, charts, and quality gates.
   extract Item 1, Item 1A, Item 7, and related sections before writing.
 - **Quality gates**: delivery checks flag missing evidence, raw companyfacts
   dumps, weak sections, broken citations, and chart/report mismatch.
-- **User web app**: FastAPI + lightweight chat UI on port `7860`.
+- **User web app**: FastAPI financial research workbench on port `7860`.
 - **Docker-first deployment**: one command starts the user-facing service.
 
 ## Public Repo Scope
@@ -128,7 +128,7 @@ python -m pytest -q tests/test_sec_annual_report_flow.py
 ├── scripts/                  # reproducible smoke/evaluation commands
 ├── src/
 │   ├── agents/               # planning, research, analysis, writing, verifier
-│   ├── app/                  # FastAPI service and web UI
+│   ├── app/                  # FastAPI service and current workbench frontend
 │   ├── data/                 # source adapters and SEC filing resolver
 │   ├── evaluation/           # quality gates and benchmark scoring
 │   ├── report/               # charts, citations, HTML rendering
@@ -159,11 +159,12 @@ use `main.py` or Docker Compose.
 
 | Route | Purpose |
 | --- | --- |
-| `GET /` | user report workbench |
-| `GET /health` | container health check |
-| `POST /api/chat` | chat, confirmation, and report execution |
-| `POST /api/run` | direct report execution |
-| `GET /api/latest` | latest job/report status |
+| `GET /` | current financial research workbench |
+| `GET /workbench` | explicit workbench alias |
+| `GET /health`, `GET /api/health` | container and deployment health checks |
+| `POST /api/report-tasks` | create a report task |
+| `POST /api/report-tasks/{task_id}/start` | start a queued report task |
+| `GET /api/report-tasks/{task_id}` | task state, readiness, and artifacts |
 | `GET /artifacts/*` | generated report artifacts |
 
 ## Release Hygiene

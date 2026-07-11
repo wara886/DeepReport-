@@ -1,5 +1,3 @@
-import json
-
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -263,35 +261,3 @@ def test_report_task_api_start_queued_task(tmp_path):
     stages = [event["stage"] for event in body["events"]]
     assert "start" in stages
     assert stages[-1] == "completed"
-
-
-def test_report_task_api_preserves_legacy_run_route(monkeypatch, tmp_path):
-    captured = {}
-
-    def fake_forward(app, path, *, method, body=None):
-        captured["path"] = path
-        captured["method"] = method
-        captured["body"] = json.loads(body.decode("utf-8"))
-        from fastapi.responses import JSONResponse
-
-        return JSONResponse({"ok": True})
-
-    monkeypatch.setattr("src.app.api_fastapi._forward", fake_forward)
-    app = create_fastapi_app(
-        output_dir=str(tmp_path / "outputs"),
-        report_dir=str(tmp_path / "reports"),
-        memory_root=str(tmp_path / "memory"),
-        report_task_service=ReportTaskService(
-            database_url=f"sqlite:///{tmp_path / 'tasks.db'}",
-            output_root=tmp_path / "task_outputs",
-            report_root=tmp_path / "task_reports",
-            orchestrator_factory=FakeOrchestrator,
-            quality_runner=passing_quality_runner,
-        ),
-    )
-
-    with TestClient(app) as client:
-        response = client.post("/api/run", json={"symbol": "TSLA"})
-
-    assert response.status_code == 200
-    assert captured == {"path": "/api/run", "method": "POST", "body": {"symbol": "TSLA"}}

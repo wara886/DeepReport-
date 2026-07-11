@@ -23,6 +23,8 @@ build
 docs
 eval_outputs
 memory
+logs
+tmp
 references
 tests
 
@@ -39,3 +41,5 @@ data/curated_real
 data/features_real
 data/outputs_real
 data/reports_real
+data/export_packages
+data/vector_db

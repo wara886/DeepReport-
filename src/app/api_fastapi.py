@@ -6,16 +6,13 @@ from contextlib import asynccontextmanager
 import json
 from pathlib import Path
 import re
-import threading
 from typing import Any, Optional
-from urllib import error, request as urlrequest
 import uuid
 
 from fastapi import BackgroundTasks
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from src.app.web_ui import DEFAULT_OUTPUT_DIR, DEFAULT_REPORT_DIR, run_ui_server
 from src.app.workbench_frontend import render_workbench_html
 from src.services.claim_review_service import ClaimNotFound, ClaimReviewService
 from src.services.dashboard_service import DashboardService
@@ -63,12 +60,11 @@ def create_fastapi_app(
     config_path: str = "configs/model_backends.yaml",
     memory_root: str = "memory/chat",
     mode: str = "user",
-    frontend_port: Optional[int] = None,
     database_url: Optional[str] = None,
     report_task_service: Optional[ReportTaskService] = None,
     orchestrator_factory: Any = None,
 ) -> FastAPI:
-    """Expose the legacy-stable UI contract behind a deployable ASGI server."""
+    """Expose the FinSight workbench and API as one ASGI application."""
 
     # Apply mode-aware defaults
     if output_dir is None:
@@ -78,28 +74,12 @@ def create_fastapi_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        server, base_url = run_ui_server(
-            host="127.0.0.1",
-            port=0,
-            mode=mode,
-            output_dir=output_dir,
-            report_dir=report_dir,
-            config_path=config_path,
-            memory_root=memory_root,
-            frontend_port=frontend_port,
-        )
-        thread = threading.Thread(target=server.serve_forever, name="finsight-legacy-http", daemon=True)
-        thread.start()
-        app.state.legacy_base_url = base_url
         try:
             yield
         finally:
             task_service = getattr(app.state, "report_task_service", None)
             if task_service is not None:
                 task_service.close()
-            server.shutdown()
-            server.server_close()
-            thread.join(timeout=5)
 
     app = FastAPI(
         title="FinSight DeepReport++ API",
@@ -157,7 +137,7 @@ def create_fastapi_app(
 
     @app.get("/")
     def index() -> Response:
-        return _forward(app, "/", method="GET")
+        return Response(content=render_workbench_html(), media_type="text/html")
 
     @app.get("/workbench")
     def workbench() -> Response:
@@ -166,19 +146,6 @@ def create_fastapi_app(
     @app.get("/favicon.ico")
     def favicon() -> Response:
         return Response(status_code=204)
-
-    @app.get("/api/latest")
-    def latest(incoming: Request) -> Response:
-        suffix = f"?{incoming.url.query}" if incoming.url.query else ""
-        return _forward(app, f"/api/latest{suffix}", method="GET")
-
-    @app.post("/api/chat")
-    async def chat(incoming: Request) -> Response:
-        return _forward(app, "/api/chat", method="POST", body=await incoming.body())
-
-    @app.post("/api/run")
-    async def run(incoming: Request) -> Response:
-        return _forward(app, "/api/run", method="POST", body=await incoming.body())
 
     @app.post("/api/report-tasks")
     async def create_report_task(incoming: Request, background_tasks: BackgroundTasks) -> Response:
@@ -1248,20 +1215,14 @@ def create_fastapi_app(
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
     @app.get("/artifacts/{artifact_path:path}")
-    def artifacts(artifact_path: str, incoming: Request) -> Response:
+    def artifacts(artifact_path: str) -> Response:
         local_artifact = _resolve_artifact_path(app, artifact_path)
         if local_artifact is not None:
             guarded = _guard_report_html_delivery_label(app, local_artifact)
             if guarded is not None:
                 return guarded
             return FileResponse(local_artifact)
-        suffix = f"?{incoming.url.query}" if incoming.url.query else ""
-        return _forward(app, f"/artifacts/{artifact_path}{suffix}", method="GET")
-
-    @app.get("/api/job_status")
-    def job_status(incoming: Request) -> Response:
-        suffix = f"?{incoming.url.query}" if incoming.url.query else ""
-        return _forward(app, f"/api/job_status{suffix}", method="GET")
+        return JSONResponse(status_code=404, content={"error": f"Artifact not found: {artifact_path}"})
 
     return app
 
@@ -1350,24 +1311,6 @@ def _optional_string(value: Any) -> str | None:
     if value in (None, ""):
         return None
     return str(value)
-
-
-def _forward(app: FastAPI, path: str, *, method: str, body: bytes | None = None) -> Response:
-    target = f"{app.state.legacy_base_url}{path}"
-    headers = {"Content-Type": "application/json"} if body is not None else {}
-    outgoing = urlrequest.Request(target, data=body, headers=headers, method=method)
-    try:
-        with urlrequest.urlopen(outgoing, timeout=120) as response:
-            content = response.read()
-            status_code = int(response.status)
-            content_type = response.headers.get("Content-Type", "application/octet-stream")
-    except error.HTTPError as exc:
-        content = exc.read()
-        status_code = int(exc.code)
-        content_type = exc.headers.get("Content-Type", "application/json")
-    except Exception as exc:
-        return JSONResponse(status_code=502, content={"error": f"upstream request failed: {exc}"})
-    return Response(content=content, status_code=status_code, media_type=content_type.split(";", 1)[0])
 
 
 def _artifact_roots(

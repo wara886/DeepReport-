@@ -145,7 +145,8 @@ Delivery Gate ──→ quality_report + llm_review + verifier → pass/fail
 
 ### 2.3 按市场引擎配置
 
-每个市场有独立的默认引擎列表，定义在 `web_ui.py`：
+每个市场有独立的默认引擎列表，由 `src/data/company_universe.py` 的
+`build_data_source_plan()` 统一定义：
 
 | 市场 | 引擎列表 | 覆盖的数据维度 |
 |:----:|:---------|:--------------|
@@ -527,9 +528,9 @@ Tertiary (权威值 0.4):
 | 生成 | evidence_content_limit=600 太低 | 🟡 | ✅ 改为 1200 |
 | 生成 | content_depth blocker（12 个）| 🔴 | ⏳ 需 facts extraction |
 | 显示 | 置信度硬编码 45% | 🟡 | ✅ 改为基于数据计算（75-80%）|
-| 显示 | engine 列表不生效 | 🔴 | ✅ 后端强制 `default_engines_for_symbol()` |
+| 显示 | engine 列表不生效 | 🔴 | ✅ 后端统一读取 `build_data_source_plan()` |
 | 显示 | 浏览器 HTML 缓存 | 🟡 | ✅ 无痕窗口 / 清缓存 |
-| 显示 | web_ui 进程加载旧代码 | 🔴 | ✅ `__pycache__` 清除 + 重启 |
+| 显示 | 旧 UI 进程加载旧代码 | 🔴 | ✅ 已删除旧 UI 服务和代理层 |
 
 ### 7.2 最大教训
 

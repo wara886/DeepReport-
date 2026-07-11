@@ -12,7 +12,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
+import sys
 
 import uvicorn
 
@@ -20,7 +22,27 @@ from src.app.api_fastapi import create_fastapi_app
 from src.utils.logging import configure_logging
 
 
-def main() -> None:
+REQUIRED_RUNTIME_MODULES = (
+    ("langgraph.graph", "langgraph"),
+    ("langgraph.checkpoint.sqlite", "langgraph-checkpoint-sqlite"),
+)
+
+
+def dependency_preflight() -> list[str]:
+    """Return actionable missing runtime packages before app startup."""
+
+    missing: list[str] = []
+    for module_name, package_name in REQUIRED_RUNTIME_MODULES:
+        try:
+            available = importlib.util.find_spec(module_name) is not None
+        except (ImportError, ModuleNotFoundError, AttributeError):
+            available = False
+        if not available:
+            missing.append(package_name)
+    return missing
+
+
+def main() -> int:
     parser = argparse.ArgumentParser(description="FinSight DeepReport++ Web UI")
     parser.add_argument("--port", type=int, default=7860, help="Server port")
     parser.add_argument(
@@ -36,7 +58,16 @@ def main() -> None:
     parser.add_argument("--report-dir", default=None, help="Report root (default: auto per mode)")
     args = parser.parse_args()
 
-    # 初始化日志
+    missing = dependency_preflight()
+    if missing:
+        packages = " ".join(sorted(set(missing)))
+        print(
+            f"FinSight cannot start because runtime dependencies are missing: {packages}. "
+            f"Install them with: python -m pip install {packages}",
+            file=sys.stderr,
+        )
+        return 2
+
     configure_logging(log_dir="logs", run_name="webui_{}_{}".format(args.mode, args.port))
 
     # Mode-aware default directories
@@ -54,7 +85,6 @@ def main() -> None:
         mode=args.mode,
         output_dir=output_dir,
         report_dir=report_dir,
-        frontend_port=args.port,
     )
 
     local_url = "http://127.0.0.1:{}/".format(args.port)
@@ -66,7 +96,8 @@ def main() -> None:
     print("=" * 60)
 
     uvicorn.run(app, host=args.host, port=args.port)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
