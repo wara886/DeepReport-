@@ -1960,9 +1960,11 @@ def hard_backfill_quality_sections(
 CORE_AUTO_REWRITE_SECTIONS = {
     "executive_summary",
     "business_overview",
+    "financial_statements",
     "financial_analysis",
     "peer_compare",
     "valuation",
+    "valuation_sensitivity",
     "risks",
     "conclusion",
 }
@@ -2428,6 +2430,9 @@ def _section_is_empty_placeholder(section_body: str) -> bool:
     if not cleaned:
         return True
     placeholder_markers = [
+        "本节暂不展开详细分析",
+        "evidence_not_available",
+        "valuation_sensitivity_not_available",
         "本节暂无可验证结论",
         "暂无可验证结论",
         "no verifiable conclusion",

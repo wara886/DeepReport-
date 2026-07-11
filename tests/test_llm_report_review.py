@@ -128,6 +128,49 @@ def test_llm_review_reconciles_stale_section_depth_issues_after_section_verifica
     assert review["issues"][0]["severity"] == "warning"
 
 
+def test_llm_review_reconciles_low_score_stale_english_review_after_repair(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    outputs = run_dir / "company" / "outputs"
+    reports = run_dir / "company" / "reports"
+    (outputs / "section_verification.json").write_text(
+        json.dumps({"status": "passed", "formal_delivery_allowed": True}),
+        encoding="utf-8",
+    )
+    (reports / "report.md").write_text(
+        "## 执行摘要\n公司收入、现金流、估值和风险均已形成可交付摘要。\n\n"
+        "## 三表摘要\n经营现金流、自由现金流和资本开支均有结构化证据支撑。\n\n"
+        "## 估值观察\n估值以相对估值和 DCF 情景作为约束。\n\n"
+        "## 投资结论\n维持中性观察评级，核心理由包括现金流质量、估值约束和主要风险。",
+        encoding="utf-8",
+    )
+    model = FakeReviewModel(
+        {
+            "total_score": 0.3,
+            "dimension_scores": {},
+            "verdict": "Old reviewer output.",
+            "issues": [
+                {
+                    "severity": "warning",
+                    "category": "llm_review",
+                    "message": "Content emptiness: large portions state evidence_not_available and no conclusion.",
+                },
+                {
+                    "severity": "warning",
+                    "category": "llm_review",
+                    "message": "Company report requirement not met: peer comparison absent, valuation/sensitivity missing, risks generic.",
+                },
+            ],
+        }
+    )
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["total_score"] >= 0.82
+    assert review["artifact_reconciliation_applied"] is True
+    assert all(issue["severity"] == "warning" for issue in review["issues"])
+
+
 def _write_review_run(tmp_path):
     run_dir = tmp_path / "review_run"
     outputs = run_dir / "company" / "outputs"

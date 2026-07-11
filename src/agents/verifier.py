@@ -306,6 +306,7 @@ def _requires_primary_financial_source(claim: ClaimItem) -> bool:
 
 def _has_period_matched_structured_fallback(claim: ClaimItem, linked_records: List[Dict[str, Any]]) -> bool:
     structured_types = {"market_api", "market_data", "eastmoney_financials", "pdf_statement_table", "financials"}
+    lineage_ids = list(claim.metric_lineage_ids or []) + list(claim.input_metric_lineage_ids or [])
     for record in linked_records:
         source_type = str(record.get("source_type") or "").lower()
         metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
@@ -318,13 +319,29 @@ def _has_period_matched_structured_fallback(claim: ClaimItem, linked_records: Li
         if not has_structured_payload:
             continue
         evidence_numbers = _numbers_from_record(record)
-        if claim.numeric_values and any(
-            not _has_close_number(float(value), evidence_numbers)
-            for value in claim.numeric_values.values()
-        ):
+        if claim.numeric_values and not _structured_numbers_support_claim(claim, evidence_numbers):
+            if not (
+                _lineage_matches_record(lineage_ids, record)
+                and _structured_numbers_support_claim(claim, evidence_numbers, allow_abs_fallback=True)
+            ):
+                continue
+        elif claim.numeric_values and not _structured_numbers_support_claim(claim, evidence_numbers):
             continue
         return True
     return False
+
+
+def _structured_numbers_support_claim(
+    claim: ClaimItem,
+    evidence_numbers: List[float],
+    *,
+    allow_abs_fallback: bool = False,
+) -> bool:
+    for key, value in claim.numeric_values.items():
+        allow_abs = allow_abs_fallback and _claim_metric_allows_abs_match(key)
+        if not _has_close_number(float(value), evidence_numbers, allow_abs_match=allow_abs):
+            return False
+    return True
 
 
 def _is_market_numeric_claim(claim: ClaimItem) -> bool:
@@ -569,13 +586,30 @@ def _split_markdown_sections(text: str) -> List[tuple[str, str]]:
     return sections
 
 
-def _has_close_number(target: float, values: List[float]) -> bool:
+def _has_close_number(target: float, values: List[float], *, allow_abs_match: bool = False) -> bool:
     for value in values:
         for candidate in _numeric_scale_variants(value):
             tolerance = max(abs(target) * 0.01, 0.05)
             if abs(candidate - target) <= tolerance:
                 return True
+            if allow_abs_match and abs(abs(candidate) - abs(target)) <= tolerance:
+                return True
     return False
+
+
+def _claim_metric_allows_abs_match(metric_name: str) -> bool:
+    key = str(metric_name or "").lower()
+    return any(term in key for term in ("capex", "capital_expenditure", "capitalexpenditure", "capital expenditure"))
+
+
+def _lineage_matches_record(lineage_ids: List[str], record: Dict[str, Any]) -> bool:
+    if not lineage_ids:
+        return False
+    record_id = str(record.get("evidence_id") or record.get("sample_id") or "").lower()
+    if record_id and any(record_id in str(lineage).lower() for lineage in lineage_ids):
+        return True
+    content = f"{record.get('title', '')} {record.get('content', '')} {record.get('source_type', '')}".lower()
+    return any(str(lineage).lower() in content for lineage in lineage_ids)
 
 
 def _numeric_scale_variants(value: float) -> List[float]:

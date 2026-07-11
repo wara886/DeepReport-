@@ -530,6 +530,40 @@ def test_quality_evaluator_fails_when_tables_exist_but_body_omits_three_statemen
     assert report["required_checks"]["details"]["has_three_table_summary"] is False
 
 
+def test_quality_evaluator_blocks_placeholder_section_markers(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# AAPL 2025Q4 公司研报
+
+## 执行摘要
+执行摘要包含财务、估值和风险概览。
+## 业务概览
+业务覆盖硬件、软件和服务。
+## 三表摘要
+本节暂不展开详细分析（evidence_not_available）。
+## 同行对比
+同行比较围绕收入、利润率和估值。
+## 估值观察
+估值观察围绕现金流和市值。
+## 估值敏感性
+本节暂不展开详细分析（valuation_sensitivity_not_available）。
+## 风险评估
+风险覆盖需求、竞争和监管。
+## 投资结论
+维持中性观察，等待官方证据补齐。
+""",
+    )
+
+    report = evaluate_report_quality(run_dir)
+    messages = [issue["message"] for issue in report["issues"] if issue["category"] == "content_depth"]
+
+    assert report["objective_pass"] is False
+    assert any("本节暂不展开详细分析" in message for message in messages)
+    assert any("evidence_not_available" in message for message in messages)
+    assert any("valuation_sensitivity_not_available" in message for message in messages)
+
+
 def test_quality_evaluator_blocks_framework_only_sections_and_weak_conclusion(tmp_path):
     run_dir = _write_run(
         tmp_path,

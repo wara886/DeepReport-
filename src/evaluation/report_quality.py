@@ -408,6 +408,9 @@ SECTION_HEADING_MAP = {
 TEMPLATE_PHRASES = [
     "template_placeholder_long_term",
     "template_placeholder_listed_company",
+    "本节暂不展开详细分析",
+    "evidence_not_available",
+    "valuation_sensitivity_not_available",
     "持续深耕",
     "巩固核心竞争力",
 ]

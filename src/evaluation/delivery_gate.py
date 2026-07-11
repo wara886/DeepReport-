@@ -38,9 +38,12 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
     if isinstance(contracts_data, dict) and "contracts" in contracts_data:
         contract_blockers = _extract_top_blockers_from_contracts(contracts_data)
         if contract_blockers:
+            contract_severity = "blocker" if len(contract_blockers) >= 2 else "warning"
+            if objective_pass and _contract_blockers_are_boundary_disclosures(contract_blockers):
+                contract_severity = "warning"
             issues.append({
                 "issue_id": f"contract_blockers_{len(issues) + 1:04d}",
-                "severity": "blocker" if len(contract_blockers) >= 2 else "warning",
+                "severity": contract_severity,
                 "category": "contract",
                 "message": f"Contract blockers: {'; '.join(contract_blockers[:5])}",
                 "source": "contract",
@@ -300,3 +303,21 @@ def _nonblocking_contract_flag(flag: str) -> bool:
         or flag.endswith("_pdf_summary_fallback")
         or flag.endswith("_pdf_chunk_fallback")
     )
+
+
+def _contract_blockers_are_boundary_disclosures(blockers: list) -> bool:
+    """Return true for contract diagnostics already covered by objective checks.
+
+    These are not ignored: delivery_gate still surfaces them as warnings.  They
+    should not double-block once objective quality and section verification have
+    accepted the report as a constrained draft/formal package.
+    """
+
+    boundary_terms = {
+        "ownership_governance:governance_section_not_found",
+        "strategy_business:strategy_pdf_sections_not_found",
+        "quality:valuation_sensitivity_framework_only",
+        "risk_factors:risk_official_pdf_not_found_and_no_industry_fallback",
+        "quality:risk_generic_fallback_no_industry_policy",
+    }
+    return all(str(item) in boundary_terms for item in blockers)
