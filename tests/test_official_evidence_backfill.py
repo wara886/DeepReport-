@@ -98,9 +98,73 @@ def test_backfill_executor_keeps_hk_formal_blocked_without_official_announcement
     assert "period_matched_official_filing" in coverage["missing_requirements"]
 
 
+def test_backfill_executor_rejects_wrong_company_hkex_pdf_before_pdf_derivation(monkeypatch, tmp_path):
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    initial = build_official_evidence_artifacts([], symbol="0700.HK", period="FY2025", tables=[])
+    (outputs / "official_evidence_backfill_plan.json").write_text(
+        json.dumps(initial["official_evidence_backfill_plan"], ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    seen_pdf_records = {}
+
+    def fake_pdf_artifacts(records, cache_dir, max_pdfs=1, max_pages=20):
+        seen_pdf_records["records"] = list(records)
+        return {"pdf_manifest": [], "pdf_sections": [], "pdf_tables": [], "meta": {"cached_pdf_count": 0}}
+
+    monkeypatch.setattr("src.data.official_evidence_backfill.build_pdf_artifacts", fake_pdf_artifacts)
+
+    result = execute_official_evidence_backfill(
+        symbol="0700.HK",
+        period="FY2025",
+        output_dir=outputs,
+        search_manager=FakeSearchManager(hkex_wrong_company=True),
+    )
+    evidence = json.loads((outputs / "evidence.json").read_text(encoding="utf-8"))
+
+    assert result["intake_rejected_count"] >= 1
+    assert any(item["reason"] == "target_company_mismatch" for item in result["intake_rejections"])
+    assert not any(item.get("evidence_id") == "hkex_wrong_company" for item in evidence)
+    assert seen_pdf_records["records"] == []
+
+
+def test_backfill_executor_rejects_fy_mismatched_structured_financials(tmp_path):
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    initial = build_official_evidence_artifacts([], symbol="AAPL", period="FY2024", tables=[])
+    (outputs / "official_evidence_backfill_plan.json").write_text(
+        json.dumps(initial["official_evidence_backfill_plan"], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    wrong_fy_record = {
+        "evidence_id": "aapl_wrong_fy",
+        "symbol": "AAPL",
+        "period": "FY2024",
+        "source_type": "market_api",
+        "title": "AAPL Yahoo Finance financial data",
+        "content": "FY2024 income: end_date=2025-09-30, revenue=416161000000.0",
+        "metadata": {"financials": {"income_history": [{"end_date": "2025-09-30", "Total Revenue": 416161000000.0}]}},
+    }
+
+    result = execute_official_evidence_backfill(
+        symbol="AAPL",
+        period="FY2024",
+        output_dir=outputs,
+        existing_records=[wrong_fy_record],
+        search_manager=FakeSearchManager(),
+    )
+    evidence = json.loads((outputs / "evidence.json").read_text(encoding="utf-8"))
+
+    assert result["intake_rejected_count"] >= 1
+    assert any(item["reason"] == "source_period_mismatch" for item in result["intake_rejections"])
+    assert not any(item.get("evidence_id") == "aapl_wrong_fy" for item in evidence)
+
+
 class FakeSearchManager:
-    def __init__(self, *, hkex_empty=False):
+    def __init__(self, *, hkex_empty=False, hkex_wrong_company=False):
         self.hkex_empty = hkex_empty
+        self.hkex_wrong_company = hkex_wrong_company
 
     def search(self, query, topk=10, engines=None, **kwargs):
         engine = engines[0]
@@ -125,6 +189,22 @@ class FakeSearchManager:
         if engine == "eastmoney_financials":
             return _payload(engine, [_eastmoney_hit(symbol, period, kind) for kind in ("income", "balance", "cashflow")])
         if engine == "hkex_announcements":
+            if self.hkex_wrong_company:
+                return _payload(
+                    engine,
+                    [
+                        {
+                            "evidence_id": "hkex_wrong_company",
+                            "symbol": symbol,
+                            "period": period,
+                            "source_type": "hkex_announcement",
+                            "source_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0626/wrong.pdf",
+                            "title": "Annual Results for the year ended 31 March 2025",
+                            "content": "Century Entertainment International Holdings Limited announces annual results.",
+                            "metadata": {"provider": "HKEX", "page": 1},
+                        }
+                    ],
+                )
             return _payload(
                 engine,
                 []
@@ -136,8 +216,8 @@ class FakeSearchManager:
                         "period": period,
                         "source_type": "hkex_annual_report",
                         "source_url": "https://www1.hkexnews.hk/report.pdf",
-                        "title": "Annual Report 2024",
-                        "content": "HKEX annual report",
+                        "title": "Tencent Holdings Limited Annual Report 2024",
+                        "content": "Tencent Holdings Limited HKEX annual report.",
                         "metadata": {"provider": "HKEX", "page": 1},
                     }
                 ],

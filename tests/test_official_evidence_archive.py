@@ -14,7 +14,7 @@ def test_hk_official_evidence_requires_page_anchored_three_statements():
                 "period": "FY2024",
                 "source_type": "pdf_statement_table",
                 "source_url": "https://www1.hkexnews.hk/report.pdf",
-                "content": "Revenue 1",
+                "content": "Tencent Holdings Limited Revenue 1",
                 "metadata": {"page": 10, "provider": "HKEX"},
             }
         ],
@@ -71,7 +71,7 @@ def test_hk_annual_delivery_rejects_mismatched_official_period():
                 "period": "FY2023",
                 "source_type": "pdf_statement_table",
                 "source_url": "https://www1.hkexnews.hk/report.pdf",
-                "content": "Revenue 1",
+                "content": "Tencent Holdings Limited Revenue 1",
                 "metadata": {"page": 10, "provider": "HKEX"},
             }
         ],
@@ -86,7 +86,9 @@ def test_hk_annual_delivery_rejects_mismatched_official_period():
 
     coverage = payload["evidence_coverage"]
     assert coverage["period_matched_official_record_count"] == 0
-    assert coverage["period_mismatched_official_record_count"] == 1
+    assert coverage["period_mismatched_official_record_count"] == 0
+    assert coverage["intake_rejected_count"] == 4
+    assert any(item["reason"] == "source_period_mismatch" for item in coverage["intake_rejections"])
     assert coverage["degrade_required"] is True
     assert coverage["formal_delivery_allowed"] is False
     assert "period_matched_official_filing" in coverage["missing_requirements"]
@@ -94,6 +96,37 @@ def test_hk_annual_delivery_rejects_mismatched_official_period():
     assert plan["backfill_required"] is True
     assert any("hkex_announcements" in task["source_keys"] for task in plan["tasks"])
     assert any("HKEX" in task["query"] for task in plan["tasks"])
+
+
+def test_hk_wrong_company_pdf_statement_tables_do_not_satisfy_delivery_gate():
+    payload = build_official_evidence_artifacts(
+        [
+            {
+                "evidence_id": "wrong_pdf_table",
+                "symbol": "0700.HK",
+                "period": "FY2025",
+                "source_type": "pdf_statement_table",
+                "source_url": "https://www1.hkexnews.hk/wrong.pdf",
+                "content": "Century Entertainment International Holdings Limited revenue table.",
+                "metadata": {"page": 88, "provider": "HKEX"},
+            }
+        ],
+        symbol="0700.HK",
+        period="FY2025",
+        tables=[
+            {"table_type": "income_statement", "source_evidence_id": "wrong_pdf_table"},
+            {"table_type": "balance_sheet", "source_evidence_id": "wrong_pdf_table"},
+            {"table_type": "cash_flow_statement", "source_evidence_id": "wrong_pdf_table"},
+        ],
+    )
+
+    coverage = payload["evidence_coverage"]
+
+    assert coverage["intake_rejected_count"] == 4
+    assert any(item["reason"] == "target_company_mismatch" for item in coverage["intake_rejections"])
+    assert coverage["official_record_count"] == 0
+    assert coverage["has_three_statements"] is False
+    assert coverage["formal_delivery_allowed"] is False
 
 
 def test_cn_annual_delivery_requires_verified_source_period():
@@ -104,7 +137,8 @@ def test_cn_annual_delivery_requires_verified_source_period():
                 "symbol": "600519.SS",
                 "source_type": "cninfo_announcement",
                 "source_url": "http://static.cninfo.com.cn/report.pdf",
-                "content": "Annual financial statements",
+                "title": "贵州茅台年度报告",
+                "content": "贵州茅台 annual financial statements",
                 "metadata": {"page": 1, "provider": "CNINFO"},
             }
         ],
@@ -137,7 +171,7 @@ def test_hk_statements_from_non_official_source_do_not_satisfy_delivery_gate():
                 "period": "FY2024",
                 "source_type": "hkex_annual_report",
                 "source_url": "https://www1.hkexnews.hk/report.pdf",
-                "content": "Annual report",
+                "content": "Tencent Holdings Limited Annual report",
                 "metadata": {"page_number": 4, "provider": "HKEX"},
             }
         ],
@@ -151,7 +185,9 @@ def test_hk_statements_from_non_official_source_do_not_satisfy_delivery_gate():
     )
 
     coverage = payload["evidence_coverage"]
-    assert coverage["candidate_statement_types"] == ["balance_sheet", "cash_flow_statement", "income_statement"]
+    assert coverage["candidate_statement_types"] == []
+    assert coverage["intake_rejected_count"] == 3
+    assert all(item["reason"] == "table_source_evidence_rejected" for item in coverage["intake_rejections"])
     assert coverage["statement_types"] == []
     assert coverage["has_three_statements"] is False
     assert coverage["degrade_required"] is True
@@ -167,7 +203,8 @@ def test_cn_eastmoney_structured_three_statements_satisfy_structured_lineage():
                 "period": "2026Q1",
                 "source_type": "cninfo_announcement",
                 "source_url": "http://static.cninfo.com.cn/finalpage/report.pdf",
-                "content": "Official quarterly report",
+                "title": "贵州茅台2026年第一季度报告",
+                "content": "贵州茅台 Official quarterly report",
                 "metadata": {"page": 1, "provider": "CNINFO"},
             }
         ],
@@ -238,7 +275,7 @@ def test_archive_persists_official_source_text_snapshot(tmp_path):
         "period": "FY2024",
         "source_type": "hkex_annual_report",
         "source_url": "https://www1.hkexnews.hk/report.pdf",
-        "content": "[PDF page 4] Revenue disclosure.",
+        "content": "[PDF page 4] Tencent Holdings Limited revenue disclosure.",
         "metadata": {"page_number": 4},
     }
     manifest = build_official_evidence_artifacts(
@@ -255,7 +292,7 @@ def test_archive_persists_official_source_text_snapshot(tmp_path):
     assert archived_manifest["archive_version"]
     assert archived_records_path
     archived_record = json.loads(open(archived_records_path, encoding="utf-8").readline())
-    assert archived_record["content"] == "[PDF page 4] Revenue disclosure."
+    assert archived_record["content"] == "[PDF page 4] Tencent Holdings Limited revenue disclosure."
 
 
 def test_financial_pdf_claim_without_page_anchor_is_rejected():

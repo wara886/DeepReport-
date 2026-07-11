@@ -10,6 +10,8 @@ import re
 from typing import Any, Dict, Iterable, List
 
 from src.data.company_universe import infer_market_from_symbol
+from src.data.evidence_intake_gate import evidence_ids, filter_evidence_records, rejection_record
+
 OFFICIAL_SOURCE_TYPES = {
     "sec_companyfacts",
     "sec_filing",
@@ -35,6 +37,32 @@ def build_official_evidence_artifacts(
 
     market = infer_market_from_symbol(symbol).get("market", "unknown")
     records_list = [record for record in records if isinstance(record, dict)]
+    input_record_count = len(records_list)
+    parent_records = [record for record in records_list if not _source_parent_evidence_id(record)]
+    child_records = [record for record in records_list if _source_parent_evidence_id(record)]
+    parent_records, intake_rejections = filter_evidence_records(
+        parent_records,
+        symbol=symbol,
+        period=period,
+        stage="official_evidence_manifest",
+    )
+    child_records, child_rejections = filter_evidence_records(
+        child_records,
+        symbol=symbol,
+        period=period,
+        stage="official_evidence_manifest",
+        trusted_parent_evidence_ids=evidence_ids(parent_records),
+    )
+    intake_rejections.extend(child_rejections)
+    records_list = parent_records + child_records
+    accepted_ids = evidence_ids(records_list)
+    tables_list = [dict(table) for table in (tables or []) if isinstance(table, dict)]
+    tables_list, table_rejections = _filter_tables_by_accepted_evidence(
+        tables_list,
+        accepted_evidence_ids=accepted_ids,
+        stage="official_evidence_tables",
+    )
+    intake_rejections.extend(table_rejections)
     official_records = [record for record in records_list if _is_official_record(record)]
     entries = [_manifest_entry(record, symbol=symbol, period=period, market=market) for record in official_records]
     page_anchor_count = sum(1 for entry in entries if entry.get("page") not in (None, ""))
@@ -49,9 +77,9 @@ def build_official_evidence_artifacts(
         and str(entry.get("source_type") or "").lower()
         in {"pdf_section", "pdf_statement_table", "hkex_annual_report", "sec_filing"}
     }
-    candidate_statement_types = _statement_types(tables or [])
-    statement_types = _official_pdf_statement_types(tables or [], allowed_evidence_ids=matching_official_pdf_ids)
-    structured_statement_types = _structured_statement_types(tables or [])
+    candidate_statement_types = _statement_types(tables_list)
+    statement_types = _official_pdf_statement_types(tables_list, allowed_evidence_ids=matching_official_pdf_ids)
+    structured_statement_types = _structured_statement_types(tables_list)
     has_official_pdf_three_statements = STATEMENT_TYPES.issubset(statement_types)
     has_structured_three_statements = STATEMENT_TYPES.issubset(structured_statement_types)
     has_formal_delivery_lineage = bool(matching_official) and (
@@ -84,6 +112,9 @@ def build_official_evidence_artifacts(
         "period": period,
         "period_kind": "fiscal_year" if _is_annual(period) else "quarter" if _is_quarter(period) else "latest",
         "official_record_count": len(entries),
+        "input_record_count": input_record_count,
+        "intake_rejected_count": len(intake_rejections),
+        "intake_rejections": intake_rejections,
         "period_matched_official_record_count": len(matching_official),
         "period_mismatched_official_record_count": len(mismatched_official),
         "period_unverified_official_record_count": len(unverified_official),
@@ -366,6 +397,43 @@ def _table_has_allowed_source(table: Dict[str, Any], rows: List[Any], allowed_ev
         },
     }
     return bool({item for item in source_ids if item} & allowed_evidence_ids)
+
+
+def _source_parent_evidence_id(record: Dict[str, Any]) -> str:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    return str(
+        record.get("source_evidence_id")
+        or metadata.get("source_evidence_id")
+        or record.get("parent_evidence_id")
+        or metadata.get("parent_evidence_id")
+        or ""
+    )
+
+
+def _filter_tables_by_accepted_evidence(
+    tables: list[Dict[str, Any]],
+    *,
+    accepted_evidence_ids: set[str],
+    stage: str,
+) -> tuple[list[Dict[str, Any]], list[Dict[str, Any]]]:
+    accepted: list[Dict[str, Any]] = []
+    rejected: list[Dict[str, Any]] = []
+    for table in tables:
+        rows = table.get("rows", []) if isinstance(table.get("rows"), list) else []
+        source_ids = {
+            str(table.get("source_evidence_id") or table.get("evidence_id") or ""),
+            *{
+                str(row.get("source_evidence_id") or row.get("evidence_id") or "")
+                for row in rows
+                if isinstance(row, dict)
+            },
+        }
+        source_ids = {item for item in source_ids if item}
+        if source_ids and not (source_ids & accepted_evidence_ids):
+            rejected.append(rejection_record(table, reason="table_source_evidence_rejected", stage=stage))
+            continue
+        accepted.append(table)
+    return accepted, rejected
 
 
 def _structured_statement_types(tables: Iterable[Dict[str, Any]]) -> set[str]:

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from src.data.financial_statement_metrics import build_standard_financial_metrics, build_standard_table_artifacts
+from src.data.evidence_intake_gate import evidence_ids, filter_evidence_records, rejection_record
 from src.data.official_evidence_archive import build_official_evidence_artifacts
 from src.data.pdf_artifacts import build_pdf_artifacts
 from src.search.search_manager import SearchManager
@@ -49,12 +50,24 @@ def execute_official_evidence_backfill(
     manager = search_manager or SearchManager.with_local_sources()
     seed_records = _list_of_dicts(existing_records) or _read_list(outputs / "evidence.json")
     seed_tables = _list_of_dicts(existing_tables) or _read_list(outputs / "tables.json")
+    seed_records, seed_rejections = filter_evidence_records(
+        seed_records,
+        symbol=symbol,
+        period=period,
+        stage="seed_records",
+    )
+    seed_tables, table_rejections = _filter_tables_by_accepted_evidence(
+        seed_tables,
+        accepted_evidence_ids=evidence_ids(seed_records),
+        stage="seed_tables",
+    )
     active_plan = plan or _read_json(outputs / "official_evidence_backfill_plan.json", {})
     if not active_plan:
         active_plan = _plan_from_existing_coverage(outputs)
 
     attempts: list[dict[str, Any]] = []
     acquired: list[dict[str, Any]] = []
+    intake_rejections: list[dict[str, Any]] = list(seed_rejections) + list(table_rejections)
     for task in _list_of_dicts(active_plan.get("tasks")):
         for source_key in _source_keys_for_task(task):
             engine = DEFAULT_ENGINE_BY_SOURCE_KEY.get(source_key)
@@ -76,15 +89,25 @@ def execute_official_evidence_backfill(
                 continue
             hits = _extract_engine_hits(payload, engine=engine)
             meta = _engine_meta(payload, engine=engine)
+            normalized_hits = _normalize_records(hits, source_key=source_key, symbol=symbol, period=period)
+            accepted_hits, rejected_hits = filter_evidence_records(
+                normalized_hits,
+                symbol=symbol,
+                period=period,
+                stage=f"acquired:{source_key}",
+            )
+            intake_rejections.extend(rejected_hits)
             attempts.append(
                 _attempt(
                     source_key=source_key,
                     status="success" if hits else "empty",
                     record_count=len(hits),
+                    accepted_record_count=len(accepted_hits),
+                    rejected_record_count=len(rejected_hits),
                     meta=meta,
                 )
             )
-            acquired.extend(_normalize_records(hits, source_key=source_key, symbol=symbol, period=period))
+            acquired.extend(accepted_hits)
 
     merged_records = _merge_records(seed_records, acquired)
     pdf_artifacts = build_pdf_artifacts(
@@ -95,9 +118,23 @@ def execute_official_evidence_backfill(
     )
     pdf_records = _pdf_sections_as_evidence_records(pdf_artifacts.get("pdf_sections", []), symbol=symbol, period=period)
     pdf_records.extend(_pdf_tables_as_evidence_records(pdf_artifacts.get("pdf_tables", []), symbol=symbol, period=period))
+    pdf_records, pdf_rejections = filter_evidence_records(
+        pdf_records,
+        symbol=symbol,
+        period=period,
+        stage="pdf_derived_records",
+        trusted_parent_evidence_ids=evidence_ids(merged_records),
+    )
+    intake_rejections.extend(pdf_rejections)
     merged_records = _merge_records(merged_records, pdf_records)
     structured_tables = build_standard_table_artifacts(merged_records)
     tables = _merge_tables(seed_tables, structured_tables)
+    tables, generated_table_rejections = _filter_tables_by_accepted_evidence(
+        tables,
+        accepted_evidence_ids=evidence_ids(merged_records),
+        stage="merged_tables",
+    )
+    intake_rejections.extend(generated_table_rejections)
     financial_metrics = build_standard_financial_metrics(merged_records)
     official_artifacts = build_official_evidence_artifacts(
         merged_records,
@@ -123,6 +160,8 @@ def execute_official_evidence_backfill(
         "acquired_record_count": len(acquired),
         "merged_record_count": len(merged_records),
         "pdf_record_count": len(pdf_records),
+        "intake_rejected_count": len(intake_rejections),
+        "intake_rejections": intake_rejections,
         "pdf_meta": pdf_artifacts.get("meta", {}),
         "table_count": len(tables),
         "attempts": attempts,
@@ -334,6 +373,8 @@ def _attempt(
     source_key: str,
     status: str,
     record_count: int = 0,
+    accepted_record_count: int = 0,
+    rejected_record_count: int = 0,
     error: str = "",
     meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -341,9 +382,41 @@ def _attempt(
         "source_key": source_key,
         "status": status,
         "record_count": record_count,
+        "accepted_record_count": accepted_record_count,
+        "rejected_record_count": rejected_record_count,
         "error": error,
         "meta": meta or {},
     }
+
+
+def _filter_tables_by_accepted_evidence(
+    tables: list[dict[str, Any]],
+    *,
+    accepted_evidence_ids: set[str],
+    stage: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    accepted: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    for table in tables:
+        source_ids = _table_source_ids(table)
+        if source_ids and not (source_ids & accepted_evidence_ids):
+            rejected.append(rejection_record(table, reason="table_source_evidence_rejected", stage=stage))
+            continue
+        accepted.append(table)
+    return accepted, rejected
+
+
+def _table_source_ids(table: dict[str, Any]) -> set[str]:
+    rows = table.get("rows") if isinstance(table.get("rows"), list) else []
+    values = {
+        str(table.get("source_evidence_id") or table.get("evidence_id") or ""),
+        *{
+            str(row.get("source_evidence_id") or row.get("evidence_id") or "")
+            for row in rows
+            if isinstance(row, dict)
+        },
+    }
+    return {value for value in values if value}
 
 
 def _list_of_dicts(value: Any) -> list[dict[str, Any]]:
