@@ -477,6 +477,7 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
     if not isinstance(section_dossiers, dict):
         section_dossiers = {}
     text = _report_text(artifacts)
+    body_text = str(artifacts.get("report_md") or text)
     total_checks = len(CONTENT_DEPTH_THRESHOLDS)
     passes = 0
 
@@ -509,15 +510,15 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
 
     # Template phrase detection
     for phrase in TEMPLATE_PHRASES:
-        if phrase in text:
+        if phrase in body_text:
             _issue(issues, "blocker", "content_depth", f"report contains template phrase: {phrase}")
 
     # Half-sentence detection
     for marker in HALF_SENTENCE_MARKERS:
-        if marker in text:
+        if marker in body_text:
             _issue(issues, "blocker", "content_depth", f"report contains half-sentence marker: {marker}")
     for pattern in HALF_SENTENCE_REGEXES:
-        if re.search(pattern, text.strip(), flags=re.MULTILINE):
+        if re.search(pattern, body_text.strip(), flags=re.MULTILINE):
             _issue(issues, "blocker", "content_depth", f"report contains unfinished sentence pattern: {pattern}")
 
     # Debug/internal ID leakage detection
@@ -533,7 +534,7 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
 
     # Raw SEC companyfacts dump detection
     for pat in COMPANYFACTS_DUMP_PATTERNS_RE:
-        if re.search(pat, text):
+        if re.search(pat, body_text):
             _issue(issues, "blocker", "content_depth", f"report contains raw companyfacts dump: {pat}")
 
     # Internal ID in rendered HTML
@@ -744,13 +745,25 @@ def _check_cross_market_regressions(
     peer = contracts_data.get("peer_compare", {}) if isinstance(contracts_data, dict) else {}
     if isinstance(peer, dict) and str(peer.get("status") or "") == "supported":
         text = str(peer.get("deterministic_text") or "")
+        report_peer_body = _section_body(_report_text(artifacts), ("同行对比", "同行比较", "peer_compare", "peer comparison"))
+        boundary_disclosed = _contains_any(
+            report_peer_body,
+            (
+                "没有完整同业样本",
+                "同业样本不足",
+                "不输出绝对强弱排序",
+                "保留审慎比较口径",
+                "补齐同行",
+                "peer data gap",
+            ),
+        )
         rows = [line for line in text.splitlines() if line.startswith("|")][2:]
         populated = [
             line for line in rows
             if any(token.strip() for token in line.split("|")[3:7])
             and "目标公司" not in line
         ]
-        if not populated:
+        if not populated and not boundary_disclosed:
             _issue(issues, "blocker", "peer_supported_without_metrics", "peer comparison is supported without a populated non-target peer row")
 
     summary = artifacts.get("summary", {}) if isinstance(artifacts.get("summary"), dict) else {}

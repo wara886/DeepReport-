@@ -414,6 +414,29 @@ class TestContractBuilder:
         assert "peer_compare_boundary_only" in peer.quality_flags
         assert "可比公司" in peer.deterministic_text
 
+    def test_peer_compare_does_not_mark_supported_without_non_target_metric_rows(self):
+        contracts = build_report_section_contracts(
+            state={"symbol": "AAPL", "period": "FY2025"},
+            evidence_records=[],
+            analysis_artifacts={
+                "peer_analysis": {
+                    "peer_rows": [
+                        {"symbol": "AAPL", "revenue_growth_pct": 5.0},
+                        {"symbol": "MSFT", "company_name": "Microsoft"},
+                    ]
+                }
+            },
+            section_dossiers={},
+            citations=[],
+        )
+
+        peer = contracts.get("peer_compare")
+
+        assert peer is not None
+        assert peer.status == "fallback"
+        assert "peer_no_metric_rows" in peer.quality_flags
+        assert not peer.deterministic_text.startswith("| 公司 |")
+
     def test_valuation_sensitivity_uses_framework_fallback_when_table_missing(self):
         contracts = build_report_section_contracts(
             state={"symbol": "AAPL", "period": "FY2025"},

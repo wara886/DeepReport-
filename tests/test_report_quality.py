@@ -74,6 +74,100 @@ def test_quality_evaluator_blocks_html_table_markdown_residue(tmp_path):
     assert any(issue["category"] == "html_table_integrity" for issue in report["issues"])
 
 
+def test_quality_half_sentence_check_ignores_javascript_trailing_commas(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# AMD 2025Q4 公司研报
+
+## 执行摘要
+报告基于官方证据和结构化财务指标形成中性观察评级，覆盖业务、财务、估值和风险。
+
+## 业务概览
+公司业务覆盖数据中心、客户端和嵌入式产品，收入质量需要结合需求和竞争观察。
+
+## 财务分析
+收入、利润和经营现金流均用于判断盈利质量，现金流转换率是关键约束。
+
+## 估值观察
+估值判断基于收入增速、利润率、现金流质量和风险溢价，不输出无证据目标价。
+
+## 风险评估
+主要风险包括需求波动、竞争压力、库存变化和估值倍数回落。
+
+## 投资结论
+维持中性观察评级，基于收入、现金流和估值约束，同时关注竞争和风险变化。
+
+## 合规披露
+本文仅供参考，不构成投资建议；不存在利益冲突，保持独立性披露。
+""",
+    )
+    reports = run_dir / "company" / "reports"
+    (reports / "report.html").write_text(
+        "<html><body><script>const config = {data: item.data, labels: item.labels,};</script></body></html>",
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(
+        issue["category"] == "content_depth" and "unfinished sentence pattern" in issue["message"]
+        for issue in report["issues"]
+    )
+
+
+def test_quality_allows_peer_metric_gap_when_report_discloses_boundary(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# AAPL FY2025 公司研报
+
+## 执行摘要
+报告基于财务、风险、估值和同业边界形成中性观察评级。
+
+## 业务概览
+公司业务覆盖硬件、软件和服务生态，收入质量需要结合需求和竞争观察。
+
+## 财务分析
+收入、利润和经营现金流均用于判断盈利质量，现金流转换率是关键约束。
+
+## 同行对比
+同行对比以可比口径为前提，当前没有完整同业样本，因此不输出绝对强弱排序，保留审慎比较口径。
+
+## 估值观察
+估值判断基于收入增速、利润率、现金流质量和风险溢价，不输出无证据目标价。
+
+## 风险评估
+主要风险包括需求波动、竞争压力、库存变化和估值倍数回落。
+
+## 投资结论
+维持中性观察评级，基于收入、现金流和估值约束，同时关注竞争和风险变化。
+
+## 合规披露
+本文仅供参考，不构成投资建议；不存在利益冲突，保持独立性披露。
+""",
+    )
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "report_section_contracts.json").write_text(
+        json.dumps(
+            {
+                "contracts": {
+                    "peer_compare": {
+                        "status": "supported",
+                        "deterministic_text": "| 公司 | 收入增速 | 毛利率 | 净利率 | ROE |\n| --- | --- | --- | --- | --- |\n| Apple Inc. | 10% | 40% | 20% | 30% |",
+                    }
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "peer_supported_without_metrics" for issue in report["issues"])
+
+
 def test_quality_evaluator_blocks_escaped_html_table_markup(tmp_path):
     run_dir = _write_run(tmp_path, report_md="# Test\n\n## 执行摘要\n完整。\n## 风险评估\n完整。\n## 投资结论\n完整。")
     reports = run_dir / "company" / "reports"

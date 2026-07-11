@@ -109,7 +109,7 @@ def test_real_artifact_remediation_rewrites_thin_core_sections(tmp_path):
     assert result["changed"] is True
     assert result["before"]["content_depth_blockers"] > result["after"]["content_depth_blockers"]
     assert result["after"]["content_depth_blockers"] == 0
-    assert "投资结论维持审慎观察" in repaired
+    assert "投资结论维持中性观察评级" in repaired
     assert "估值弹性应主要绑定收入增速" in repaired
     assert "估值观察与" not in repaired
     assert outputs.joinpath("real_artifact_remediation.json").exists()

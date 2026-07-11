@@ -95,3 +95,77 @@ def test_section_repair_rewrites_failed_core_sections_and_rechecks(tmp_path):
     assert "估值分析待补" not in repaired
     assert "收入为100亿元" in repaired
     assert report_json["section_repair_applied"] is True
+
+
+def test_section_repair_uses_quality_issues_to_rewrite_investment_conclusion(tmp_path):
+    outputs = tmp_path / "outputs"
+    reports = tmp_path / "reports"
+    outputs.mkdir()
+    reports.mkdir()
+    markdown = """# 测试报告
+
+## 执行摘要
+公司财务和风险均已覆盖，报告用于质量回归。
+
+## 财务分析
+收入、利润和现金流均进入证据链。
+
+## 估值观察
+估值以收入、现金流和风险溢价为边界。
+
+## 风险评估
+风险包括需求波动、竞争压力和估值倍数回落。
+
+## 投资结论
+观察。
+"""
+    (reports / "report.md").write_text(markdown, encoding="utf-8")
+    (reports / "report.html").write_text("<html><body>old</body></html>", encoding="utf-8")
+    (reports / "report.json").write_text(json.dumps({"title": "测试报告"}), encoding="utf-8")
+    (outputs / "claims.json").write_text(
+        json.dumps(
+            [
+                {
+                    "section_name": "conclusion",
+                    "claim_text": "基于估值约束、现金流和风险边界，维持中性观察评级。[ev_conclusion]",
+                    "evidence_ids": ["ev_conclusion"],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (outputs / "evidence.json").write_text(
+        json.dumps([{"evidence_id": "ev_conclusion", "title": "FY2024 annual report", "source_type": "sec_filing"}]),
+        encoding="utf-8",
+    )
+    (outputs / "canonical_metrics.json").write_text(
+        json.dumps({"metrics": [{"metric_name": "revenue", "value": 100, "unit": "USD_million", "source_evidence_id": "ev_conclusion"}]}),
+        encoding="utf-8",
+    )
+    (outputs / "quality_report.json").write_text(
+        json.dumps(
+            {
+                "issues": [
+                    {
+                        "severity": "blocker",
+                        "category": "professional_depth",
+                        "message": "investment conclusion lacks direction and reason",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    before = {"status": "passed", "failed_sections": [], "issues": []}
+
+    summary = repair_failed_sections_for_outputs(
+        output_dir=outputs,
+        report_dir=reports,
+        section_verification=before,
+    )
+
+    repaired = (reports / "report.md").read_text(encoding="utf-8")
+    assert summary["repaired"] is True
+    assert "中性观察评级" in repaired
+    assert "核心理由" in repaired
+    assert "主要风险" in repaired

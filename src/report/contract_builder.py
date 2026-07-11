@@ -806,26 +806,34 @@ def _build_peer_compare(
             description="海外消费品参考组（非同业直接可比）",
         ))
 
-    if direct_peers:
+    if direct_peers and valid_peer_rows:
         c.status = "supported"
     elif cross_market:
         c.status = "partial"
         c.add_blocked_reason("peer_only_cross_market_reference")
     else:
-        c.status = "gap"
-        c.add_blocked_reason("peer_no_approved_symbols")
+        c.status = "fallback"
+        c.add_quality_flag("peer_compare_boundary_only")
     if not direct_peers and not cross_market:
-        c.add_blocked_reason("peer_only_target_row")
+        c.add_quality_flag("peer_only_target_row")
+        if peer_rows:
+            c.add_quality_flag("peer_no_metric_rows")
     if not valid_peer_rows and direct_peers:
         direct_peers.clear()
-        c.status = "gap"
-        c.add_blocked_reason("peer_no_metric_rows")
+        c.status = "fallback"
+        c.add_quality_flag("peer_no_metric_rows")
 
     # Store peer table markdown as deterministic text
-    if peer_rows:
+    if peer_rows and direct_peers and valid_peer_rows:
         table_md = _render_peer_table_markdown(peer_rows, direct_peers, cross_market, target_symbol)
         if table_md:
             c.deterministic_text = table_md
+    elif c.status == "fallback" and not c.deterministic_text:
+        c.deterministic_text = (
+            "本轮同行对比未取得可验证的非目标公司量化指标，因此不将同业表作为正式估值依据。"
+            "正式交付前需要补齐至少两家可比公司的收入增速、毛利率、净利率、ROE 或现金流指标，"
+            "并说明业务结构、市场口径和估值倍数差异。"
+        )
 
 
 def _build_valuation(
@@ -1099,8 +1107,21 @@ def _build_investment_conclusion(
     has_peers = bool(pc and pc.status not in ("gap",))
 
     if has_financial or has_valuation or has_peers:
-        c.add_fact("conclusion_basis", "综合财务质量、估值、同行与风险证据后形成审慎观察。",
-                   source_types=[SRC_FINANCIAL_METRIC])
+        evidence_ids = financial_evidence_ids[:5]
+        direction = _investment_direction(financial_metrics, valuation_model)
+        reasons = _investment_reason_text(financial_metrics, valuation_model, has_peers)
+        risks = "主要风险包括需求波动、竞争加剧、现金流转换率下降、估值倍数回落，以及官方披露口径尚需持续复核。"
+        c.add_fact(
+            "conclusion_basis",
+            f"投资结论：维持{direction}。{reasons}{risks}",
+            evidence_ids=evidence_ids,
+            source_types=[SRC_FINANCIAL_METRIC],
+        )
+        c.deterministic_text = (
+            f"维持{direction}，结论基于财务质量、估值约束、同行可比性和风险边界。"
+            f"{reasons}{risks}"
+            "正式交付前仍需确认所有核心数值来自 canonical metrics，并确保结论与引用证据一致。"
+        )
         c.status = "partial"
     else:
         c.add_blocked_reason("conclusion_insufficient_evidence")
@@ -1131,6 +1152,42 @@ def _build_period_note(
 
     if mismatch:
         c.add_quality_flag("period_mismatch")
+
+
+def _investment_direction(financial_metrics: Dict[str, Any], valuation_model: Dict[str, Any]) -> str:
+    flat = _normalize_metrics_flat(financial_metrics)
+    revenue = _safe_number(flat.get("revenue"))
+    net_income = _safe_number(flat.get("net_income"))
+    operating_cash_flow = _safe_number(flat.get("operating_cash_flow") or flat.get("cash_flow_operations"))
+    valuation_status = str(valuation_model.get("valuation_status") or "") if isinstance(valuation_model, dict) else ""
+    if valuation_status in {"blocked_due_to_incomplete_inputs", "rough_observation_only"}:
+        return "中性观察评级"
+    positives = sum(1 for value in (revenue, net_income, operating_cash_flow) if value is not None and value > 0)
+    negatives = sum(1 for value in (net_income, operating_cash_flow) if value is not None and value < 0)
+    if positives >= 2 and negatives == 0:
+        return "中性偏积极评级"
+    if negatives:
+        return "偏谨慎评级"
+    return "中性观察评级"
+
+
+def _investment_reason_text(financial_metrics: Dict[str, Any], valuation_model: Dict[str, Any], has_peers: bool) -> str:
+    flat = _normalize_metrics_flat(financial_metrics)
+    reasons: list[str] = []
+    if _safe_number(flat.get("revenue")) is not None:
+        reasons.append("收入指标已进入证据链，可用于判断业务规模和增长弹性")
+    if _safe_number(flat.get("net_income")) is not None:
+        reasons.append("利润指标可用于观察盈利质量和费用压力")
+    if _safe_number(flat.get("operating_cash_flow") or flat.get("cash_flow_operations")) is not None:
+        reasons.append("经营现金流可用于检验利润含金量")
+    if isinstance(valuation_model, dict) and valuation_model:
+        reasons.append("估值部分提供了倍数或模型边界，但仍需复核输入假设")
+    if has_peers:
+        reasons.append("同行对比用于约束估值口径，不能替代公司自身基本面判断")
+    if not reasons:
+        reasons.append("当前证据只能支持方向性复核，不能支持强评级")
+    selected = reasons[:3]
+    return "核心理由包括：" + "；".join(selected) + "。"
 
 
 def _build_currency_data_quality(

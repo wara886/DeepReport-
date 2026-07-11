@@ -39,6 +39,7 @@ def repair_failed_sections_for_outputs(
     report_md = reports / "report.md"
     before = section_verification if isinstance(section_verification, dict) else _read_json(outputs / "section_verification.json", {})
     failed_sections = [str(item) for item in before.get("failed_sections") or [] if str(item).strip()]
+    failed_sections = _dedupe(failed_sections + _quality_issue_target_sections(outputs))
     before_status = str(before.get("status") or "missing")
     if not failed_sections:
         return {
@@ -150,6 +151,29 @@ def _required_fixes(section_verification: Dict[str, Any]) -> list[str]:
         if section or message:
             fixes.append(f"Repair {section or 'section'}: {message}")
     return fixes or ["Rewrite failed core sections to satisfy formal section contract."]
+
+
+def _quality_issue_target_sections(outputs: Path) -> list[str]:
+    targets: list[str] = []
+    for filename in ("quality_report.json", "llm_quality_review.json", "delivery_gate.json"):
+        payload = _read_json(outputs / filename, {})
+        issues = payload.get("issues") if isinstance(payload, dict) else []
+        if not isinstance(issues, list):
+            continue
+        for issue in issues:
+            if not isinstance(issue, dict):
+                continue
+            text = " ".join(
+                str(issue.get(key) or "")
+                for key in ("category", "message", "detail", "description", "section")
+            ).lower()
+            if any(token in text for token in ("investment conclusion", "投资结论", "投资建议", "评级", "recommendation")):
+                targets.append("investment_conclusion")
+            if any(token in text for token in ("peer", "同行", "可比")):
+                targets.append("peer_compare")
+            if any(token in text for token in ("valuation sensitivity", "敏感性")):
+                targets.append("valuation_sensitivity")
+    return _dedupe(targets)
 
 
 def _rewrite_report_html_and_json(*, reports: Path, markdown: str, output_dir: Path) -> None:
