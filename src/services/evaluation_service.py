@@ -354,6 +354,20 @@ def _task_delivery_passed(task: ReportTask) -> bool:
 
 
 def _quality_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
+    metrics = dict(metrics)
+    sample_requirements = {
+        "delivery_pass_rate": "quality_evaluated_task_count",
+        "evidence_ready_task_rate": "quality_evaluated_task_count",
+        "source_quality_ready_task_rate": "quality_evaluated_task_count",
+        "traceable_claim_rate": "claim_count",
+        "citation_support_rate": "claim_count",
+        "numeric_consistency_rate": "numeric_checked_count",
+        "schema_valid_rate": "schema_checked_count",
+        "llm_success_rate": "llm_run_count",
+    }
+    for value_key, count_key in sample_requirements.items():
+        if int(metrics.get(count_key) or 0) <= 0:
+            metrics[value_key] = None
     return [
         _gate("delivery_pass_rate", "交付通过率", metrics["delivery_pass_rate"], 0.8, "完成且通过质量门禁的研报任务占比。"),
         _gate("average_quality_score", "平均质量分", metrics["average_quality_score"], 0.8, "已评分研报的客观质量均值。"),

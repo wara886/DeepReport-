@@ -3424,6 +3424,7 @@ def _render_user_html(frontend_port: int | None = None) -> str:
     <span class="info">Port: <strong id="bannerPort">__BACKEND_PORT__</strong></span>
     <span class="info" id="bannerJobId" style="display:none">Job: <strong></strong></span>
     <span class="info">Session: <strong id="bannerSession">local</strong></span>
+    <a class="info" href="/workbench" style="color:inherit;font-weight:700">打开完整工作台 →</a>
   </div>
   <div class="container">
     <div class="hero" id="hero">
@@ -4281,6 +4282,7 @@ def _render_dev_html(frontend_port: int | None = None) -> str:
     <span class="info" id="bannerJobId" style="display:none">Job: <strong></strong></span>
     <span class="info">Session: <strong id="bannerSession">local</strong></span>
     <span class="dev-extra" id="bannerQueue"></span>
+    <a class="info" href="/workbench" style="color:inherit;font-weight:700">打开完整工作台 →</a>
   </div>
   <main class="wrap">
     <section class="hero">

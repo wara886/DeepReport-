@@ -26,12 +26,14 @@ from src.data.source_authority import grade_source_authority
 from src.db.init_db import init_db
 from src.db.models import (
     ClaimEvidence,
+    Company,
     EvidenceItem,
     LLMRun,
     PromptTemplate,
     ReportArtifact,
     ReportTask,
     ReportTaskEvent,
+    Workspace,
 )
 from src.db.session import create_engine_for_url
 from src.llm.harness import serialize_llm_run
@@ -110,10 +112,15 @@ class ReportTaskService:
         metadata = self._build_task_metadata(task_id=task_id, payload=payload, symbol=symbol, period=period)
 
         with self.session() as session:
+            workspace_id, company_id = _resolve_task_bindings(session, payload=payload, symbol=symbol)
+            if company_id is not None:
+                bound_company = session.get(Company, company_id)
+                if bound_company is not None:
+                    metadata["company_name"] = bound_company.name
             task = ReportTask(
                 task_id=task_id,
-                workspace_id=_optional_int(payload.get("workspace_id")),
-                company_id=_optional_int(payload.get("company_id")),
+                workspace_id=workspace_id,
+                company_id=company_id,
                 symbol=symbol,
                 period=period,
                 report_type=report_type,
@@ -2304,6 +2311,50 @@ def _optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _resolve_task_bindings(session: Session, *, payload: dict[str, Any], symbol: str) -> tuple[int | None, int | None]:
+    """Bind queued tasks to real workspace/company rows when the UI omits IDs."""
+
+    workspace_id = _optional_int(payload.get("workspace_id"))
+    if workspace_id is None:
+        workspace_id = session.scalar(
+            select(Workspace.id).where(Workspace.is_active.is_(True)).order_by(Workspace.id.asc()).limit(1)
+        )
+    if workspace_id is None:
+        workspace = Workspace(
+            name="默认投研空间",
+            slug="default-research",
+            description="工作台自动创建的默认投研空间",
+            is_active=True,
+        )
+        session.add(workspace)
+        session.flush()
+        workspace_id = workspace.id
+
+    company_id = _optional_int(payload.get("company_id"))
+    if company_id is not None:
+        return workspace_id, company_id
+    if str(payload.get("run_mode") or "queue_only") != "queue_only":
+        return workspace_id, None
+
+    market = str(payload.get("market") or infer_market_from_symbol(symbol).get("market") or "").strip().lower()
+    company = session.scalar(
+        select(Company)
+        .where(func.upper(Company.symbol) == symbol.upper())
+        .order_by(Company.id.asc())
+        .limit(1)
+    )
+    if company is None:
+        company = Company(
+            name=str(payload.get("company_name") or symbol).strip(),
+            symbol=symbol,
+            market=market or None,
+            aliases=[symbol],
+        )
+        session.add(company)
+        session.flush()
+    return workspace_id, company.id
 
 
 def _safe_id(value: str) -> str:

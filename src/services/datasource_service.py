@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime, timezone
+import os
 from typing import Any
 
 from sqlalchemy import Select, or_, select
@@ -57,6 +58,7 @@ class DataSourceService:
         with self.session_factory() as session:
             workspace = _get_workspace_optional(session, workspace_ref)
             created: list[DataSource] = []
+            reconciled = 0
             for source_key in source_keys:
                 existing = session.scalar(
                     select(DataSource).where(
@@ -65,8 +67,16 @@ class DataSourceService:
                     )
                 )
                 if existing is not None:
+                    credential_status = _credential_status(source_key)
+                    should_enable = _credentials_available(credential_status)
+                    if existing.credential_status != credential_status or (existing.enabled and not should_enable):
+                        existing.credential_status = credential_status
+                        if not should_enable:
+                            existing.enabled = False
+                        reconciled += 1
                     continue
                 seed = _catalog_entry(source_key)
+                credential_status = _credential_status(source_key)
                 item = DataSource(
                     workspace_id=workspace.id if workspace else None,
                     name=seed["name"],
@@ -75,15 +85,15 @@ class DataSourceService:
                     market_scope=seed["market_scope"],
                     trust_level=seed["trust_level"],
                     config_json={"registered_by": "SearchManager"},
-                    enabled=True,
-                    credential_status=_credential_status(source_key),
+                    enabled=_credentials_available(credential_status),
+                    credential_status=credential_status,
                     last_status="not_run",
                     metadata_json={"seeded": True},
                 )
                 session.add(item)
                 created.append(item)
             session.commit()
-        return {"created": len(created), "source_keys": source_keys}
+        return {"created": len(created), "reconciled": reconciled, "source_keys": source_keys}
 
     def list_sources(
         self,
@@ -122,6 +132,10 @@ class DataSourceService:
         with self.session_factory() as session:
             workspace = _get_workspace_optional(session, workspace_ref)
             seed = _catalog_entry(source_key)
+            credential_status = str(payload.get("credential_status") or _credential_status(source_key))
+            requested_enabled = bool(payload.get("enabled", True))
+            if requested_enabled and not _credentials_available(credential_status):
+                requested_enabled = False
             item = DataSource(
                 workspace_id=workspace.id if workspace else None,
                 name=str(payload.get("name") or seed["name"]),
@@ -130,8 +144,8 @@ class DataSourceService:
                 market_scope=_string_list(payload.get("market_scope")) or seed["market_scope"],
                 trust_level=_optional_string(payload.get("trust_level")) or seed["trust_level"],
                 config_json=_dict_or_none(payload.get("config")) or {},
-                enabled=bool(payload.get("enabled", True)),
-                credential_status=str(payload.get("credential_status") or _credential_status(source_key)),
+                enabled=requested_enabled,
+                credential_status=credential_status,
                 last_status=_optional_string(payload.get("last_status")) or "not_run",
                 last_error=_optional_string(payload.get("last_error")),
                 metadata_json=_dict_or_none(payload.get("metadata")),
@@ -147,6 +161,10 @@ class DataSourceService:
     def set_enabled(self, source_ref: int | str, enabled: bool) -> dict[str, Any]:
         with self.session_factory() as session:
             item = _get_source(session, source_ref)
+            if enabled and not _credentials_available(item.credential_status):
+                raise DataSourceConflict(
+                    f"Datasource {item.source_key} cannot be enabled until its credentials are configured"
+                )
             item.enabled = bool(enabled)
             session.commit()
             return self.serialize_source(item)
@@ -154,8 +172,11 @@ class DataSourceService:
     def mark_health(self, source_ref: int | str, payload: dict[str, Any]) -> dict[str, Any]:
         with self.session_factory() as session:
             item = _get_source(session, source_ref)
+            requested_status = _optional_string(payload.get("last_status")) or ("success" if not payload.get("last_error") else "failed")
+            if requested_status == "success" and payload.get("verified") is not True:
+                raise DataSourceConflict("Healthy status must come from a verified datasource probe or sync run")
             item.last_sync_at = _utc_now()
-            item.last_status = _optional_string(payload.get("last_status")) or ("success" if not payload.get("last_error") else "failed")
+            item.last_status = requested_status
             item.last_error = _optional_string(payload.get("last_error"))
             item.credential_status = _optional_string(payload.get("credential_status")) or item.credential_status
             session.commit()
@@ -174,6 +195,8 @@ class DataSourceService:
             "config": item.config_json or {},
             "enabled": item.enabled,
             "credential_status": item.credential_status,
+            "configured": _credentials_available(item.credential_status),
+            "operational": bool(item.enabled and _credentials_available(item.credential_status) and item.last_status == "success"),
             "last_sync_at": _dt(item.last_sync_at),
             "last_status": item.last_status,
             "last_error": item.last_error,
@@ -188,7 +211,14 @@ def _catalog_entry(source_key: str) -> dict[str, Any]:
 
 
 def _credential_status(source_key: str) -> str:
-    return "required" if source_key in {"tavily", "serper"} else "not_required"
+    env_name = {"tavily": "TAVILY_API_KEY", "serper": "SERPER_API_KEY"}.get(source_key)
+    if env_name is None:
+        return "not_required"
+    return "configured" if str(os.getenv(env_name) or "").strip() else "missing"
+
+
+def _credentials_available(status: str | None) -> bool:
+    return str(status or "").strip().lower() in {"not_required", "configured", "valid"}
 
 
 def _get_workspace_optional(session: Session, workspace_ref: int | str | None) -> Workspace | None:

@@ -151,6 +151,7 @@ def create_fastapi_app(
         return response
 
     @app.get("/health")
+    @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "finsight-deepreport"}
 
@@ -505,6 +506,8 @@ def create_fastapi_app(
             return JSONResponse(content=_datasource_service(app).set_enabled(source_ref, bool(payload.get("enabled", True))))
         except DataSourceNotFound:
             return JSONResponse(status_code=404, content={"error": f"Datasource not found: {source_ref}"})
+        except DataSourceConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -515,6 +518,8 @@ def create_fastapi_app(
             return JSONResponse(content=_datasource_service(app).mark_health(source_ref, payload))
         except DataSourceNotFound:
             return JSONResponse(status_code=404, content={"error": f"Datasource not found: {source_ref}"})
+        except DataSourceConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -625,6 +630,16 @@ def create_fastapi_app(
         payload = await _json_payload(incoming)
         try:
             result = _manual_import_service(app).import_document(payload)
+            document = result.get("document") if isinstance(result.get("document"), dict) else {}
+            document_id = document.get("id")
+            if document_id and document.get("parse_status") == "parsed":
+                processed = _document_service(app).process_document(int(document_id))
+                result["document"] = processed
+                result["processing_status"] = "evidence_ready"
+                result["message"] = "文档已解析、切分并进入证据库。"
+            else:
+                result["processing_status"] = "awaiting_content"
+                result["message"] = "文档记录已创建，补充可解析内容后才能进入证据库。"
             return JSONResponse(status_code=200 if result.get("duplicate") else 201, content=result)
         except ManualImportConflict as exc:
             return JSONResponse(status_code=409, content={"error": str(exc)})

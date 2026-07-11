@@ -25,7 +25,9 @@ def test_searchmanager_registered_engines_seed_datasource_rows(temp_db_engine):
 
     assert [row.source_key for row in rows] == engine_names
     assert all(row.config_json["registered_by"] == "SearchManager" for row in rows)
-    assert all(row.enabled for row in rows)
+    missing_credentials = {row.source_key for row in rows if not row.enabled}
+    assert missing_credentials == {"serper", "tavily"}
+    assert all(row.credential_status == "missing" for row in rows if row.source_key in missing_credentials)
     assert {row.source_key: row.trust_level for row in rows}["sec_edgar"] == "official"
     assert {row.source_key: row.source_type for row in rows}["yahoo_finance"] == "market_data"
 

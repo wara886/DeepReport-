@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -13,7 +14,25 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.app.api_fastapi import create_fastapi_app
+
+REQUIRED_RUNTIME_MODULES = (
+    ("langgraph.graph", "langgraph"),
+    ("langgraph.checkpoint.sqlite", "langgraph-checkpoint-sqlite"),
+)
+
+
+def dependency_preflight() -> list[str]:
+    """Return actionable missing runtime packages before importing the app graph."""
+
+    missing: list[str] = []
+    for module_name, package_name in REQUIRED_RUNTIME_MODULES:
+        try:
+            available = importlib.util.find_spec(module_name) is not None
+        except (ImportError, ModuleNotFoundError, AttributeError):
+            available = False
+        if not available:
+            missing.append(package_name)
+    return missing
 
 
 def main() -> int:
@@ -25,6 +44,17 @@ def main() -> int:
     parser.add_argument("--report-dir", default="data/reports/multi_agent")
     parser.add_argument("--memory-root", default="memory/chat")
     args = parser.parse_args()
+    missing = dependency_preflight()
+    if missing:
+        packages = " ".join(sorted(set(missing)))
+        print(
+            f"FinSight cannot start because runtime dependencies are missing: {packages}. "
+            f"Install them with: python -m pip install {packages}",
+            file=sys.stderr,
+        )
+        return 2
+    from src.app.api_fastapi import create_fastapi_app
+
     app = create_fastapi_app(
         output_dir=args.output_dir,
         report_dir=args.report_dir,

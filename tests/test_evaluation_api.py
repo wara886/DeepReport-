@@ -345,6 +345,7 @@ def test_evaluation_summary_handles_empty_state(tmp_path):
     assert body["metrics"]["active_task_count"] == 0
     assert body["metrics"]["delivery_pass_rate"] == 0.0
     assert body["failure_categories"] == []
+    assert all(gate["status"] == "pending" for gate in body["quality_gates"])
     assert body["regression_matrix"]["rows"] == []
     assert body["regression_matrix"]["pass_rate"] == 0.0
     assert "暂无研报任务" in body["notes"][0]

@@ -56,8 +56,10 @@ def test_manual_import_text_enters_document_processing_center(tmp_path):
     assert listed.json()["total"] == 1
     assert listed.json()["items"][0]["title"] == "NVDA FY2024 revenue note"
     steps = detail.json()["processing_steps"]
-    assert [step["step_name"] for step in steps] == ["ingest", "parse"]
-    assert [step["status"] for step in steps] == ["success", "success"]
+    assert [step["step_name"] for step in steps] == ["ingest", "parse", "chunk"]
+    assert [step["status"] for step in steps] == ["success", "success", "success"]
+    assert body["processing_status"] == "evidence_ready"
+    assert detail.json()["evidence_count"] == 1
     assert duplicate.status_code == 200
     assert duplicate.json()["created"] is False
     assert duplicate.json()["duplicate"] is True
@@ -82,7 +84,10 @@ def test_manual_import_url_requires_source_and_records_link(tmp_path):
     assert imported.status_code == 201
     assert imported.json()["document"]["source_url"] == "https://www.sec.gov/aapl/10-k"
     assert detail.json()["source_url"] == "https://www.sec.gov/aapl/10-k"
-    assert detail.json()["processing_steps"][1]["status"] == "success"
+    assert imported.json()["processing_status"] == "awaiting_content"
+    assert detail.json()["parse_status"] == "pending"
+    assert detail.json()["processing_steps"][1]["status"] == "pending"
+    assert detail.json()["evidence_count"] == 0
 
 
 def test_manual_import_reuses_company_when_only_name_is_provided(tmp_path):

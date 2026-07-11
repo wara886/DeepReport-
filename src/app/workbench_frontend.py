@@ -366,6 +366,7 @@ def render_workbench_html() -> str:
           <button class="btn primary" data-open-create-task>创建研报任务</button>
           <button class="btn ghost" data-jump="manual">导入文档</button>
           <button class="btn ghost" data-jump="export">查看最新报告</button>
+          <a class="btn ghost" href="/">返回对话首页</a>
           <button class="btn" id="refreshView">刷新</button>
         </div>
       </header>
@@ -867,6 +868,7 @@ def render_workbench_html() -> str:
                 <div class="field"><label for="factEvidenceId">关联证据</label><input id="factEvidenceId" placeholder="可选，填写证据编号或记录 ID" /></div>
                 <div class="field full"><label for="factSourceUrl">来源链接</label><input id="factSourceUrl" placeholder="https://..." /></div>
               </div>
+              <div class="form-note">手工事实默认仅作研究草稿输入。只有绑定可追溯证据、通过期间校验并确认来源权威等级后，才可进入正式研报口径。</div>
               <div class="modal-actions"><button class="btn primary" id="createFinancialFact">导入事实</button></div>
               <div id="factMessage"></div>
             </aside>
@@ -899,6 +901,7 @@ def render_workbench_html() -> str:
                   <button class="btn" id="refreshSignals">刷新</button>
                 </div>
               </div>
+              <div class="form-note">增强能力：线索必须绑定证据并经人工复核后，才可进入正式研报。</div>
               <div id="signalScopeNotice"></div>
               <div class="table-scroll">
                 <table>
@@ -1050,6 +1053,7 @@ def render_workbench_html() -> str:
                   <button class="btn" id="refreshEntities">刷新</button>
                 </div>
               </div>
+              <div class="form-note">增强能力：实体仅用于辅助组织证据，不代表已核验的正式结论。</div>
               <div class="table-scroll">
                 <table>
                   <thead><tr><th>实体</th><th>类型</th><th>市场/代码</th><th>来源证据</th><th>置信度</th></tr></thead>
@@ -1084,6 +1088,7 @@ def render_workbench_html() -> str:
                   <button class="btn" id="refreshRelations">刷新</button>
                 </div>
               </div>
+              <div class="form-note">增强能力：关系图谱仅展示已沉淀关系，不能替代主张与引用校验。</div>
               <div id="graphStats" class="dist" style="margin-bottom:12px"></div>
               <div class="table-scroll">
                 <table>
@@ -1200,7 +1205,7 @@ def render_workbench_html() -> str:
               <label for="taskCompanyInput">公司或股票代码</label>
               <input id="taskCompanyInput" list="companyCandidates" placeholder="输入苹果、腾讯、贵州茅台、AAPL、0700.HK、600519" required />
               <datalist id="companyCandidates"></datalist>
-              <div class="form-note" id="companyResolveNote">支持公司中文名、英文名或股票代码。当前使用内置候选解析，后续接入股票池和实体库。</div>
+              <div class="form-note" id="companyResolveNote">支持公司中文名、英文名或股票代码；优先解析当前投研空间股票池，未命中时使用本地公司候选。</div>
             </div>
             <div class="field">
               <label for="taskPeriodInput">查询期间</label>
@@ -1851,11 +1856,13 @@ def render_workbench_html() -> str:
       btn.addEventListener("click", () => activateFunnelTab(btn.dataset.funnelTab));
     });
     initCreateTaskModal();
+    activateFunnelTab("chain");
 
     function activateFunnelTab(tab) {
       document.querySelectorAll("[data-funnel-tab]").forEach((item) => item.classList.toggle("active", item.dataset.funnelTab === tab));
       $("funnelTab").classList.toggle("active", tab === "funnel");
       $("chainTab").classList.toggle("active", tab === "chain");
+      $("funnelDemoNote").hidden = tab !== "funnel";
     }
 
     function bindJumpHandlers(root = document) {
@@ -1913,7 +1920,15 @@ def render_workbench_html() -> str:
     function activateView(view) {
       activeState.view = view;
       document.querySelectorAll(".nav button").forEach((item) => item.classList.toggle("active", item.dataset.view === view));
-      document.querySelectorAll(".view").forEach((item) => item.classList.toggle("active", item.id === view));
+      document.querySelectorAll(".view").forEach((item) => {
+        const active = item.id === view;
+        item.classList.toggle("active", active);
+        item.hidden = !active;
+        item.setAttribute("aria-hidden", active ? "false" : "true");
+        if (active) item.removeAttribute("inert");
+        else item.setAttribute("inert", "");
+        setFormLabelsActive(item, active);
+      });
       const meta = viewMeta[view] || [view, ""];
       $("viewTitle").textContent = meta[0];
       $("viewSubtitle").textContent = meta[1];
@@ -1936,6 +1951,17 @@ def render_workbench_html() -> str:
       else if (view === "evaluation") loadEvaluation();
       else if (view === "export") loadExports();
       else renderPlaceholder(view);
+    }
+
+    function setFormLabelsActive(container, active) {
+      container.querySelectorAll("label").forEach((label) => {
+        if (active && label.dataset.labelFor) {
+          label.setAttribute("for", label.dataset.labelFor);
+        } else if (!active && label.hasAttribute("for")) {
+          label.dataset.labelFor = label.getAttribute("for");
+          label.removeAttribute("for");
+        }
+      });
     }
 
     async function openDocumentsForBatch(batchId, documentId = null) {
@@ -1979,7 +2005,9 @@ def render_workbench_html() -> str:
     function initCreateTaskModal() {
       bindCreateTaskButtons();
       $("companyCandidates").innerHTML = companyCandidates.flatMap((item) => item.aliases.map((alias) => `<option value="${esc(alias)}">${esc(item.name)} · ${esc(item.symbol)}</option>`)).join("");
-      $("companyQuickChoices").innerHTML = companyCandidates.slice(0, 6).map((item) => `<button class="choice" type="button" data-company-choice="${esc(item.symbol)}">${esc(item.name)} · ${esc(item.symbol)}</button>`).join("");
+      const quickSymbols = ["AAPL", "0700.HK", "600519", "NVDA", "9988.HK", "300750"];
+      const quickCandidates = quickSymbols.map((symbol) => companyCandidates.find((item) => item.symbol === symbol || item.aliases.includes(symbol))).filter(Boolean);
+      $("companyQuickChoices").innerHTML = quickCandidates.map((item) => `<button class="choice" type="button" data-company-choice="${esc(item.symbol)}">${esc(item.name)} · ${esc(item.symbol)}</button>`).join("");
       document.querySelectorAll("[data-company-choice]").forEach((btn) => {
         btn.addEventListener("click", () => {
           $("taskCompanyInput").value = btn.dataset.companyChoice;
@@ -1993,16 +2021,19 @@ def render_workbench_html() -> str:
       $("taskCompanyInput").addEventListener("input", updateCompanyResolveNote);
       $("createTaskForm").addEventListener("submit", submitCreateTask);
       updateCompanyResolveNote();
+      setFormLabelsActive($("createTaskModal"), false);
     }
 
     function openCreateTaskModal() {
       $("createTaskModal").classList.add("active");
+      setFormLabelsActive($("createTaskModal"), true);
       $("createTaskMessage").innerHTML = "";
       setTimeout(() => $("taskCompanyInput").focus(), 0);
     }
 
     function closeCreateTaskModal() {
       $("createTaskModal").classList.remove("active");
+      setFormLabelsActive($("createTaskModal"), false);
     }
 
     function resolveCompany(input) {
@@ -2018,7 +2049,7 @@ def render_workbench_html() -> str:
       const resolved = resolveCompany($("taskCompanyInput").value);
       $("companyResolveNote").textContent = resolved
         ? `将按 ${resolved.name} · ${resolved.symbol} 创建任务。`
-        : "支持公司中文名、英文名或股票代码。当前使用内置候选解析，后续接入股票池和实体库。";
+        : "支持公司中文名、英文名或股票代码；优先解析当前投研空间股票池，未命中时使用本地公司候选。";
     }
 
     async function submitCreateTask(event) {
@@ -2063,9 +2094,10 @@ def render_workbench_html() -> str:
     async function resolveCompanyForTask(input) {
       const raw = String(input || "").trim();
       if (!raw) return null;
+      let workspace = null;
       try {
         const workspaces = await getJson("/api/workspaces?active_only=true&limit=1");
-        const workspace = (workspaces.items || [])[0];
+        workspace = (workspaces.items || [])[0];
         if (workspace) {
           const item = await getJson(`/api/workspaces/${encodeURIComponent(workspace.id)}/resolve-company?q=${encodeURIComponent(raw)}`);
           return {
@@ -2076,9 +2108,11 @@ def render_workbench_html() -> str:
           };
         }
       } catch (error) {
-        return resolveCompany(raw);
+        const fallback = resolveCompany(raw);
+        return fallback ? { ...fallback, workspace_id: workspace?.id || null } : null;
       }
-      return resolveCompany(raw);
+      const fallback = resolveCompany(raw);
+      return fallback ? { ...fallback, workspace_id: workspace?.id || null } : null;
     }
 
     function csvList(value) {
@@ -2245,8 +2279,8 @@ def render_workbench_html() -> str:
               <td><span class="status ${esc(item.credential_status)}">${esc(credentialText(item.credential_status))}</span></td>
               <td><span class="status ${esc(item.last_status || "pending")}">${esc(statusText(item.last_status || "pending"))}</span><br><span class="label">${esc(fmt(item.last_sync_at))}</span></td>
               <td class="links">
-                <button class="btn" data-datasource-toggle="${esc(item.id)}" data-enabled="${item.enabled ? "false" : "true"}">${item.enabled ? "停用" : "启用"}</button>
-                <button class="btn" data-datasource-health="${esc(item.id)}">标记正常</button>
+                <button class="btn" data-datasource-toggle="${esc(item.id)}" data-enabled="${item.enabled ? "false" : "true"}" ${!item.enabled && item.configured === false ? 'disabled title="请先配置凭证"' : ""}>${item.enabled ? "停用" : "启用"}</button>
+                <button class="btn" data-datasource-health="${esc(item.id)}">查看状态说明</button>
               </td>
             </tr>`).join("")
           : `<tr><td colspan="7"><div class="empty"><div>暂无数据源</div><div class="empty-actions"><button class="btn primary" id="seedDatasourcesInline">同步注册源</button></div></div></td></tr>`;
@@ -2272,6 +2306,7 @@ def render_workbench_html() -> str:
       root.querySelectorAll("[data-datasource-health]").forEach((btn) => {
         if (btn.dataset.boundDatasourceHealth === "true") return;
         btn.dataset.boundDatasourceHealth = "true";
+        btn.textContent = "查看状态说明";
         btn.addEventListener("click", () => markDatasourceHealth(btn.dataset.datasourceHealth));
       });
     }
@@ -2308,15 +2343,18 @@ def render_workbench_html() -> str:
     }
 
     async function toggleDatasource(sourceId, enabled) {
-      await postJson(`/api/data-sources/${encodeURIComponent(sourceId)}/enable`, { enabled });
-      await loadDatasources();
-      await loadDatasourceDetail(sourceId);
+      try {
+        await postJson(`/api/data-sources/${encodeURIComponent(sourceId)}/enable`, { enabled });
+        await loadDatasources();
+        await loadDatasourceDetail(sourceId);
+      } catch (error) {
+        showNotice("数据源未配置凭证，不能启用。请先在环境变量或配置中心填写密钥。", "error");
+      }
     }
 
     async function markDatasourceHealth(sourceId) {
-      await postJson(`/api/data-sources/${encodeURIComponent(sourceId)}/health`, { last_status: "success" });
-      await loadDatasources();
       await loadDatasourceDetail(sourceId);
+      showNotice("健康状态只能由真实采集或同步任务更新，不能手工标记正常。", "empty");
     }
 
     function ingestionActionButtons(batch) {
@@ -2527,6 +2565,7 @@ def render_workbench_html() -> str:
           <div class="kv"><span class="label">文档</span><span>${esc(doc.title || "-")}</span></div>
           <div class="kv"><span class="label">状态</span><span><span class="status ${esc(doc.parse_status || "pending")}">${esc(statusText(doc.parse_status || "pending"))}</span></span></div>
           <div class="kv"><span class="label">类型</span><span>${esc(docTypeText(doc.doc_type))}</span></div>
+          <div class="kv"><span class="label">证据化状态</span><span>${result.processing_status === "evidence_ready" ? `已生成 ${esc(number(doc.evidence_count || 0))} 条证据` : "等待可解析正文"}</span></div>
           ${doc.source_url ? `<div class="kv"><span class="label">链接</span><a href="${esc(doc.source_url)}" target="_blank">${esc(doc.source_url)}</a></div>` : ""}
           ${systemInfoBlock("系统信息", [["批次编号", result.batch_id], ["文件路径", doc.file_path]])}
           <div class="links" style="margin-top:12px">
@@ -2602,7 +2641,7 @@ def render_workbench_html() -> str:
       const hasRealCounts = hasRealFunnelCounts(rawSteps);
       const hasConsistentFunnel = isValidFunnelSeries(rawSteps);
       const visualSteps = hasConsistentFunnel ? rawSteps : funnelDemoSteps;
-      const chainSteps = hasRealCounts ? rawSteps : funnelDemoSteps;
+      const chainSteps = hasRealCounts ? rawSteps : [];
       const visualMax = Math.max(1, ...visualSteps.map((step) => Number(step.count || 0)));
       const chainMax = Math.max(1, ...chainSteps.map((step) => Number(step.count || 0)));
       $("funnelDemoNote").innerHTML = funnelNoteHtml(hasRealCounts, hasConsistentFunnel);
@@ -2619,14 +2658,18 @@ def render_workbench_html() -> str:
         </button>`;
       }).join("");
       $("funnelLoss").innerHTML = renderFunnelLoss(visualSteps);
-      $("funnel").innerHTML = chainSteps.map((step, index) => {
+      $("funnel").innerHTML = chainSteps.length ? chainSteps.map((step, index) => {
             const width = Math.max(2, Math.round((Number(step.count || 0) / chainMax) * 100));
             return `<div>
               <div class="funnel-row"><span>${esc(step.label)}</span><div class="bar"><span style="width:${width}%"></span></div><strong>${esc(number(step.count))}</strong></div>
               ${index < chainSteps.length - 1 ? `<div class="funnel-arrow">↓</div>` : ""}
             </div>`;
-          }).join("");
+          }).join("") : emptyBox("暂无真实处理链路数据。导入文档或运行研报任务后显示。", [
+            { label: "手动导入", view: "manual", className: "primary" },
+            { label: "创建研报任务", view: "tasks" },
+          ]);
       bindJumpHandlers($("funnelVisual"));
+      bindJumpHandlers($("funnel"));
     }
 
     function renderFunnelLoss(steps) {
@@ -2689,7 +2732,7 @@ def render_workbench_html() -> str:
 
     function renderDonutChart(targetId, rows, options = {}) {
       const realRows = rows.filter((row) => Number(row.value || 0) > 0);
-      const displayRows = realRows.length ? realRows : (options.demoRows || []);
+      const displayRows = realRows;
       const total = displayRows.reduce((sum, row) => sum + Number(row.value || 0), 0);
       if (!displayRows.length || total <= 0) {
         $(targetId).innerHTML = emptyBox(options.emptyText || "暂无统计数据", options.actions || []);
@@ -2795,8 +2838,17 @@ def render_workbench_html() -> str:
     }
 
     function renderDeliveryReadiness(task) {
-      const readiness = task?.delivery_readiness || {};
+      let readiness = task?.delivery_readiness || {};
       if (!Object.keys(readiness).length) return "";
+      if (["queued", "pending"].includes(String(task?.status || ""))) {
+        readiness = {
+          ...readiness,
+          can_generate_draft: "可启动",
+          can_enter_human_review: "待运行检查",
+          can_deliver_formal_report: "待运行检查",
+          can_export_formal_package: "待运行检查",
+        };
+      }
       const blockers = readiness.blocking_reasons || [];
       const actions = readiness.required_actions || [];
       return `<div class="detail-section"><h3>统一交付状态</h3>
@@ -2882,11 +2934,29 @@ def render_workbench_html() -> str:
       root.querySelectorAll("[data-task-action]").forEach((btn) => {
         if (btn.dataset.boundTaskAction === "true") return;
         btn.dataset.boundTaskAction = "true";
-        btn.addEventListener("click", () => taskLifecycleAction(btn.dataset.taskId, btn.dataset.taskAction));
+        btn.addEventListener("click", () => taskLifecycleAction(btn.dataset.taskId, btn.dataset.taskAction, btn));
       });
     }
 
-    async function taskLifecycleAction(taskId, action) {
+    async function taskLifecycleAction(taskId, action, button = null) {
+      if (button && button.dataset.confirmAction !== action) {
+        button.dataset.confirmAction = action;
+        button.dataset.originalText = button.textContent;
+        button.textContent = "再次点击确认操作";
+        window.setTimeout(() => {
+          if (button.dataset.confirmAction === action) {
+            button.textContent = button.dataset.originalText || "操作";
+            delete button.dataset.confirmAction;
+          }
+        }, 6000);
+        return;
+      }
+      if (button) {
+        delete button.dataset.confirmAction;
+        button.disabled = true;
+        button.textContent = "处理中…";
+      }
+      const confirm = () => true;
       const labels = { start: "启动", retry: "完整重试", cancel: "取消", archive: "归档", resume_runtime: "从人工复核断点继续", retry_checkpoint: "从失败节点继续" };
       if (["start", "retry", "cancel", "archive", "resume_runtime", "retry_checkpoint"].includes(action) && !confirm(`确认${labels[action]}该研报任务？`)) return;
       const payloadByAction = {
@@ -2957,7 +3027,20 @@ def render_workbench_html() -> str:
     }
 
     function renderEvaluation(payload) {
-      const metrics = payload.metrics || {};
+      const metrics = { ...(payload.metrics || {}) };
+      const sampleRequirements = {
+        delivery_pass_rate: "quality_evaluated_task_count",
+        evidence_ready_task_rate: "quality_evaluated_task_count",
+        source_quality_ready_task_rate: "quality_evaluated_task_count",
+        traceable_claim_rate: "claim_count",
+        citation_support_rate: "claim_count",
+        numeric_consistency_rate: "numeric_checked_count",
+        llm_success_rate: "llm_run_count",
+        schema_valid_rate: "schema_checked_count",
+      };
+      Object.entries(sampleRequirements).forEach(([valueKey, countKey]) => {
+        if (Number(metrics[countKey] || 0) <= 0) metrics[valueKey] = null;
+      });
       const cards = [
         { label: "正式交付通过率", value: percentText(metrics.delivery_pass_rate), note: `${number(metrics.delivery_pass_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务；需同时通过证据、质量和复核门禁`, view: "tasks" },
         { label: "内容完整度评分", value: scoreText(metrics.average_quality_score), note: "仅衡量报告内容完整程度，不等同于正式交付状态", view: "tasks" },
@@ -2979,7 +3062,7 @@ def render_workbench_html() -> str:
       renderEvaluationClaimQuality(payload.claim_quality || {});
       renderEvaluationRetrievalQuality(payload.retrieval_quality || {});
       renderEvaluationModelHealth(payload.model_health || {});
-      renderEvaluationFailures(payload.failure_categories || []);
+      renderEvaluationFailures(payload.failure_categories || [], metrics);
       renderEvaluationBenchmarkSuites(payload.benchmark_suites || []);
       renderEvaluationRegressionMatrix(payload.regression_matrix || {});
       renderEvaluationTaskRows(payload.recent_tasks || []);
@@ -3065,7 +3148,11 @@ def render_workbench_html() -> str:
         + ((health.recent_roles || []).length ? `<div class="detail-section"><h3>最近运行角色</h3>${health.recent_roles.map((item) => `<div class="dist-row"><span>${esc(modelRoleText(item.role))}</span><strong>${esc(number(item.count))}</strong></div>`).join("")}</div>` : "");
     }
 
-    function renderEvaluationFailures(items) {
+    function renderEvaluationFailures(items, metrics = {}) {
+	      if (!items.length && Number(metrics.quality_evaluated_task_count || 0) <= 0) {
+	        $("evaluationFailures").innerHTML = emptyBox("尚无可评测样本；请先完成至少一个研报任务。", [{ label: "查看研报任务", view: "tasks", className: "primary" }]);
+	        return;
+	      }
 	      $("evaluationFailures").innerHTML = items.length
 	        ? items.map((item) => `<div class="mini-item">
 	            <div class="mini-title">
@@ -3662,6 +3749,24 @@ def render_workbench_html() -> str:
           <div class="detail-section"><h3>时间线</h3><div class="timeline">${
             events.length ? events.map((event) => `<div class="event"><strong>${esc(stepText(event.stage))}</strong> <span class="status ${esc(event.status)}">${esc(statusText(event.status))}</span><br><span class="label">${esc(fmt(event.created_at))}</span><br>${esc(fmt(event.message))}</div>`).join("") : `<div class="empty">暂无事件</div>`
           }</div></div>`;
+        {
+          const sections = Array.from($("taskDetail").querySelectorAll(":scope > .detail-section"));
+          const coreCount = task.error_message ? 5 : 4;
+          const advanced = sections.slice(coreCount, Math.max(coreCount, sections.length - 2));
+          advanced.forEach((section) => { section.hidden = true; });
+          if (advanced.length) {
+            const toggle = document.createElement("button");
+            toggle.className = "btn";
+            toggle.type = "button";
+            toggle.textContent = "展开高级分析与诊断";
+            toggle.addEventListener("click", () => {
+              const showing = advanced.some((section) => section.hidden);
+              advanced.forEach((section) => { section.hidden = !showing; });
+              toggle.textContent = showing ? "收起高级分析与诊断" : "展开高级分析与诊断";
+            });
+            sections[Math.max(0, coreCount - 1)]?.insertAdjacentElement("afterend", toggle);
+          }
+        }
         bindTaskActionButtons($("taskDetail"));
         bindTaskEntityMemoryButtons($("taskDetail"));
         bindTaskSignalButtons($("taskDetail"));
@@ -3891,6 +3996,9 @@ def render_workbench_html() -> str:
     }
 
     function renderQualityProof(proof, task) {
+      if (["queued", "pending"].includes(String(task?.status || ""))) {
+        return `<div class="detail-section"><h3>研报质量证明</h3><div class="empty">任务尚未运行。主张、数字和引用检查均为待检查，不能视为通过。</div></div>`;
+      }
       const checks = proof.checks || [];
       const issues = proof.top_issues || [];
       const failedClaims = proof.failed_claims || [];
@@ -5521,7 +5629,7 @@ def render_workbench_html() -> str:
     $("exportSymbol").addEventListener("keydown", (event) => { if (event.key === "Enter") loadExports(); });
     $("exportStatus").addEventListener("change", loadExports);
 
-    loadDashboard();
+    activateView("dashboard");
     loadTasks();
     updateManualImportFields();
   </script>

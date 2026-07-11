@@ -100,6 +100,23 @@ def test_report_task_api_accepts_auto_run_false_alias(tmp_path):
     assert cancelled.json()["status"] == "cancelled"
 
 
+def test_report_task_binds_default_workspace_and_existing_company(tmp_path):
+    with build_client(tmp_path) as client:
+        workspace = client.post("/api/workspaces", json={"name": "默认投研空间", "slug": "default"}).json()
+        company = client.post(
+            f"/api/workspaces/{workspace['id']}/companies",
+            json={"name": "Apple Inc.", "symbol": "AAPL", "market": "US"},
+        ).json()
+        task = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-bound", "symbol": "AAPL", "period": "FY2024"},
+        ).json()
+
+    assert task["workspace_id"] == workspace["id"]
+    assert task["company_id"] == company["company_id"]
+    assert task["metadata"]["company_name"] == "Apple Inc."
+
+
 def test_report_task_api_defaults_to_queue_only_and_exposes_runtime_readiness(tmp_path):
     with build_client(tmp_path) as client:
         created = client.post(
@@ -111,6 +128,8 @@ def test_report_task_api_defaults_to_queue_only_and_exposes_runtime_readiness(tm
     body = created.json()
     assert body["status"] == "queued"
     assert body["started_at"] is None
+    assert body["workspace_id"] is not None
+    assert body["company_id"] is not None
     assert body["run_state"]["run_mode"] == "queue_only"
     assert body["run_state"]["lifecycle_status"] == "queued"
     assert body["delivery_readiness"]["can_generate_draft"] is True

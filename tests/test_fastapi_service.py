@@ -20,10 +20,13 @@ def test_fastapi_health_and_latest_preserve_workbench_contract(tmp_path):
     app = create_fastapi_app(output_dir=str(outputs), report_dir=str(reports), memory_root=str(tmp_path / "memory"))
     with TestClient(app) as client:
         health = client.get("/health")
+        api_health = client.get("/api/health")
         latest = client.get("/api/latest")
         index = client.get("/")
 
     assert health.json()["status"] == "ok"
+    assert api_health.status_code == 200
+    assert api_health.json() == health.json()
     assert latest.status_code == 200
     assert latest.json()["summary"]["symbol"] == "TSLA"
     assert index.status_code == 200

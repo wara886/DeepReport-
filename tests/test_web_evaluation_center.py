@@ -91,3 +91,13 @@ def test_workbench_demo_mode_defaults_to_real_chain_and_maps_internal_terms():
     assert '"agent.analyze": "分析智能体"' in html
     assert 'data-view="documents"><span>文档处理中心</span><span class="tag available">可用</span></button>' in html
     assert 'data-view="export"><span>导出中心</span><span class="tag available">可用</span></button>' in html
+    assert 'const chainSteps = hasRealCounts ? rawSteps : [];' in html
+    assert 'const displayRows = realRows;' in html
+    assert 'activateFunnelTab("chain")' in html
+    assert 'item.hidden = !active' in html
+    assert 'setFormLabelsActive(item, active)' in html
+    assert '再次点击确认操作' in html
+    assert '任务尚未运行。主张、数字和引用检查均为待检查' in html
+    assert '展开高级分析与诊断' in html
+    assert '尚无可评测样本；请先完成至少一个研报任务' in html
+    assert '返回对话首页' in html

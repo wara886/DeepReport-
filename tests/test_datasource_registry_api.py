@@ -1,6 +1,8 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from src.app.api_fastapi import create_fastapi_app
+from src.db.models import DataSource
 from src.search.search_manager import SearchManager
 from src.services.report_task_service import ReportTaskService
 
@@ -82,3 +84,43 @@ def test_searchmanager_registered_sources_are_seedable():
     assert "yahoo_finance" in engine_names
     assert "cninfo_announcements" in engine_names
     assert "hkex_announcements" in engine_names
+
+
+def test_seed_disables_sources_with_missing_credentials(tmp_path, monkeypatch):
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    monkeypatch.delenv("SERPER_API_KEY", raising=False)
+    with build_client(tmp_path) as client:
+        client.post("/api/data-sources/seed", json={})
+        tavily = client.get("/api/data-sources/tavily").json()
+        enable = client.post("/api/data-sources/tavily/enable", json={"enabled": True})
+        fake_healthy = client.post("/api/data-sources/sec_edgar/health", json={"last_status": "success"})
+        verified_healthy = client.post(
+            "/api/data-sources/sec_edgar/health",
+            json={"last_status": "success", "verified": True},
+        )
+
+    assert tavily["credential_status"] == "missing"
+    assert tavily["configured"] is False
+    assert tavily["enabled"] is False
+    assert tavily["operational"] is False
+    assert enable.status_code == 409
+    assert fake_healthy.status_code == 409
+    assert verified_healthy.status_code == 200
+
+
+def test_seed_reconciles_legacy_enabled_source_without_credentials(tmp_path, monkeypatch):
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    with build_client(tmp_path) as client:
+        client.post("/api/data-sources/seed", json={})
+        service = client.app.state.datasource_service
+        with service.session_factory() as session:
+            tavily = session.scalar(select(DataSource).where(DataSource.source_key == "tavily"))
+            tavily.enabled = True
+            tavily.credential_status = "required"
+            session.commit()
+        reconciled = client.post("/api/data-sources/seed", json={})
+        current = client.get("/api/data-sources/tavily").json()
+
+    assert reconciled.json()["reconciled"] == 1
+    assert current["credential_status"] == "missing"
+    assert current["enabled"] is False

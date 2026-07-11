@@ -618,6 +618,8 @@ def test_render_index_html_contains_chat_first_controls():
     assert "confirmAndRun" in html
     assert "modifyRequest" in html
     assert "currentRunRequest" in html
+    assert 'href="/workbench"' in html
+    assert "打开完整工作台" in html
 
     # Developer mode includes debug panels
     dev_html = render_index_html(mode="developer")
@@ -627,6 +629,7 @@ def test_render_index_html_contains_chat_first_controls():
     assert "工具调用" in dev_html
     assert "async_report_run: true" in dev_html
     assert "backgroundRunPending" in dev_html
+    assert "打开完整工作台" in dev_html
 
 
 def test_period_guard_blocks_unfinished_quarter_and_suggests_prior_period():
