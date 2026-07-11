@@ -397,6 +397,40 @@ class TestContractBuilder:
         assert "business_overview_pdf_chunks_not_found" not in business.blocked_reasons
         assert "valuation_no_metrics_available" not in valuation.blocked_reasons
 
+    def test_peer_compare_uses_boundary_fallback_when_peer_rows_missing(self):
+        contracts = build_report_section_contracts(
+            state={"symbol": "0700.HK", "period": "FY2025"},
+            evidence_records=[],
+            analysis_artifacts={},
+            section_dossiers={},
+            citations=[],
+        )
+
+        peer = contracts.get("peer_compare")
+
+        assert peer is not None
+        assert peer.status == "fallback"
+        assert "peer_rows_not_available" not in peer.blocked_reasons
+        assert "peer_compare_boundary_only" in peer.quality_flags
+        assert "可比公司" in peer.deterministic_text
+
+    def test_valuation_sensitivity_uses_framework_fallback_when_table_missing(self):
+        contracts = build_report_section_contracts(
+            state={"symbol": "AAPL", "period": "FY2025"},
+            evidence_records=[],
+            analysis_artifacts={"valuation_model": {"relative_valuation": {}}},
+            section_dossiers={},
+            citations=[],
+        )
+
+        sensitivity = contracts.get("valuation_sensitivity")
+
+        assert sensitivity is not None
+        assert sensitivity.status == "fallback"
+        assert "valuation_sensitivity_not_available" not in sensitivity.blocked_reasons
+        assert "valuation_sensitivity_framework_only" in sensitivity.quality_flags
+        assert "敏感性框架" in sensitivity.deterministic_text
+
 
 class TestCleanPdfBoilerplate:
 

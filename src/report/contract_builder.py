@@ -203,7 +203,7 @@ def build_report_section_contracts(
                              annual_report_sections=annual_report_sections)
     _build_three_statement_summary(contracts, financial_metrics, tables, financial_evidence_ids, currency_context)
     _build_financial_analysis(contracts, financial_metrics, tables, evidence_records, section_dossiers, financial_evidence_ids, currency_context)
-    _build_peer_compare(contracts, peer_rows, analysis_artifacts, blackboard, symbol)
+    _build_peer_compare(contracts, peer_rows, analysis_artifacts, blackboard, symbol, section_dossiers)
     _build_valuation(contracts, valuation_model, financial_metrics, financial_evidence_ids, currency_context, section_dossiers)
     _build_valuation_sensitivity(contracts, valuation_model, valuation_sensitivity)
     _build_risk_factors(contracts, pdf_section_summaries, pdf_section_chunks,
@@ -722,6 +722,7 @@ def _build_peer_compare(
     analysis_artifacts: Dict[str, Any],
     blackboard: Dict[str, Any],
     target_symbol: str,
+    section_dossiers: Dict[str, Any] | None = None,
 ) -> None:
     c = contracts.ensure("peer_compare")
     c.allowed_source_types = [SRC_PEER_DATA, SRC_MARKET_DATA]
@@ -729,8 +730,22 @@ def _build_peer_compare(
     c.render_policy["allow_llm_rewrite"] = True
 
     if not peer_rows:
-        c.add_blocked_reason("peer_rows_not_available")
-        c.status = "gap"
+        _apply_dossier_pack_fallback(
+            c,
+            section_dossiers=section_dossiers or _safe_dict(analysis_artifacts, "section_dossiers"),
+            section_key="peer_compare",
+            fact_type="peer_compare_boundary_pack",
+            source_type=SRC_PEER_DATA,
+            min_chars=30,
+        )
+        if c.status == "gap":
+            c.status = "fallback"
+            c.deterministic_text = (
+                "本轮未取得足够可比公司量化表，因此同行对比仅作为口径边界："
+                "需要按同市场、同业务结构、相近利润率和现金流质量筛选可比公司；"
+                "正式交付前应补齐可比公司的收入增速、毛利率、P/E、P/S 或 P/B 等指标。"
+            )
+            c.add_quality_flag("peer_compare_boundary_only")
         return
 
     # Get approved peer symbols
@@ -946,8 +961,18 @@ def _build_valuation_sensitivity(
         if vm_status in ("rough_observation_only", "blocked_due_to_incomplete_inputs"):
             c.add_blocked_reason(f"valuation_sensitivity_blocked:{vm_status}")
             c.status = "fallback"
+            c.deterministic_text = (
+                "估值敏感性暂不输出DCF情景数值。本轮只保留变量边界：收入增速、毛利率、"
+                "经营现金流转换率、折现率和终值增长率是后续正式模型必须复核的关键输入。"
+            )
+            c.add_quality_flag("valuation_sensitivity_boundary_only")
         else:
-            c.add_blocked_reason("valuation_sensitivity_not_available")
+            c.status = "fallback"
+            c.deterministic_text = (
+                "估值敏感性数据尚未形成完整表格。本轮先说明敏感性框架：上行情景依赖收入增速、"
+                "利润率和现金流改善，下行情景主要来自需求放缓、费用率上升或估值倍数压缩。"
+            )
+            c.add_quality_flag("valuation_sensitivity_framework_only")
         return
 
     rows = _normalize_sensitivity_rows(valuation_sensitivity)

@@ -20,6 +20,8 @@ from src.app.chat_task_parser import latest_completed_period
 from src.app.web_ui import run_delivery_quality_pipeline
 from src.data.company_universe import infer_market_from_symbol
 from src.data.canonical_metrics import write_canonical_metrics_artifact
+from src.data.official_evidence_archive import build_official_evidence_artifacts
+from src.data.official_evidence_backfill import execute_official_evidence_backfill
 from src.data.source_authority import grade_source_authority
 from src.db.init_db import init_db
 from src.db.models import (
@@ -34,6 +36,7 @@ from src.db.models import (
 from src.db.session import create_engine_for_url
 from src.llm.harness import serialize_llm_run
 from src.llm.harness import LLMHarness
+from src.evaluation.evidence_retrieval_attribution import write_evidence_retrieval_attribution
 from src.evaluation.section_repair import repair_failed_sections_for_outputs
 from src.evaluation.section_verification import write_section_verification
 from src.rag.retrieval_diagnostics import build_retrieval_coverage
@@ -250,12 +253,13 @@ class ReportTaskService:
 
     def _graph_official_evidence_backfill_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
+        summary = self._run_official_evidence_backfill(task_id)
         self._record_runtime_stage(
             task_id,
             stage="official_evidence_backfill",
-            status="success",
-            message="官方证据补齐检查完成",
-            metadata={"strategy": "reuse_existing_artifacts", "blocks_generation": False},
+            status="success" if summary.get("status") in {"not_required", "completed", "remote_disabled"} else "warning",
+            message="官方证据补齐检查完成" if summary.get("status") != "failed" else "官方证据补齐执行失败",
+            metadata=summary,
         )
         return self._current_run_state_patch(task_id)
 
@@ -313,6 +317,7 @@ class ReportTaskService:
             session.commit()
         self._run_orchestrator(task_id=task_id, metadata=metadata)
         self._enhance_artifacts_with_task_evidence(task_id)
+        self._run_official_evidence_backfill(task_id)
         self._refresh_canonical_metrics(task_id)
         self.import_artifacts(task_id)
         return self._current_run_state_patch(task_id)
@@ -381,6 +386,7 @@ class ReportTaskService:
                 task.finished_at = None
                 session.commit()
         self.run_quality_gate(task_id)
+        self._refresh_retrieval_attribution(task_id)
         self.import_artifacts(task_id)
         return self._current_run_state_patch(task_id)
 
@@ -545,6 +551,8 @@ class ReportTaskService:
             session.commit()
         self._run_orchestrator(task_id=task_id, metadata=metadata)
         self._enhance_artifacts_with_task_evidence(task_id)
+        self._run_official_evidence_backfill(task_id)
+        self._refresh_retrieval_attribution(task_id, metadata=metadata)
         self.import_artifacts(task_id)
         quality_result = self.run_quality_gate(task_id)
         self.import_artifacts(task_id)
@@ -701,6 +709,7 @@ class ReportTaskService:
             config_path=self.config_path,
             memory_enabled=bool(metadata.get("memory_enabled", False)),
         )
+        attribution = self._refresh_retrieval_attribution(task_id, metadata=metadata)
         llm_run_id = self._record_quality_gate_harness_run(task_id, metadata=metadata, quality_result=result)
         score = _quality_score_from_result(result)
         delivery_pass = _dict_path(result, "delivery_gate").get("delivery_pass")
@@ -723,12 +732,159 @@ class ReportTaskService:
                         "delivery_pass": delivery_pass,
                         "quality_score": score,
                         "top_quality_issues": _top_quality_issues(result),
+                        "retrieval_attribution": attribution,
                         "llm_run_id": llm_run_id,
                     },
                 )
             )
             session.commit()
-        return result
+            return result
+
+    def _refresh_retrieval_attribution(self, task_id: str, *, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        metadata = dict(metadata or self._task_metadata(task_id))
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        report_dir = Path(str(metadata.get("report_dir") or ""))
+        if not str(output_dir):
+            return {"schema_version": "retrieval_attribution_runtime.v1", "status": "missing_output_dir"}
+        paths = write_evidence_retrieval_attribution(output_dir, reports_dir=report_dir, run_dir=output_dir.parent)
+        artifact = _read_json_object(output_dir / "evidence_retrieval_attribution.json")
+        roots = artifact.get("overall_root_causes") if isinstance(artifact.get("overall_root_causes"), list) else []
+        top = roots[0] if roots and isinstance(roots[0], dict) else {}
+        retrieval = artifact.get("retrieval_summary") if isinstance(artifact.get("retrieval_summary"), dict) else {}
+        summary = {
+            "schema_version": "retrieval_attribution_runtime.v1",
+            "status": artifact.get("status", "ready") if artifact else "missing",
+            "top_root_cause": top.get("cause"),
+            "top_root_cause_label": top.get("label"),
+            "similarity_status": retrieval.get("similarity_status"),
+            "vector_score_max": retrieval.get("vector_score_max"),
+            "local_candidate_count": retrieval.get("local_candidate_count"),
+            "local_returned_count": retrieval.get("local_returned_count"),
+            "source_file": paths.get("evidence_retrieval_attribution"),
+        }
+        self._update_runtime_metadata(task_id, "retrieval_attribution", summary)
+        self._record_runtime_stage(
+            task_id,
+            stage="retrieval_attribution",
+            status="success" if summary["status"] == "ready" else "warning",
+            message="证据召回归因诊断已生成",
+            metadata=summary,
+        )
+        return summary
+
+    def _run_official_evidence_backfill(self, task_id: str) -> dict[str, Any]:
+        metadata = self._task_metadata(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        symbol = str(metadata.get("symbol") or "")
+        period = str(metadata.get("period") or "")
+        if not output_dir or not symbol or not period:
+            summary = {
+                "schema_version": "official_evidence_backfill_runtime.v1",
+                "status": "skipped",
+                "reason": "missing_task_context",
+                "blocks_generation": False,
+            }
+            self._update_runtime_metadata(task_id, "official_evidence_backfill", summary)
+            return summary
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        existing_records = _read_json_list(output_dir / "evidence.json")
+        existing_tables = _read_json_list(output_dir / "tables.json")
+        if not existing_records:
+            with self.session() as session:
+                task = self._get_task_for_update(session, task_id)
+                evidence_items = self._evidence_candidates_for_gate(session, task=task, metadata=metadata)
+                existing_records = [
+                    _artifact_record_from_evidence(item, task=task, metadata=metadata)
+                    for item in evidence_items
+                ]
+            if existing_records:
+                _write_json_list(output_dir / "evidence.json", existing_records)
+
+        official_artifacts = build_official_evidence_artifacts(
+            existing_records,
+            symbol=symbol,
+            period=period,
+            tables=existing_tables,
+        )
+        coverage = official_artifacts["evidence_coverage"]
+        plan = official_artifacts["official_evidence_backfill_plan"]
+        _write_json_object(output_dir / "official_evidence_manifest.json", official_artifacts["official_evidence_manifest"])
+        _write_json_object(output_dir / "evidence_coverage.json", coverage)
+        _write_json_object(output_dir / "official_evidence_backfill_plan.json", plan)
+
+        if not bool(plan.get("backfill_required")):
+            summary = {
+                "schema_version": "official_evidence_backfill_runtime.v1",
+                "status": "not_required",
+                "symbol": symbol,
+                "period": period,
+                "formal_delivery_allowed": bool(coverage.get("formal_delivery_allowed")),
+                "missing_requirements": list(coverage.get("missing_requirements") or []),
+                "blocks_generation": False,
+                "source_file": str(output_dir / "official_evidence_backfill_plan.json"),
+            }
+            self._update_runtime_metadata(task_id, "official_evidence_backfill", summary)
+            return summary
+
+        if not bool(metadata.get("enable_remote_data", False)):
+            summary = {
+                "schema_version": "official_evidence_backfill_runtime.v1",
+                "status": "remote_disabled",
+                "symbol": symbol,
+                "period": period,
+                "formal_delivery_allowed": bool(coverage.get("formal_delivery_allowed")),
+                "missing_requirements": list(coverage.get("missing_requirements") or []),
+                "task_count": len(plan.get("tasks") or []),
+                "blocks_generation": False,
+                "source_file": str(output_dir / "official_evidence_backfill_plan.json"),
+            }
+            self._update_runtime_metadata(task_id, "official_evidence_backfill", summary)
+            return summary
+
+        try:
+            result = execute_official_evidence_backfill(
+                symbol=symbol,
+                period=period,
+                output_dir=output_dir,
+                existing_records=existing_records,
+                existing_tables=existing_tables,
+                plan=plan,
+            )
+        except Exception as exc:  # noqa: BLE001 - source acquisition is best-effort before draft generation.
+            summary = {
+                "schema_version": "official_evidence_backfill_runtime.v1",
+                "status": "failed",
+                "symbol": symbol,
+                "period": period,
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+                "blocks_generation": False,
+                "source_file": str(output_dir / "official_evidence_backfill_plan.json"),
+            }
+            self._update_runtime_metadata(task_id, "official_evidence_backfill", summary)
+            return summary
+
+        remaining = result.get("backfill_remaining") if isinstance(result.get("backfill_remaining"), dict) else {}
+        coverage_after = result.get("coverage") if isinstance(result.get("coverage"), dict) else {}
+        summary = {
+            "schema_version": "official_evidence_backfill_runtime.v1",
+            "status": "completed",
+            "symbol": symbol,
+            "period": period,
+            "acquired_record_count": int(result.get("acquired_record_count") or 0),
+            "merged_record_count": int(result.get("merged_record_count") or 0),
+            "pdf_record_count": int(result.get("pdf_record_count") or 0),
+            "table_count": int(result.get("table_count") or 0),
+            "formal_delivery_allowed": bool(coverage_after.get("formal_delivery_allowed")),
+            "missing_requirements": list(coverage_after.get("missing_requirements") or []),
+            "remaining_task_count": len(remaining.get("tasks") or []),
+            "attempts": list(result.get("attempts") or []),
+            "blocks_generation": False,
+            "source_file": str(output_dir / "official_evidence_backfill_run.json"),
+        }
+        self._update_runtime_metadata(task_id, "official_evidence_backfill", summary)
+        return summary
 
     def _enhance_artifacts_with_task_evidence(self, task_id: str) -> None:
         """Attach persisted task evidence to generated artifacts before import/quality gates."""
@@ -1720,6 +1876,11 @@ def _read_json_any(path: Path, *, default: Any) -> Any:
 def _write_json_list(path: Path, records: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _write_json_object(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _build_canonical_metrics_manifest(output_dir: Path) -> dict[str, Any]:

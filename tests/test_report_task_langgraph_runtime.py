@@ -32,6 +32,41 @@ class ReviewArtifactOrchestrator:
             ),
             encoding="utf-8",
         )
+        (self.output_dir / "search_meta.json").write_text(
+            json.dumps(
+                {
+                    "engine_meta": {
+                        "local_evidence": {
+                            "source_record_count": 1,
+                            "candidate_count": 1,
+                            "returned_hit_count": 1,
+                            "vector_hit_count": 1,
+                            "vector_score_max": 0.42,
+                            "vector_score_mean": 0.42,
+                            "coverage": {"missing_sources": [], "summary": "test coverage ready"},
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.output_dir / "section_dossiers.json").write_text(
+            json.dumps({"financial_analysis": {"supporting_evidence_ids": ["ev-runtime"]}}),
+            encoding="utf-8",
+        )
+        (self.output_dir / "report_section_contracts.json").write_text(
+            json.dumps(
+                {
+                    "contracts": {
+                        "financial_analysis": {
+                            "status": "supported",
+                            "citation_evidence_ids": ["ev-runtime"],
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
         (self.output_dir / "claims.json").write_text(
             json.dumps(
                 [
@@ -166,6 +201,9 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
         "human_review",
     }
     assert body["task"]["metadata"]["report_runtime"]["canonical_metrics"]["status"] == "ready"
+    assert body["task"]["metadata"]["report_runtime"]["official_evidence_backfill"]["status"] in {"not_required", "remote_disabled"}
+    assert body["task"]["metadata"]["report_runtime"]["retrieval_attribution"]["status"] == "ready"
+    assert body["task"]["metadata"]["report_runtime"]["retrieval_attribution"]["similarity_status"] == "ok"
     assert body["task"]["metadata"]["report_runtime"]["section_verification"]["status"] in {"passed", "failed"}
     assert body["task"]["metadata"]["report_runtime"]["section_repair"]["status"] in {
         "not_required",
@@ -175,6 +213,7 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
         "skipped_missing_report",
     }
     assert any(artifact["artifact_type"] == "canonical_metrics" for artifact in body["task"]["artifacts"])
+    assert any(artifact["artifact_type"] == "evidence_retrieval_attribution" for artifact in body["task"]["artifacts"])
     assert any(artifact["artifact_type"] == "section_verification" for artifact in body["task"]["artifacts"])
     assert any(artifact["artifact_type"] == "section_repair" for artifact in body["task"]["artifacts"])
     assert any(event["stage"] == "claim_review" and event["status"] == "resumed" for event in body["task"]["events"])
@@ -207,6 +246,45 @@ def test_report_task_retries_failed_generation_node_from_checkpoint(tmp_path):
     assert FailingOnceOrchestrator.calls == 2
     evidence_events = [event for event in body["task"]["events"] if event["stage"] == "evidence_gate"]
     assert len(evidence_events) == 2
+
+
+def test_report_task_remote_runtime_executes_official_backfill(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_backfill(**kwargs):
+        calls.append(kwargs)
+        return {
+            "acquired_record_count": 2,
+            "merged_record_count": 3,
+            "pdf_record_count": 1,
+            "table_count": 3,
+            "attempts": [{"source_key": "sec_edgar", "status": "success", "record_count": 2}],
+            "coverage": {"formal_delivery_allowed": True, "missing_requirements": []},
+            "backfill_remaining": {"tasks": []},
+        }
+
+    monkeypatch.setattr("src.services.report_task_service.execute_official_evidence_backfill", fake_backfill)
+
+    with make_client(tmp_path, ReviewArtifactOrchestrator) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={
+                "task_id": "task-runtime-backfill",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "enable_remote_data": True,
+                "run_immediately": True,
+            },
+        )
+
+    assert created.status_code == 201
+    assert calls
+    assert calls[0]["symbol"] == "AAPL"
+    assert calls[0]["period"] == "FY2024"
+    backfill = created.json()["metadata"]["report_runtime"]["official_evidence_backfill"]
+    assert backfill["status"] == "completed"
+    assert backfill["acquired_record_count"] == 2
+    assert backfill["formal_delivery_allowed"] is True
 
 
 def test_report_task_can_use_legacy_pipeline_compatibility_switch(tmp_path):
