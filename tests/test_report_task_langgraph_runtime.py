@@ -136,7 +136,20 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
     observability = body["task"]["runtime_observability"]
     assert observability["trace_context"]["request_id"] == "request-runtime-review"
     assert observability["checkpoint_status"] == "completed"
-    assert set(observability["node_latency_ms"]) == {"evidence", "generation", "quality", "finalize", "human_review"}
+    assert set(observability["node_latency_ms"]) == {
+        "evidence",
+        "official_evidence_backfill",
+        "build_canonical_metrics",
+        "build_section_evidence_packs",
+        "generation",
+        "verify_sections",
+        "repair_failed_sections",
+        "quality",
+        "finalize",
+        "human_review",
+    }
+    assert body["task"]["metadata"]["report_runtime"]["canonical_metrics"]["status"] in {"ready", "missing"}
+    assert body["task"]["metadata"]["report_runtime"]["section_verification"]["status"] in {"passed", "needs_repair"}
     assert any(event["stage"] == "claim_review" and event["status"] == "resumed" for event in body["task"]["events"])
 
 

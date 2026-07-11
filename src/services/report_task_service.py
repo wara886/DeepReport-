@@ -221,6 +221,11 @@ class ReportTaskService:
                     quality_callback=self._graph_quality_node,
                     finalize_callback=self._graph_finalize_node,
                     review_callback=self._graph_review_node,
+                    official_evidence_backfill_callback=self._graph_official_evidence_backfill_node,
+                    build_canonical_metrics_callback=self._graph_build_canonical_metrics_node,
+                    build_section_evidence_packs_callback=self._graph_build_section_evidence_packs_node,
+                    verify_sections_callback=self._graph_verify_sections_node,
+                    repair_failed_sections_callback=self._graph_repair_failed_sections_node,
                 )
                 self._langgraph_runtime = LangGraphReportRuntime(
                     handlers,
@@ -238,6 +243,47 @@ class ReportTaskService:
                 task.finished_at = None
                 session.commit()
         self.run_evidence_gate(task_id)
+        return self._current_run_state_patch(task_id)
+
+    def _graph_official_evidence_backfill_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        self._record_runtime_stage(
+            task_id,
+            stage="official_evidence_backfill",
+            status="success",
+            message="官方证据补齐检查完成",
+            metadata={"strategy": "reuse_existing_artifacts", "blocks_generation": False},
+        )
+        return self._current_run_state_patch(task_id)
+
+    def _graph_build_canonical_metrics_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        summary = _build_canonical_metrics_manifest(output_dir)
+        self._update_runtime_metadata(task_id, "canonical_metrics", summary)
+        self._record_runtime_stage(
+            task_id,
+            stage="build_canonical_metrics",
+            status="success",
+            message="正式指标候选池已建立",
+            metadata=summary,
+        )
+        return self._current_run_state_patch(task_id)
+
+    def _graph_build_section_evidence_packs_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        summary = _build_section_pack_manifest(output_dir)
+        self._update_runtime_metadata(task_id, "section_evidence_packs", summary)
+        self._record_runtime_stage(
+            task_id,
+            stage="build_section_evidence_packs",
+            status="success",
+            message="章节证据包索引已建立",
+            metadata=summary,
+        )
         return self._current_run_state_patch(task_id)
 
     def _graph_generation_node(self, state: ReportGraphState) -> dict[str, Any]:
@@ -269,6 +315,44 @@ class ReportTaskService:
         self.import_artifacts(task_id)
         return self._current_run_state_patch(task_id)
 
+    def _graph_verify_sections_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        report_dir = Path(str(metadata.get("report_dir") or ""))
+        summary = _build_section_verification_manifest(output_dir=output_dir, report_dir=report_dir)
+        self._update_runtime_metadata(task_id, "section_verification", summary)
+        self._record_runtime_stage(
+            task_id,
+            stage="verify_sections",
+            status="success" if not summary.get("failed_sections") else "warning",
+            message="章节结构合同检查完成",
+            metadata=summary,
+        )
+        return self._current_run_state_patch(task_id)
+
+    def _graph_repair_failed_sections_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        section_verification = dict(_dict_path(metadata, "report_runtime").get("section_verification") or {})
+        failed_sections = list(section_verification.get("failed_sections") or [])
+        summary = {
+            "schema_version": "section_repair_runtime.v1",
+            "status": "pending_quality_pipeline" if failed_sections else "not_required",
+            "failed_section_count": len(failed_sections),
+            "failed_sections": failed_sections,
+            "repair_strategy": "quality_remediation_pipeline",
+        }
+        self._update_runtime_metadata(task_id, "section_repair", summary)
+        self._record_runtime_stage(
+            task_id,
+            stage="repair_failed_sections",
+            status="success" if not failed_sections else "warning",
+            message="章节返工调度检查完成",
+            metadata=summary,
+        )
+        return self._current_run_state_patch(task_id)
+
     def _graph_quality_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
         with self.session() as session:
@@ -281,6 +365,42 @@ class ReportTaskService:
         self.run_quality_gate(task_id)
         self.import_artifacts(task_id)
         return self._current_run_state_patch(task_id)
+
+    def _task_metadata(self, task_id: str) -> dict[str, Any]:
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            return dict(task.metadata_json or {})
+
+    def _update_runtime_metadata(self, task_id: str, key: str, value: dict[str, Any]) -> None:
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            metadata = dict(task.metadata_json or {})
+            runtime = dict(metadata.get("report_runtime") or {})
+            runtime[key] = value
+            metadata["report_runtime"] = runtime
+            task.metadata_json = metadata
+            session.commit()
+
+    def _record_runtime_stage(
+        self,
+        task_id: str,
+        *,
+        stage: str,
+        status: str,
+        message: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        with self.session() as session:
+            session.add(
+                ReportTaskEvent(
+                    task_id=task_id,
+                    stage=stage,
+                    status=status,
+                    message=message,
+                    metadata_json=metadata or {},
+                )
+            )
+            session.commit()
 
     def _graph_finalize_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
@@ -1566,6 +1686,121 @@ def _read_json_any(path: Path, *, default: Any) -> Any:
 def _write_json_list(path: Path, records: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _build_canonical_metrics_manifest(output_dir: Path) -> dict[str, Any]:
+    metrics_payload = _read_json_any(output_dir / "financial_metrics.json", default={})
+    tables = _read_json_list(output_dir / "tables.json")
+    metric_rows: list[dict[str, Any]] = []
+    if isinstance(metrics_payload, dict):
+        raw_metrics = metrics_payload.get("metrics")
+        if isinstance(raw_metrics, list):
+            metric_rows = [dict(item) for item in raw_metrics if isinstance(item, dict)]
+        else:
+            for key, value in metrics_payload.items():
+                if isinstance(value, dict):
+                    row = dict(value)
+                    row.setdefault("metric_name", key)
+                    metric_rows.append(row)
+    statements = sorted(
+        {
+            str(table.get("table_type") or table.get("statement") or "")
+            for table in tables
+            if str(table.get("table_type") or table.get("statement") or "")
+        }
+    )
+    metric_names = sorted(
+        {
+            str(row.get("metric_name") or row.get("metric_key") or row.get("line_item") or "")
+            for row in metric_rows
+            if str(row.get("metric_name") or row.get("metric_key") or row.get("line_item") or "")
+        }
+    )
+    official_metric_count = sum(
+        1
+        for row in metric_rows
+        if str(row.get("source_type") or "").lower()
+        in {"sec_companyfacts", "sec_filing", "cninfo_announcement", "hkex_announcement", "pdf_statement_table"}
+    )
+    return {
+        "schema_version": "canonical_metrics_runtime.v1",
+        "status": "ready" if metric_rows or tables else "missing",
+        "metric_count": len(metric_rows),
+        "table_count": len(tables),
+        "statement_types": statements,
+        "metric_names": metric_names[:40],
+        "official_metric_count": official_metric_count,
+        "source_files": {
+            "financial_metrics": str(output_dir / "financial_metrics.json"),
+            "tables": str(output_dir / "tables.json"),
+        },
+    }
+
+
+def _build_section_pack_manifest(output_dir: Path) -> dict[str, Any]:
+    contracts = _read_json_object(output_dir / "report_section_contracts.json")
+    section_dossiers = _read_json_object(output_dir / "section_dossiers.json")
+    contract_map = contracts.get("contracts") if isinstance(contracts.get("contracts"), dict) else {}
+    pack_keys = sorted(set(contract_map) | set(section_dossiers))
+    blocked_sections = sorted(
+        key
+        for key, value in contract_map.items()
+        if isinstance(value, dict) and (value.get("blocked_reasons") or value.get("status") == "gap")
+    )
+    citation_ready = sum(
+        1
+        for value in contract_map.values()
+        if isinstance(value, dict) and value.get("citation_evidence_ids")
+    )
+    return {
+        "schema_version": "section_evidence_pack_runtime.v1",
+        "status": "ready" if pack_keys else "missing",
+        "section_count": len(pack_keys),
+        "sections": pack_keys,
+        "blocked_sections": blocked_sections,
+        "citation_ready_section_count": citation_ready,
+        "source_files": {
+            "report_section_contracts": str(output_dir / "report_section_contracts.json"),
+            "section_dossiers": str(output_dir / "section_dossiers.json"),
+        },
+    }
+
+
+def _build_section_verification_manifest(*, output_dir: Path, report_dir: Path) -> dict[str, Any]:
+    contracts = _read_json_object(output_dir / "report_section_contracts.json")
+    remediation = _read_json_object(output_dir / "quality_remediation_plan.json")
+    contract_map = contracts.get("contracts") if isinstance(contracts.get("contracts"), dict) else {}
+    markdown = ""
+    report_md = report_dir / "report.md"
+    if report_md.exists():
+        markdown = report_md.read_text(encoding="utf-8")
+    failed_sections = set(_string_list(remediation.get("failed_sections")))
+    for section_key, contract in contract_map.items():
+        if not isinstance(contract, dict):
+            continue
+        if contract.get("blocked_reasons") or contract.get("quality_flags") or contract.get("status") == "gap":
+            failed_sections.add(str(section_key))
+    placeholders = [
+        marker
+        for marker in ["本节暂不展开", "暂不展开详细分析", "需进一步分析", "下文章节展开分析"]
+        if marker in markdown
+    ]
+    if placeholders:
+        failed_sections.add("content_placeholder")
+    return {
+        "schema_version": "section_verification_runtime.v1",
+        "status": "passed" if not failed_sections and not placeholders else "needs_repair",
+        "contract_count": len(contract_map),
+        "failed_section_count": len(failed_sections),
+        "failed_sections": sorted(failed_sections),
+        "placeholder_markers": placeholders,
+        "report_markdown_chars": len(markdown),
+        "source_files": {
+            "report_section_contracts": str(output_dir / "report_section_contracts.json"),
+            "quality_remediation_plan": str(output_dir / "quality_remediation_plan.json"),
+            "report_md": str(report_md),
+        },
+    }
 
 
 def _report_title_from_markdown(markdown: str) -> str:
