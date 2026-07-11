@@ -153,6 +153,7 @@ def test_report_task_artifact_import_links_completed_outputs(tmp_path):
         "quality_report",
         "delivery_gate",
         "section_verification",
+        "section_repair",
     }.issubset(artifact_types)
     assert artifacts.json()["report_links"]["html_web_url"].endswith("/runs/task-artifacts-001/reports/report.html")
     assert artifacts.json()["report_links"]["markdown_web_url"].endswith("/runs/task-artifacts-001/reports/report.md")

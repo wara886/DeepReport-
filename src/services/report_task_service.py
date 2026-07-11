@@ -34,6 +34,7 @@ from src.db.models import (
 from src.db.session import create_engine_for_url
 from src.llm.harness import serialize_llm_run
 from src.llm.harness import LLMHarness
+from src.evaluation.section_repair import repair_failed_sections_for_outputs
 from src.evaluation.section_verification import write_section_verification
 from src.rag.retrieval_diagnostics import build_retrieval_coverage
 from src.report.citation_manager import build_citation_artifacts
@@ -337,18 +338,34 @@ class ReportTaskService:
         metadata = self._task_metadata(task_id)
         section_verification = dict(_dict_path(metadata, "report_runtime").get("section_verification") or {})
         failed_sections = list(section_verification.get("failed_sections") or [])
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        report_dir = Path(str(metadata.get("report_dir") or ""))
+        repair = repair_failed_sections_for_outputs(
+            output_dir=output_dir,
+            report_dir=report_dir,
+            section_verification=_read_json_object(output_dir / "section_verification.json") or section_verification,
+        )
+        verification = _build_section_verification_manifest(output_dir=output_dir, report_dir=report_dir)
+        self._update_runtime_metadata(task_id, "section_verification", verification)
         summary = {
             "schema_version": "section_repair_runtime.v1",
-            "status": "pending_quality_pipeline" if failed_sections else "not_required",
-            "failed_section_count": len(failed_sections),
-            "failed_sections": failed_sections,
-            "repair_strategy": "quality_remediation_pipeline",
+            "status": repair.get("status", "unknown"),
+            "failed_section_count_before": len(failed_sections),
+            "failed_sections_before": failed_sections,
+            "failed_section_count_after": len(verification.get("failed_sections") or []),
+            "failed_sections_after": list(verification.get("failed_sections") or []),
+            "repaired": bool(repair.get("repaired", False)),
+            "repair_strategy": "deterministic_section_rewrite",
+            "source_files": {
+                "section_repair": str(output_dir / "section_repair.json"),
+                "section_verification": str(output_dir / "section_verification.json"),
+            },
         }
         self._update_runtime_metadata(task_id, "section_repair", summary)
         self._record_runtime_stage(
             task_id,
             stage="repair_failed_sections",
-            status="success" if not failed_sections else "warning",
+            status="success" if not summary.get("failed_sections_after") else "warning",
             message="章节返工调度检查完成",
             metadata=summary,
         )
