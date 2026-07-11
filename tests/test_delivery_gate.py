@@ -147,6 +147,33 @@ def test_delivery_gate_blocks_formal_delivery_on_section_verification_failure(tm
     assert any(issue["source"] == "section_verification" for issue in gate["issues"])
 
 
+def test_delivery_gate_ignores_nonblocking_contract_fallback_flags(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    for name, payload in {
+        "verification_report.json": {"passed": True},
+        "quality_report.json": {"objective_pass": True, "total_score": 0.96, "issues": []},
+        "llm_quality_review.json": {"llm_review_pass": True, "total_score": 0.86, "issues": []},
+        "section_verification.json": {"status": "passed", "formal_delivery_allowed": True},
+        "report_section_contracts.json": {
+            "contracts": {
+                "business_overview": {
+                    "status": "partial",
+                    "blocked_reasons": ["business_overview_used_profile_fallback"],
+                    "quality_flags": ["business_overview_evidence_fallback"],
+                },
+                "valuation": {"status": "partial", "quality_flags": ["valuation_directional_only"]},
+            }
+        },
+    }.items():
+        (outputs / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["delivery_pass"] is True
+    assert not any(issue["category"] == "contract" for issue in gate["issues"])
+
+
 def test_delivery_gate_requires_objective_pass_even_when_scores_are_high(tmp_path):
     outputs = tmp_path / "run" / "company" / "outputs"
     outputs.mkdir(parents=True)

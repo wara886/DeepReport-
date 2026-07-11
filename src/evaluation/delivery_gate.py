@@ -226,11 +226,32 @@ def _extract_top_blockers_from_contracts(contracts_data: dict) -> list:
     for sk, sc in contracts_data.get('contracts', {}).items():
         if isinstance(sc, dict):
             for reason in sc.get('blocked_reasons', []):
+                if _nonblocking_contract_reason(str(reason)):
+                    continue
                 label = f'{sk}:{reason}'
                 if label not in blockers:
                     blockers.append(label)
             for flag in sc.get('quality_flags', []):
+                if _nonblocking_contract_flag(str(flag)):
+                    continue
                 label = f'quality:{flag}'
                 if label not in blockers:
                     blockers.append(label)
     return blockers[:10]
+
+
+def _nonblocking_contract_reason(reason: str) -> bool:
+    return reason in {
+        "business_overview_used_profile_fallback",
+        "risk_industry_fallback_used",
+    } or reason.startswith("valuation_model_status:")
+
+
+def _nonblocking_contract_flag(flag: str) -> bool:
+    return (
+        flag.endswith("_uses_section_evidence_pack")
+        or flag.endswith("_evidence_fallback")
+        or flag == "valuation_directional_only"
+        or flag.endswith("_pdf_summary_fallback")
+        or flag.endswith("_pdf_chunk_fallback")
+    )

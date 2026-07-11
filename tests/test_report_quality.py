@@ -31,6 +31,39 @@ Alphabet Inc. (GOOGL) 的核心业务覆盖搜索、广告、云和 Other Bets�
     assert any(issue["category"] == "cross_report_symbol_pollution" for issue in report["issues"])
 
 
+def test_quality_does_not_flag_internal_metric_key_outside_report_body(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="# Test\n\n## 执行摘要\n完整。\n## 财务分析\n收入和净利润均已说明。\n## 风险评估\n完整。\n## 投资结论\n维持中性，基于估值和风险约束。",
+    )
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "financial_metrics.json").write_text(
+        json.dumps({"metrics": [{"metric_name": "adjusted_net_income", "value": 10, "source_type": "market_api"}]}),
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "internal_metric_key_leak" for issue in report["issues"])
+
+
+def test_quality_retrieval_unavailable_is_warning_when_evidence_records_exist(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="# Test\n\n## 执行摘要\n完整。\n## 财务分析\n收入和净利润均已说明。\n## 风险评估\n完整。\n## 投资结论\n维持中性，基于估值和风险约束。",
+    )
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "search_meta.json").write_text(
+        json.dumps({"engine_meta": {"local_evidence": {"mode": "hybrid", "source_record_count": 0}}}),
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+    issue = next(issue for issue in report["issues"] if issue["category"] == "retrieval_unavailable_misreported")
+
+    assert issue["severity"] == "warning"
+
+
 def test_quality_evaluator_blocks_html_table_markdown_residue(tmp_path):
     run_dir = _write_run(tmp_path, report_md="# Test\n\n## 执行摘要\n完整。\n## 风险评估\n完整。\n## 投资结论\n完整。")
     reports = run_dir / "company" / "reports"

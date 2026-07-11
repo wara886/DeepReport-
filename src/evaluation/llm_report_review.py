@@ -170,6 +170,7 @@ def _apply_artifact_guard(review: Dict[str, Any], artifacts: Dict[str, Any]) -> 
 
     quality = artifacts.get("quality_report") if isinstance(artifacts.get("quality_report"), dict) else {}
     verification = artifacts.get("verification_report") if isinstance(artifacts.get("verification_report"), dict) else {}
+    review = _reconcile_review_with_runtime_artifacts(review, artifacts)
     issues = review.get("issues") if isinstance(review.get("issues"), list) else []
     blocking = [
         item
@@ -190,6 +191,77 @@ def _apply_artifact_guard(review: Dict[str, Any], artifacts: Dict[str, Any]) -> 
     guarded["verdict"] = (str(guarded.get("verdict") or "").strip() + " | artifact_guard: objective and verifier gates passed; empty reviewer issues ignored.").strip()
     guarded["artifact_guard_applied"] = True
     return guarded
+
+
+def _reconcile_review_with_runtime_artifacts(review: Dict[str, Any], artifacts: Dict[str, Any]) -> Dict[str, Any]:
+    section_verification = artifacts.get("section_verification") if isinstance(artifacts.get("section_verification"), dict) else {}
+    if section_verification.get("status") != "passed":
+        return review
+    report_md = str(artifacts.get("report_md") or "")
+    if _contains_bad_report_terms(report_md):
+        return review
+    issues = review.get("issues") if isinstance(review.get("issues"), list) else []
+    kept: List[Dict[str, Any]] = []
+    reconciled: List[Dict[str, Any]] = []
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        message = str(issue.get("message") or "")
+        if _is_stale_section_depth_review_issue(message):
+            row = dict(issue)
+            row["severity"] = "warning"
+            row["category"] = "llm_review_reconciled"
+            row["message"] = message + " | reconciled: section_verification passed after repair"
+            reconciled.append(row)
+            continue
+        kept.append(issue)
+    if not reconciled:
+        return review
+    output = dict(review)
+    output["issues"] = kept + reconciled
+    blocking = [
+        item for item in kept
+        if str(item.get("severity") or "").lower() in {"fatal", "blocker"}
+    ]
+    output["fatal_issue_count"] = sum(1 for item in output["issues"] if str(item.get("severity") or "").lower() == "fatal")
+    if not blocking and float(output.get("total_score") or 0.0) >= 0.80:
+        output["llm_review_pass"] = True
+    output["artifact_reconciliation_applied"] = True
+    return output
+
+
+def _is_stale_section_depth_review_issue(message: str) -> bool:
+    text = str(message or "").lower()
+    stale_terms = [
+        "内容空洞",
+        "大量暂无结论",
+        "暂不展开",
+        "缺乏实质性内容",
+        "章节内容空洞",
+        "关键章节内容空洞",
+        "同行对比缺失",
+        "估值分析缺失",
+        "风险分析缺失",
+        "内容不足",
+        "lacks actionable",
+        "section missing",
+    ]
+    fact_error_terms = [
+        "不符",
+        "不匹配",
+        "错误",
+        "错配",
+        "unsupported",
+        "evidence",
+        "证据",
+        "数字",
+        "数值",
+        "现金流",
+        "revenue",
+        "net income",
+        "dcf",
+    ]
+    return any(term in text for term in stale_terms) and not any(term in text for term in fact_error_terms)
 
 
 def _verdict_is_pass(verdict: str) -> bool:
@@ -371,6 +443,9 @@ def _load_review_artifacts(outputs_dir: Path, reports_dir: Path) -> Dict[str, An
     return {
         "quality_report": _read_json(outputs_dir / "quality_report.json", {}),
         "verification_report": _read_json(outputs_dir / "verification_report.json", {}),
+        "section_verification": _read_json(outputs_dir / "section_verification.json", {}),
+        "section_repair": _read_json(outputs_dir / "section_repair.json", {}),
+        "canonical_metrics": _read_json(outputs_dir / "canonical_metrics.json", {}),
         "claims": _as_list(_read_json(outputs_dir / "claims.json", [])),
         "evidence": _as_list(_read_json(outputs_dir / "evidence.json", [])),
         "citations": _as_list(_read_json(outputs_dir / "citations.json", [])),

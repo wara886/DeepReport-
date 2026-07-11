@@ -16,6 +16,7 @@ from src.agents.final_answer_agent import (
     remove_template_phrases,
 )
 from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
+from src.evaluation.llm_report_review import review_report_with_llm_from_paths, write_llm_review_outputs_for_paths
 from src.evaluation.quality_remediation import build_quality_remediation_plan_from_outputs, write_quality_remediation_plan_for_outputs
 from src.evaluation.report_quality import evaluate_report_quality_from_paths, write_quality_outputs_for_paths
 from src.evaluation.section_repair import repair_failed_sections_for_outputs
@@ -114,6 +115,8 @@ def repair_real_report_artifact(
 
     after_quality = evaluate_report_quality_from_paths(outputs, reports, run_root)
     write_quality_outputs_for_paths(outputs, reports, after_quality)
+    after_review = review_report_with_llm_from_paths(outputs, reports, run_root)
+    write_llm_review_outputs_for_paths(outputs, reports, after_review)
     after_gate = build_delivery_gate_from_outputs(outputs, run_root)
     write_delivery_gate_for_outputs(outputs, after_gate)
     result = _result(

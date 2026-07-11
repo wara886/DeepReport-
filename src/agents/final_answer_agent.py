@@ -2031,11 +2031,14 @@ def _section_key_from_title(title: str) -> str:
 
 
 def _financial_metric_rows(financial_metrics: Any) -> list[dict[str, Any]]:
+    def _public_metric(item: dict[str, Any]) -> bool:
+        name = str(item.get("metric_name") or item.get("name") or "").lower()
+        return name not in {"adjusted_net_income", "non_recurring_gain", "revenue_growth_pct"}
     if isinstance(financial_metrics, dict):
         rows = financial_metrics.get("metrics", [])
-        return [item for item in rows if isinstance(item, dict)] if isinstance(rows, list) else []
+        return [item for item in rows if isinstance(item, dict) and _public_metric(item)] if isinstance(rows, list) else []
     if isinstance(financial_metrics, list):
-        return [item for item in financial_metrics if isinstance(item, dict)]
+        return [item for item in financial_metrics if isinstance(item, dict) and _public_metric(item)]
     return []
 
 

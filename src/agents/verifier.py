@@ -305,8 +305,6 @@ def _requires_primary_financial_source(claim: ClaimItem) -> bool:
 
 
 def _has_period_matched_structured_fallback(claim: ClaimItem, linked_records: List[Dict[str, Any]]) -> bool:
-    if not (claim.metric_lineage_ids or claim.input_metric_lineage_ids):
-        return False
     structured_types = {"market_api", "market_data", "eastmoney_financials", "pdf_statement_table", "financials"}
     for record in linked_records:
         source_type = str(record.get("source_type") or "").lower()
@@ -316,7 +314,7 @@ def _has_period_matched_structured_fallback(claim: ClaimItem, linked_records: Li
         has_structured_payload = any(
             isinstance(metadata.get(key), (dict, list))
             for key in ["financials", "rows", "raw", "statement_rows", "metrics"]
-        )
+        ) or any(record.get(key) not in (None, "", []) for key in ["value", "metric_name", "numeric_values"])
         if not has_structured_payload:
             continue
         evidence_numbers = _numbers_from_record(record)

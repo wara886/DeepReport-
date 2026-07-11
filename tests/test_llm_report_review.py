@@ -98,6 +98,36 @@ def test_llm_review_artifact_guard_ignores_empty_reviewer_issues(tmp_path):
     assert review["artifact_guard_applied"] is True
 
 
+def test_llm_review_reconciles_stale_section_depth_issues_after_section_verification(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    outputs = run_dir / "company" / "outputs"
+    reports = run_dir / "company" / "reports"
+    (outputs / "section_verification.json").write_text(
+        json.dumps({"status": "passed", "formal_delivery_allowed": True}),
+        encoding="utf-8",
+    )
+    (reports / "report.md").write_text(
+        "## 执行摘要\n这是一份完整研报。\n\n## 业务概览\n业务概览已展开。\n\n## 估值观察\n估值观察已展开。\n\n## 投资结论\n维持中性，基于估值和风险约束。",
+        encoding="utf-8",
+    )
+    model = FakeReviewModel(
+        {
+            "total_score": 0.86,
+            "dimension_scores": {},
+            "verdict": "旧复核认为章节不足。",
+            "issues": [
+                {"severity": "fatal", "category": "llm_review", "message": "内容空洞：业务概览、估值观察等章节均为暂不展开"},
+            ],
+        }
+    )
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["artifact_reconciliation_applied"] is True
+    assert review["issues"][0]["severity"] == "warning"
+
+
 def _write_review_run(tmp_path):
     run_dir = tmp_path / "review_run"
     outputs = run_dir / "company" / "outputs"

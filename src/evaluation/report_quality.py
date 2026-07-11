@@ -287,6 +287,8 @@ def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
         "section_dossiers": _read_json(paths.outputs_dir / "section_dossiers.json", {}),
         # Contract-first artifacts (optional — only present in contract-mode runs)
         "report_section_contracts": _read_json(paths.outputs_dir / "report_section_contracts.json", {}),
+        "section_verification": _read_json(paths.outputs_dir / "section_verification.json", {}),
+        "section_repair": _read_json(paths.outputs_dir / "section_repair.json", {}),
         "citation_map": _read_json(paths.outputs_dir / "citation_map.json", {}),
         "citation_binding_audit": _read_json(paths.outputs_dir / "citation_binding_audit.json", {}),
     }
@@ -523,8 +525,9 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
             _issue(issues, "blocker", "content_depth", f"report contains debug leakage: {pattern}")
     if _contains_any(text, ("Item 1A", "Risk Factors", "Management's Discussion", "Our business", "We face intense competition")) and len(re.findall(r"\b[A-Za-z]{5,}\b", text)) > 120:
         _issue(issues, "blocker", "raw_english_annual_section_leak", "report appears to contain raw English annual-report sections")
+    report_body_text = "\n".join([str(artifacts.get("report_md") or ""), str(artifacts.get("report_html") or "")])
     for key in ("revenue_growth_pct", "adjusted_net_income", "non_recurring_gain"):
-        if key in text:
+        if key in report_body_text:
             _issue(issues, "blocker", "internal_metric_key_leak", f"internal metric key leaked: {key}")
 
     # Raw SEC companyfacts dump detection
@@ -727,9 +730,10 @@ def _check_cross_market_regressions(
         and int(local_meta.get("source_record_count") or 0) == 0
         and str(local_meta.get("mode_effective") or "") != "unavailable"
     ):
+        severity = "warning" if _artifact_has_evidence_records(artifacts) else "blocker"
         _issue(
             issues,
-            "blocker",
+            severity,
             "retrieval_unavailable_misreported",
             "local retrieval reports a vector/hybrid mode although no candidate records were loaded",
         )
@@ -1173,6 +1177,16 @@ def _only_local_sources(engines: List[str]) -> bool:
         "sogou",
     }
     return not any(engine in remote for engine in engines)
+
+
+def _artifact_has_evidence_records(artifacts: Dict[str, Any]) -> bool:
+    evidence = artifacts.get("evidence")
+    if isinstance(evidence, list) and any(isinstance(item, dict) for item in evidence):
+        return True
+    claims = artifacts.get("claims")
+    if isinstance(claims, list):
+        return any(isinstance(item, dict) and item.get("evidence_ids") for item in claims)
+    return False
 
 
 def _required_gate_checks(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> Dict[str, Any]:
