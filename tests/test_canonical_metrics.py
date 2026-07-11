@@ -67,6 +67,45 @@ def test_canonical_metrics_uses_table_rows_as_candidates():
     assert artifact["canonical_metrics"]["operating_cash_flow"]["source_table_id"] == "tbl_cash"
 
 
+def test_canonical_metrics_rejects_wrong_fiscal_year_market_candidate():
+    artifact = build_canonical_metrics_artifact(
+        financial_metrics={
+            "metrics": [
+                {
+                    "metric_name": "revenue",
+                    "value": 391035000000.0,
+                    "unit": "USD",
+                    "source_type": "sec_companyfacts",
+                    "source_evidence_id": "sec_aapl_fy2024",
+                    "period": "FY2024",
+                    "report_date": "2024-09-28",
+                    "period_match": True,
+                    "confidence": 0.92,
+                },
+                {
+                    "metric_name": "revenue",
+                    "value": 416161000000.0,
+                    "unit": "USD",
+                    "source_type": "market_api",
+                    "source_evidence_id": "aapl_yahoo_fy2024_wrong_end",
+                    "period": "FY2024",
+                    "report_date": "2025-09-30",
+                    "confidence": 0.9,
+                },
+            ]
+        },
+        tables=[],
+        symbol="AAPL",
+        period="FY2024",
+    )
+
+    revenue = artifact["canonical_metrics"]["revenue"]
+    assert revenue["value"] == 391035000000.0
+    assert revenue["source_type"] == "sec_companyfacts"
+    assert artifact["rejected_candidate_count"] == 1
+    assert artifact["rejected_candidates"][0]["source_evidence_id"] == "aapl_yahoo_fy2024_wrong_end"
+
+
 def test_quality_artifact_loader_prefers_canonical_metrics(tmp_path):
     run_dir = tmp_path / "run"
     outputs = run_dir / "outputs"

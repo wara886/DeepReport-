@@ -7,6 +7,8 @@ from pathlib import Path
 import json
 from typing import Any, Dict, Iterable, List
 
+from src.utils.periods import period_match
+
 
 CORE_CANONICAL_METRICS = {
     "revenue",
@@ -43,7 +45,10 @@ def build_canonical_metrics_artifact(
 ) -> Dict[str, Any]:
     """Choose one formal value for each metric from candidate metric/table rows."""
 
-    candidates = _candidate_rows(financial_metrics=financial_metrics, tables=tables)
+    candidates, rejected_candidates = _partition_period_candidates(
+        _candidate_rows(financial_metrics=financial_metrics, tables=tables),
+        period=period,
+    )
     grouped: dict[str, list[dict[str, Any]]] = {}
     for candidate in candidates:
         metric = str(candidate.get("metric_name") or "").strip()
@@ -78,6 +83,8 @@ def build_canonical_metrics_artifact(
         "period": period,
         "metric_count": len(canonical),
         "candidate_count": len(candidates),
+        "rejected_candidate_count": len(rejected_candidates),
+        "rejected_candidates": rejected_candidates,
         "canonical_metrics": canonical,
         "metrics": list(canonical.values()),
         "conflicts": conflicts,
@@ -198,6 +205,33 @@ def _normalize_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
         "confidence": float(row.get("confidence") or 0.0),
         "priority": SOURCE_PRIORITY.get(source_type, 99),
     }
+
+
+def _partition_period_candidates(rows: list[dict[str, Any]], *, period: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    accepted: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    for row in rows:
+        candidate = dict(row)
+        match = candidate.get("period_match")
+        if match is None:
+            match = period_match(period=period, report_date=str(candidate.get("report_date") or ""), raw=candidate)
+            candidate["period_match"] = match
+        if match is False:
+            rejected.append(
+                {
+                    "metric_name": candidate.get("metric_name"),
+                    "source_type": candidate.get("source_type"),
+                    "source_evidence_id": candidate.get("source_evidence_id"),
+                    "source_table_id": candidate.get("source_table_id"),
+                    "period": candidate.get("period"),
+                    "source_period": candidate.get("source_period"),
+                    "report_date": candidate.get("report_date"),
+                    "reason": "period_mismatch",
+                }
+            )
+            continue
+        accepted.append(candidate)
+    return accepted, rejected
 
 
 def _candidate_sort_key(row: dict[str, Any]) -> tuple[int, int, float, str]:

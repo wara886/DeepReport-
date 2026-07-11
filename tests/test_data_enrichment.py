@@ -403,6 +403,35 @@ def test_yahoo_financials_evidence_describes_target_quarter_not_latest(monkeypat
     assert "revenue=24000000000.0" not in evidence["content"]
 
 
+def test_market_api_wrong_annual_end_date_is_rejected_for_fiscal_year():
+    record = {
+        "evidence_id": "aapl_yahoo_fy2024",
+        "symbol": "AAPL",
+        "period": "FY2024",
+        "source_type": "market_api",
+        "metadata": {
+            "financials": {
+                "income_history": [
+                    {"end_date": "2025-09-30", "Total Revenue": 416161000000.0, "Net Income": 96995000000.0}
+                ],
+                "balance_history": [
+                    {"end_date": "2025-09-30", "Total Assets": 359241000000.0, "Total Liabilities Net Minority Interest": 285508000000.0}
+                ],
+                "cashflow_history": [
+                    {"end_date": "2025-09-30", "Operating Cash Flow": 111443000000.0, "Capital Expenditure": -12000000000.0}
+                ],
+            }
+        },
+    }
+
+    metrics = build_standard_financial_metrics([record])
+    rows = build_standard_statement_rows([record])
+
+    assert metrics["metric_count"] == 0
+    assert metrics["rejected_metric_count"] >= 1
+    assert rows == []
+
+
 def test_quarterly_statement_claims_use_only_period_matched_statement_evidence():
     records = [
         {

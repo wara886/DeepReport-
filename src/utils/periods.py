@@ -47,10 +47,23 @@ def period_match(period: str, report_date: str = "", raw: Dict[str, Any] | None 
     explicit ``fy``/``fp`` metadata or the date window.
     """
 
+    raw = raw or {}
+    annual_match = re.fullmatch(r"FY\s*(20\d{2})|(?:20\d{2})\s*FY", str(period or "").strip().upper())
+    if annual_match:
+        target_year = re.search(r"20\d{2}", str(period or ""))
+        year = target_year.group(0) if target_year else ""
+        fy = str(raw.get("fy") or raw.get("fiscal_year") or "").strip()
+        fp = str(raw.get("fp") or raw.get("fiscal_period") or "").strip().upper()
+        if fy and fp:
+            return fy == year and fp == "FY"
+        source_date = parse_iso_date(report_date or raw.get("end") or raw.get("report_date") or raw.get("date") or raw.get("end_date"))
+        if source_date and year:
+            return source_date.year == int(year)
+        return None
+
     target = parse_quarter(period)
     if not target:
         return True
-    raw = raw or {}
     fy = str(raw.get("fy") or raw.get("fiscal_year") or "").strip()
     fp = str(raw.get("fp") or raw.get("fiscal_period") or "").strip().upper()
     if fy and fp:
