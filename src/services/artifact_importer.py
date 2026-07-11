@@ -49,6 +49,7 @@ OUTPUT_ARTIFACTS = {
     "quality_report.json": "quality_report",
     "llm_quality_review.json": "llm_quality_review",
     "quality_remediation_plan.json": "quality_remediation_plan",
+    "section_verification.json": "section_verification",
     "performance_trace.json": "performance_trace",
 }
 

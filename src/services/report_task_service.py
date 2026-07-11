@@ -34,6 +34,7 @@ from src.db.models import (
 from src.db.session import create_engine_for_url
 from src.llm.harness import serialize_llm_run
 from src.llm.harness import LLMHarness
+from src.evaluation.section_verification import write_section_verification
 from src.rag.retrieval_diagnostics import build_retrieval_coverage
 from src.report.citation_manager import build_citation_artifacts
 from src.report.compliance_disclosure import append_compliance_disclosures
@@ -1811,35 +1812,30 @@ def _build_section_pack_manifest(output_dir: Path) -> dict[str, Any]:
 def _build_section_verification_manifest(*, output_dir: Path, report_dir: Path) -> dict[str, Any]:
     contracts = _read_json_object(output_dir / "report_section_contracts.json")
     remediation = _read_json_object(output_dir / "quality_remediation_plan.json")
-    contract_map = contracts.get("contracts") if isinstance(contracts.get("contracts"), dict) else {}
     markdown = ""
     report_md = report_dir / "report.md"
     if report_md.exists():
         markdown = report_md.read_text(encoding="utf-8")
-    failed_sections = set(_string_list(remediation.get("failed_sections")))
-    for section_key, contract in contract_map.items():
-        if not isinstance(contract, dict):
-            continue
-        if contract.get("blocked_reasons") or contract.get("quality_flags") or contract.get("status") == "gap":
-            failed_sections.add(str(section_key))
-    placeholders = [
-        marker
-        for marker in ["本节暂不展开", "暂不展开详细分析", "需进一步分析", "下文章节展开分析"]
-        if marker in markdown
-    ]
-    if placeholders:
-        failed_sections.add("content_placeholder")
+    artifact = write_section_verification(
+        output_dir,
+        markdown=markdown,
+        report_section_contracts=contracts,
+        quality_remediation_plan=remediation,
+    )
     return {
         "schema_version": "section_verification_runtime.v1",
-        "status": "passed" if not failed_sections and not placeholders else "needs_repair",
-        "contract_count": len(contract_map),
-        "failed_section_count": len(failed_sections),
-        "failed_sections": sorted(failed_sections),
-        "placeholder_markers": placeholders,
+        "artifact_schema_version": artifact.get("schema_version"),
+        "status": artifact.get("status", "failed"),
+        "formal_delivery_allowed": bool(artifact.get("formal_delivery_allowed", False)),
+        "contract_count": len(contracts.get("contracts") if isinstance(contracts.get("contracts"), dict) else {}),
+        "failed_section_count": len(artifact.get("failed_sections") or []),
+        "failed_sections": list(artifact.get("failed_sections") or []),
+        "issue_count": int(artifact.get("issue_count") or 0),
         "report_markdown_chars": len(markdown),
         "source_files": {
             "report_section_contracts": str(output_dir / "report_section_contracts.json"),
             "quality_remediation_plan": str(output_dir / "quality_remediation_plan.json"),
+            "section_verification": str(output_dir / "section_verification.json"),
             "report_md": str(report_md),
         },
     }

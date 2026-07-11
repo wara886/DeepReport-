@@ -116,6 +116,37 @@ def test_delivery_gate_blocks_formal_delivery_on_content_depth_blocker(tmp_path)
     assert gate["gate_requirements"]["content_depth_blocks_formal_delivery"] is True
 
 
+def test_delivery_gate_blocks_formal_delivery_on_section_verification_failure(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    for name, payload in {
+        "verification_report.json": {"passed": True},
+        "quality_report.json": {"objective_pass": True, "total_score": 0.96, "issues": []},
+        "llm_quality_review.json": {"llm_review_pass": True, "total_score": 0.86, "issues": []},
+        "section_verification.json": {
+            "status": "failed",
+            "formal_delivery_allowed": False,
+            "issues": [
+                {
+                    "issue_id": "section_contract_conclusion_section_too_short",
+                    "severity": "blocker",
+                    "category": "section_contract",
+                    "section": "conclusion",
+                    "message": "投资结论 failed section contract: section_too_short",
+                }
+            ],
+        },
+    }.items():
+        (outputs / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["delivery_pass"] is False
+    assert gate["diagnostic_delivery_pass"] is False
+    assert gate["gate_requirements"]["section_verification_passed"] is False
+    assert any(issue["source"] == "section_verification" for issue in gate["issues"])
+
+
 def test_delivery_gate_requires_objective_pass_even_when_scores_are_high(tmp_path):
     outputs = tmp_path / "run" / "company" / "outputs"
     outputs.mkdir(parents=True)

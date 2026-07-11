@@ -21,9 +21,13 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
     verification = _read_json(outputs / "verification_report.json", {})
     quality = _read_json(outputs / "quality_report.json", {})
     llm_review = _read_json(outputs / "llm_quality_review.json", {})
+    section_verification = _read_json(outputs / "section_verification.json", {})
     verifier_passed = bool(verification.get("passed", summary.get("verification_passed", False)))
     objective_pass = bool(quality.get("objective_pass", False))
     issues = _collect_issues(verification, quality, llm_review)
+    if isinstance(section_verification, dict) and section_verification.get("status") == "failed":
+        for item in section_verification.get("issues") or []:
+            issues.append(_normalize_issue(item, "section_verification"))
 
     # Read contract-first generation artifacts for top_blockers
     contracts_data = _read_json(outputs / "report_section_contracts.json", None)
@@ -112,6 +116,7 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
             "llm_review_no_fatal_or_blocker": not llm_blocking_issue,
             "delivery_no_fatal_or_blocker": not blocking_issue,
             "content_depth_blocks_formal_delivery": bool(content_depth_blockers),
+            "section_verification_passed": bool(section_verification.get("formal_delivery_allowed", True)),
         },
         "issue_counts": {
             "fatal": sum(1 for item in issues if item.get("severity") == "fatal"),

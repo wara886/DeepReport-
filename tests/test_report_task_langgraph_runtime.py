@@ -166,8 +166,9 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
         "human_review",
     }
     assert body["task"]["metadata"]["report_runtime"]["canonical_metrics"]["status"] == "ready"
-    assert body["task"]["metadata"]["report_runtime"]["section_verification"]["status"] in {"passed", "needs_repair"}
+    assert body["task"]["metadata"]["report_runtime"]["section_verification"]["status"] in {"passed", "failed"}
     assert any(artifact["artifact_type"] == "canonical_metrics" for artifact in body["task"]["artifacts"])
+    assert any(artifact["artifact_type"] == "section_verification" for artifact in body["task"]["artifacts"])
     assert any(event["stage"] == "claim_review" and event["status"] == "resumed" for event in body["task"]["events"])
 
 
