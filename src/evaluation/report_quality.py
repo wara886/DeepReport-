@@ -289,6 +289,7 @@ def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
         "report_section_contracts": _read_json(paths.outputs_dir / "report_section_contracts.json", {}),
         "section_verification": _read_json(paths.outputs_dir / "section_verification.json", {}),
         "section_repair": _read_json(paths.outputs_dir / "section_repair.json", {}),
+        "evidence_retrieval_attribution": _read_json(paths.outputs_dir / "evidence_retrieval_attribution.json", {}),
         "citation_map": _read_json(paths.outputs_dir / "citation_map.json", {}),
         "citation_binding_audit": _read_json(paths.outputs_dir / "citation_binding_audit.json", {}),
     }

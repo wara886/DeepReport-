@@ -22,12 +22,16 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
     quality = _read_json(outputs / "quality_report.json", {})
     llm_review = _read_json(outputs / "llm_quality_review.json", {})
     section_verification = _read_json(outputs / "section_verification.json", {})
+    retrieval_attribution = _read_json(outputs / "evidence_retrieval_attribution.json", {})
     verifier_passed = bool(verification.get("passed", summary.get("verification_passed", False)))
     objective_pass = bool(quality.get("objective_pass", False))
     issues = _collect_issues(verification, quality, llm_review)
     if isinstance(section_verification, dict) and section_verification.get("status") == "failed":
         for item in section_verification.get("issues") or []:
             issues.append(_normalize_issue(item, "section_verification"))
+    if isinstance(retrieval_attribution, dict):
+        attribution_issues = _attribution_diagnostic_issues(retrieval_attribution, start_index=len(issues) + 1)
+        issues.extend(attribution_issues)
 
     # Read contract-first generation artifacts for top_blockers
     contracts_data = _read_json(outputs / "report_section_contracts.json", None)
@@ -118,6 +122,7 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
             "content_depth_blocks_formal_delivery": bool(content_depth_blockers),
             "section_verification_passed": bool(section_verification.get("formal_delivery_allowed", True)),
         },
+        "evidence_retrieval_attribution": _attribution_summary(retrieval_attribution),
         "issue_counts": {
             "fatal": sum(1 for item in issues if item.get("severity") == "fatal"),
             "blocker": sum(1 for item in issues if item.get("severity") == "blocker"),
@@ -157,6 +162,46 @@ def _collect_issues(verification: Dict[str, Any], quality: Dict[str, Any], llm_r
         issues.append({"issue_id": f"verifier_{len(issues) + 1:04d}", "severity": severity, "category": "verifier", "message": _issue_message(gap, "evidence gap")})
     order = {"fatal": 0, "blocker": 1, "warning": 2, "info": 3}
     return sorted(issues, key=lambda item: (order.get(item.get("severity"), 9), item.get("category", "")))
+
+
+def _attribution_diagnostic_issues(attribution: Dict[str, Any], *, start_index: int) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    roots = attribution.get("overall_root_causes") if isinstance(attribution.get("overall_root_causes"), list) else []
+    for index, row in enumerate(roots[:3], start=start_index):
+        if not isinstance(row, dict):
+            continue
+        cause = str(row.get("cause") or "")
+        if not cause:
+            continue
+        output.append(
+            {
+                "issue_id": f"retrieval_attribution_{index:04d}",
+                "severity": "warning",
+                "category": "retrieval_attribution",
+                "message": f"{row.get('label') or cause}: {row.get('recommended_action') or ''}".strip(),
+                "source": "evidence_retrieval_attribution",
+                "cause": cause,
+            }
+        )
+    return output
+
+
+def _attribution_summary(attribution: Any) -> Dict[str, Any]:
+    if not isinstance(attribution, dict):
+        return {"available": False}
+    roots = attribution.get("overall_root_causes") if isinstance(attribution.get("overall_root_causes"), list) else []
+    top = roots[0] if roots and isinstance(roots[0], dict) else {}
+    retrieval = attribution.get("retrieval_summary") if isinstance(attribution.get("retrieval_summary"), dict) else {}
+    return {
+        "available": True,
+        "top_root_cause": top.get("cause"),
+        "top_root_cause_label": top.get("label"),
+        "top_recommended_action": top.get("recommended_action"),
+        "similarity_status": retrieval.get("similarity_status"),
+        "vector_score_max": retrieval.get("vector_score_max"),
+        "local_candidate_count": retrieval.get("local_candidate_count"),
+        "local_returned_count": retrieval.get("local_returned_count"),
+    }
 
 
 def _normalize_issue(item: Any, source: str) -> Dict[str, Any]:

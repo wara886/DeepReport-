@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
+from src.evaluation.evidence_retrieval_attribution import write_evidence_retrieval_attribution
 from src.evaluation.report_quality import evaluate_report_quality_from_paths, write_quality_outputs_for_paths
 from src.evaluation.real_artifact_remediation import repair_real_report_artifact
 
@@ -159,6 +160,7 @@ def _evaluate_existing_artifact_run(item: dict[str, Any], *, suite_dir: Path, re
     remediation: dict[str, Any] = {}
     if repair:
         remediation = repair_real_report_artifact(outputs, reports, run_dir=outputs.parent)
+    write_evidence_retrieval_attribution(outputs, reports_dir=reports, run_dir=outputs.parent)
     quality = evaluate_report_quality_from_paths(outputs, reports, outputs.parent)
     write_quality_outputs_for_paths(outputs, reports, quality)
     gate = build_delivery_gate_from_outputs(outputs, outputs.parent)
@@ -182,6 +184,12 @@ def _evaluate_existing_artifact_run(item: dict[str, Any], *, suite_dir: Path, re
         "citation_coverage_rate": _citation_coverage_rate(claims, citations),
         "failure_categories": _failure_categories(quality, gate),
     }
+    attribution = _read_json(outputs / "evidence_retrieval_attribution.json", {})
+    top_root = _top_attribution_root(attribution)
+    if top_root:
+        row["top_retrieval_root_cause"] = str(top_root.get("cause") or "")
+        row["top_retrieval_root_cause_label"] = str(top_root.get("label") or "")
+        row["retrieval_similarity_status"] = str(_as_dict(attribution.get("retrieval_summary")).get("similarity_status") or "")
     if remediation:
         row["remediation_changed"] = bool(remediation.get("changed"))
         row["remediation_before_content_depth_blockers"] = remediation.get("before", {}).get("content_depth_blockers")
@@ -219,6 +227,19 @@ def _as_list(value: Any) -> list[dict[str, Any]]:
     return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _top_attribution_root(attribution: Any) -> dict[str, Any]:
+    roots = attribution.get("overall_root_causes") if isinstance(attribution, dict) else []
+    if isinstance(roots, list):
+        for item in roots:
+            if isinstance(item, dict) and item.get("cause"):
+                return item
+    return {}
+
+
 def _run_case(case: dict[str, Any], *, suite_dir: Path) -> dict[str, Any]:
     case_id = str(case["case_id"])
     case_dir = suite_dir / "runs" / case_id
@@ -231,6 +252,7 @@ def _run_case(case: dict[str, Any], *, suite_dir: Path) -> dict[str, Any]:
         (outputs / filename).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     reports.joinpath("report.md").write_text(artifacts["report_md"], encoding="utf-8")
     reports.joinpath("report.html").write_text(f"<html><body>{artifacts['report_md']}</body></html>", encoding="utf-8")
+    write_evidence_retrieval_attribution(outputs, reports_dir=reports, run_dir=case_dir)
     quality = evaluate_report_quality_from_paths(outputs, reports, case_dir)
     write_quality_outputs_for_paths(outputs, reports, quality)
     gate = build_delivery_gate_from_outputs(outputs, case_dir)
@@ -252,6 +274,12 @@ def _run_case(case: dict[str, Any], *, suite_dir: Path) -> dict[str, Any]:
         "citation_coverage_rate": _citation_coverage_rate(artifacts["outputs"].get("claims.json", []), artifacts["outputs"].get("citations.json", [])),
         "failure_categories": _failure_categories(quality, gate),
     }
+    attribution = _read_json(outputs / "evidence_retrieval_attribution.json", {})
+    top_root = _top_attribution_root(attribution)
+    if top_root:
+        row["top_retrieval_root_cause"] = str(top_root.get("cause") or "")
+        row["top_retrieval_root_cause_label"] = str(top_root.get("label") or "")
+        row["retrieval_similarity_status"] = str(_as_dict(attribution.get("retrieval_summary")).get("similarity_status") or "")
     return row
 
 
@@ -406,6 +434,16 @@ def _write_failures_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         for row in rows:
             for category in row["failure_categories"]:
                 writer.writerow({"case_id": row["case_id"], "market": row["market"], "status": row["status"], "category": category, "detail": category})
+            if row.get("top_retrieval_root_cause"):
+                writer.writerow(
+                    {
+                        "case_id": row["case_id"],
+                        "market": row["market"],
+                        "status": row["status"],
+                        "category": "retrieval_attribution",
+                        "detail": f"{row.get('top_retrieval_root_cause')}: {row.get('top_retrieval_root_cause_label')}",
+                    }
+                )
 
 
 def _write_summary_csv(path: Path, summary: dict[str, Any]) -> None:
