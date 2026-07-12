@@ -9,6 +9,7 @@ from src.services.datasource_service import DataSourceService
 def test_searchmanager_registered_engines_seed_datasource_rows(temp_db_engine, monkeypatch):
     monkeypatch.setenv("TAVILY_API_KEY", "")
     monkeypatch.setenv("SERPER_API_KEY", "")
+    monkeypatch.setenv("TUSHARE_TOKEN", "")
     service = DataSourceService(
         session_factory=lambda: Session(temp_db_engine),
         search_manager_factory=SearchManager.with_local_sources,
@@ -28,7 +29,7 @@ def test_searchmanager_registered_engines_seed_datasource_rows(temp_db_engine, m
     assert [row.source_key for row in rows] == engine_names
     assert all(row.config_json["registered_by"] == "SearchManager" for row in rows)
     missing_credentials = {row.source_key for row in rows if not row.enabled}
-    assert missing_credentials == {"serper", "tavily"}
+    assert missing_credentials == {"serper", "tavily", "tushare_financials"}
     assert all(row.credential_status == "missing" for row in rows if row.source_key in missing_credentials)
     assert {row.source_key: row.trust_level for row in rows}["sec_edgar"] == "official"
     assert {row.source_key: row.source_type for row in rows}["yahoo_finance"] == "market_data"
@@ -37,6 +38,7 @@ def test_searchmanager_registered_engines_seed_datasource_rows(temp_db_engine, m
 def test_seed_reconciles_stale_configured_credentials(temp_db_engine, monkeypatch):
     monkeypatch.setenv("TAVILY_API_KEY", "")
     monkeypatch.setenv("SERPER_API_KEY", "")
+    monkeypatch.setenv("TUSHARE_TOKEN", "")
     service = DataSourceService(
         session_factory=lambda: Session(temp_db_engine),
         search_manager_factory=SearchManager.with_local_sources,

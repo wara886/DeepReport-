@@ -35,6 +35,7 @@ DEFAULT_SOURCE_CATALOG: dict[str, dict[str, Any]] = {
     "exchange_announcements": {"name": "交易所公告", "source_type": "official_announcement", "trust_level": "official", "market_scope": ["CN", "HK"]},
     "eastmoney_financials": {"name": "东方财富财务", "source_type": "financial_statement", "trust_level": "secondary", "market_scope": ["CN"]},
     "baostock_financials": {"name": "BaoStock 财务指标", "source_type": "financial_statement", "trust_level": "secondary", "market_scope": ["CN"]},
+    "tushare_financials": {"name": "Tushare Pro 财务", "source_type": "financial_statement", "trust_level": "secondary", "market_scope": ["CN"]},
     "hkex_announcements": {"name": "港交所公告", "source_type": "official_announcement", "trust_level": "official", "market_scope": ["HK"]},
     "hk_financials": {"name": "港股财务数据", "source_type": "financial_statement", "trust_level": "secondary", "market_scope": ["HK"]},
     "serper": {"name": "Serper 搜索", "source_type": "web_search", "trust_level": "secondary", "market_scope": ["US", "CN", "HK"]},
@@ -220,7 +221,7 @@ def _catalog_entry(source_key: str) -> dict[str, Any]:
 
 
 def _credential_status(source_key: str) -> str:
-    env_name = {"tavily": "TAVILY_API_KEY", "serper": "SERPER_API_KEY"}.get(source_key)
+    env_name = {"tavily": "TAVILY_API_KEY", "serper": "SERPER_API_KEY", "tushare_financials": "TUSHARE_TOKEN"}.get(source_key)
     if env_name is None:
         return "not_required"
     return "configured" if str(os.getenv(env_name) or "").strip() else "missing"

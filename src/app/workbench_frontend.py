@@ -1363,7 +1363,7 @@ def render_workbench_html() -> str:
       sec_edgar: "美国证监会年报", cninfo: "巨潮资讯", cninfo_announcements: "巨潮资讯公告",
       exchange_announcements: "交易所公告", hkex: "港交所公告", hkex_announcements: "港交所公告",
       eastmoney: "东方财富行情", eastmoney_financials: "东方财富财务", sina_finance: "新浪财经行情",
-      hk_financials: "港股财务数据", serper: "Serper 搜索", tavily: "Tavily 搜索",
+      hk_financials: "港股财务数据", baostock_financials: "BaoStock 财务指标", tushare_financials: "Tushare Pro 财务", serper: "Serper 搜索", tavily: "Tavily 搜索",
       yahoo_finance: "雅虎财经",
       sec_filing: "SEC 披露文件", cninfo_announcement: "巨潮公告", hkex_announcement: "港交所公告",
       hkex_annual_report: "港交所年报", yahoo_profile: "雅虎公司画像", yahoo_financials: "雅虎财务数据",
