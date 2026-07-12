@@ -34,6 +34,29 @@ def test_searchmanager_registered_engines_seed_datasource_rows(temp_db_engine, m
     assert {row.source_key: row.source_type for row in rows}["yahoo_finance"] == "market_data"
 
 
+def test_seed_reconciles_stale_configured_credentials(temp_db_engine, monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "")
+    monkeypatch.setenv("SERPER_API_KEY", "")
+    service = DataSourceService(
+        session_factory=lambda: Session(temp_db_engine),
+        search_manager_factory=SearchManager.with_local_sources,
+    )
+    service.seed_registered_sources()
+    with Session(temp_db_engine) as session:
+        tavily = session.scalar(select(DataSource).where(DataSource.source_key == "tavily"))
+        tavily.credential_status = "configured"
+        tavily.enabled = True
+        session.commit()
+
+    result = service.seed_registered_sources()
+
+    with Session(temp_db_engine) as session:
+        tavily = session.scalar(select(DataSource).where(DataSource.source_key == "tavily"))
+        assert tavily.credential_status == "missing"
+        assert tavily.enabled is False
+    assert result["reconciled"] >= 1
+
+
 def test_searchmanager_registered_engines_seed_workspace_scoped_sources(temp_db_engine):
     service = DataSourceService(
         session_factory=lambda: Session(temp_db_engine),

@@ -402,7 +402,7 @@ def test_evaluation_task_diagnostics_links_source_gaps_to_ingestion_and_datasour
     assert remediation["metadata"]["task_id"] == "task-eval-source-gap"
     assert remediation["metadata"]["source"] == "evaluation_diagnostic_remediation"
     assert rows["serper"]["health_status"] == "credential_required"
-    assert rows["local_evidence"]["health_status"] == "not_configured"
+    assert rows["local_evidence"]["health_status"] == "not_collected"
     assert any(item["next_view"] == "ingestion" and item["source_key"] == "sec_edgar" for item in health["gaps"])
     assert any(item["next_view"] == "datasources" and item["source_key"] == "serper" for item in health["gaps"])
     action_by_view = {item["view"]: item for item in body["recommended_actions"]}

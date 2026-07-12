@@ -1010,10 +1010,10 @@ def _source_health_status(
         return "not_configured", "数据源尚未配置，无法补齐该市场的关键证据。", "datasources"
     if not market_supported:
         return "market_mismatch", "当前来源不覆盖该任务市场。", "datasources"
+    if str(credential_status or "") in {"required", "missing", "expired"}:
+        return "credential_required", "需要先配置或更新访问凭证。", "datasources"
     if not source.enabled:
         return "disabled", "数据源已停用，采集链路不会使用该来源。", "datasources"
-    if str(credential_status or "") in {"required", "expired"}:
-        return "credential_required", "需要先配置或更新访问凭证。", "datasources"
     if evidence_count > 0:
         return "covered", "已有证据命中该来源，可用于主张追溯。", "evidence"
     if batch is not None and batch.status == "failed":

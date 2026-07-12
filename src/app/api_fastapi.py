@@ -75,6 +75,9 @@ def create_fastapi_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         try:
+            datasource_service = getattr(app.state, "datasource_service", None)
+            if datasource_service is not None:
+                datasource_service.seed_registered_sources()
             yield
         finally:
             task_service = getattr(app.state, "report_task_service", None)
