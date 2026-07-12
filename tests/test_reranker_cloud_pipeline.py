@@ -16,12 +16,46 @@ def _has_bash() -> bool:
     return shutil.which("bash") is not None
 
 
-def test_fallback_without_checkpoint():
+def test_fallback_without_checkpoint(monkeypatch):
+    monkeypatch.setattr(
+        "src.training.infer_reranker._load_reranker_runtime_config",
+        lambda: {"use_base_model_without_checkpoint": False},
+    )
     hits = [{"sample_id": "s1", "score": 1.0, "trust_level": "high"}]
     ranked, meta = rerank_hits_with_meta(hits, checkpoint_path="data/outputs/checkpoints/not_exists.json")
     assert ranked[0]["rerank_score"] == 1.0
     assert meta["fallback_used"] is True
     assert meta["mode"] == "bm25"
+
+
+def test_reranker_resolves_project_local_bundle(monkeypatch, tmp_path: Path):
+    model_dir = tmp_path / "rerankers" / "bge-reranker-base"
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_bytes(b"model")
+    monkeypatch.setenv("FINSIGHT_MODEL_CACHE_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        "src.training.infer_reranker._load_cross_encoder",
+        lambda model_name, local_files_only: _FakeCrossEncoder(model_name),
+    )
+
+    ranked, meta = rerank_hits_with_meta(
+        [{"sample_id": "s1", "content": "revenue", "score": 0.1}],
+        query="revenue",
+        checkpoint_path=str(tmp_path / "missing.json"),
+    )
+
+    assert ranked[0]["rerank_score"] == 0.9
+    assert meta["backend"] == "cross_encoder"
+    assert meta["resolved_model_path"] == str(model_dir.resolve())
+
+
+class _FakeCrossEncoder:
+    def __init__(self, model_name: str) -> None:
+        self.model_name = model_name
+
+    def predict(self, pairs):
+        return [0.9 for _ in pairs]
 
 
 def test_reranker_branch_with_checkpoint(tmp_path: Path):

@@ -53,6 +53,47 @@ def embedding_local_files_only() -> bool:
     return False
 
 
+def resolve_local_model_path(model_name: str, *, category: str | None = None) -> str:
+    """Resolve a configured model id to a complete local model directory.
+
+    Local model bundles in this project are not always stored in Hugging Face's
+    cache layout. Rerankers, for example, may live under ``models/rerankers``.
+    Returning the original id keeps the standard Hugging Face lookup behavior
+    when no complete local bundle is available.
+    """
+
+    text = str(model_name or "").strip()
+    if not text:
+        return text
+    direct = Path(text).expanduser()
+    if direct.is_dir() and _is_model_directory(direct):
+        return str(direct.resolve())
+
+    cache_root = ensure_model_cache_env()
+    leaf = text.rsplit("/", 1)[-1]
+    candidates = []
+    if category:
+        candidates.append(cache_root / category / leaf)
+    candidates.extend(
+        [
+            cache_root / "rerankers" / leaf,
+            cache_root / "models" / leaf,
+            cache_root / leaf,
+        ]
+    )
+    for candidate in candidates:
+        if candidate.is_dir() and _is_model_directory(candidate):
+            return str(candidate.resolve())
+    return text
+
+
+def _is_model_directory(path: Path) -> bool:
+    return (path / "config.json").is_file() and any(
+        (path / filename).is_file()
+        for filename in ("model.safetensors", "pytorch_model.bin", "tf_model.h5")
+    )
+
+
 def _load_retrieval_config() -> Dict[str, Any]:
     global _RETRIEVAL_CONFIG_CACHE
     if _RETRIEVAL_CONFIG_CACHE is not None:
