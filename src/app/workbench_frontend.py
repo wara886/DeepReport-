@@ -2439,7 +2439,7 @@ def render_workbench_html() -> str:
       root.querySelectorAll("[data-ingestion-action]").forEach((btn) => {
         if (btn.dataset.boundIngestionAction === "true") return;
         btn.dataset.boundIngestionAction = "true";
-        btn.addEventListener("click", () => ingestionLifecycleAction(btn.dataset.batchId, btn.dataset.ingestionAction));
+        btn.addEventListener("click", () => ingestionLifecycleAction(btn.dataset.batchId, btn.dataset.ingestionAction, btn));
       });
       root.querySelectorAll("[data-ingestion-documents]").forEach((btn) => {
         if (btn.dataset.boundIngestionDocuments === "true") return;
@@ -2476,9 +2476,25 @@ def render_workbench_html() -> str:
       }
     }
 
-    async function ingestionLifecycleAction(batchId, action) {
+    async function ingestionLifecycleAction(batchId, action, button = null) {
       const labels = { start: "启动", complete: "标记完成", fail: "标记失败", retry: "重试", cancel: "取消" };
-      if (!confirm(`确认${labels[action] || "操作"}该采集批次？`)) return;
+      if (button && button.dataset.confirmAction !== action) {
+        button.dataset.confirmAction = action;
+        button.dataset.originalText = button.textContent;
+        button.textContent = "再次点击确认操作";
+        window.setTimeout(() => {
+          if (button.dataset.confirmAction === action) {
+            button.textContent = button.dataset.originalText || "操作";
+            delete button.dataset.confirmAction;
+          }
+        }, 6000);
+        return;
+      }
+      if (button) {
+        delete button.dataset.confirmAction;
+        button.disabled = true;
+        button.textContent = "处理中…";
+      }
       const payloadByAction = {
         complete: { message: "用户在工作台标记完成" },
         fail: { error_message: "用户在工作台标记失败" },
@@ -2491,6 +2507,11 @@ def render_workbench_html() -> str:
         loadDashboard();
       } catch (error) {
         $("ingestionDetail").insertAdjacentHTML("afterbegin", `<div class="error">${esc(labels[action] || "操作")}失败，请刷新后重试。</div>`);
+      } finally {
+        if (button?.isConnected) {
+          button.disabled = false;
+          button.textContent = button.dataset.originalText || labels[action] || "操作";
+        }
       }
     }
 
@@ -2844,6 +2865,7 @@ def render_workbench_html() -> str:
         readiness = {
           ...readiness,
           can_generate_draft: "可启动",
+          draft_generated: "尚未生成",
           can_enter_human_review: "待运行检查",
           can_deliver_formal_report: "待运行检查",
           can_export_formal_package: "待运行检查",
@@ -2853,7 +2875,8 @@ def render_workbench_html() -> str:
       const actions = readiness.required_actions || [];
       return `<div class="detail-section"><h3>统一交付状态</h3>
         <div class="analysis-stats">
-          <div class="analysis-stat"><span class="label">生成草稿</span><strong>${esc(passText(readiness.can_generate_draft))}</strong></div>
+          <div class="analysis-stat"><span class="label">草稿产物</span><strong>${esc(readiness.draft_generated === true ? "已生成" : "尚未生成")}</strong></div>
+          <div class="analysis-stat"><span class="label">可重新生成</span><strong>${esc(readiness.can_generate_draft === true ? "是" : "否")}</strong></div>
           <div class="analysis-stat"><span class="label">人工复核</span><strong>${esc(passText(readiness.can_enter_human_review))}</strong></div>
           <div class="analysis-stat"><span class="label">正式交付</span><strong>${esc(passText(readiness.can_deliver_formal_report))}</strong></div>
           <div class="analysis-stat"><span class="label">正式导出</span><strong>${esc(passText(readiness.can_export_formal_package))}</strong></div>
@@ -2956,9 +2979,7 @@ def render_workbench_html() -> str:
         button.disabled = true;
         button.textContent = "处理中…";
       }
-      const confirm = () => true;
       const labels = { start: "启动", retry: "完整重试", cancel: "取消", archive: "归档", resume_runtime: "从人工复核断点继续", retry_checkpoint: "从失败节点继续" };
-      if (["start", "retry", "cancel", "archive", "resume_runtime", "retry_checkpoint"].includes(action) && !confirm(`确认${labels[action]}该研报任务？`)) return;
       const payloadByAction = {
         start: { run_immediately: true, run_async: true },
         retry: { run_immediately: true, run_async: true },

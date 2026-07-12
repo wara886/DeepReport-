@@ -102,7 +102,8 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "产物类型：" in html
     assert "证据绑定" in html
     assert "shortTaskId" in html
-    assert "确认${labels[action]}该研报任务" in html
+    assert "再次点击确认操作" in html
+    assert "confirm(`" not in html
     assert "/api/report-tasks" in html
     assert "/api/latest" not in html
 

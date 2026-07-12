@@ -34,6 +34,7 @@ class DeliveryReadiness(TypedDict):
     schema_version: str
     status: str
     can_generate_draft: bool
+    draft_generated: bool
     can_enter_human_review: bool
     can_deliver_formal_report: bool
     can_export_formal_package: bool
@@ -348,7 +349,8 @@ def _delivery_readiness(
 ) -> DeliveryReadiness:
     blockers: list[str] = []
     warnings: list[str] = []
-    if lifecycle != "generation_completed":
+    draft_generated = bool(artifact_state["report_available"])
+    if lifecycle not in {"generation_completed", "quality_blocked"} and not draft_generated:
         blockers.append("report_task_not_completed")
     if claim_state["rejected_count"]:
         blockers.append("rejected_claims_present")
@@ -393,7 +395,8 @@ def _delivery_readiness(
     return {
         "schema_version": "delivery_readiness.v2",
         "status": status,
-        "can_generate_draft": lifecycle == "queued",
+        "can_generate_draft": lifecycle in {"queued", "evidence_blocked", "quality_blocked", "failed", "timeout", "cancelled"},
+        "draft_generated": draft_generated,
         "can_enter_human_review": can_review,
         "can_deliver_formal_report": can_deliver,
         "can_export_formal_package": can_deliver,

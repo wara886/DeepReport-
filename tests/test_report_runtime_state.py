@@ -137,7 +137,10 @@ def test_quality_blocked_task_with_review_complete_requires_remediation():
     state = build_report_run_state(task)
 
     assert state["delivery_readiness"]["status"] == "remediation_required"
+    assert state["delivery_readiness"]["draft_generated"] is True
+    assert state["delivery_readiness"]["can_generate_draft"] is True
     assert state["delivery_readiness"]["can_enter_human_review"] is False
+    assert "report_task_not_completed" not in state["delivery_readiness"]["blocking_reasons"]
     assert "quality_gate_failed" in state["delivery_readiness"]["blocking_reasons"]
 
 
