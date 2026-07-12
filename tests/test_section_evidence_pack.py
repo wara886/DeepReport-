@@ -97,6 +97,33 @@ def test_section_pack_reads_numeric_labels_from_contract_citation_map(tmp_path):
     assert pack["must_use_evidence"][0]["citation_labels"] == ["7"]
 
 
+def test_section_pack_keeps_peer_evidence_out_of_target_sections(tmp_path):
+    (tmp_path / "report_section_contracts.json").write_text(json.dumps({
+        "metadata": {"target_symbol": "MSFT"},
+        "contracts": {
+            "financial_analysis": {"citation_evidence_ids": ["msft-target", "nvda-peer"]},
+            "peer_compare": {"citation_evidence_ids": ["msft-target", "nvda-peer"]},
+            "valuation": {"citation_evidence_ids": ["msft-target"]},
+        },
+    }), encoding="utf-8")
+    (tmp_path / "section_dossiers.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "claims.json").write_text(json.dumps([
+        {"claim_id": "peer-claim", "section_name": "peer_compare", "evidence_ids": ["nvda-peer"]},
+        {"claim_id": "valuation-claim", "section_name": "valuation", "evidence_ids": ["msft-target"]},
+    ]), encoding="utf-8")
+    (tmp_path / "evidence.json").write_text(json.dumps([
+        {"evidence_id": "msft-target", "symbol": "MSFT", "metadata": {"evidence_role": "target"}},
+        {"evidence_id": "nvda-peer", "symbol": "NVDA", "metadata": {"evidence_role": "peer"}},
+    ]), encoding="utf-8")
+
+    packs = build_section_evidence_packs(tmp_path)["packs"]
+
+    assert packs["financial_analysis"]["must_use_evidence_ids"] == ["msft-target"]
+    assert packs["financial_analysis"]["missing_evidence_ids"] == ["nvda-peer"]
+    assert packs["peer_compare"]["must_use_evidence_ids"] == ["msft-target", "nvda-peer"]
+    assert [row["claim_id"] for row in packs["valuation"]["claims"]] == ["valuation-claim"]
+
+
 def test_section_verification_distinguishes_citation_from_supported_claim():
     markdown = "# 报告\n\n## 投资结论\n" + ("结论内容充分且包含证据支持。" * 20) + "[ev1]\n"
     packs = {"packs": {"conclusion": {

@@ -91,6 +91,8 @@ def normalize_evidence_record(
 ) -> dict[str, Any]:
     data = dict(record)
     metadata = dict(data.get("metadata") or {}) if isinstance(data.get("metadata"), dict) else {}
+    existing_company = dict(data.get("company_identity") or {}) if isinstance(data.get("company_identity"), dict) else {}
+    existing_provenance = dict(data.get("provenance") or {}) if isinstance(data.get("provenance"), dict) else {}
     symbol = str(data.get("symbol") or metadata.get("symbol") or "")
     source_period = str(
         data.get("source_period")
@@ -105,7 +107,7 @@ def normalize_evidence_record(
     company = build_company_identity(
         symbol,
         company_name=str(data.get("company_name") or metadata.get("company_name") or ""),
-        company_id=data.get("company_id") or metadata.get("company_id"),
+        company_id=data.get("company_id") or metadata.get("company_id") or existing_company.get("company_id"),
         market=str(data.get("market") or metadata.get("market") or metadata.get("report_market") or ""),
     )
     period = build_period_spec(target, source_period=source_period, report_date=report_date, raw={**metadata, **data})
@@ -141,8 +143,8 @@ def normalize_evidence_record(
     }
     identity_key = _stable_key("evi", {"document_key": document_key, **locator})
     evidence_id = str(data.get("evidence_id") or data.get("sample_id") or data.get("chunk_id") or identity_key)
-    resolved_task_id = str(task_id or data.get("task_id") or metadata.get("task_id") or "")
-    resolved_run_id = str(run_id or data.get("run_id") or metadata.get("run_id") or resolved_task_id)
+    resolved_task_id = str(task_id or data.get("task_id") or metadata.get("task_id") or existing_provenance.get("task_id") or "")
+    resolved_run_id = str(run_id or data.get("run_id") or metadata.get("run_id") or existing_provenance.get("run_id") or resolved_task_id)
 
     data.update(
         {

@@ -93,6 +93,42 @@ def test_evidence_store_filter(tmp_path: Path):
     assert store.load_meta["loaded_file_count"] == 1
 
 
+def test_evidence_store_filters_runtime_identity_and_role():
+    records = [
+        EvidenceRecord.from_dict(
+            {
+                "evidence_id": "target_ev",
+                "symbol": "MSFT",
+                "period": "FY2024",
+                "source_type": "sec_filing",
+                "title": "MSFT filing",
+                "content": "Microsoft filing",
+                "provenance": {"task_id": "task-msft", "run_id": "run-msft"},
+                "company_identity": {"company_id": 15},
+                "metadata": {"evidence_role": "target"},
+            }
+        ),
+        EvidenceRecord.from_dict(
+            {
+                "evidence_id": "peer_ev",
+                "symbol": "NVDA",
+                "period": "FY2024",
+                "source_type": "market_data",
+                "title": "NVDA peer snapshot",
+                "content": "NVIDIA peer data",
+                "provenance": {"task_id": "task-msft", "run_id": "run-msft"},
+                "company_identity": {"company_id": 17},
+                "metadata": {"evidence_role": "peer"},
+            }
+        ),
+    ]
+    store = EvidenceStore(records)
+
+    selected = store.filter(task_id="task-msft", run_id="run-msft", company_id=15, evidence_role="target")
+
+    assert [row.evidence_id for row in selected] == ["target_ev"]
+
+
 def test_retrieve_evidence_skips_corrupt_parquet_file(tmp_path: Path):
     curated = tmp_path / "curated"
     _write_curated_inputs(curated)

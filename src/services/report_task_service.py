@@ -1530,6 +1530,9 @@ class ReportTaskService:
 def _evidence_matches_task_gate(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> bool:
     item_metadata = item.metadata_json or {}
     task_id = str(task.task_id or "")
+    company_match = _evidence_company_matches(item, task=task, metadata=metadata)
+    if not company_match:
+        return False
     if _norm(item_metadata.get("task_id")) == _norm(task_id):
         return True
     if item.document is not None and _norm(item.document.batch_id) == _norm(task_id):
@@ -1538,7 +1541,6 @@ def _evidence_matches_task_gate(item: EvidenceItem, *, task: ReportTask, metadat
         if link.claim is not None and _norm(link.claim.task_id) == _norm(task_id):
             return True
 
-    company_match = _evidence_company_matches(item, task=task, metadata=metadata)
     period_match = _evidence_period_matches(item, task=task, metadata=metadata)
     if company_match and period_match and str(item.source_type or "").lower() in PERIOD_GATED_SOURCE_TYPES:
         record = _artifact_record_from_evidence(item, task=task, metadata=metadata)
@@ -1578,30 +1580,40 @@ def _dedupe_task_evidence_candidates(items: list[EvidenceItem]) -> list[Evidence
 
 
 def _evidence_company_matches(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> bool:
-    expected_values = [
-        task.symbol,
-        metadata.get("symbol"),
-        metadata.get("company_name"),
-        metadata.get("company_symbol"),
-    ]
-    if task.company_id is not None and item.company_id == task.company_id:
-        return True
+    from src.data.company_universe import canonicalize_symbol
+
+    expected_symbol = canonicalize_symbol(str(task.symbol or metadata.get("symbol") or metadata.get("company_symbol") or ""))
+    source_identity_symbol = _immutable_source_symbol(item)
+    if expected_symbol and source_identity_symbol and expected_symbol != source_identity_symbol:
+        return False
+    if task.company_id is not None and item.company_id is not None:
+        return int(item.company_id) == int(task.company_id)
     company = item.company
-    item_values = [
-        company.name if company else "",
-        company.symbol if company else "",
-        *((company.aliases or []) if company else []),
-        (item.metadata_json or {}).get("symbol"),
-        (item.metadata_json or {}).get("company_name"),
-        (item.metadata_json or {}).get("company_symbol"),
-    ]
-    normalized_expected = [_norm(value) for value in expected_values if _norm(value)]
-    normalized_items = [_norm(value) for value in item_values if _norm(value)]
-    return any(
-        expected in item_value or item_value in expected
-        for expected in normalized_expected
-        for item_value in normalized_items
+    item_symbol = canonicalize_symbol(
+        str(
+            (company.symbol if company else "")
+            or (item.metadata_json or {}).get("symbol")
+            or (item.metadata_json or {}).get("company_symbol")
+            or ""
+        )
     )
+    if expected_symbol and item_symbol:
+        return expected_symbol == item_symbol
+    expected_name = _norm(metadata.get("company_name"))
+    item_name = _norm((company.name if company else "") or (item.metadata_json or {}).get("company_name"))
+    return bool(expected_name and item_name and expected_name == item_name)
+
+
+def _immutable_source_symbol(item: EvidenceItem) -> str:
+    """Resolve identity from source-controlled labels before mutable DB bindings."""
+
+    from src.data.company_universe import canonicalize_symbol, resolve_company_identifier_with_diagnostics
+
+    text = " ".join([str(item.title or ""), str(item.source_url or "")]).strip()
+    resolved = resolve_company_identifier_with_diagnostics(text)
+    if bool(resolved.get("resolved")) and float(resolved.get("confidence") or 0.0) >= 0.65:
+        return canonicalize_symbol(str(resolved.get("symbol") or ""))
+    return ""
 
 
 def _evidence_period_matches(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> bool:
@@ -1702,10 +1714,17 @@ def _artifact_record_from_evidence(item: EvidenceItem, *, task: ReportTask, meta
     from src.schemas.runtime_contracts import normalize_evidence_record
 
     item_metadata = dict(item.metadata_json or {})
+    source_symbol = str(
+        _immutable_source_symbol(item)
+        or (item.company.symbol if item.company is not None else "")
+        or item_metadata.get("symbol")
+        or item_metadata.get("company_symbol")
+        or ""
+    )
     record = {
         "evidence_id": item.evidence_id,
         "sample_id": item.evidence_id,
-        "symbol": task.symbol or metadata.get("symbol"),
+        "symbol": source_symbol,
         "period": item_metadata.get("period") or item_metadata.get("report_period") or task.period or metadata.get("period"),
         "source_type": item.source_type or "local_evidence",
         "trust_level": item.trust_level or "medium",
@@ -1715,7 +1734,10 @@ def _artifact_record_from_evidence(item: EvidenceItem, *, task: ReportTask, meta
         "page": item.page_no,
         "metadata": {
             **item_metadata,
-            "task_id": item_metadata.get("task_id") or task.task_id,
+            "origin_task_id": item_metadata.get("task_id") or "",
+            "task_id": task.task_id,
+            "expected_symbol": task.symbol or metadata.get("symbol"),
+            "evidence_role": item_metadata.get("evidence_role") or "target",
             "db_evidence_item_id": item.id,
             "source_evidence_id": item.evidence_id,
         },

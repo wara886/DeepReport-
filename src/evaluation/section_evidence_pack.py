@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from src.data.company_universe import canonicalize_symbol
+
 
 SECTION_KEY_ALIASES = {
     "investment_conclusion": "conclusion",
@@ -17,7 +19,9 @@ SECTION_KEY_ALIASES = {
 
 def build_section_evidence_packs(output_dir: str | Path) -> dict[str, Any]:
     outputs = Path(output_dir)
-    contracts = _mapping(_read_json(outputs / "report_section_contracts.json", {}), "contracts")
+    contract_artifact = _read_json(outputs / "report_section_contracts.json", {})
+    contracts = _mapping(contract_artifact, "contracts")
+    target_symbol = canonicalize_symbol(str(_mapping(contract_artifact, "metadata").get("target_symbol") or ""))
     dossiers = _read_json(outputs / "section_dossiers.json", {})
     dossiers = dossiers if isinstance(dossiers, dict) else {}
     evidence = _records(_read_json(outputs / "evidence.json", []), ("evidence", "items", "records"))
@@ -46,6 +50,11 @@ def build_section_evidence_packs(output_dir: str | Path) -> dict[str, Any]:
         contract = _merge_section_payloads(contracts, aliases, preferred_key=section_key)
         dossier = _merge_section_payloads(dossiers, aliases, preferred_key=section_key)
         section_claims = _section_claims(section_key, claims, dossier)
+        allowed_evidence = {
+            evidence_id: row
+            for evidence_id, row in evidence_by_id.items()
+            if _evidence_allowed_for_section(row, section_key=section_key, target_symbol=target_symbol)
+        }
         contract_ids = _dedupe(_strings(contract.get("citation_evidence_ids")))
         claim_ids = _dedupe(
             evidence_id
@@ -57,16 +66,16 @@ def build_section_evidence_packs(output_dir: str | Path) -> dict[str, Any]:
         # result. Prefer explicit contract evidence; otherwise use claim-linked
         # evidence as a bounded fallback.
         required_ids = contract_ids[:5] if contract_ids else claim_ids[:3]
-        must_use = [_evidence_summary(evidence_by_id[item], citation_labels.get(item, [])) for item in required_ids if item in evidence_by_id]
-        missing = [item for item in required_ids if item not in evidence_by_id]
+        must_use = [_evidence_summary(allowed_evidence[item], citation_labels.get(item, [])) for item in required_ids if item in allowed_evidence]
+        missing = [item for item in required_ids if item not in allowed_evidence]
         supporting_ids = _dedupe(required_ids + claim_ids + dossier_ids)
-        supporting = [_evidence_summary(evidence_by_id[item], citation_labels.get(item, [])) for item in supporting_ids if item in evidence_by_id]
+        supporting = [_evidence_summary(allowed_evidence[item], citation_labels.get(item, [])) for item in supporting_ids if item in allowed_evidence]
         conflicts = [row for row in supporting if _evidence_conflicted(row)]
         claim_rows = []
         for claim in section_claims:
             claim_id = str(claim.get("claim_id") or "")
             claim_evidence = _strings(claim.get("evidence_ids"))
-            available = [item for item in claim_evidence if item in evidence_by_id]
+            available = [item for item in claim_evidence if item in allowed_evidence]
             supported = bool(available) and claim_id not in unsupported_claim_ids
             claim_rows.append({
                 "claim_id": claim_id,
@@ -113,7 +122,7 @@ def _section_claims(section_key: str, claims: list[dict[str, Any]], dossier: dic
         "executive_summary": {"executive_summary", "summary"},
         "business_overview": {"business_overview", "business_profile", "strategy_business"},
         "financial_analysis": {"financial_analysis", "financial_statements", "earnings_quality"},
-        "valuation": {"valuation", "peer_compare", "valuation_sensitivity"},
+        "valuation": {"valuation", "valuation_sensitivity"},
         "risks": {"risks", "risk", "risk_factors"},
         "conclusion": {"conclusion", "investment_conclusion"},
     }.get(section_key, {section_key})
@@ -191,6 +200,24 @@ def _evidence_summary(row: dict[str, Any], citation_labels: list[str] | None = N
         "citation_labels": list(citation_labels or []),
         "content_excerpt": str(row.get("content") or "")[:800],
     }
+
+
+def _evidence_allowed_for_section(row: dict[str, Any], *, section_key: str, target_symbol: str) -> bool:
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    role = str(row.get("evidence_role") or metadata.get("evidence_role") or "target").strip().lower()
+    symbol = canonicalize_symbol(
+        str(
+            row.get("symbol")
+            or (row.get("company_identity") or {}).get("symbol")
+            or metadata.get("symbol")
+            or ""
+        )
+    )
+    if section_key == "peer_compare":
+        return role in {"target", "peer"} and (not symbol or not target_symbol or role == "peer" or symbol == target_symbol)
+    if role == "peer":
+        return False
+    return not symbol or not target_symbol or symbol == target_symbol
 
 
 def _canonical_for_section(section_key: str, payload: Any) -> list[dict[str, Any]]:

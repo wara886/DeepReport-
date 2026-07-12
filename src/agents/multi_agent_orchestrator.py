@@ -862,7 +862,7 @@ class MultiAgentOrchestrator:
                 task_id="task_002_browser",
                 task_type="browser",
                 description="Normalize evidence candidates into citation-ready records.",
-                parameters={"evidence_candidates": evidence_candidates},
+                parameters={"evidence_candidates": evidence_candidates, "symbol": symbol},
                 dependencies=["task_001_research"],
                 priority=4,
             ),
@@ -3262,6 +3262,7 @@ def enrich_task_parameters(
         params.setdefault("reader_max_records", int(profile["browser_reader_max_records"]))
         params.setdefault("reader_max_chars", int(profile["browser_reader_max_chars"]))
         params.setdefault("max_llm_records", int(profile["browser_max_llm_records"]))
+        params.setdefault("symbol", state["symbol"])
         if not bool(state.get("allow_document_enrichment", True)):
             params["use_reader"] = False
             params["use_pdf_reader"] = False
