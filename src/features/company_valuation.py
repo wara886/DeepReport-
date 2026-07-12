@@ -1010,7 +1010,7 @@ def _valuation_unavailable(
     missing_inputs: List[str],
     valuation_status: str = "",
 ) -> Dict[str, Any]:
-    return {
+    payload = {
         "symbol": symbol,
         "period": period,
         "valuation_available": False,
@@ -1021,6 +1021,43 @@ def _valuation_unavailable(
         "valuation_input_usable": False,
         "valuation_input_rejection_reason": error,
         "valuation_status": valuation_status or error,
+    }
+    bridge = _earnings_bridge_sensitivity(input_summary)
+    if bridge:
+        payload["valuation_sensitivity"] = bridge
+    return payload
+
+
+def _earnings_bridge_sensitivity(input_summary: Dict[str, Any]) -> Dict[str, Any]:
+    revenue = _safe_float(input_summary.get("revenue_billion"))
+    net_income = _safe_float(input_summary.get("net_income_billion"))
+    if revenue is None or net_income is None or revenue <= 0 or net_income <= 0:
+        return {}
+    margin = net_income / revenue
+    scenarios: Dict[str, Dict[str, Any]] = {}
+    for name, revenue_change_pct in (("bear", -1.0), ("base", 0.0), ("bull", 1.0)):
+        scenario_revenue = revenue * (1 + revenue_change_pct / 100)
+        scenario_income = scenario_revenue * margin
+        scenarios[name] = {
+            "revenue_change_pct": revenue_change_pct,
+            "revenue_billion": round(scenario_revenue, 2),
+            "net_income_billion": round(scenario_income, 2),
+            "value": round(scenario_income, 2),
+        }
+    return {
+        "method": "earnings_bridge",
+        "metric": "net_income_billion",
+        "unit": "billion",
+        "scenario_values": scenarios,
+        "directional_check": (
+            scenarios["bull"]["net_income_billion"]
+            >= scenarios["base"]["net_income_billion"]
+            >= scenarios["bear"]["net_income_billion"]
+        ),
+        "limitations": [
+            "This is an earnings bridge, not a DCF target-price model.",
+            "Net margin is held constant across scenarios.",
+        ],
     }
 
 

@@ -270,6 +270,9 @@ def test_peer_comparison_and_valuation_use_local_real_data():
     assert "gross_margin_pct" in peer_payload["ranking"]
     assert valuation["valuation_available"] is False
     assert valuation["error"] == "valuation_input_invalid"
+    assert valuation["valuation_sensitivity"]["method"] == "earnings_bridge"
+    assert valuation["valuation_sensitivity"]["directional_check"] is True
+    assert set(valuation["valuation_sensitivity"]["scenario_values"]) == {"bear", "base", "bull"}
     valuation["recommendation"] = "中性观察"
     assert valuation["recommendation"] in {"积极关注", "中性偏积极", "中性观察"}
     assert "annual_or_ttm_free_cash_flow" in valuation["missing_inputs"]

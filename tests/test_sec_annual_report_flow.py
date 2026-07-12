@@ -29,6 +29,17 @@ marketable securities, operating cash flow, and capital allocation priorities.</
 </body></html>
 """
 
+SPLIT_HEADING_10K = """
+<html><body>
+<h1>INDEX</h1><p>Item 1A. Risk Factors 20 Item 1B. Unresolved Staff Comments 34</p>
+<h1>PART I</h1><p>Item 1A</p><h2>ITEM 1A. RIS K FACTORS</h2>
+<p>Our operations and financial results are subject to competition, cybersecurity,
+regulatory, supply-chain, and foreign-currency risks that could adversely affect
+revenue, margins, cash flow, liquidity, and the trading price of our common stock.</p>
+<h1>Item 1B. Unresolved Staff Comments</h1><p>None.</p>
+</body></html>
+"""
+
 
 def test_sec_resolver_selects_nvda_fy2025_10k(monkeypatch):
     def fake_get_json(url, headers=None, timeout=20):
@@ -123,6 +134,20 @@ def test_annual_report_extractor_emits_sections_and_evidence_records():
     records = annual_sections_to_evidence_records(payload)
     assert any(record["source_type"] == "sec_10k_section" for record in records)
     assert any("Item 1A" in record["title"] for record in records)
+
+
+def test_annual_report_extractor_handles_split_xbrl_risk_heading():
+    payload = AnnualReportSectionExtractor(html_text=SPLIT_HEADING_10K).extract(
+        symbol="MSFT",
+        period="FY2024",
+        filing_url="https://www.sec.gov/Archives/test/msft.htm",
+        filing_evidence_id="sec_10k_msft_fy2024",
+    )
+
+    assert payload["coverage"]["risk_factors"] is True
+    risk_text = " ".join(item["text"] for item in payload["sections"]["risk_factors"])
+    assert "cybersecurity" in risk_text
+    assert "Unresolved Staff Comments" not in risk_text
 
 
 def test_attach_annual_report_sections_merges_10k_evidence(monkeypatch, tmp_path):

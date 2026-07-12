@@ -503,6 +503,32 @@ class TestContractBuilder:
         assert "0.94B" in sensitivity.deterministic_text
         assert "valuation_sensitivity_earnings_bridge_only" in sensitivity.quality_flags
 
+    def test_valuation_sensitivity_keeps_structured_earnings_bridge_partial(self):
+        contracts = build_report_section_contracts(
+            state={"symbol": "MSFT", "period": "FY2024"},
+            evidence_records=[],
+            analysis_artifacts={
+                "valuation_model": {"valuation_status": "rough_observation_only"},
+                "valuation_sensitivity": {
+                    "method": "earnings_bridge",
+                    "metric": "net_income_billion",
+                    "scenario_values": {
+                        "bear": {"value": 87.26},
+                        "base": {"value": 88.14},
+                        "bull": {"value": 89.02},
+                    },
+                },
+            },
+            section_dossiers={},
+            citations=[],
+        )
+
+        sensitivity = contracts.get("valuation_sensitivity")
+        assert sensitivity is not None
+        assert sensitivity.status == "partial"
+        assert "盈利桥接（非DCF目标价）" in sensitivity.deterministic_text
+        assert "valuation_sensitivity_earnings_bridge_only" in sensitivity.quality_flags
+
 
 class TestCleanPdfBoilerplate:
 

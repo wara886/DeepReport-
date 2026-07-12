@@ -1034,7 +1034,12 @@ def _build_valuation_sensitivity(
     rows = _normalize_sensitivity_rows(valuation_sensitivity)
     if rows:
         c.deterministic_text = _render_sensitivity_text(rows)
-        c.status = "supported"
+        if str(valuation_sensitivity.get("method") or "") == "earnings_bridge":
+            c.deterministic_text = "盈利桥接（非DCF目标价）：\n" + c.deterministic_text
+            c.status = "partial"
+            c.add_quality_flag("valuation_sensitivity_earnings_bridge_only")
+        else:
+            c.status = "supported"
     else:
         c.add_blocked_reason("valuation_sensitivity_empty")
 
