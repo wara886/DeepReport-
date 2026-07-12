@@ -478,7 +478,30 @@ def _build_ownership_governance(
                 c.add_quality_flag("governance_uses_sec_10k")
                 break
 
-    if len(c.facts) >= 1:
+    if c.status == "gap":
+        proxy_records = [
+            record
+            for record in evidence_records
+            if isinstance(record, dict) and str(record.get("source_type") or "").lower() == "sec_proxy_filing"
+        ]
+        for record in proxy_records:
+            text = _clip_at_sentence_boundary(str(record.get("content") or ""), 900)
+            evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
+            if len(text.strip()) < 80:
+                continue
+            c.add_fact(
+                "governance_proxy_disclosure",
+                text,
+                evidence_ids=[evidence_id] if evidence_id else [],
+                source_types=["sec_proxy_filing"],
+            )
+            if evidence_id:
+                evidence_ids_used.append(evidence_id)
+            c.status = "supported"
+            c.add_quality_flag("governance_uses_sec_proxy")
+            break
+
+    if len(c.facts) >= 1 and c.status == "gap":
         c.status = "partial"
     if len(c.facts) >= 2 and evidence_ids_used:
         c.status = "supported"

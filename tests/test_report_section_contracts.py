@@ -263,6 +263,32 @@ class TestContractBuilder:
         assert reason in {"governance_section_not_found", "governance_chunks_noise_only",
                           "governance_summary_not_injected"}, f"Unexpected reason: {reason}"
 
+    def test_us_governance_consumes_sec_proxy_evidence(self):
+        contracts = ReportSectionContracts()
+        _build_ownership_governance(
+            contracts,
+            [],
+            [],
+            [
+                {
+                    "evidence_id": "sec_proxy_msft_fy2024",
+                    "source_type": "sec_proxy_filing",
+                    "content": (
+                        "The board of directors maintains independent audit, compensation, and nominating committees. "
+                        "The filing also discloses beneficial ownership for directors and named executive officers."
+                    ),
+                }
+            ],
+            {"symbol": "MSFT", "period": "FY2024"},
+        )
+
+        contract = contracts.get("ownership_governance")
+        assert contract is not None
+        assert contract.status in {"partial", "supported"}
+        assert not contract.blocked_reasons
+        assert "governance_uses_sec_proxy" in contract.quality_flags
+        assert "sec_proxy_msft_fy2024" in contract.citation_evidence_ids
+
     def test_strategy_business_no_fragments(self):
         """Strategy section must not contain fragment patterns."""
         contracts = ReportSectionContracts()

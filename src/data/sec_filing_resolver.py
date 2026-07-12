@@ -26,6 +26,7 @@ from src.utils.env import load_env_files
 
 
 TEN_K_FORMS = {"10-K", "10-K/A"}
+PROXY_FORMS = {"DEF 14A", "DEFA14A"}
 
 
 @dataclass(frozen=True)
@@ -186,7 +187,77 @@ def resolve_sec_annual_filing(
     return _payload([record], sections_input, meta)
 
 
+def resolve_sec_proxy_filing(
+    symbol: str,
+    period: str,
+    config_path: str = "configs/data_sources.yaml",
+    raw_data_root: str = "data/raw/real_data",
+) -> SecAnnualFilingPayload:
+    """Resolve the fiscal-year proxy statement and return bounded governance evidence."""
+
+    symbol = str(symbol or "").strip().upper()
+    period = str(period or "").strip().upper()
+    fiscal_year = _fiscal_year(period)
+    if not symbol or fiscal_year is None:
+        return _payload([], {}, {"status": "skipped", "failure_reason": "missing_symbol_or_fiscal_year"})
+    config = _load_data_source_config(config_path)
+    sec_cfg = dict(config.get("independent_sources", {}).get("company", {}).get("sec_edgar", {}))
+    cik = _resolve_cik(symbol=symbol, raw_data_root=raw_data_root, config=sec_cfg)
+    if not cik:
+        return _payload([], {}, {"status": "failed", "failure_reason": "missing_cik", "symbol": symbol})
+    cik = cik.zfill(10)
+    timeout = float(sec_cfg.get("timeout", 20))
+    user_agent = _sec_user_agent(sec_cfg)
+    submissions_url = f"{str(sec_cfg.get('submissions_base_url') or 'https://data.sec.gov/submissions')}/CIK{cik}.json"
+    try:
+        submissions = _get_json(submissions_url, headers={"User-Agent": user_agent, "Host": "data.sec.gov"}, timeout=timeout)
+        filing = _select_filing(submissions, forms=PROXY_FORMS, fiscal_year=fiscal_year)
+        if not filing:
+            return _payload([], {}, {"status": "failed", "failure_reason": "no_matching_proxy", "symbol": symbol})
+        accession = str(filing.get("accession_number") or "")
+        filing_url = (
+            f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/"
+            f"{accession.replace('-', '')}/{filing.get('primary_document')}"
+        )
+        html_text = _get_text(filing_url, headers={"User-Agent": user_agent, "Host": "www.sec.gov"}, timeout=timeout)
+    except Exception as exc:
+        return _payload([], {}, {"status": "failed", "failure_reason": "proxy_fetch_error", "error": str(exc), "symbol": symbol})
+
+    content = _proxy_governance_excerpt(html_text)
+    if not content:
+        return _payload([], {}, {"status": "failed", "failure_reason": "proxy_governance_text_missing", "filing_url": filing_url})
+    evidence_id = f"sec_proxy_{symbol.lower()}_fy{fiscal_year}"
+    record = apply_source_quality(
+        {
+            "evidence_id": evidence_id,
+            "sample_id": evidence_id,
+            "source_type": "sec_proxy_filing",
+            "title": f"{symbol} FY{fiscal_year} DEF 14A governance disclosure",
+            "source_url": filing_url,
+            "publish_time": str(filing.get("filing_date") or ""),
+            "content": content,
+            "symbol": symbol,
+            "period": period,
+            "trust_level": "high",
+            "metadata": {
+                "provider": "SEC EDGAR",
+                "cik": cik,
+                "accession_number": accession,
+                "form": filing.get("form", ""),
+                "filing_date": filing.get("filing_date", ""),
+                "fiscal_year": fiscal_year,
+                "section_type": "ownership_governance",
+            },
+        }
+    )
+    return _payload([record], {}, {"status": "resolved", "filing_url": filing_url, "filing": filing, "symbol": symbol, "period": period})
+
+
 def _select_annual_filing(submissions: dict[str, Any], fiscal_year: int) -> dict[str, Any]:
+    return _select_filing(submissions, forms=TEN_K_FORMS, fiscal_year=fiscal_year)
+
+
+def _select_filing(submissions: dict[str, Any], *, forms: set[str], fiscal_year: int) -> dict[str, Any]:
     recent = submissions.get("filings", {}).get("recent", {})
     if not isinstance(recent, dict):
         return {}
@@ -199,7 +270,7 @@ def _select_annual_filing(submissions: dict[str, Any], fiscal_year: int) -> dict
     rows: list[dict[str, Any]] = []
     for idx, form in enumerate(forms if isinstance(forms, list) else []):
         form_text = str(form or "").upper()
-        if form_text not in TEN_K_FORMS:
+        if form_text not in forms:
             continue
         row = {
             "form": form_text,
@@ -221,12 +292,38 @@ def _select_annual_filing(submissions: dict[str, Any], fiscal_year: int) -> dict
             year_score = 2
         else:
             year_score = 0
-        form_score = 2 if str(row.get("form") or "").upper() == "10-K" else 1
+        form_score = 2 if str(row.get("form") or "").upper() in {"10-K", "DEF 14A"} else 1
         return (year_score, form_score, str(row.get("filing_date") or ""))
 
     rows = [row for row in rows if score(row)[0] > 0]
     rows.sort(key=score, reverse=True)
     return rows[0] if rows else {}
+
+
+def _proxy_governance_excerpt(html_text: str, *, max_chars: int = 6000) -> str:
+    text = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", str(html_text or ""))
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    text = re.sub(r"&nbsp;|&#160;", " ", text, flags=re.I)
+    text = re.sub(r"&amp;", "&", text, flags=re.I)
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return ""
+    terms = ("security ownership", "beneficial ownership", "board of directors", "corporate governance", "executive compensation")
+    excerpts: list[str] = []
+    lowered = text.lower()
+    for term in terms:
+        start = 0
+        while len(" ".join(excerpts)) < max_chars:
+            index = lowered.find(term, start)
+            if index < 0:
+                break
+            excerpt = text[max(0, index - 250) : min(len(text), index + 950)].strip()
+            if excerpt and excerpt not in excerpts:
+                excerpts.append(excerpt)
+            start = index + len(term)
+            if len(excerpts) >= 5:
+                break
+    return " ".join(excerpts)[:max_chars].strip()
 
 
 def _payload(records: list[dict[str, Any]], sections_input: dict[str, Any], meta: dict[str, Any]) -> SecAnnualFilingPayload:

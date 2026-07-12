@@ -3,7 +3,7 @@ from __future__ import annotations
 from src.agents.annual_report_section_extractor import AnnualReportSectionExtractor, annual_sections_to_evidence_records
 from src.agents.multi_agent_orchestrator import attach_annual_report_sections_to_state
 from src.agents.section_dossier_builder import SectionDossierBuilder
-from src.data.sec_filing_resolver import resolve_sec_annual_filing
+from src.data.sec_filing_resolver import resolve_sec_annual_filing, resolve_sec_proxy_filing
 from src.report.chart_generator import sanitize_chart_payloads
 from src.report.deterministic_section_renderer import render_all_deterministic_blocks
 
@@ -77,6 +77,39 @@ def test_sec_resolver_prefers_original_10k_over_later_amendment(monkeypatch):
     assert payload.meta["filing"]["primary_document"] == "original10k.htm"
 
 
+def test_sec_proxy_resolver_extracts_bounded_governance_evidence(monkeypatch):
+    monkeypatch.setattr(
+        "src.data.sec_filing_resolver._get_json",
+        lambda *args, **kwargs: {
+            "filings": {
+                "recent": {
+                    "form": ["DEF 14A", "10-K"],
+                    "accessionNumber": ["0001045810-25-000030", "0001045810-25-000023"],
+                    "filingDate": ["2025-05-10", "2025-02-26"],
+                    "reportDate": ["2025-01-26", "2025-01-26"],
+                    "primaryDocument": ["nvda-proxy.htm", "nvda-10k.htm"],
+                }
+            }
+        },
+    )
+    monkeypatch.setattr(
+        "src.data.sec_filing_resolver._get_text",
+        lambda *args, **kwargs: (
+            "<html><body><h1>Corporate Governance</h1>"
+            "<p>The board of directors has independent audit, compensation, and nominating committees.</p>"
+            "<h2>Security Ownership</h2><p>Beneficial ownership is disclosed for directors and named officers.</p>"
+            "</body></html>"
+        ),
+    )
+
+    payload = resolve_sec_proxy_filing("NVDA", "FY2025")
+
+    assert payload.meta["status"] == "resolved"
+    assert payload.evidence_records[0]["source_type"] == "sec_proxy_filing"
+    assert "board of directors" in payload.evidence_records[0]["content"].lower()
+    assert len(payload.evidence_records[0]["content"]) <= 6000
+
+
 def test_annual_report_extractor_emits_sections_and_evidence_records():
     payload = AnnualReportSectionExtractor(html_text=MINIMAL_10K).extract(
         symbol="NVDA",
@@ -116,6 +149,7 @@ def test_attach_annual_report_sections_merges_10k_evidence(monkeypatch, tmp_path
             }
 
     monkeypatch.setattr("src.agents.multi_agent_orchestrator.resolve_sec_annual_filing", lambda **kwargs: FakePayload())
+    monkeypatch.setattr("src.agents.multi_agent_orchestrator.resolve_sec_proxy_filing", lambda **kwargs: FakePayload())
     state = {
         "symbol": "NVDA",
         "period": "FY2025",

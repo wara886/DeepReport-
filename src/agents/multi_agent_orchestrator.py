@@ -52,7 +52,7 @@ from src.data.company_universe import (
 from src.data.official_evidence_archive import archive_official_evidence_manifest, build_official_evidence_artifacts
 from src.data.pdf_artifacts import build_pdf_artifacts
 from src.data.pdf_rag_pipeline import build_pdf_rag_artifacts
-from src.data.sec_filing_resolver import resolve_sec_annual_filing
+from src.data.sec_filing_resolver import resolve_sec_annual_filing, resolve_sec_proxy_filing
 from src.evaluation.company_report_scorecard import build_company_report_scorecard
 from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
 from src.evaluation.multimodal_consistency import audit_multimodal_consistency
@@ -3803,6 +3803,17 @@ def attach_annual_report_sections_to_state(state: Dict[str, Any], raw_data_root:
     if filing_records:
         records = _merge_records(records, filing_records, key_names=["evidence_id", "sample_id", "source_url"])
 
+    proxy_payload = resolve_sec_proxy_filing(
+        symbol=symbol,
+        period=period,
+        config_path=str(state.get("data_source_config_path") or "configs/data_sources.yaml"),
+        raw_data_root=raw_data_root,
+    ).to_dict()
+    proxy_records = proxy_payload.get("evidence_records", []) if isinstance(proxy_payload.get("evidence_records"), list) else []
+    if proxy_records:
+        records = _merge_records(records, proxy_records, key_names=["evidence_id", "sample_id", "source_url"])
+    state["sec_proxy_resolver"] = dict(proxy_payload.get("meta", {}))
+
     sections_input = data.get("sections_input", {}) if isinstance(data.get("sections_input"), dict) else {}
     extractor = AnnualReportSectionExtractor(
         html_text=str(sections_input.get("html_text") or ""),
@@ -3828,6 +3839,7 @@ def attach_annual_report_sections_to_state(state: Dict[str, Any], raw_data_root:
     analysis["annual_report_sections"] = annual_sections
     analysis["annual_report_section_count"] = int(annual_sections.get("section_count") or 0)
     analysis["sec_filing_resolver"] = resolver_meta
+    analysis["sec_proxy_resolver"] = state["sec_proxy_resolver"]
     if not section_records:
         state["collaborative_degraded_report"] = True
         reason = str(resolver_meta.get("failure_reason") or resolver_meta.get("status") or "annual_report_sections_missing")
