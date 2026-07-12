@@ -74,6 +74,7 @@ def test_report_task_api_create_list_detail_without_running(tmp_path):
     assert body["metadata"]["company_name"] == "NVIDIA"
     assert body["metadata"]["data_source_scope"] == "official_first"
     assert body["metadata"]["report_type"] == "annual_review"
+    assert body["metadata"]["execution_mode"] == "static"
 
     assert listed.status_code == 200
     assert listed.json()["total"] == 1
@@ -81,6 +82,23 @@ def test_report_task_api_create_list_detail_without_running(tmp_path):
 
     assert detail.status_code == 200
     assert detail.json()["events"][0]["stage"] == "queued"
+
+
+def test_report_task_can_explicitly_select_diagnostic_orchestrator_mode(tmp_path):
+    with build_client(tmp_path) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={
+                "task_id": "task-explicit-collaborative",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "execution_mode": "collaborative",
+                "run_immediately": False,
+            },
+        )
+
+    assert created.status_code == 201
+    assert created.json()["metadata"]["execution_mode"] == "collaborative"
 
 
 def test_report_task_api_accepts_auto_run_false_alias(tmp_path):

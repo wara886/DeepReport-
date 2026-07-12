@@ -1021,6 +1021,7 @@ class MultiAgentOrchestrator:
 
         # Build contract-first generation artifacts
         static_contracts, static_binder = self._build_contracts_and_bind(static_state)
+        static_section_packs = self._prepare_prewrite_section_evidence_packs(static_state)
 
         final_result = self._execute(
             "final_answer",
@@ -1037,6 +1038,7 @@ class MultiAgentOrchestrator:
                     "evidence_records": evidence_records,
                     "claim_evidence_bundles": static_bundles,
                     "section_dossiers": static_dossiers,
+                    "section_evidence_packs": static_section_packs,
                     "conversation_brief": conversation_brief,
                     "skill_brief": self._skill_brief("report markdown citations charts", "final_answer", max_items=2),
                     "tables": tables,

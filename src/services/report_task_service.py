@@ -1352,7 +1352,9 @@ class ReportTaskService:
         return f"task_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid.uuid4().hex[:8]}"
 
     def _build_task_metadata(self, *, task_id: str, payload: dict[str, Any], symbol: str, period: str) -> dict[str, Any]:
-        execution_mode = str(payload.get("execution_mode") or "collaborative")
+        # Keep the production path single-pass. The collaborative modes remain
+        # available for explicit diagnostics while LangGraph nodes are split.
+        execution_mode = str(payload.get("execution_mode") or "static")
         output_dir = self.output_root / "runs" / task_id / "outputs"
         report_dir = self.report_root / "runs" / task_id / "reports"
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -1412,7 +1414,7 @@ class ReportTaskService:
             research_topic=str(metadata.get("research_topic") or ""),
             symbol=str(metadata.get("symbol") or ""),
             period=str(metadata.get("period") or ""),
-            execution_mode=str(metadata.get("execution_mode") or "collaborative"),
+            execution_mode=str(metadata.get("execution_mode") or "static"),
             fast=bool(metadata.get("fast", True)),
             search_engines=list(metadata.get("search_engines") or []),
             enable_remote_data=bool(metadata.get("enable_remote_data", False)),

@@ -620,6 +620,34 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert "gap_count" in repair_summary
 
 
+def test_static_production_path_builds_section_packs_before_writer(tmp_path):
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        model=FakeJsonModel(),
+    )
+
+    orchestrator.run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+    )
+
+    packs = json.loads((tmp_path / "outputs" / "section_evidence_packs.json").read_text(encoding="utf-8"))
+    trace = [
+        json.loads(line)
+        for line in (tmp_path / "outputs" / "task_trace.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    writer = next(item for item in trace if item.get("agent_key") == "final_answer")
+    writer_packs = writer["task"]["parameters"]["section_evidence_packs"]
+
+    assert packs["status"] == "ready"
+    assert packs["section_count"] > 0
+    assert writer_packs["section_count"] == packs["section_count"]
+    assert writer_packs["packs"] == packs["packs"]
+
+
 def test_multi_agent_orchestrator_runs_compact_collaborative_by_default(tmp_path):
     orchestrator = MultiAgentOrchestrator(
         output_dir=str(tmp_path / "outputs"),
