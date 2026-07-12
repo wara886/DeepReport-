@@ -307,6 +307,7 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
         "human_review",
     }
     assert body["task"]["metadata"]["report_runtime"]["canonical_metrics"]["status"] == "ready"
+    assert body["task"]["metadata"]["report_runtime"]["run_manifest"]["status"] == "ready"
     generation_execution = body["task"]["metadata"]["report_runtime"]["generation_execution"]
     assert generation_execution["status"] == "ready"
     assert generation_execution["agent_count"] == 2

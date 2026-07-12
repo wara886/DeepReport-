@@ -62,6 +62,7 @@ from src.runtime.langgraph_report_runtime import (
     ReportGraphState,
     project_run_state_patch,
 )
+from src.runtime.run_manifest import commit_run_artifacts, validate_run_manifest
 from src.services.artifact_importer import ArtifactImporter
 from src.utils.config import load_config
 from src.utils.periods import latest_completed_period
@@ -292,6 +293,7 @@ class ReportTaskService:
     def _graph_build_canonical_metrics_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
         summary = self._refresh_canonical_metrics(task_id)
+        self._commit_run_artifacts(task_id, ["evidence", "canonical_metrics"])
         self._update_runtime_metadata(task_id, "canonical_metrics", summary)
         self._record_runtime_stage(
             task_id,
@@ -307,6 +309,7 @@ class ReportTaskService:
         metadata = self._task_metadata(task_id)
         output_dir = Path(str(metadata.get("output_dir") or ""))
         artifact = build_section_evidence_packs(output_dir)
+        self._commit_run_artifacts(task_id, ["claims", "section_evidence_packs"])
         summary = _build_section_pack_manifest(output_dir, artifact=artifact)
         self._update_runtime_metadata(task_id, "section_evidence_packs", summary)
         self._record_runtime_stage(
@@ -344,7 +347,15 @@ class ReportTaskService:
             session.commit()
         self._run_orchestrator(task_id=task_id, metadata=metadata)
         self._enhance_artifacts_with_task_evidence(task_id)
+        self._refresh_canonical_metrics(task_id)
+        refreshed_metadata = self._task_metadata(task_id)
+        refreshed_output_dir = Path(str(refreshed_metadata.get("output_dir") or ""))
+        build_section_evidence_packs(refreshed_output_dir)
         self.import_artifacts(task_id)
+        self._commit_run_artifacts(
+            task_id,
+            ["evidence", "canonical_metrics", "claims", "section_evidence_packs", "citations", "report"],
+        )
         return self._current_run_state_patch(task_id)
 
     def _graph_static_agent_phase_node(self, state: ReportGraphState, phase: str) -> dict[str, Any]:
@@ -371,16 +382,20 @@ class ReportTaskService:
         task_id = str(state["task_id"])
         metadata = self._task_metadata(task_id)
         output_dir = Path(str(metadata.get("output_dir") or ""))
-        # Stage 2 keeps the legacy orchestrator as a transitional generation node.
-        # Refresh artifacts produced by its internal analyze step so runtime
-        # metadata and downstream verification read the same post-generation data.
-        self._refresh_canonical_metrics(task_id)
-        section_packs = build_section_evidence_packs(output_dir)
-        self._update_runtime_metadata(
-            task_id,
-            "section_evidence_packs",
-            _build_section_pack_manifest(output_dir, artifact=section_packs),
-        )
+        if self.orchestrator_factory is not MultiAgentOrchestrator:
+            # Compatibility path for injected legacy orchestrators that still
+            # create analysis artifacts inside the generation callback.
+            self._refresh_canonical_metrics(task_id)
+            section_packs = build_section_evidence_packs(output_dir)
+            self._update_runtime_metadata(
+                task_id,
+                "section_evidence_packs",
+                _build_section_pack_manifest(output_dir, artifact=section_packs),
+            )
+            self._commit_run_artifacts(
+                task_id,
+                ["evidence", "canonical_metrics", "claims", "section_evidence_packs", "citations", "report"],
+            )
         summary = _build_generation_execution_summary(output_dir)
         self._update_runtime_metadata(task_id, "generation_execution", summary)
         self._record_runtime_stage(
@@ -423,6 +438,7 @@ class ReportTaskService:
             repair_callback=repair_callback,
         )
         verification = _build_section_verification_manifest(output_dir=output_dir, report_dir=report_dir)
+        self._commit_run_artifacts(task_id, ["report", "section_verification"])
         self._update_runtime_metadata(task_id, "section_verification", verification)
         summary = {
             "schema_version": "section_repair_runtime.v1",
@@ -515,9 +531,29 @@ class ReportTaskService:
                 task.finished_at = None
                 session.commit()
         self.run_quality_gate(task_id)
+        self._validate_run_manifest(task_id)
         self._refresh_retrieval_attribution(task_id)
         self.import_artifacts(task_id)
         return self._current_run_state_patch(task_id)
+
+    def _commit_run_artifacts(self, task_id: str, artifact_names: list[str]) -> dict[str, Any]:
+        metadata = self._task_metadata(task_id)
+        manifest = commit_run_artifacts(
+            Path(str(metadata.get("output_dir") or "")),
+            Path(str(metadata.get("report_dir") or "")),
+            artifact_names,
+        )
+        self._update_runtime_metadata(task_id, "run_manifest", _run_manifest_summary(manifest))
+        return manifest
+
+    def _validate_run_manifest(self, task_id: str) -> dict[str, Any]:
+        metadata = self._task_metadata(task_id)
+        manifest = validate_run_manifest(
+            Path(str(metadata.get("output_dir") or "")),
+            Path(str(metadata.get("report_dir") or "")),
+        )
+        self._update_runtime_metadata(task_id, "run_manifest", _run_manifest_summary(manifest))
+        return manifest
 
     def _task_metadata(self, task_id: str) -> dict[str, Any]:
         with self.session() as session:
@@ -2301,6 +2337,23 @@ def _build_section_pack_manifest(output_dir: Path, *, artifact: dict[str, Any] |
             "report_section_contracts": str(output_dir / "report_section_contracts.json"),
             "section_dossiers": str(output_dir / "section_dossiers.json"),
         },
+    }
+
+
+def _run_manifest_summary(manifest: dict[str, Any]) -> dict[str, Any]:
+    artifacts = manifest.get("artifacts") if isinstance(manifest.get("artifacts"), dict) else {}
+    stale = manifest.get("stale_artifacts") if isinstance(manifest.get("stale_artifacts"), dict) else {}
+    return {
+        "schema_version": "report_run_manifest_runtime.v1",
+        "status": str(manifest.get("status") or "missing"),
+        "artifact_count": len(artifacts),
+        "artifact_versions": {
+            name: str(payload.get("version") or "")
+            for name, payload in artifacts.items()
+            if isinstance(payload, dict)
+        },
+        "stale_artifacts": stale,
+        "missing_artifacts": list(manifest.get("missing_artifacts") or []),
     }
 
 
