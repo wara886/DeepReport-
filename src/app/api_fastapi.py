@@ -197,6 +197,15 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.get("/api/report-tasks/{task_id}/tool-runs")
+    def get_report_task_tool_runs(task_id: str, limit: int = 200) -> Response:
+        try:
+            return JSONResponse(content=_report_task_service(app).get_tool_runs(task_id, limit=limit))
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.get("/api/report-tasks/{task_id}/runtime")
     def get_report_task_runtime(task_id: str) -> Response:
         try:

@@ -2785,11 +2785,20 @@ def build_tool_trace(agents: Dict[str, Any], trace: List[Dict[str, Any]], state:
                     "caller_agent": agent_name,
                     "tool_name": tool_name,
                     "input_summary": _shorten(react_item.get("arguments") or react_item.get("input") or {}),
-                    "output_summary": _shorten(react_item.get("observation") or react_item.get("output") or {}),
+                    "output_summary": _shorten(
+                        react_item.get("output_summary")
+                        or react_item.get("observation")
+                        or react_item.get("output")
+                        or {}
+                    ),
                     "success": not bool(react_item.get("error")),
                     "failure_reason": str(react_item.get("error") or ""),
-                    "duration_sec": react_item.get("duration_sec", 0),
-                    "evidence_ids": [],
+                    "error_type": str(react_item.get("error_type") or ""),
+                    "attempt_count": int(react_item.get("attempts", 1) or 1),
+                    "duration_sec": react_item.get("duration_sec")
+                    if react_item.get("duration_sec") is not None
+                    else round(float(react_item.get("duration_ms", 0) or 0) / 1000, 6),
+                    "evidence_ids": list(react_item.get("evidence_ids") or []),
                     "artifact_paths": [],
                     "source": "react",
                 }

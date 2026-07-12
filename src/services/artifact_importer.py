@@ -26,6 +26,7 @@ from src.db.models import (
     ReportClaim,
     ReportTask,
     ReportTaskEvent,
+    ToolRun,
 )
 
 
@@ -53,6 +54,8 @@ OUTPUT_ARTIFACTS = {
     "section_repair.json": "section_repair",
     "evidence_retrieval_attribution.json": "evidence_retrieval_attribution",
     "performance_trace.json": "performance_trace",
+    "agent_collaboration_trace.json": "agent_collaboration_trace",
+    "tool_trace.json": "tool_trace",
 }
 
 
@@ -65,6 +68,7 @@ class ArtifactImportResult:
     claim_evidence_count: int
     financial_fact_count: int
     llm_run_count: int
+    tool_run_count: int
     document_count: int
     document_processing_step_count: int
     warnings: list[str]
@@ -78,6 +82,7 @@ class ArtifactImportResult:
             "claim_evidence_count": self.claim_evidence_count,
             "financial_fact_count": self.financial_fact_count,
             "llm_run_count": self.llm_run_count,
+            "tool_run_count": self.tool_run_count,
             "document_count": self.document_count,
             "document_processing_step_count": self.document_processing_step_count,
             "warnings": list(self.warnings),
@@ -115,6 +120,8 @@ class ArtifactImporter:
                 name=str(metadata.get("company_name") or task.symbol or ""),
                 market=str(metadata.get("market") or ""),
             )
+            if task.company_id is None and company_id is not None:
+                task.company_id = company_id
 
             artifacts = self._import_artifacts(session, task_id, output_dir, report_dir)
             document = self._upsert_task_document(
@@ -157,6 +164,7 @@ class ArtifactImporter:
                 task_id=task_id,
                 output_dir=output_dir,
             )
+            tool_run_count = self._import_tool_runs(session, task_id=task_id, output_dir=output_dir)
             document_step_count = (
                 self._replace_document_processing_steps(
                     session,
@@ -181,6 +189,7 @@ class ArtifactImporter:
                 claim_evidence_count=link_count,
                 financial_fact_count=financial_fact_count,
                 llm_run_count=llm_run_count,
+                tool_run_count=tool_run_count,
                 document_count=1 if document is not None else 0,
                 document_processing_step_count=document_step_count,
                 warnings=warnings,
@@ -581,6 +590,47 @@ class ArtifactImporter:
                         "memory_used": trace_item.get("memory_used"),
                         "quality_feedback_used": trace_item.get("quality_feedback_used"),
                     },
+                )
+            )
+        if rows:
+            session.add_all(rows)
+            session.flush()
+        return len(rows)
+
+    def _import_tool_runs(self, session: Session, *, task_id: str, output_dir: Path) -> int:
+        session.execute(delete(ToolRun).where(ToolRun.task_id == task_id, ToolRun.source.in_(["react", "deterministic", "search_engine"])))
+        trace = _read_json(output_dir / "tool_trace.json", default={})
+        calls = trace.get("calls", []) if isinstance(trace, dict) else []
+        rows: list[ToolRun] = []
+        for index, call in enumerate(calls, start=1):
+            if not isinstance(call, dict):
+                continue
+            tool_name = _string(call.get("tool_name")).strip()
+            if not tool_name:
+                continue
+            source = _string(call.get("source") or "deterministic")
+            if source not in {"react", "deterministic", "search_engine"}:
+                source = "deterministic"
+            success = call.get("success") is not False
+            duration_ms = _duration_to_ms(call.get("duration_sec"))
+            rows.append(
+                ToolRun(
+                    run_id=f"tool_{task_id}_{index:04d}",
+                    task_id=task_id,
+                    langgraph_node="generation",
+                    agent_name=_string_or_none(call.get("caller_agent")),
+                    tool_name=tool_name,
+                    status="success" if success else "failed",
+                    attempt_count=max(1, int(call.get("attempt_count", 1) or 1)),
+                    duration_ms=duration_ms,
+                    input_json=_dict_or_none(call.get("input_summary")) or {},
+                    output_summary_json=_dict_or_none(call.get("output_summary")) or {},
+                    evidence_ids=[str(item) for item in call.get("evidence_ids", []) if str(item)],
+                    artifact_paths=[str(item) for item in call.get("artifact_paths", []) if str(item)],
+                    error_type=_string_or_none(call.get("error_type")),
+                    error_message=_string_or_none(call.get("failure_reason")),
+                    source=source,
+                    metadata_json={"trace_schema_version": trace.get("schema_version", "tool_trace.v1")},
                 )
             )
         if rows:

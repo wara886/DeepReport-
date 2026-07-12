@@ -222,6 +222,34 @@ class LLMRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
 
+class ToolRun(Base):
+    __tablename__ = "tool_runs"
+    __table_args__ = (
+        Index("ix_tool_runs_task_created", "task_id", "created_at"),
+        Index("ix_tool_runs_agent_tool", "agent_name", "tool_name"),
+        Index("ix_tool_runs_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("report_tasks.task_id", ondelete="CASCADE"), nullable=False)
+    langgraph_node: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    agent_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_json: Mapped[dict[str, Any] | None] = mapped_column(JSONVariant, nullable=True)
+    output_summary_json: Mapped[dict[str, Any] | None] = mapped_column(JSONVariant, nullable=True)
+    evidence_ids: Mapped[list[str] | None] = mapped_column(JSONVariant, nullable=True)
+    artifact_paths: Mapped[list[str] | None] = mapped_column(JSONVariant, nullable=True)
+    error_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONVariant, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+
 class PromptTemplate(Base):
     __tablename__ = "prompt_templates"
     __table_args__ = (

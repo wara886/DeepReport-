@@ -96,6 +96,39 @@ class AgentTraceWritingOrchestrator(ArtifactWritingOrchestrator):
             ),
             encoding="utf-8",
         )
+        (self.output_dir / "tool_trace.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "tool_trace.v1",
+                    "calls": [
+                        {
+                            "caller_agent": "DeepResearcherAgent",
+                            "tool_name": "retrieve_local_evidence",
+                            "input_summary": {"query": "AAPL revenue"},
+                            "output_summary": {"hits_count": 3},
+                            "success": True,
+                            "duration_sec": 0.125,
+                            "attempt_count": 2,
+                            "evidence_ids": ["ev_financials"],
+                            "artifact_paths": [],
+                            "source": "react",
+                        },
+                        {
+                            "caller_agent": "SearchManager",
+                            "tool_name": "bls",
+                            "input_summary": {"engine": "bls"},
+                            "output_summary": {},
+                            "success": False,
+                            "failure_reason": "timeout",
+                            "error_type": "tool_timeout",
+                            "duration_sec": 1.5,
+                            "source": "search_engine",
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
         return result
 
 
@@ -141,6 +174,7 @@ def test_report_task_artifact_import_links_completed_outputs(tmp_path):
         artifacts = client.get("/api/report-tasks/task-artifacts-001/artifacts")
 
     assert created.status_code == 201
+    assert created.json()["company_id"] is not None
     assert created.json()["status"] == "completed"
     assert artifacts.status_code == 200
     artifact_types = {artifact["artifact_type"] for artifact in artifacts.json()["artifacts"]}
@@ -414,6 +448,7 @@ def test_report_task_imports_agent_trace_as_llm_runs(tmp_path):
         runs = client.get("/api/llm-runs", params={"task_id": "task-agent-trace", "limit": 20})
         dashboard = client.get("/api/dashboard/summary")
         detail = client.get("/api/report-tasks/task-agent-trace")
+        tool_runs = client.get("/api/report-tasks/task-agent-trace/tool-runs")
 
     assert created.status_code == 201
     body = runs.json()
@@ -435,3 +470,18 @@ def test_report_task_imports_agent_trace_as_llm_runs(tmp_path):
     assert diagnostics["verifier"]["model_name"] == "verifier-model"
     assert diagnostics["quality_gate"]["prompt_key"] == "report_quality_gate"
     assert diagnostics["failure_categories"]["模型跳过:gap_resolver"] == 1
+    assert tool_runs.status_code == 200
+    tool_items = tool_runs.json()["items"]
+    assert len(tool_items) == 2
+    retrieval = next(item for item in tool_items if item["tool_name"] == "retrieve_local_evidence")
+    assert retrieval["status"] == "success"
+    assert retrieval["duration_ms"] == 125
+    assert retrieval["attempt_count"] == 2
+    assert retrieval["evidence_ids"] == ["ev_financials"]
+    bls = next(item for item in tool_items if item["tool_name"] == "bls")
+    assert bls["status"] == "failed"
+    assert bls["error_type"] == "tool_timeout"
+    runtime_tools = detail.json()["runtime_observability"]["tools"]
+    assert runtime_tools["run_count"] == 2
+    assert runtime_tools["failed_run_count"] == 1
+    assert runtime_tools["latency_ms"] == 1625

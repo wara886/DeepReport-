@@ -3699,6 +3699,29 @@ def render_workbench_html() -> str:
       </div>`;
     }
 
+    function renderToolRuns(task) {
+      const runtime = task.runtime_observability || {};
+      const summary = runtime.tools || {};
+      const runs = task.tool_runs || [];
+      if (!runs.length) {
+        return `<div class="detail-section"><h3>工具调用轨迹</h3><div class="empty">暂无工具调用记录。任务生成完成后会展示检索、数据和分析工具的执行情况。</div></div>`;
+      }
+      const recent = runs.slice(0, 12);
+      return `<div class="detail-section"><h3>工具调用轨迹</h3>
+        <div class="diagnostic-meta">
+          <span>调用：${esc(number(summary.run_count || runs.length))}</span>
+          <span>失败：${esc(number(summary.failed_run_count || 0))}</span>
+          <span>总耗时：${esc(number(summary.latency_ms || 0))} ms</span>
+        </div>
+        <div class="timeline">${recent.map((run) => `<div class="event">
+          <strong>${esc(productText(run.tool_name || "工具"))}</strong>
+          <span class="status ${esc(run.status || "unknown")}">${esc(statusText(run.status || "unknown"))}</span><br>
+          <span class="label">${esc(productText(run.agent_name || "系统"))} · ${esc(number(run.duration_ms || 0))} ms · ${esc(number(run.attempt_count || 1))} 次尝试</span>
+          ${run.error_message ? `<br><span class="error">${esc(productText(run.error_message))}</span>` : ""}
+        </div>`).join("")}</div>
+      </div>`;
+    }
+
     function renderDiagnosticRunCard(label, run) {
       if (!run) {
         return `<div class="diagnostic-card"><div class="diagnostic-head"><strong>${esc(label)}</strong><span class="status not_run">未记录</span></div><div class="diagnostic-empty">暂无可查询的运行记录</div></div>`;
@@ -3766,6 +3789,7 @@ def render_workbench_html() -> str:
           ${renderRiskChain(analysis.risk_chain || {})}
           ${renderRecommendedActions(analysis.recommended_actions || [])}
           ${renderQualityDiagnostics(task)}
+          ${renderToolRuns(task)}
           <div class="detail-section"><h3>产物</h3>${artifactButtons(task)}</div>
           ${systemInfoBlock("系统信息", [["任务编号", task.task_id]])}
           <div class="detail-section"><h3>时间线</h3><div class="timeline">${

@@ -32,6 +32,7 @@ from src.db.models import (
     ReportArtifact,
     ReportTask,
     ReportTaskEvent,
+    ToolRun,
     Workspace,
 )
 from src.db.session import create_engine_for_url
@@ -1247,8 +1248,17 @@ class ReportTaskService:
                     .limit(50)
                 ).all()
             )
+            tool_runs = list(
+                session.scalars(
+                    select(ToolRun)
+                    .where(ToolRun.task_id == task_id)
+                    .order_by(ToolRun.created_at.desc(), ToolRun.id.desc())
+                    .limit(200)
+                ).all()
+            )
             payload["quality_diagnostics"] = build_quality_diagnostics(task, llm_runs)
-            payload["runtime_observability"] = build_runtime_observability(task, llm_runs)
+            payload["tool_runs"] = [serialize_tool_run(item) for item in tool_runs]
+            payload["runtime_observability"] = build_runtime_observability(task, llm_runs, tool_runs)
             return payload
 
     def get_artifacts(self, task_id: str) -> dict[str, Any]:
@@ -1258,6 +1268,21 @@ class ReportTaskService:
             "artifacts": task.get("artifacts", []),
             "report_links": _report_links(task.get("artifacts", [])),
         }
+
+    def get_tool_runs(self, task_id: str, *, limit: int = 200) -> dict[str, Any]:
+        with self.session() as session:
+            task_exists = session.scalar(select(ReportTask.id).where(ReportTask.task_id == task_id))
+            if task_exists is None:
+                raise ReportTaskNotFound(task_id)
+            rows = list(
+                session.scalars(
+                    select(ToolRun)
+                    .where(ToolRun.task_id == task_id)
+                    .order_by(ToolRun.created_at.desc(), ToolRun.id.desc())
+                    .limit(max(1, min(int(limit), 500)))
+                ).all()
+            )
+        return {"task_id": task_id, "items": [serialize_tool_run(item) for item in rows], "total": len(rows)}
 
     def session(self) -> Session:
         self._ensure_db()
@@ -2358,7 +2383,7 @@ def build_quality_diagnostics(task: ReportTask, llm_runs: list[LLMRun]) -> dict[
     }
 
 
-def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun]) -> dict[str, Any]:
+def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun], tool_runs: list[ToolRun] | None = None) -> dict[str, Any]:
     """Aggregate request tracing, node latency, and LLM usage for one task."""
 
     metadata = task.metadata_json or {}
@@ -2373,6 +2398,8 @@ def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun]) -> dic
     run_count_sum = len(llm_runs)
     pricing_status = "not_configured" if cost_raw == 0.0 and run_count_sum > 0 else "available" if cost_raw > 0 else "no_runs"
     llm_latency_ms = sum(int(item.latency_ms or 0) for item in llm_runs)
+    tool_runs = tool_runs or []
+    tool_latency_ms = sum(int(item.duration_ms or 0) for item in tool_runs)
     elapsed_ms = None
     if task.started_at and task.finished_at:
         elapsed_ms = round((task.finished_at - task.started_at).total_seconds() * 1000, 3)
@@ -2398,7 +2425,44 @@ def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun]) -> dic
             "pricing_status": pricing_status,
             "latency_ms": llm_latency_ms,
         },
+        "tools": {
+            "run_count": len(tool_runs),
+            "failed_run_count": sum(1 for item in tool_runs if item.status == "failed"),
+            "latency_ms": tool_latency_ms,
+            "by_agent": _tool_run_counts(tool_runs, key="agent_name"),
+            "by_tool": _tool_run_counts(tool_runs, key="tool_name"),
+        },
     }
+
+
+def serialize_tool_run(item: ToolRun) -> dict[str, Any]:
+    return {
+        "run_id": item.run_id,
+        "task_id": item.task_id,
+        "langgraph_node": item.langgraph_node,
+        "agent_name": item.agent_name,
+        "tool_name": item.tool_name,
+        "status": item.status,
+        "attempt_count": item.attempt_count,
+        "duration_ms": item.duration_ms,
+        "input": item.input_json or {},
+        "output_summary": item.output_summary_json or {},
+        "evidence_ids": item.evidence_ids or [],
+        "artifact_paths": item.artifact_paths or [],
+        "error_type": item.error_type,
+        "error_message": item.error_message,
+        "source": item.source,
+        "metadata": item.metadata_json or {},
+        "created_at": _dt(item.created_at),
+    }
+
+
+def _tool_run_counts(tool_runs: list[ToolRun], *, key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in tool_runs:
+        value = str(getattr(item, key, None) or "unknown")
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items(), key=lambda pair: (-pair[1], pair[0])))
 
 
 def _compact_llm_run(item: LLMRun) -> dict[str, Any]:

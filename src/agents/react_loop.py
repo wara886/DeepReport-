@@ -134,6 +134,9 @@ def run_react_tool_loop(
                     "arguments": _summarize_arguments(arguments),
                     "attempts": attempts,
                     "duration_ms": round(duration_ms, 3),
+                    "output_summary": _summarize_result(observation),
+                    "evidence_ids": _extract_evidence_ids(observation),
+                    "error_type": observation.get("error_type", "") if isinstance(observation, dict) else "",
                     "observation_preview": observation_text[:500],
                     "error": observation.get("error", "") if isinstance(observation, dict) else "",
                 }
@@ -269,6 +272,41 @@ def _summarize_arguments(arguments: Dict[str, Any]) -> Dict[str, Any]:
         else:
             output[name] = value
     return output
+
+
+def _summarize_result(result: Any) -> Dict[str, Any]:
+    if isinstance(result, dict):
+        summary: Dict[str, Any] = {"type": "object", "keys": sorted(str(key) for key in result)[:30]}
+        for key in ("hits", "rows", "records", "items", "evidence"):
+            value = result.get(key)
+            if isinstance(value, list):
+                summary[f"{key}_count"] = len(value)
+            elif key == "evidence" and isinstance(value, dict):
+                summary["evidence_count"] = 1
+        if result.get("error"):
+            summary["error"] = str(result.get("error"))[:500]
+        return summary
+    if isinstance(result, list):
+        return {"type": "array", "count": len(result)}
+    return {"type": type(result).__name__}
+
+
+def _extract_evidence_ids(value: Any) -> List[str]:
+    found: List[str] = []
+
+    def visit(item: Any) -> None:
+        if isinstance(item, dict):
+            evidence_id = item.get("evidence_id") or item.get("result_id") or item.get("sample_id")
+            if evidence_id and str(evidence_id) not in found:
+                found.append(str(evidence_id))
+            for child in item.values():
+                visit(child)
+        elif isinstance(item, list):
+            for child in item:
+                visit(child)
+
+    visit(value)
+    return found[:100]
 
 
 def _json_preview(payload: Any, max_chars: int) -> str:
