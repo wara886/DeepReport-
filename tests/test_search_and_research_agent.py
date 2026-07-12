@@ -226,6 +226,10 @@ search:
 
 
 def test_hkex_announcement_search_rejects_wrong_company_tavily_pdf(monkeypatch):
+    monkeypatch.setattr(
+        "src.search.search_manager.fetch_hkex_official_announcements",
+        lambda **_kwargs: {"hits": [], "meta": {"failure_reason": "no_match"}},
+    )
     def fake_tavily_search(**_kwargs):
         return {
             "hits": [
@@ -251,6 +255,22 @@ def test_hkex_announcement_search_rejects_wrong_company_tavily_pdf(monkeypatch):
 
     assert [item["sample_id"] for item in payload["hits"]] == ["tencent_pdf"]
     assert payload["meta"]["identity_rejected_count"] == 1
+
+
+def test_hkex_announcement_search_prefers_direct_official_source(monkeypatch):
+    monkeypatch.setattr(
+        "src.search.search_manager.fetch_hkex_official_announcements",
+        lambda **_kwargs: {
+            "hits": [{"evidence_id": "hk1", "sample_id": "hk1", "symbol": "0700.HK", "period": "FY2025", "title": "ANNUAL REPORT 2025", "content": "Official", "source_url": "https://www1.hkexnews.hk/a.pdf", "source_type": "hkex_announcement", "source_authority": "official"}],
+            "meta": {"mode": "hkex_official", "result_count": 1},
+        },
+    )
+    monkeypatch.setattr("src.search.search_manager.tavily_search", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("fallback should not run")))
+
+    payload = hkex_announcement_search(query="Tencent annual report", symbol="0700.HK", period="FY2025")
+
+    assert payload["meta"]["mode"] == "hkex_official"
+    assert payload["hits"][0]["evidence_id"] == "hk1"
 
 
 def test_serper_search_normalizes_response(monkeypatch, tmp_path):

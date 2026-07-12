@@ -18,6 +18,7 @@ import yfinance as yf
 from src.data.company_universe import resolve_company_identifier, resolve_symbol
 from src.data.evidence_intake_gate import evidence_rejection_reason, record_mentions_target_company
 from src.data.independent_sources import fetch_macro_evidence, fetch_sec_companyfacts_evidence
+from src.data.hkex_official_source import fetch_hkex_official_announcements
 from src.data.source_quality import apply_source_quality
 from src.data.yahoo_finance import yahoo_financials_to_evidence, yahoo_snapshot_to_evidence
 
@@ -340,7 +341,12 @@ def hkex_announcement_search(
     raw_data_root: str = "data/raw/real_data",
     **kwargs: Any,
 ) -> Dict[str, Any]:
-    """Best-effort free HKEX disclosure search via configured public search."""
+    """Search HKEX directly, using Tavily only as a discovery fallback."""
+
+    direct = fetch_hkex_official_announcements(symbol=str(symbol or ""), period=str(period or ""), topk=topk)
+    direct_hits = [apply_source_quality(dict(item)) for item in direct.get("hits", []) if isinstance(item, dict)]
+    if direct_hits:
+        return {"hits": direct_hits[:topk], "meta": dict(direct.get("meta") or {})}
 
     hk_query = f"site:hkexnews.hk {symbol or ''} {period or ''} annual report announcement {query}".strip()
     payload = tavily_search(
@@ -376,6 +382,7 @@ def hkex_announcement_search(
     original_mode = meta.get("mode", "tavily")
     meta["mode"] = "hkex_announcements"
     meta["via"] = original_mode
+    meta["official_direct_failure_reason"] = (direct.get("meta") or {}).get("failure_reason")
     meta["result_count"] = len(hits)
     meta["identity_rejected_count"] = rejected_identity_count
     if _is_annual_period(period) and not hits:
