@@ -70,10 +70,18 @@ class DataSourceService:
                 if existing is not None:
                     credential_status = _credential_status(source_key)
                     should_enable = _credentials_available(credential_status)
-                    if existing.credential_status != credential_status or (existing.enabled and not should_enable):
+                    metadata = dict(existing.metadata_json or {})
+                    auto_disabled = metadata.get("auto_disabled_reason") == "missing_credentials"
+                    if existing.credential_status != credential_status or (existing.enabled and not should_enable) or (should_enable and auto_disabled):
                         existing.credential_status = credential_status
                         if not should_enable:
+                            if existing.enabled:
+                                metadata["auto_disabled_reason"] = "missing_credentials"
                             existing.enabled = False
+                        elif auto_disabled:
+                            existing.enabled = True
+                            metadata.pop("auto_disabled_reason", None)
+                        existing.metadata_json = metadata
                         reconciled += 1
                     continue
                 seed = _catalog_entry(source_key)

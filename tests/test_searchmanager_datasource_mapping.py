@@ -56,6 +56,13 @@ def test_seed_reconciles_stale_configured_credentials(temp_db_engine, monkeypatc
         assert tavily.enabled is False
     assert result["reconciled"] >= 1
 
+    monkeypatch.setenv("TAVILY_API_KEY", "configured-now")
+    service.seed_registered_sources()
+    with Session(temp_db_engine) as session:
+        tavily = session.scalar(select(DataSource).where(DataSource.source_key == "tavily"))
+        assert tavily.credential_status == "configured"
+        assert tavily.enabled is True
+
 
 def test_searchmanager_registered_engines_seed_workspace_scoped_sources(temp_db_engine):
     service = DataSourceService(
