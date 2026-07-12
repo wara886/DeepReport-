@@ -26,6 +26,19 @@ SECTION_REPAIR_ALIASES = {
     "business_overview": "business_profile",
 }
 
+PACK_SECTION_KEYS = {
+    "risk": "risks",
+    "business_profile": "business_overview",
+    "investment_conclusion": "conclusion",
+}
+
+CONTRACT_SECTION_KEYS = {
+    "risk": "risk_factors",
+    "risks": "risk_factors",
+    "business_profile": "business_overview",
+    "investment_conclusion": "conclusion",
+}
+
 
 def repair_failed_sections_for_outputs(
     *,
@@ -290,18 +303,22 @@ def _apply_callback_repairs(
         if not title or title in processed_titles or _section_body(output, title) is None:
             continue
         processed_titles.add(title)
+        pack_key = PACK_SECTION_KEYS.get(section, section)
+        contract_key = CONTRACT_SECTION_KEYS.get(section, section)
+        evidence_pack = pack_map.get(pack_key) if isinstance(pack_map.get(pack_key), dict) else {}
         payload = {
             "section_key": section,
             "title": title,
             "original_section": _section_body(output, title),
-            "contract": contract_map.get(section) or {},
-            "evidence_pack": pack_map.get(section) or {},
-            "verification": results.get(section) or {},
+            "contract": contract_map.get(contract_key) or {},
+            "evidence_pack": evidence_pack,
+            "verification": results.get(pack_key) or results.get(section) or {},
         }
         try:
             response = callback(payload)
             body = str(response.get("section_markdown") or response.get("body") or "").strip() if isinstance(response, dict) else ""
             if body:
+                body = _ensure_must_use_citation(body, evidence_pack)
                 output = _replace_section_body(output, title, body)
                 attempt = {"section": section, "strategy": "llm_section_rewrite", "status": "changed"}
                 if response.get("llm_run_id"):
@@ -312,6 +329,25 @@ def _apply_callback_repairs(
         except Exception as exc:
             attempts.append({"section": section, "strategy": "llm_section_rewrite", "status": "failed", "failure_reason": str(exc)})
     return output, attempts
+
+
+def _ensure_must_use_citation(body: str, evidence_pack: dict[str, Any]) -> str:
+    must_use = [str(item) for item in evidence_pack.get("must_use_evidence_ids") or [] if str(item)]
+    if not must_use:
+        return body
+    rows = evidence_pack.get("must_use_evidence") if isinstance(evidence_pack.get("must_use_evidence"), list) else []
+    labels = [
+        str(label)
+        for row in rows
+        if isinstance(row, dict) and str(row.get("evidence_id") or "") in must_use
+        for label in row.get("citation_labels") or []
+        if str(label)
+    ]
+    if any(f"[{evidence_id}]" in body or f"【{evidence_id}】" in body for evidence_id in must_use):
+        return body
+    if any(f"[{label}]" in body or f"【{label}】" in body for label in labels):
+        return body
+    return body.rstrip() + f" [{must_use[0]}]"
 
 
 def _restore_non_target_sections(original: str, candidate: str, targets: set[str]) -> str:

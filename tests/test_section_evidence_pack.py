@@ -59,6 +59,44 @@ def test_section_pack_merges_risk_and_conclusion_aliases_without_losing_inputs(t
     assert artifact["packs"]["conclusion"]["claims"][0]["claim_id"] == "conclusion-claim"
 
 
+def test_section_pack_bounds_claim_fallback_and_keeps_remaining_supporting_evidence(tmp_path):
+    evidence_ids = [f"risk-{index}" for index in range(1, 7)]
+    (tmp_path / "report_section_contracts.json").write_text(
+        json.dumps({"contracts": {"risks": {"title": "风险评估"}}}), encoding="utf-8"
+    )
+    (tmp_path / "section_dossiers.json").write_text(json.dumps({
+        "risks": {"supporting_evidence_ids": evidence_ids}
+    }), encoding="utf-8")
+    (tmp_path / "claims.json").write_text(json.dumps([
+        {"claim_id": "risk-claim", "section_name": "risks", "evidence_ids": evidence_ids}
+    ]), encoding="utf-8")
+    (tmp_path / "evidence.json").write_text(json.dumps([
+        {"evidence_id": evidence_id} for evidence_id in evidence_ids
+    ]), encoding="utf-8")
+
+    pack = build_section_evidence_packs(tmp_path)["packs"]["risks"]
+
+    assert pack["must_use_evidence_ids"] == evidence_ids[:3]
+    assert [row["evidence_id"] for row in pack["supporting_evidence"]] == evidence_ids
+
+
+def test_section_pack_reads_numeric_labels_from_contract_citation_map(tmp_path):
+    (tmp_path / "report_section_contracts.json").write_text(json.dumps({
+        "contracts": {"business_overview": {"citation_evidence_ids": ["business-1"]}}
+    }), encoding="utf-8")
+    (tmp_path / "section_dossiers.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "evidence.json").write_text(json.dumps([
+        {"evidence_id": "business-1"}
+    ]), encoding="utf-8")
+    (tmp_path / "citation_map.json").write_text(json.dumps({
+        "citation_map": [{"citation_number": 7, "evidence_id": "business-1"}]
+    }), encoding="utf-8")
+
+    pack = build_section_evidence_packs(tmp_path)["packs"]["business_overview"]
+
+    assert pack["must_use_evidence"][0]["citation_labels"] == ["7"]
+
+
 def test_section_verification_distinguishes_citation_from_supported_claim():
     markdown = "# 报告\n\n## 投资结论\n" + ("结论内容充分且包含证据支持。" * 20) + "[ev1]\n"
     packs = {"packs": {"conclusion": {

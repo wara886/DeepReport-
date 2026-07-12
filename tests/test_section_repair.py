@@ -244,3 +244,39 @@ def test_section_repair_records_callback_failure_and_falls_back(tmp_path):
     assert summary["repair_strategy"] == "deterministic_section_rewrite"
     assert summary["model_status"] == "failed_or_no_change"
     assert any(row.get("failure_reason") == "model unavailable" for row in summary["attempts"])
+
+
+def test_section_repair_resolves_risk_alias_and_preserves_must_use_citation(tmp_path):
+    outputs = tmp_path / "outputs"
+    reports = tmp_path / "reports"
+    outputs.mkdir()
+    reports.mkdir()
+    (reports / "report.md").write_text("# 测试报告\n\n## 风险评估\n短。\n", encoding="utf-8")
+    (reports / "report.json").write_text("{}", encoding="utf-8")
+    (outputs / "report_section_contracts.json").write_text(json.dumps({
+        "contracts": {"risk_factors": {"title": "风险评估", "citation_evidence_ids": ["risk-1"]}}
+    }), encoding="utf-8")
+    (outputs / "section_evidence_packs.json").write_text(json.dumps({"packs": {"risks": {
+        "must_use_evidence_ids": ["risk-1"],
+        "must_use_evidence": [{"evidence_id": "risk-1", "citation_labels": ["9"]}],
+        "unsupported_claim_ids": [],
+    }}}), encoding="utf-8")
+
+    def repair(payload):
+        assert payload["section_key"] == "risk"
+        assert payload["contract"]["citation_evidence_ids"] == ["risk-1"]
+        assert payload["evidence_pack"]["must_use_evidence_ids"] == ["risk-1"]
+        return {"section_markdown": "需求波动可能压缩收入增速，并通过经营杠杆影响利润率和现金流。" * 6}
+
+    summary = repair_failed_sections_for_outputs(
+        output_dir=outputs,
+        report_dir=reports,
+        section_verification={"status": "failed", "failed_sections": ["risks"], "issues": []},
+        repair_callback=repair,
+    )
+
+    repaired = (reports / "report.md").read_text(encoding="utf-8")
+    verification = json.loads((outputs / "section_verification.json").read_text(encoding="utf-8"))
+    assert "[risk-1]" in repaired
+    assert verification["section_results"]["risks"]["status"] == "passed"
+    assert summary["evidence_ids_consumed"] == ["risk-1"]

@@ -24,11 +24,16 @@ def build_section_evidence_packs(output_dir: str | Path) -> dict[str, Any]:
     claims = _records(_read_json(outputs / "claims.json", []), ("claims", "items", "records"))
     canonical = _read_json(outputs / "canonical_metrics.json", {})
     citations = _records(_read_json(outputs / "citations.json", []), ("citations", "items", "records"))
-    citation_labels = {
-        str(row.get("evidence_id") or ""): [str(row.get("citation_number"))]
-        for row in citations
-        if row.get("evidence_id") and row.get("citation_number") not in (None, "")
-    }
+    citation_map = _records(
+        _read_json(outputs / "citation_map.json", []),
+        ("citation_map", "citations", "items", "records"),
+    )
+    citation_labels: dict[str, list[str]] = {}
+    for row in citations + citation_map:
+        evidence_id = str(row.get("evidence_id") or "")
+        label = row.get("citation_number")
+        if evidence_id and label not in (None, ""):
+            citation_labels[evidence_id] = _dedupe(citation_labels.get(evidence_id, []) + [str(label)])
     prior_verification = _read_json(outputs / "section_verification.json", {})
     evidence_by_id = {_evidence_id(row): row for row in evidence if _evidence_id(row)}
     unsupported_claim_ids = _unsupported_claim_ids(_read_json(outputs / "verification_report.json", {}))
@@ -41,16 +46,20 @@ def build_section_evidence_packs(output_dir: str | Path) -> dict[str, Any]:
         contract = _merge_section_payloads(contracts, aliases, preferred_key=section_key)
         dossier = _merge_section_payloads(dossiers, aliases, preferred_key=section_key)
         section_claims = _section_claims(section_key, claims, dossier)
-        required_ids = _dedupe(
-            _strings(contract.get("citation_evidence_ids"))
-            + _strings(dossier.get("supporting_evidence_ids"))
+        contract_ids = _dedupe(_strings(contract.get("citation_evidence_ids")))
+        claim_ids = _dedupe(
+            evidence_id
+            for claim in section_claims
+            for evidence_id in _strings(claim.get("evidence_ids"))
         )
+        dossier_ids = _dedupe(_strings(dossier.get("supporting_evidence_ids")))
+        # A must-use list is a small writing contract, not the complete retrieval
+        # result. Prefer explicit contract evidence; otherwise use claim-linked
+        # evidence as a bounded fallback.
+        required_ids = contract_ids[:5] if contract_ids else claim_ids[:3]
         must_use = [_evidence_summary(evidence_by_id[item], citation_labels.get(item, [])) for item in required_ids if item in evidence_by_id]
         missing = [item for item in required_ids if item not in evidence_by_id]
-        supporting_ids = _dedupe(
-            required_ids
-            + [evidence_id for claim in section_claims for evidence_id in _strings(claim.get("evidence_ids"))]
-        )
+        supporting_ids = _dedupe(required_ids + claim_ids + dossier_ids)
         supporting = [_evidence_summary(evidence_by_id[item], citation_labels.get(item, [])) for item in supporting_ids if item in evidence_by_id]
         conflicts = [row for row in supporting if _evidence_conflicted(row)]
         claim_rows = []
