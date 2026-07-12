@@ -8,6 +8,13 @@ from pathlib import Path
 from typing import Any
 
 
+SECTION_KEY_ALIASES = {
+    "investment_conclusion": "conclusion",
+    "risk": "risks",
+    "risk_factors": "risks",
+}
+
+
 def build_section_evidence_packs(output_dir: str | Path) -> dict[str, Any]:
     outputs = Path(output_dir)
     contracts = _mapping(_read_json(outputs / "report_section_contracts.json", {}), "contracts")
@@ -27,9 +34,12 @@ def build_section_evidence_packs(output_dir: str | Path) -> dict[str, Any]:
     unsupported_claim_ids = _unsupported_claim_ids(_read_json(outputs / "verification_report.json", {}))
 
     packs: dict[str, Any] = {}
-    for section_key in sorted(set(contracts) | set(dossiers)):
-        contract = contracts.get(section_key) if isinstance(contracts.get(section_key), dict) else {}
-        dossier = dossiers.get(section_key) if isinstance(dossiers.get(section_key), dict) else {}
+    raw_keys = set(contracts) | set(dossiers)
+    section_keys = sorted({_canonical_section_key(key) for key in raw_keys})
+    for section_key in section_keys:
+        aliases = [key for key in raw_keys if _canonical_section_key(key) == section_key]
+        contract = _merge_section_payloads(contracts, aliases, preferred_key=section_key)
+        dossier = _merge_section_payloads(dossiers, aliases, preferred_key=section_key)
         section_claims = _section_claims(section_key, claims, dossier)
         required_ids = _dedupe(
             _strings(contract.get("citation_evidence_ids"))
@@ -109,6 +119,51 @@ def _section_claims(section_key: str, claims: list[dict[str, Any]], dossier: dic
             selected.append(dict(by_id.get(claim_id) or item))
             known.add(claim_id)
     return selected
+
+
+def _canonical_section_key(section_key: Any) -> str:
+    key = str(section_key or "")
+    return SECTION_KEY_ALIASES.get(key, key)
+
+
+def _merge_section_payloads(
+    source: dict[str, Any],
+    keys: list[str],
+    *,
+    preferred_key: str,
+) -> dict[str, Any]:
+    ordered = [key for key in keys if key != preferred_key]
+    if preferred_key in keys:
+        ordered.append(preferred_key)
+    merged: dict[str, Any] = {}
+    list_keys = {
+        "citation_evidence_ids",
+        "supporting_evidence_ids",
+        "blocked_reasons",
+        "supported_claims",
+    }
+    for key in ordered:
+        payload = source.get(key)
+        if not isinstance(payload, dict):
+            continue
+        for field, value in payload.items():
+            if field in list_keys and isinstance(value, list):
+                merged[field] = _dedupe_values(list(merged.get(field) or []) + value)
+            elif value not in (None, "", [], {}):
+                merged[field] = value
+    return merged
+
+
+def _dedupe_values(values: list[Any]) -> list[Any]:
+    output: list[Any] = []
+    seen: set[str] = set()
+    for value in values:
+        identity = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        output.append(value)
+    return output
 
 
 def _evidence_summary(row: dict[str, Any], citation_labels: list[str] | None = None) -> dict[str, Any]:
