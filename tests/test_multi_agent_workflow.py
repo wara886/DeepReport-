@@ -17,7 +17,13 @@ from src.agents.final_answer_agent import (
     insert_missing_sections_from_claims,
     normalize_report_headings,
 )
-from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator, enrich_task_parameters, prepare_dynamic_tasks
+from src.agents.multi_agent_orchestrator import (
+    MultiAgentOrchestrator,
+    _compact_research_phase_output,
+    _compact_trace_task,
+    enrich_task_parameters,
+    prepare_dynamic_tasks,
+)
 from src.agents.research_blackboard import build_pre_write_critic, initialize_research_blackboard, validate_role_output_write
 from src.agents.verifier import Verifier
 from src.schemas.claim import ClaimItem
@@ -169,6 +175,36 @@ def test_orchestrator_emits_agent_stage_callbacks(tmp_path):
     assert stages[0]["agent_key"] == "research"
     assert stages[1]["duration_ms"] >= 0
     assert stages[1]["react_used"] is True
+
+
+def test_phase_checkpoint_and_trace_payloads_are_bounded():
+    huge = "x" * 500_000
+    research = _compact_research_phase_output(
+        {
+            "evidence_candidates": [
+                {
+                    "result_id": "ev-large",
+                    "title": "Large evidence",
+                    "snippet": huge,
+                    "raw": {"content": huge, "metadata": {"raw_artifact_record": {"content": huge}}},
+                }
+            ],
+            "search_meta": {"returned_hits": [{"result_id": "ev-large", "raw": huge}]},
+        }
+    )
+    trace_task = _compact_trace_task(
+        AgentTask(
+            task_id="large-task",
+            task_type="browser",
+            description="large payload",
+            parameters={"evidence_candidates": research["evidence_candidates"]},
+        )
+    )
+
+    assert len(json.dumps(research)) < 50_000
+    assert research["search_meta"]["returned_hit_count"] == 1
+    assert "returned_hits" not in research["search_meta"]
+    assert trace_task["parameters"]["evidence_candidates"]["count"] == 1
 
 
 class RevisionFakeModel(FakeJsonModel):
@@ -645,7 +681,8 @@ def test_static_production_path_builds_section_packs_before_writer(tmp_path):
     assert packs["status"] == "ready"
     assert packs["section_count"] > 0
     assert writer_packs["section_count"] == packs["section_count"]
-    assert writer_packs["packs"] == packs["packs"]
+    assert writer_packs["packs"]["type"] == "dict"
+    assert writer_packs["packs"]["keys"] == sorted(packs["packs"])
 
 
 def test_static_agent_phases_resume_without_replaying_completed_agents(tmp_path):
@@ -696,6 +733,45 @@ def test_static_agent_phases_resume_without_replaying_completed_agents(tmp_path)
     assert checkpoint["phase"] == "analyze"
     assert checkpoint["runtime"]["executed_agents"] == ["planning", "research", "browser", "analyze"]
     assert (output_dir / "canonical_metrics.json").is_file()
+
+
+def test_static_normalize_phase_preserves_evidence_gate_records(tmp_path):
+    output_dir = tmp_path / "outputs"
+    report_dir = tmp_path / "reports"
+    output_dir.mkdir()
+    (output_dir / "evidence.json").write_text(
+        json.dumps(
+            [
+                {
+                    "evidence_id": "gate-sec-evidence",
+                    "title": "AAPL FY2024 10-K",
+                    "content": "Official revenue and cash flow disclosure.",
+                    "source_type": "sec_filing",
+                    "source_url": "https://www.sec.gov/aapl",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(output_dir),
+        report_dir=str(report_dir),
+        model=FakeJsonModel(),
+    )
+
+    orchestrator.run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="normalize_evidence",
+        resume_from_phase_artifacts=True,
+    )
+
+    evidence = json.loads((output_dir / "evidence.json").read_text(encoding="utf-8"))
+    evidence_ids = {item["evidence_id"] for item in evidence}
+    assert "gate-sec-evidence" in evidence_ids
+    assert len(evidence_ids) > 1
 
 
 def test_multi_agent_orchestrator_runs_compact_collaborative_by_default(tmp_path):

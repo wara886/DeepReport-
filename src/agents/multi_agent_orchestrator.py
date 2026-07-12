@@ -843,6 +843,9 @@ class MultiAgentOrchestrator:
                     "ranking_mode": retrieval_ranking_mode,
                     "data_source_config_path": data_source_config_path,
                     "enable_remote": bool(enable_remote_data),
+                    "search_budget_seconds": 240.0,
+                    "engine_timeout_seconds": 60.0,
+                    "engine_timeout_by_name": _research_engine_timeouts(),
                     "skill_brief": self._skill_brief(research_query, "deep_researcher", max_items=2),
                 },
                 dependencies=["task_000_planning"],
@@ -850,7 +853,10 @@ class MultiAgentOrchestrator:
                 ),
             )
             research_output = dict(research_result.output or {})
-            self._write_json("research_phase.json", {"phase": "research", "output": research_output})
+            self._write_json(
+                "research_phase.json",
+                {"phase": "research", "output": _compact_research_phase_output(research_output)},
+            )
         evidence_candidates = research_output.get("evidence_candidates", [])
         static_state: Dict[str, Any] = {
             "research_topic": research_topic,
@@ -878,8 +884,9 @@ class MultiAgentOrchestrator:
             return self._static_phase_result("research", ["task_plan.json", "research_phase.json", "search_meta.json"])
 
         normalize_phase = self._read_json("normalize_evidence_phase.json", {}) if resume_from_phase_artifacts else {}
+        gate_evidence_records = self._read_json("evidence.json", [])
         if normalize_phase:
-            evidence_records = self._read_json("evidence.json", [])
+            evidence_records = gate_evidence_records
             browser_output = {"evidence_records": evidence_records}
         else:
             browser_result = self._execute(
@@ -894,7 +901,12 @@ class MultiAgentOrchestrator:
                 ),
             )
             browser_output = dict(browser_result.output or {})
-            evidence_records = browser_output.get("evidence_records", [])
+            evidence_records = _merge_records(
+                gate_evidence_records,
+                browser_output.get("evidence_records", []),
+                ["evidence_id", "sample_id", "identity_key", "source_url"],
+            )
+            browser_output["evidence_records"] = evidence_records
             self._write_json("evidence.json", evidence_records)
             self._write_json(
                 "normalize_evidence_phase.json",
@@ -2139,7 +2151,7 @@ class MultiAgentOrchestrator:
         trace_item = {
             "agent": agent.name,
             "agent_key": agent_key,
-            "task": task.to_dict(),
+            "task": _compact_trace_task(task),
             "status": result.status.value,
             "error": result.error,
             "output_keys": sorted(result.output.keys()),
@@ -3104,6 +3116,9 @@ def prepare_dynamic_tasks(
             params.setdefault("ranking_mode", retrieval_ranking_mode)
             params.setdefault("data_source_config_path", data_source_config_path)
             params.setdefault("enable_remote", bool(enable_remote_data))
+            params.setdefault("search_budget_seconds", 240.0)
+            params.setdefault("engine_timeout_seconds", 60.0)
+            params.setdefault("engine_timeout_by_name", _research_engine_timeouts())
         cleaned.append(
             AgentTask(
                 task_id=task.task_id,
@@ -3123,6 +3138,81 @@ def _retrieval_curated_dir(output_dir: Path) -> str:
     if task_dir.is_dir() and any(task_dir.glob("*.jsonl")):
         return str(task_dir)
     return "data/curated"
+
+
+def _compact_research_phase_output(output: Dict[str, Any]) -> Dict[str, Any]:
+    payload = dict(output or {})
+    payload["evidence_candidates"] = [
+        _compact_checkpoint_value(item)
+        for item in list(payload.get("evidence_candidates") or [])[:20]
+        if isinstance(item, dict)
+    ]
+    search_meta = dict(payload.get("search_meta") or {}) if isinstance(payload.get("search_meta"), dict) else {}
+    returned_hits = search_meta.pop("returned_hits", None)
+    if isinstance(returned_hits, list):
+        search_meta["returned_hit_count"] = len(returned_hits)
+        search_meta["returned_hit_ids"] = [
+            str(item.get("result_id") or item.get("evidence_id") or "")
+            for item in returned_hits[:20]
+            if isinstance(item, dict)
+        ]
+    payload["search_meta"] = _compact_checkpoint_value(search_meta)
+    return payload
+
+
+def _compact_checkpoint_value(value: Any, *, depth: int = 0) -> Any:
+    if isinstance(value, str):
+        return value if len(value) <= 20_000 else value[:20_000]
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        return [_compact_checkpoint_value(item, depth=depth + 1) for item in value[:50]]
+    if isinstance(value, dict):
+        return {
+            str(key): _compact_checkpoint_value(item, depth=depth + 1)
+            for key, item in list(value.items())[:80]
+            if key != "raw_artifact_record"
+        }
+    return str(value)[:2_000]
+
+
+def _compact_trace_task(task: AgentTask) -> Dict[str, Any]:
+    return {
+        "task_id": task.task_id,
+        "task_type": task.task_type,
+        "description": _compact_trace_value(task.description),
+        "parameters": _compact_trace_value(task.parameters),
+        "dependencies": list(task.dependencies),
+        "priority": task.priority,
+        "metadata": _compact_trace_value(task.metadata),
+    }
+
+
+def _compact_trace_value(value: Any, *, depth: int = 0) -> Any:
+    if isinstance(value, str):
+        return value if len(value) <= 2_000 else value[:2_000] + "..."
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        if len(value) <= 10 and all(isinstance(item, (str, int, float, bool)) or item is None for item in value):
+            return list(value)
+        return {
+            "type": "list",
+            "count": len(value),
+            "sample_ids": [
+                str(item.get("evidence_id") or item.get("claim_id") or item.get("result_id") or "")
+                for item in value[:5]
+                if isinstance(item, dict)
+            ],
+        }
+    if isinstance(value, dict):
+        if depth >= 2:
+            return {"type": "dict", "keys": sorted(str(key) for key in value)[:30]}
+        return {
+            str(key): _compact_trace_value(item, depth=depth + 1)
+            for key, item in list(value.items())[:40]
+        }
+    return str(value)[:500]
 
 
 def build_task_route_context(tasks: List[AgentTask]) -> Dict[str, Any]:
@@ -3826,6 +3916,17 @@ def _market_engines(symbol: str) -> list[str]:
 
     market = infer_market_from_symbol(symbol)
     return list(build_data_source_plan(symbol, market["market"], market["exchange"])["engines"])
+
+
+def _research_engine_timeouts() -> Dict[str, float]:
+    return {
+        "sec_edgar": 120.0,
+        "local_evidence": 90.0,
+        "independent_macro": 60.0,
+        "yahoo_finance": 30.0,
+        "tavily": 20.0,
+        "serper": 20.0,
+    }
 
 
 def _requires_sec_annual_report(symbol: str, period: str) -> bool:

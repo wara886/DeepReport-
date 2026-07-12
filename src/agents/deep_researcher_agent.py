@@ -122,6 +122,9 @@ class DeepResearcherAgent(BaseAgent):
             ranking_mode=task.parameters.get("ranking_mode", "bm25"),
             data_source_config_path=task.parameters.get("data_source_config_path", "configs/data_sources.yaml"),
             enable_remote=bool(task.parameters.get("enable_remote", False)),
+            search_budget_seconds=float(task.parameters.get("search_budget_seconds", 240.0) or 240.0),
+            engine_timeout_seconds=float(task.parameters.get("engine_timeout_seconds", 60.0) or 60.0),
+            engine_timeout_by_name=dict(task.parameters.get("engine_timeout_by_name") or {}),
         )
 
     def _run_react_search(self, task: AgentTask, query: str, topk: int, skill_brief: str = "") -> Dict[str, Any]:

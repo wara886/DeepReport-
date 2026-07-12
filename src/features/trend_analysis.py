@@ -15,6 +15,8 @@ def build_trend_features(manifest_df: pd.DataFrame) -> pd.DataFrame:
     for column in ["symbol", "period", "source_type", "publish_time"]:
         if column not in df.columns:
             df[column] = ""
+    for column in ["symbol", "period", "source_type", "publish_time"]:
+        df[column] = df[column].astype("string").fillna("")
     if "sample_id" not in df.columns:
         if "evidence_id" in df.columns:
             df["sample_id"] = df["evidence_id"]

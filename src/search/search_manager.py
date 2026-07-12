@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import concurrent.futures
 import hashlib
 import json
 from logging import getLogger
 import re
 import socket
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List
 from urllib import error, parse, request
@@ -125,18 +127,51 @@ class SearchManager:
         selected = engines or self.engine_names()
         all_hits: List[SearchResult] = []
         engine_meta: Dict[str, Any] = {}
+        search_started = time.perf_counter()
+        budget_seconds = float(kwargs.pop("search_budget_seconds", 0.0) or 0.0)
+        engine_timeout_seconds = float(kwargs.pop("engine_timeout_seconds", 60.0) or 60.0)
+        timeout_by_engine = kwargs.pop("engine_timeout_by_name", {})
+        timeout_by_engine = timeout_by_engine if isinstance(timeout_by_engine, dict) else {}
+        skipped_engines: List[str] = []
 
-        for engine in selected:
+        for index, engine in enumerate(selected):
+            elapsed = time.perf_counter() - search_started
+            if budget_seconds > 0 and elapsed >= budget_seconds:
+                skipped_engines.extend(selected[index:])
+                break
             if engine not in self._engines:
                 engine_meta[engine] = {"error": f"engine not registered: {engine}"}
                 continue
+            engine_started = time.perf_counter()
+            current_timeout = float(timeout_by_engine.get(engine, engine_timeout_seconds) or engine_timeout_seconds)
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             try:
-                payload = self._engines[engine](query=query, topk=topk, **kwargs)
+                future = pool.submit(self._engines[engine], query=query, topk=topk, **kwargs)
+                payload = future.result(timeout=current_timeout)
                 raw_hits = payload.get("hits", [])
-                engine_meta[engine] = payload.get("meta", {})
+                engine_meta[engine] = dict(
+                    payload.get("meta", {}),
+                    duration_ms=round((time.perf_counter() - engine_started) * 1000),
+                    hit_count=len(raw_hits),
+                )
                 all_hits.extend(_normalize_hits(engine, raw_hits))
+            except concurrent.futures.TimeoutError:
+                future.cancel()
+                engine_meta[engine] = {
+                    "error": f"engine exceeded {current_timeout:.0f}s timeout",
+                    "timeout": True,
+                    "duration_ms": round((time.perf_counter() - engine_started) * 1000),
+                    "hit_count": 0,
+                    "timeout_seconds": current_timeout,
+                }
             except Exception as exc:
-                engine_meta[engine] = {"error": str(exc)}
+                engine_meta[engine] = {
+                    "error": str(exc),
+                    "duration_ms": round((time.perf_counter() - engine_started) * 1000),
+                    "hit_count": 0,
+                }
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
 
         # 证据清洗：在去重排序前统一过 cleaning_pipeline
         market = _infer_market_from_kwargs(kwargs)
@@ -159,6 +194,12 @@ class SearchManager:
                 "total_hits_before_dedupe": len(all_hits),
                 "returned_hits": len(hits),
                 "cross_symbol_filtered_count": cross_symbol_filtered_count,
+                "duration_ms": round((time.perf_counter() - search_started) * 1000),
+                "budget_seconds": budget_seconds or None,
+                "engine_timeout_seconds": engine_timeout_seconds,
+                "engine_timeout_by_name": timeout_by_engine,
+                "budget_exhausted": bool(skipped_engines),
+                "skipped_engines": skipped_engines,
             },
         }
 

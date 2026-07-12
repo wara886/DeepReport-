@@ -1,9 +1,12 @@
 import json
+import time
+import pandas as pd
 
 import pytest
 
 from src.agents import AgentStatus, AgentTask, DeepResearcherAgent
 from src.search import SearchManager
+from src.features.trend_analysis import build_trend_features
 from src.search.search_manager import (
     adapt_financial_query,
     cninfo_announcement_search,
@@ -69,6 +72,63 @@ def test_search_manager_dedupes_and_ranks_hits():
     assert payload["hits"][0]["result_id"] == "ev_1_duplicate"
     assert payload["hits"][0]["source_authority"] == "official"
     assert payload["hits"][1]["result_id"] == "ev_2"
+
+
+def test_search_manager_records_engine_duration_and_stops_after_budget():
+    manager = SearchManager()
+
+    def slow_engine(query, topk=5, **kwargs):
+        time.sleep(0.02)
+        return {"hits": [], "meta": {"source": "slow"}}
+
+    manager.register_engine("slow", slow_engine)
+    manager.register_engine("never_started", _engine_a)
+
+    payload = manager.search(
+        "AAPL revenue",
+        engines=["slow", "never_started"],
+        search_budget_seconds=0.005,
+    )
+
+    assert payload["meta"]["budget_exhausted"] is True
+    assert payload["meta"]["skipped_engines"] == ["never_started"]
+    assert payload["meta"]["engine_meta"]["slow"]["duration_ms"] >= 15
+
+
+def test_search_manager_times_out_one_engine_and_continues():
+    manager = SearchManager()
+
+    def blocked_engine(query, topk=5, **kwargs):
+        time.sleep(0.05)
+        return {"hits": [], "meta": {}}
+
+    manager.register_engine("blocked", blocked_engine)
+    manager.register_engine("healthy", _engine_a)
+
+    payload = manager.search(
+        "AAPL revenue",
+        engines=["blocked", "healthy"],
+        engine_timeout_seconds=1.0,
+        engine_timeout_by_name={"blocked": 0.005},
+    )
+
+    assert payload["meta"]["engine_meta"]["blocked"]["timeout"] is True
+    assert payload["meta"]["engine_meta"]["blocked"]["timeout_seconds"] == 0.005
+    assert payload["meta"]["engine_meta"]["healthy"]["hit_count"] > 0
+    assert payload["hits"]
+
+
+def test_trend_features_accept_mixed_missing_publish_times():
+    features = build_trend_features(
+        pd.DataFrame(
+            [
+                {"symbol": "MSFT", "period": "FY2024", "source_type": "sec", "publish_time": None, "sample_id": "a"},
+                {"symbol": "MSFT", "period": "FY2024", "source_type": "web", "publish_time": "2024-07-30", "sample_id": "b"},
+            ]
+        )
+    )
+
+    assert features.iloc[0]["latest_publish_time"] == "2024-07-30"
 
 
 def test_search_manager_reserves_yahoo_valuation_records():
