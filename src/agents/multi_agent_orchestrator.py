@@ -205,12 +205,14 @@ class MultiAgentOrchestrator:
         skill_registry: SkillRegistry | None = None,
         skill_registry_config_path: str | None = "configs/skill_registry.yaml",
         execution_tier: str = "delivery",
+        stage_callback: Callable[[Dict[str, Any]], None] | None = None,
     ):
         self.output_dir = Path(output_dir)
         self.report_dir = Path(report_dir)
         self.config_path = config_path
         self.raw_data_root = raw_data_root
         self.app_config_path = app_config_path
+        self.stage_callback = stage_callback
         _tier = str(execution_tier or "delivery").lower()
         FAST_TIERS = {"user_fast", "developer_fast"}
         if _tier in FAST_TIERS:
@@ -2007,6 +2009,18 @@ class MultiAgentOrchestrator:
     def _execute(self, agent_key: str, task: AgentTask) -> TaskResult:
         agent = self.agents[agent_key]
         model_usage = self._model_usage_for_agent(agent_key)
+        self._emit_stage(
+            {
+                "phase": "started",
+                "agent_key": agent_key,
+                "agent_name": agent.name,
+                "task_id": task.task_id,
+                "task_type": task.task_type,
+                "model_name": model_usage.get("model_name", ""),
+                "provider": model_usage.get("provider", ""),
+                "route_profile": model_usage.get("route_profile", ""),
+            }
+        )
         logger.info(
             "agent_trace_start | agent_key=%s | agent=%s | task_id=%s | task_type=%s | route_profile=%s | provider=%s | model=%s | endpoint=%s | api_key_env=%s | api_key_present=%s",
             agent_key,
@@ -2063,6 +2077,22 @@ class MultiAgentOrchestrator:
             "model_usage": model_usage,
         }
         self.trace.append(trace_item)
+        self._emit_stage(
+            {
+                "phase": "finished",
+                "agent_key": agent_key,
+                "agent_name": agent.name,
+                "task_id": task.task_id,
+                "task_type": task.task_type,
+                "status": result.status.value,
+                "duration_ms": round(duration_sec * 1000),
+                "error": result.error,
+                "model_name": model_usage.get("model_name", ""),
+                "provider": model_usage.get("provider", ""),
+                "route_profile": model_usage.get("route_profile", ""),
+                "react_used": bool(result.metadata.get("react_used")) if isinstance(result.metadata, dict) else False,
+            }
+        )
         logger.info(
             "agent_trace_finish | agent_key=%s | agent=%s | task_id=%s | status=%s | duration_sec=%.3f | route_profile=%s | provider=%s | model=%s | fallback=%s | error=%s",
             agent_key,
@@ -2082,6 +2112,14 @@ class MultiAgentOrchestrator:
         if result.status != AgentStatus.COMPLETED:
             raise RuntimeError(f"{agent.name} failed: {result.error}")
         return result
+
+    def _emit_stage(self, payload: Dict[str, Any]) -> None:
+        if self.stage_callback is None:
+            return
+        try:
+            self.stage_callback(dict(payload))
+        except Exception as exc:
+            logger.warning("agent stage callback failed: %s", exc)
 
     def _durable_memory_brief(self, symbol: str, period: str, report_type: str = "company_stock_report") -> str:
         if not self.memory_config.enabled:

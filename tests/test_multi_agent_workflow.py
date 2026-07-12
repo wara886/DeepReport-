@@ -2,7 +2,7 @@ import json
 import re
 import sys
 
-from src.agents import AgentStatus, AgentTask, BrowserAgent, DeepAnalyzeAgent, FinalAnswerAgent, VerifierAgent
+from src.agents import AgentStatus, AgentTask, BrowserAgent, DeepAnalyzeAgent, FinalAnswerAgent, TaskResult, VerifierAgent
 from src.agents.analysis_role_agents import IdentityAgent, PeerAgent, RiskAgent, StatementAgent, ValuationAgent
 from src.agents.browser_agent import enrich_records_with_reader, read_pdf_content, read_url_content
 from src.agents.deep_analyze_agent import build_role_outputs, compact_records
@@ -135,6 +135,40 @@ class FakeJsonModel:
                 "final_outputs": ["report.md", "report.html"],
             }
         return {}
+
+
+def test_orchestrator_emits_agent_stage_callbacks(tmp_path):
+    stages = []
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        model=FakeJsonModel(),
+        stage_callback=stages.append,
+    )
+
+    class CompletedAgent:
+        name = "CompletedAgent"
+
+        def execute_task(self, task):
+            return TaskResult(
+                task_id=task.task_id,
+                agent_name=self.name,
+                status=AgentStatus.COMPLETED,
+                output={"ok": True},
+                metadata={"react_used": True},
+            )
+
+    orchestrator.agents["research"] = CompletedAgent()
+    result = orchestrator._execute(
+        "research",
+        AgentTask(task_id="stage-task", task_type="deep_researcher", description="stage callback"),
+    )
+
+    assert result.status == AgentStatus.COMPLETED
+    assert [item["phase"] for item in stages] == ["started", "finished"]
+    assert stages[0]["agent_key"] == "research"
+    assert stages[1]["duration_ms"] >= 0
+    assert stages[1]["react_used"] is True
 
 
 class RevisionFakeModel(FakeJsonModel):

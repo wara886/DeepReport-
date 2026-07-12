@@ -1392,13 +1392,18 @@ class ReportTaskService:
         }
 
     def _run_orchestrator(self, *, task_id: str, metadata: dict[str, Any]) -> Any:
+        orchestrator_kwargs: dict[str, Any] = {
+            "output_dir": str(metadata["output_dir"]),
+            "report_dir": str(metadata["report_dir"]),
+            "config_path": self.config_path,
+            "memory_enabled": bool(metadata.get("memory_enabled", False)),
+            "memory_root": str(self.memory_root / "durable"),
+            "execution_tier": str(metadata.get("execution_tier") or "developer_fast"),
+        }
+        if _supports_agent_stage_callback(self.orchestrator_factory):
+            orchestrator_kwargs["stage_callback"] = lambda payload: self._record_agent_stage(task_id, payload)
         orchestrator = self.orchestrator_factory(
-            output_dir=str(metadata["output_dir"]),
-            report_dir=str(metadata["report_dir"]),
-            config_path=self.config_path,
-            memory_enabled=bool(metadata.get("memory_enabled", False)),
-            memory_root=str(self.memory_root / "durable"),
-            execution_tier=str(metadata.get("execution_tier") or "developer_fast"),
+            **orchestrator_kwargs,
         )
         result = orchestrator.run(
             research_topic=str(metadata.get("research_topic") or ""),
@@ -1426,6 +1431,47 @@ class ReportTaskService:
             )
             session.commit()
         return result
+
+    def _record_agent_stage(self, task_id: str, payload: dict[str, Any]) -> None:
+        phase = str(payload.get("phase") or "running")
+        agent_key = str(payload.get("agent_key") or "unknown")
+        status = "running" if phase == "started" else ("success" if payload.get("status") == "completed" else "failed")
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            if phase == "started":
+                task.current_stage = f"agent_{agent_key}"
+            metadata = dict(task.metadata_json or {})
+            runtime = dict(metadata.get("report_runtime") or {})
+            runtime["current_agent"] = {
+                "agent_key": agent_key,
+                "agent_name": payload.get("agent_name"),
+                "task_type": payload.get("task_type"),
+                "phase": phase,
+                "status": payload.get("status") or status,
+                "duration_ms": payload.get("duration_ms"),
+                "model_name": payload.get("model_name"),
+                "provider": payload.get("provider"),
+                "route_profile": payload.get("route_profile"),
+                "react_used": payload.get("react_used"),
+                "error": payload.get("error"),
+                "updated_at": _utc_now().isoformat(),
+            }
+            metadata["report_runtime"] = runtime
+            task.metadata_json = metadata
+            session.add(
+                ReportTaskEvent(
+                    task_id=task_id,
+                    stage=f"agent.{agent_key}",
+                    status=status,
+                    message=(
+                        f"{payload.get('agent_name') or agent_key} started"
+                        if phase == "started"
+                        else f"{payload.get('agent_name') or agent_key} finished"
+                    ),
+                    metadata_json=dict(payload),
+                )
+            )
+            session.commit()
 
     def _get_task_for_update(self, session: Session, task_id: str) -> ReportTask:
         task = session.scalar(
@@ -2463,6 +2509,13 @@ def _tool_run_counts(tool_runs: list[ToolRun], *, key: str) -> dict[str, int]:
         value = str(getattr(item, key, None) or "unknown")
         counts[value] = counts.get(value, 0) + 1
     return dict(sorted(counts.items(), key=lambda pair: (-pair[1], pair[0])))
+
+
+def _supports_agent_stage_callback(factory: Callable[..., Any]) -> bool:
+    try:
+        return isinstance(factory, type) and issubclass(factory, MultiAgentOrchestrator)
+    except TypeError:
+        return False
 
 
 def _compact_llm_run(item: LLMRun) -> dict[str, Any]:

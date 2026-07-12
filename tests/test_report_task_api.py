@@ -135,6 +135,44 @@ def test_report_task_api_defaults_to_queue_only_and_exposes_runtime_readiness(tm
     assert body["export_readiness"]["can_export_formal_package"] is False
 
 
+def test_report_task_records_live_agent_stage(tmp_path):
+    service = build_service(tmp_path)
+    service.create_task({"task_id": "task-live-agent", "symbol": "AAPL", "period": "FY2024"})
+
+    service._record_agent_stage(
+        "task-live-agent",
+        {
+            "phase": "started",
+            "agent_key": "research",
+            "agent_name": "DeepResearcherAgent",
+            "task_type": "deep_researcher",
+            "model_name": "test-model",
+            "provider": "test",
+        },
+    )
+    service._record_agent_stage(
+        "task-live-agent",
+        {
+            "phase": "finished",
+            "agent_key": "research",
+            "agent_name": "DeepResearcherAgent",
+            "task_type": "deep_researcher",
+            "status": "completed",
+            "duration_ms": 125,
+            "react_used": True,
+        },
+    )
+
+    task = service.get_task("task-live-agent")
+    agent_events = [item for item in task["events"] if item["stage"] == "agent.research"]
+    assert task["current_stage"] == "agent_research"
+    assert [item["status"] for item in agent_events] == ["running", "success"]
+    current = task["metadata"]["report_runtime"]["current_agent"]
+    assert current["agent_key"] == "research"
+    assert current["duration_ms"] == 125
+    assert current["react_used"] is True
+
+
 def test_task_evaluation_and_export_share_readiness_after_claim_review(tmp_path):
     service = build_service(tmp_path)
     service.create_task({"task_id": "task-readiness-shared", "symbol": "NVDA", "period": "FY2024"})
