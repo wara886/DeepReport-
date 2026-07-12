@@ -1854,7 +1854,10 @@ def _render_peer_table_markdown(
     table_symbols = set(direct_peers) | {str(target_symbol or "").strip().upper()}
     if not table_symbols:
         return ""
-    lines = ["| 公司 | 代码 | 收入增速 | 毛利率 | 净利率 | ROE | 说明 |"]
+    lines = [
+        "> 注：下表为当前 TTM 市场快照；财务分析章节的 FY2024 指标来自年度披露，二者期间不同，不作同期间数值替代。",
+        "| 公司 | 代码 | 收入增速 | 毛利率 | 净利率 | ROE | 说明 |",
+    ]
     lines.append("|------|------|---------|--------|--------|-----|------|")
     for row in peer_rows:
         if not isinstance(row, dict):
