@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, Dict
 
 from src.agents.final_answer_agent import (
@@ -31,6 +32,7 @@ def repair_failed_sections_for_outputs(
     output_dir: str | Path,
     report_dir: str | Path,
     section_verification: Dict[str, Any] | None = None,
+    repair_callback: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """Repair failed core sections and re-run deterministic section verification."""
 
@@ -71,6 +73,7 @@ def repair_failed_sections_for_outputs(
     canonical_metrics = _read_json(outputs / "canonical_metrics.json", {})
     financial_metrics = canonical_metrics_as_financial_metrics(canonical_metrics, fallback=raw_financial_metrics)
     contracts = _read_json(outputs / "report_section_contracts.json", {})
+    evidence_packs = _read_json(outputs / "section_evidence_packs.json", {})
 
     repair_plan = {
         "schema_version": "section_repair_plan.v1",
@@ -92,13 +95,33 @@ def repair_failed_sections_for_outputs(
             "无法验证的数据必须说明证据边界，不能写成确定事实。",
         ],
     }
-    repaired_md = auto_rewrite_core_sections(
-        original,
-        claims=claims,
-        evidence_records=evidence,
-        financial_metrics=financial_metrics,
-        quality_remediation_plan=repair_plan,
-    )
+    targets = set(_repair_target_sections(failed_sections))
+    attempts: list[dict[str, Any]] = []
+    repaired_md = original
+    if repair_callback is not None:
+        repaired_md, attempts = _apply_callback_repairs(
+            repaired_md,
+            targets=targets,
+            callback=repair_callback,
+            contracts=contracts,
+            evidence_packs=evidence_packs,
+            verification=before,
+        )
+    callback_changed = repaired_md != original
+    if not callback_changed:
+        candidate = auto_rewrite_core_sections(
+            original,
+            claims=claims,
+            evidence_records=evidence,
+            financial_metrics=financial_metrics,
+            quality_remediation_plan=repair_plan,
+        )
+        repaired_md = _restore_non_target_sections(original, candidate, targets)
+        attempts.append({
+            "strategy": "deterministic_section_rewrite",
+            "status": "changed" if repaired_md != original else "no_change",
+            "target_sections": sorted(targets),
+        })
     repaired_md = remove_broken_or_half_sentences(repaired_md)
     repaired_md = remove_debug_leakage(repaired_md)
     repaired_md = remove_internal_ids(repaired_md)
@@ -113,6 +136,7 @@ def repair_failed_sections_for_outputs(
         markdown=repaired_md,
         report_section_contracts=contracts,
         quality_remediation_plan={},
+        section_evidence_packs=evidence_packs,
     )
     summary = {
         "schema_version": "section_repair.v1",
@@ -126,6 +150,10 @@ def repair_failed_sections_for_outputs(
         "report_markdown_chars_before": len(original),
         "report_markdown_chars_after": len(repaired_md),
         "repair_plan": repair_plan,
+        "repair_strategy": "llm_section_rewrite" if callback_changed else "deterministic_section_rewrite",
+        "model_status": "used" if callback_changed else ("failed_or_no_change" if repair_callback else "unavailable"),
+        "attempts": attempts,
+        "evidence_ids_consumed": _consumed_evidence_ids(after, targets),
     }
     path = outputs / "section_repair.json"
     path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
@@ -227,3 +255,98 @@ def _dedupe(items: list[str]) -> list[str]:
             seen.add(item)
             output.append(item)
     return output
+
+
+SECTION_TITLES = {
+    "executive_summary": "执行摘要",
+    "business_overview": "业务概览",
+    "business_profile": "业务概览",
+    "financial_analysis": "财务分析",
+    "valuation": "估值观察",
+    "risks": "风险评估",
+    "risk": "风险评估",
+    "conclusion": "投资结论",
+    "investment_conclusion": "投资结论",
+}
+
+
+def _apply_callback_repairs(
+    markdown: str,
+    *,
+    targets: set[str],
+    callback: Callable[[dict[str, Any]], dict[str, Any]],
+    contracts: dict[str, Any],
+    evidence_packs: dict[str, Any],
+    verification: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]]]:
+    output = markdown
+    attempts: list[dict[str, Any]] = []
+    contract_map = contracts.get("contracts") if isinstance(contracts.get("contracts"), dict) else {}
+    pack_map = evidence_packs.get("packs") if isinstance(evidence_packs.get("packs"), dict) else {}
+    results = verification.get("section_results") if isinstance(verification.get("section_results"), dict) else {}
+    for section in sorted(targets):
+        title = SECTION_TITLES.get(section)
+        if not title or _section_body(output, title) is None:
+            continue
+        payload = {
+            "section_key": section,
+            "title": title,
+            "original_section": _section_body(output, title),
+            "contract": contract_map.get(section) or {},
+            "evidence_pack": pack_map.get(section) or {},
+            "verification": results.get(section) or {},
+        }
+        try:
+            response = callback(payload)
+            body = str(response.get("section_markdown") or response.get("body") or "").strip() if isinstance(response, dict) else ""
+            if body:
+                output = _replace_section_body(output, title, body)
+                attempts.append({"section": section, "strategy": "llm_section_rewrite", "status": "changed"})
+            else:
+                attempts.append({"section": section, "strategy": "llm_section_rewrite", "status": "empty_response"})
+        except Exception as exc:
+            attempts.append({"section": section, "strategy": "llm_section_rewrite", "status": "failed", "failure_reason": str(exc)})
+    return output, attempts
+
+
+def _restore_non_target_sections(original: str, candidate: str, targets: set[str]) -> str:
+    output = candidate
+    target_titles = {SECTION_TITLES[key] for key in targets if key in SECTION_TITLES}
+    for title in set(SECTION_TITLES.values()) - target_titles:
+        body = _section_body(original, title)
+        if body is not None and _section_body(output, title) is not None:
+            output = _replace_section_body(output, title, body)
+    return output
+
+
+def _section_body(markdown: str, title: str) -> str | None:
+    import re
+    match = re.search(rf"^##\s+{re.escape(title)}\s*$", markdown, re.MULTILINE)
+    if not match:
+        return None
+    start = match.end()
+    next_heading = re.search(r"^##\s+", markdown[start:], re.MULTILINE)
+    end = start + next_heading.start() if next_heading else len(markdown)
+    return markdown[start:end].strip()
+
+
+def _replace_section_body(markdown: str, title: str, body: str) -> str:
+    import re
+    match = re.search(rf"^##\s+{re.escape(title)}\s*$", markdown, re.MULTILINE)
+    if not match:
+        return markdown
+    start = match.end()
+    next_heading = re.search(r"^##\s+", markdown[start:], re.MULTILINE)
+    end = start + next_heading.start() if next_heading else len(markdown)
+    suffix = markdown[end:]
+    separator = "\n\n" if suffix else "\n"
+    return markdown[:start] + "\n" + body.strip() + separator + suffix.lstrip("\n")
+
+
+def _consumed_evidence_ids(verification: dict[str, Any], targets: set[str]) -> list[str]:
+    results = verification.get("section_results") if isinstance(verification.get("section_results"), dict) else {}
+    values = []
+    for section in targets:
+        row = results.get(section) if isinstance(results.get(section), dict) else {}
+        values.extend(_dedupe([str(item) for item in row.get("consumed_evidence_ids") or []]))
+    return _dedupe(values)

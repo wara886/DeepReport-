@@ -39,6 +39,7 @@ from src.llm.harness import LLMHarness
 from src.evaluation.evidence_retrieval_attribution import write_evidence_retrieval_attribution
 from src.evaluation.delivery_pipeline import run_delivery_quality_pipeline
 from src.evaluation.section_repair import repair_failed_sections_for_outputs
+from src.evaluation.section_evidence_pack import build_section_evidence_packs
 from src.evaluation.section_verification import write_section_verification
 from src.rag.retrieval_diagnostics import build_retrieval_coverage
 from src.report.citation_manager import build_citation_artifacts
@@ -288,7 +289,8 @@ class ReportTaskService:
         task_id = str(state["task_id"])
         metadata = self._task_metadata(task_id)
         output_dir = Path(str(metadata.get("output_dir") or ""))
-        summary = _build_section_pack_manifest(output_dir)
+        artifact = build_section_evidence_packs(output_dir)
+        summary = _build_section_pack_manifest(output_dir, artifact=artifact)
         self._update_runtime_metadata(task_id, "section_evidence_packs", summary)
         self._record_runtime_stage(
             task_id,
@@ -1987,11 +1989,13 @@ def _canonical_metrics_summary(*, output_dir: Path, artifact: dict[str, Any]) ->
     }
 
 
-def _build_section_pack_manifest(output_dir: Path) -> dict[str, Any]:
+def _build_section_pack_manifest(output_dir: Path, *, artifact: dict[str, Any] | None = None) -> dict[str, Any]:
+    artifact = artifact if isinstance(artifact, dict) else build_section_evidence_packs(output_dir)
     contracts = _read_json_object(output_dir / "report_section_contracts.json")
     section_dossiers = _read_json_object(output_dir / "section_dossiers.json")
     contract_map = contracts.get("contracts") if isinstance(contracts.get("contracts"), dict) else {}
-    pack_keys = sorted(set(contract_map) | set(section_dossiers))
+    packs = artifact.get("packs") if isinstance(artifact.get("packs"), dict) else {}
+    pack_keys = sorted(packs or set(contract_map) | set(section_dossiers))
     blocked_sections = sorted(
         key
         for key, value in contract_map.items()
@@ -2009,7 +2013,11 @@ def _build_section_pack_manifest(output_dir: Path) -> dict[str, Any]:
         "sections": pack_keys,
         "blocked_sections": blocked_sections,
         "citation_ready_section_count": citation_ready,
+        "must_use_evidence_count": sum(len(row.get("must_use_evidence_ids") or []) for row in packs.values() if isinstance(row, dict)),
+        "unsupported_claim_count": sum(len(row.get("unsupported_claim_ids") or []) for row in packs.values() if isinstance(row, dict)),
+        "missing_evidence_count": sum(len(row.get("missing_evidence_ids") or []) for row in packs.values() if isinstance(row, dict)),
         "source_files": {
+            "section_evidence_packs": str(output_dir / "section_evidence_packs.json"),
             "report_section_contracts": str(output_dir / "report_section_contracts.json"),
             "section_dossiers": str(output_dir / "section_dossiers.json"),
         },
@@ -2088,6 +2096,7 @@ def _build_generation_execution_summary(output_dir: Path) -> dict[str, Any]:
 def _build_section_verification_manifest(*, output_dir: Path, report_dir: Path) -> dict[str, Any]:
     contracts = _read_json_object(output_dir / "report_section_contracts.json")
     remediation = _read_json_object(output_dir / "quality_remediation_plan.json")
+    packs = _read_json_object(output_dir / "section_evidence_packs.json")
     markdown = ""
     report_md = report_dir / "report.md"
     if report_md.exists():
@@ -2097,6 +2106,7 @@ def _build_section_verification_manifest(*, output_dir: Path, report_dir: Path) 
         markdown=markdown,
         report_section_contracts=contracts,
         quality_remediation_plan=remediation,
+        section_evidence_packs=packs,
     )
     return {
         "schema_version": "section_verification_runtime.v1",
@@ -2111,6 +2121,7 @@ def _build_section_verification_manifest(*, output_dir: Path, report_dir: Path) 
         "source_files": {
             "report_section_contracts": str(output_dir / "report_section_contracts.json"),
             "quality_remediation_plan": str(output_dir / "quality_remediation_plan.json"),
+            "section_evidence_packs": str(output_dir / "section_evidence_packs.json"),
             "section_verification": str(output_dir / "section_verification.json"),
             "report_md": str(report_md),
         },

@@ -169,3 +169,66 @@ def test_section_repair_uses_quality_issues_to_rewrite_investment_conclusion(tmp
     assert "中性观察评级" in repaired
     assert "核心理由" in repaired
     assert "主要风险" in repaired
+
+
+def test_section_repair_callback_only_changes_failed_section(tmp_path):
+    outputs = tmp_path / "outputs"
+    reports = tmp_path / "reports"
+    outputs.mkdir()
+    reports.mkdir()
+    financial_body = "财务分析已有充分证据与完整解释。" * 20
+    markdown = f"""# 测试报告
+
+## 财务分析
+{financial_body}
+
+## 投资结论
+短。
+"""
+    (reports / "report.md").write_text(markdown, encoding="utf-8")
+    (reports / "report.json").write_text("{}", encoding="utf-8")
+    (outputs / "section_evidence_packs.json").write_text(json.dumps({"packs": {"conclusion": {
+        "must_use_evidence_ids": ["ev1"],
+        "must_use_evidence": [{"evidence_id": "ev1", "period": "FY2024", "authority": "official"}],
+        "unsupported_claim_ids": [],
+    }}}), encoding="utf-8")
+
+    def repair(payload):
+        assert payload["section_key"] == "conclusion"
+        return {"section_markdown": ("维持中性判断，核心理由与风险均由正式证据支持。" * 12) + "[ev1]"}
+
+    summary = repair_failed_sections_for_outputs(
+        output_dir=outputs,
+        report_dir=reports,
+        section_verification={"status": "failed", "failed_sections": ["conclusion"], "issues": []},
+        repair_callback=repair,
+    )
+
+    repaired = (reports / "report.md").read_text(encoding="utf-8")
+    assert financial_body in repaired
+    assert summary["repair_strategy"] == "llm_section_rewrite"
+    assert summary["evidence_ids_consumed"] == ["ev1"]
+
+
+def test_section_repair_records_callback_failure_and_falls_back(tmp_path):
+    outputs = tmp_path / "outputs"
+    reports = tmp_path / "reports"
+    outputs.mkdir()
+    reports.mkdir()
+    markdown = "# 测试报告\n\n## 投资结论\n短。\n"
+    (reports / "report.md").write_text(markdown, encoding="utf-8")
+    (reports / "report.json").write_text("{}", encoding="utf-8")
+
+    def fail(_payload):
+        raise RuntimeError("model unavailable")
+
+    summary = repair_failed_sections_for_outputs(
+        output_dir=outputs,
+        report_dir=reports,
+        section_verification={"status": "failed", "failed_sections": ["conclusion"], "issues": []},
+        repair_callback=fail,
+    )
+
+    assert summary["repair_strategy"] == "deterministic_section_rewrite"
+    assert summary["model_status"] == "failed_or_no_change"
+    assert any(row.get("failure_reason") == "model unavailable" for row in summary["attempts"])

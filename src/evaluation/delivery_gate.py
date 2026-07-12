@@ -22,6 +22,8 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
     quality = _read_json(outputs / "quality_report.json", {})
     llm_review = _read_json(outputs / "llm_quality_review.json", {})
     section_verification = _read_json(outputs / "section_verification.json", {})
+    section_packs = _read_json(outputs / "section_evidence_packs.json", {})
+    section_repair = _read_json(outputs / "section_repair.json", {})
     retrieval_attribution = _read_json(outputs / "evidence_retrieval_attribution.json", {})
     verifier_passed = bool(verification.get("passed", summary.get("verification_passed", False)))
     objective_pass = bool(quality.get("objective_pass", False))
@@ -32,6 +34,7 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
     if isinstance(retrieval_attribution, dict):
         attribution_issues = _attribution_diagnostic_issues(retrieval_attribution, start_index=len(issues) + 1)
         issues.extend(attribution_issues)
+    issues.extend(_section_delivery_issues(section_packs, section_verification, section_repair, len(issues) + 1))
 
     # Read contract-first generation artifacts for top_blockers
     contracts_data = _read_json(outputs / "report_section_contracts.json", None)
@@ -126,6 +129,10 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
             "section_verification_passed": bool(section_verification.get("formal_delivery_allowed", True)),
         },
         "evidence_retrieval_attribution": _attribution_summary(retrieval_attribution),
+        "section_evidence_contract": {
+            "available": bool(section_packs.get("packs")) if isinstance(section_packs, dict) else False,
+            "repair_status": section_repair.get("status") if isinstance(section_repair, dict) else None,
+        },
         "issue_counts": {
             "fatal": sum(1 for item in issues if item.get("severity") == "fatal"),
             "blocker": sum(1 for item in issues if item.get("severity") == "blocker"),
@@ -186,6 +193,49 @@ def _attribution_diagnostic_issues(attribution: Dict[str, Any], *, start_index: 
                 "cause": cause,
             }
         )
+    return output
+
+
+def _section_delivery_issues(packs: Any, verification: Any, repair: Any, start_index: int) -> List[Dict[str, Any]]:
+    if not isinstance(packs, dict) or not isinstance(packs.get("packs"), dict):
+        return []
+    results = verification.get("section_results") if isinstance(verification, dict) else {}
+    results = results if isinstance(results, dict) else {}
+    core_sections = {"executive_summary", "business_overview", "financial_analysis", "valuation", "risks", "conclusion"}
+    output: List[Dict[str, Any]] = []
+    for section, pack in packs["packs"].items():
+        if section not in core_sections or not isinstance(pack, dict):
+            continue
+        result = results.get(section) if isinstance(results.get(section), dict) else {}
+        unsupported = pack.get("unsupported_claim_ids") or []
+        required = pack.get("must_use_evidence_ids") or []
+        consumed = result.get("consumed_evidence_ids") or []
+        if unsupported:
+            output.append({
+                "issue_id": f"section_evidence_{start_index + len(output):04d}",
+                "severity": "blocker",
+                "category": "claim_support",
+                "section": section,
+                "message": f"Core section has unsupported claims: {', '.join(map(str, unsupported[:5]))}",
+                "source": "section_evidence_packs",
+            })
+        if required and not consumed:
+            output.append({
+                "issue_id": f"section_evidence_{start_index + len(output):04d}",
+                "severity": "blocker",
+                "category": "evidence_consumption",
+                "section": section,
+                "message": "Core section did not consume any must-use evidence.",
+                "source": "section_evidence_packs",
+            })
+    if isinstance(repair, dict) and repair.get("failed_sections_after"):
+        output.append({
+            "issue_id": f"section_repair_{start_index + len(output):04d}",
+            "severity": "blocker",
+            "category": "section_repair",
+            "message": "Section repair completed with unresolved core sections.",
+            "source": "section_repair",
+        })
     return output
 
 
