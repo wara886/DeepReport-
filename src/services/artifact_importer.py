@@ -837,12 +837,25 @@ def _numeric_value_appears_in_text(value: Any, text: str) -> bool:
 
 def _metadata(record: dict[str, Any], *, task_id: str, period: str, missing_fields: list[str]) -> dict[str, Any]:
     metadata = dict(record.get("metadata", {})) if isinstance(record.get("metadata"), dict) else {}
-    metadata["raw_artifact_record"] = dict(record)
+    metadata.pop("raw_artifact_record", None)
+    metadata["raw_artifact_record"] = _without_recursive_artifact_payload(record)
     metadata["task_id"] = task_id
     metadata["period"] = period
     if missing_fields:
         metadata["missing_fields"] = missing_fields
     return metadata
+
+
+def _without_recursive_artifact_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _without_recursive_artifact_payload(item)
+            for key, item in value.items()
+            if key != "raw_artifact_record"
+        }
+    if isinstance(value, list):
+        return [_without_recursive_artifact_payload(item) for item in value]
+    return value
 
 
 def _artifact_url(*, path: Path, root: Path, task_id: str, filename: str, artifact_root: str) -> str:
