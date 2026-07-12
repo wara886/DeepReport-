@@ -522,8 +522,9 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
     for marker in HALF_SENTENCE_MARKERS:
         if marker in body_text:
             _issue(issues, "blocker", "content_depth", f"report contains half-sentence marker: {marker}")
+    sentence_check_text = _without_structural_list_labels(body_text)
     for pattern in HALF_SENTENCE_REGEXES:
-        if re.search(pattern, body_text.strip(), flags=re.MULTILINE):
+        if re.search(pattern, sentence_check_text.strip(), flags=re.MULTILINE):
             _issue(issues, "blocker", "content_depth", f"report contains unfinished sentence pattern: {pattern}")
 
     # Debug/internal ID leakage detection
@@ -639,6 +640,21 @@ def _score_professional_depth(artifacts: Dict[str, Any], issues: List[Dict[str, 
     if not _investment_conclusion_has_direction_and_reason(text):
         _issue(issues, "blocker", "professional_depth", "investment conclusion lacks direction and reason")
     return round(sum(1 for ok in checks.values() if ok) / len(checks), 4)
+
+
+def _without_structural_list_labels(text: str) -> str:
+    lines = str(text or "").splitlines()
+    output: List[str] = []
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.endswith(("：", ":")) or len(stripped) > 80:
+            output.append(line)
+            continue
+        next_line = next((item.strip() for item in lines[index + 1 :] if item.strip()), "")
+        if next_line.startswith(("-", "*", "|")) or next_line.endswith(("：", ":")):
+            continue
+        output.append(line)
+    return "\n".join(output)
 
 
 def _score_compliance(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:

@@ -1755,14 +1755,14 @@ def test_rule_verifier_ignores_financial_domain_acronyms_as_tickers():
             ClaimItem(
                 claim_id="cl_acronyms",
                 section_name="financial_analysis",
-                claim_text="MSFT uses AI and files through SEC EDGAR.",
+                claim_text="MSFT discusses AI, ERM, ESG, and ESPP in a DEF 14A filed through SEC EDGAR.",
                 evidence_ids=["ev_msft"],
                 confidence=0.9,
             )
         ],
         markdown=(
             "# MSFT Report\n\n## Executive Summary\n\nAI platform overview.\n\n"
-            "## Financial Analysis\n\nSEC EDGAR MD&A and EX-99.1 context [ev_msft].\n\n"
+            "## Financial Analysis\n\nSEC EDGAR DEF 14A, ERM, ESG, ESPP, MD&A, and EX-99.1 context [ev_msft].\n\n"
             "## Risk Assessment\n\nRisk discussion.\n"
         ),
         evidence_records=[{"evidence_id": "ev_msft", "symbol": "MSFT", "content": "MSFT filing."}],

@@ -254,6 +254,43 @@ def test_quality_half_sentence_check_ignores_javascript_trailing_commas(tmp_path
     )
 
 
+def test_quality_half_sentence_check_allows_list_labels_ending_with_colon(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# MSFT FY2024 公司研报
+
+## 执行摘要
+报告基于官方证据和结构化财务指标形成中性观察评级，覆盖业务、财务、估值和风险。
+
+## 财务分析
+收入、利润和经营现金流均用于判断盈利质量，现金流转换率是关键约束。
+
+## 估值敏感性
+盈利桥接（非DCF目标价）：
+估值敏感性分析：
+- 悲观情景：净利润为87.25。
+- 基准情景：净利润为88.14。
+- 乐观情景：净利润为89.02。
+
+## 风险评估
+主要风险包括需求波动、竞争压力、监管变化和估值倍数回落。
+
+## 投资结论
+维持中性观察评级，基于收入、现金流和估值约束，同时关注竞争和风险变化。
+""",
+        symbol="MSFT",
+        period="FY2024",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(
+        issue["category"] == "content_depth" and "unfinished sentence pattern" in issue["message"]
+        for issue in report["issues"]
+    )
+
+
 def test_quality_allows_peer_metric_gap_when_report_discloses_boundary(tmp_path):
     run_dir = _write_run(
         tmp_path,

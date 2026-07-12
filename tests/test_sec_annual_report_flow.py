@@ -88,6 +88,29 @@ def test_sec_resolver_prefers_original_10k_over_later_amendment(monkeypatch):
     assert payload.meta["filing"]["primary_document"] == "original10k.htm"
 
 
+def test_sec_annual_resolver_never_selects_newer_proxy(monkeypatch):
+    monkeypatch.setattr(
+        "src.data.sec_filing_resolver._get_json",
+        lambda *args, **kwargs: {
+            "filings": {
+                "recent": {
+                    "form": ["DEF 14A", "10-K"],
+                    "accessionNumber": ["0001193125-24-242883", "0000950170-24-087843"],
+                    "filingDate": ["2024-10-24", "2024-07-30"],
+                    "reportDate": ["2024-12-10", "2024-06-30"],
+                    "primaryDocument": ["proxy.htm", "annual.htm"],
+                }
+            }
+        },
+    )
+    monkeypatch.setattr("src.data.sec_filing_resolver._get_text", lambda *args, **kwargs: MINIMAL_10K)
+
+    payload = resolve_sec_annual_filing("MSFT", "FY2024")
+
+    assert payload.meta["filing"]["form"] == "10-K"
+    assert payload.meta["filing"]["primary_document"] == "annual.htm"
+
+
 def test_sec_proxy_resolver_extracts_bounded_governance_evidence(monkeypatch):
     monkeypatch.setattr(
         "src.data.sec_filing_resolver._get_json",

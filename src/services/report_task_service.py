@@ -101,6 +101,7 @@ class ReportTaskService:
         self.config_path = config_path
         self.memory_root = Path(memory_root)
         self.mode = mode
+        self._uses_production_orchestrator = orchestrator_factory is None
         self.orchestrator_factory = orchestrator_factory or MultiAgentOrchestrator
         self.quality_runner = quality_runner or run_delivery_quality_pipeline
         self.langgraph_runtime_enabled = bool(langgraph_runtime_enabled)
@@ -1456,7 +1457,9 @@ class ReportTaskService:
             "execution_mode": execution_mode,
             "fast": bool(payload.get("fast", True)),
             "search_engines": _normalize_search_engines(payload.get("search_engines")),
-            "enable_remote_data": bool(payload.get("enable_remote_data", False)),
+            "enable_remote_data": _truthy(
+                payload.get("enable_remote_data", self.mode == "user" and self._uses_production_orchestrator)
+            ),
             "data_source_config_path": str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
             "memory_enabled": bool(payload.get("memory_enabled", False)),
             "execution_tier": str(payload.get("execution_tier") or ("user_fast" if self.mode == "user" else "developer_fast")),

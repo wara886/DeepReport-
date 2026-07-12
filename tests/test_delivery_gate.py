@@ -184,7 +184,10 @@ def test_delivery_gate_demotes_boundary_contract_blockers_after_objective_pass(t
         "section_verification.json": {"status": "passed", "formal_delivery_allowed": True},
         "report_section_contracts.json": {
             "contracts": {
-                "ownership_governance": {"blocked_reasons": ["governance_section_not_found"]},
+                "ownership_governance": {
+                    "blocked_reasons": ["governance_section_not_found"],
+                    "quality_flags": ["governance_uses_sec_proxy"],
+                },
                 "strategy_business": {"blocked_reasons": ["strategy_pdf_sections_not_found"]},
                 "valuation_sensitivity": {"quality_flags": ["valuation_sensitivity_framework_only"]},
                 "risk_factors": {

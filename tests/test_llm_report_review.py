@@ -171,6 +171,45 @@ def test_llm_review_reconciles_low_score_stale_english_review_after_repair(tmp_p
     assert all(issue["severity"] == "warning" for issue in review["issues"])
 
 
+def test_llm_review_reconciles_disclosed_ttm_and_fiscal_period_context(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    outputs = run_dir / "company" / "outputs"
+    reports = run_dir / "company" / "reports"
+    (outputs / "section_verification.json").write_text(
+        json.dumps({"status": "passed", "formal_delivery_allowed": True}),
+        encoding="utf-8",
+    )
+    (reports / "report.md").write_text(
+        "## 执行摘要\n报告采用FY2024年度财务口径。\n\n"
+        "## 同行对比\n> 注：下表为当前 TTM 市场快照；财务分析章节的 FY2024 指标来自年度披露，"
+        "二者期间不同，不作同期间数值替代。\n\n"
+        "## 财务分析\nFY2024收入和现金流已核验。\n\n"
+        "## 风险评估\n竞争和监管风险已有官方依据。\n\n"
+        "## 投资结论\n维持中性观察评级，基于估值和风险约束。",
+        encoding="utf-8",
+    )
+    model = FakeReviewModel(
+        {
+            "total_score": 0.9,
+            "dimension_scores": {},
+            "verdict": "同行期间错配。",
+            "issues": [
+                {
+                    "severity": "fatal",
+                    "category": "period",
+                    "message": "同行对比表格使用TTM市场快照数据，与研报主题FY2024期间不一致，构成期间错配。",
+                }
+            ],
+        }
+    )
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["issues"][0]["severity"] == "warning"
+    assert review["issues"][0]["category"] == "llm_review_reconciled"
+
+
 def test_review_prompt_compacts_large_evidence_payloads():
     huge = "financial filing text " * 200000
     prompt = _build_review_prompt(

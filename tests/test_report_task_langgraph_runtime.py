@@ -258,6 +258,7 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
                 "symbol": "NVDA",
                 "period": "FY2024",
                 "request_id": "request-runtime-review",
+                "enable_remote_data": False,
                 "run_immediately": True,
             },
         )
@@ -339,6 +340,7 @@ def test_report_task_retries_failed_generation_node_from_checkpoint(tmp_path):
                 "task_id": "task-runtime-retry",
                 "symbol": "NVDA",
                 "period": "FY2024",
+                "enable_remote_data": False,
                 "run_immediately": True,
             },
         )

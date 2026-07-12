@@ -261,16 +261,17 @@ def _select_filing(submissions: dict[str, Any], *, forms: set[str], fiscal_year:
     recent = submissions.get("filings", {}).get("recent", {})
     if not isinstance(recent, dict):
         return {}
-    forms = recent.get("form", [])
+    allowed_forms = {str(value).upper() for value in forms}
+    filing_forms = recent.get("form", [])
     accessions = recent.get("accessionNumber", [])
     filing_dates = recent.get("filingDate", [])
     report_dates = recent.get("reportDate", [])
     primary_docs = recent.get("primaryDocument", [])
 
     rows: list[dict[str, Any]] = []
-    for idx, form in enumerate(forms if isinstance(forms, list) else []):
+    for idx, form in enumerate(filing_forms if isinstance(filing_forms, list) else []):
         form_text = str(form or "").upper()
-        if form_text not in forms:
+        if form_text not in allowed_forms:
             continue
         row = {
             "form": form_text,

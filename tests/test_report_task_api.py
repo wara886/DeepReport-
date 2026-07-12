@@ -75,6 +75,7 @@ def test_report_task_api_create_list_detail_without_running(tmp_path):
     assert body["metadata"]["data_source_scope"] == "official_first"
     assert body["metadata"]["report_type"] == "annual_review"
     assert body["metadata"]["execution_mode"] == "static"
+    assert body["metadata"]["enable_remote_data"] is False
 
     assert listed.status_code == 200
     assert listed.json()["total"] == 1
@@ -82,6 +83,36 @@ def test_report_task_api_create_list_detail_without_running(tmp_path):
 
     assert detail.status_code == 200
     assert detail.json()["events"][0]["stage"] == "queued"
+
+
+def test_report_task_allows_explicit_offline_mode(tmp_path):
+    with build_client(tmp_path) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={
+                "task_id": "task-api-offline",
+                "symbol": "MSFT",
+                "period": "FY2024",
+                "enable_remote_data": False,
+                "run_immediately": False,
+            },
+        )
+
+    assert created.status_code == 201
+    assert created.json()["metadata"]["enable_remote_data"] is False
+
+
+def test_production_report_task_defaults_to_remote_sources(tmp_path):
+    service = ReportTaskService(
+        database_url=f"sqlite:///{tmp_path / 'production-tasks.db'}",
+        output_root=tmp_path / "production-outputs",
+        report_root=tmp_path / "production-reports",
+        memory_root=tmp_path / "production-memory",
+    )
+
+    task = service.create_task({"task_id": "task-production-default", "symbol": "MSFT", "period": "FY2024"})
+
+    assert task["metadata"]["enable_remote_data"] is True
 
 
 def test_report_task_can_explicitly_select_diagnostic_orchestrator_mode(tmp_path):
@@ -305,7 +336,13 @@ def test_report_task_api_start_queued_task(tmp_path):
     with build_client(tmp_path) as client:
         created = client.post(
             "/api/report-tasks",
-            json={"task_id": "task-api-start", "symbol": "MSFT", "period": "FY2024", "run_immediately": False},
+            json={
+                "task_id": "task-api-start",
+                "symbol": "MSFT",
+                "period": "FY2024",
+                "enable_remote_data": False,
+                "run_immediately": False,
+            },
         )
         started = client.post("/api/report-tasks/task-api-start/start", json={"run_async": False})
 

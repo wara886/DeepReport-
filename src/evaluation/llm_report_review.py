@@ -207,7 +207,11 @@ def _reconcile_review_with_runtime_artifacts(review: Dict[str, Any], artifacts: 
         if not isinstance(issue, dict):
             continue
         message = str(issue.get("message") or "")
-        if _is_stale_section_depth_review_issue(message, report_md=report_md):
+        if (
+            _is_stale_section_depth_review_issue(message, report_md=report_md)
+            or _is_disclosed_ttm_period_context_issue(message, report_md=report_md)
+            or _is_reviewer_unfinished_sentence_false_positive(message, artifacts=artifacts)
+        ):
             row = dict(issue)
             row["severity"] = "warning"
             row["category"] = "llm_review_reconciled"
@@ -229,6 +233,31 @@ def _reconcile_review_with_runtime_artifacts(review: Dict[str, Any], artifacts: 
         output["total_score"] = max(_score(output.get("total_score", 0.0)), 0.82)
     output["artifact_reconciliation_applied"] = True
     return output
+
+
+def _is_disclosed_ttm_period_context_issue(message: str, *, report_md: str) -> bool:
+    text = str(message or "").lower()
+    report = str(report_md or "").lower()
+    alleges_mismatch = "ttm" in text and any(term in text for term in ("期间", "错配", "mismatch", "fy2024"))
+    disclosed = (
+        "当前 ttm 市场快照" in report
+        and "期间不同" in report
+        and any(term in report for term in ("不作同期间数值替代", "不作同期间替代"))
+    )
+    return alleges_mismatch and disclosed
+
+
+def _is_reviewer_unfinished_sentence_false_positive(message: str, *, artifacts: Dict[str, Any]) -> bool:
+    text = str(message or "").lower()
+    if not any(term in text for term in ("未完成句子", "unfinished sentence")):
+        return False
+    quality = artifacts.get("quality_report") if isinstance(artifacts.get("quality_report"), dict) else {}
+    issues = quality.get("issues") if isinstance(quality.get("issues"), list) else []
+    return not any(
+        "unfinished sentence pattern" in str(item.get("message") or "").lower()
+        for item in issues
+        if isinstance(item, dict)
+    )
 
 
 def _is_stale_section_depth_review_issue(message: str, *, report_md: str = "") -> bool:
