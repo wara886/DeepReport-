@@ -1284,3 +1284,39 @@ NVIDIA、Intel、Broadcom peer comparison。
         assert issue["severity"] == "blocker", (
             f"Template phrase issue should be blocker, got {issue['severity']}: {issue['message']}"
         )
+
+
+def test_raw_english_detector_ignores_reference_list_metadata(tmp_path):
+    long_text = "公司收入、利润、现金流和资产负债结构均有完整解释，并绑定正式证据。" * 12
+    english_reference = "Risk Factors Management Discussion Company competition disclosure " * 30
+    run_dir = _write_run_with_dossiers(
+        tmp_path,
+        report_md=f"""# AAPL FY2024 报告
+
+## 执行摘要
+{long_text}
+## 业务概览
+{long_text}
+## 财务分析
+{long_text}
+## 同行对比
+{long_text}
+## 估值观察
+{long_text}
+## 风险评估
+{long_text}
+## 投资结论
+{long_text}
+
+## 参考来源
+{english_reference}
+""",
+        section_dossiers={
+            key: {"section_title": key, "min_content_level": "full"}
+            for key in ("executive_summary", "business_overview", "financial_analysis", "peer_compare", "valuation", "risks", "conclusion")
+        },
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "raw_english_annual_section_leak" for issue in report["issues"])

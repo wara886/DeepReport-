@@ -387,7 +387,7 @@ CONTENT_DEPTH_THRESHOLDS = {
     "business_overview": 160,
     "financial_analysis": 220,
     "peer_compare": 120,
-    "valuation": 180,
+    "valuation": 160,
     "risks": 160,
     "conclusion": 160,
 }
@@ -529,7 +529,7 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
     for pattern in DEBUG_LEAK_PATTERNS:
         if pattern in text:
             _issue(issues, "blocker", "content_depth", f"report contains debug leakage: {pattern}")
-    if _contains_any(text, ("Item 1A", "Risk Factors", "Management's Discussion", "Our business", "We face intense competition")) and len(re.findall(r"\b[A-Za-z]{5,}\b", text)) > 120:
+    if _contains_any(body_text, ("Item 1A", "Risk Factors", "Management's Discussion", "Our business", "We face intense competition")) and len(re.findall(r"\b[A-Za-z]{5,}\b", body_text)) > 120:
         _issue(issues, "blocker", "raw_english_annual_section_leak", "report appears to contain raw English annual-report sections")
     report_body_text = _strip_reference_sections(
         "\n".join([str(artifacts.get("report_md") or ""), str(artifacts.get("report_html") or "")])

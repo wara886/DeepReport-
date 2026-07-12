@@ -454,6 +454,29 @@ class TestContractBuilder:
         assert "valuation_sensitivity_framework_only" in sensitivity.quality_flags
         assert "敏感性框架" in sensitivity.deterministic_text
 
+    def test_valuation_sensitivity_builds_quantified_earnings_bridge_from_verified_inputs(self):
+        contracts = build_report_section_contracts(
+            state={"symbol": "AAPL", "period": "FY2024"},
+            evidence_records=[],
+            analysis_artifacts={
+                "valuation_model": {
+                    "valuation_status": "rough_observation_only",
+                    "input_summary": {"revenue_billion": 391.035, "net_income_billion": 93.736},
+                }
+            },
+            section_dossiers={},
+            citations=[],
+        )
+
+        sensitivity = contracts.get("valuation_sensitivity")
+
+        assert sensitivity is not None
+        assert sensitivity.status == "partial"
+        assert sensitivity.blocked_reasons == []
+        assert "收入上升或下降1%" in sensitivity.deterministic_text
+        assert "0.94B" in sensitivity.deterministic_text
+        assert "valuation_sensitivity_earnings_bridge_only" in sensitivity.quality_flags
+
 
 class TestCleanPdfBoilerplate:
 

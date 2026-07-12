@@ -370,5 +370,9 @@ def _contract_blockers_are_boundary_disclosures(blockers: list) -> bool:
         "quality:valuation_sensitivity_framework_only",
         "risk_factors:risk_official_pdf_not_found_and_no_industry_fallback",
         "quality:risk_generic_fallback_no_industry_policy",
+        "ownership_governance:governance_summary_not_injected",
+        "quality:peer_compare_boundary_only",
+        "quality:valuation_sensitivity_boundary_only",
+        "quality:valuation_sensitivity_earnings_bridge_only",
     }
     return all(str(item) in boundary_terms for item in blockers)

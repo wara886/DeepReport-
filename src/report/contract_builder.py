@@ -744,6 +744,8 @@ def _build_peer_compare(
                 "本轮未取得足够可比公司量化表，因此同行对比仅作为口径边界："
                 "需要按同市场、同业务结构、相近利润率和现金流质量筛选可比公司；"
                 "正式交付前应补齐可比公司的收入增速、毛利率、P/E、P/S 或 P/B 等指标。"
+                "在统一财年、币种和会计口径前，本报告不输出缺乏证据支持的同行排名或估值折溢价，"
+                "以免把业务结构差异误判为经营优劣；当前结论仅用于说明比较方法和数据边界。"
             )
             c.add_quality_flag("peer_compare_boundary_only")
         return
@@ -975,13 +977,28 @@ def _build_valuation_sensitivity(
     if not valuation_sensitivity:
         vm_status = str(valuation_model.get("valuation_status", "") or "") if valuation_model else ""
         if vm_status in ("rough_observation_only", "blocked_due_to_incomplete_inputs"):
-            c.add_blocked_reason(f"valuation_sensitivity_blocked:{vm_status}")
-            c.status = "fallback"
-            c.deterministic_text = (
-                "估值敏感性暂不输出DCF情景数值。本轮只保留变量边界：收入增速、毛利率、"
-                "经营现金流转换率、折现率和终值增长率是后续正式模型必须复核的关键输入。"
-            )
-            c.add_quality_flag("valuation_sensitivity_boundary_only")
+            inputs = valuation_model.get("input_summary") if isinstance(valuation_model.get("input_summary"), dict) else {}
+            revenue = _safe_number(inputs.get("revenue_billion"))
+            net_income = _safe_number(inputs.get("net_income_billion"))
+            if revenue and net_income and revenue > 0:
+                margin = net_income / revenue
+                income_delta = revenue * 0.01 * margin
+                c.status = "partial"
+                c.deterministic_text = (
+                    f"估值敏感性采用盈利桥接而非虚构DCF目标价：基准收入约{revenue:.2f}B、"
+                    f"净利润约{net_income:.2f}B，对应净利率约{margin * 100:.1f}%。"
+                    f"在净利率保持不变的简化假设下，收入上升或下降1%将使净利润约增加或减少{income_delta:.2f}B；"
+                    "若市场估值倍数同时收缩，股权价值的下行幅度可能大于盈利变化。"
+                    "该情景用于识别收入与利润弹性，不替代包含折现率、终值增长率和完整预测期的DCF模型。"
+                )
+                c.add_quality_flag("valuation_sensitivity_earnings_bridge_only")
+            else:
+                c.status = "fallback"
+                c.deterministic_text = (
+                    "估值敏感性暂不输出DCF情景数值。本轮只保留变量边界：收入增速、毛利率、"
+                    "经营现金流转换率、折现率和终值增长率是后续正式模型必须复核的关键输入。"
+                )
+                c.add_quality_flag("valuation_sensitivity_boundary_only")
         else:
             c.status = "fallback"
             c.deterministic_text = (
