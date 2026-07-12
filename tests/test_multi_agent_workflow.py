@@ -648,6 +648,56 @@ def test_static_production_path_builds_section_packs_before_writer(tmp_path):
     assert writer_packs["packs"] == packs["packs"]
 
 
+def test_static_agent_phases_resume_without_replaying_completed_agents(tmp_path):
+    output_dir = tmp_path / "outputs"
+    report_dir = tmp_path / "reports"
+    first_stages = []
+    first = MultiAgentOrchestrator(
+        output_dir=str(output_dir),
+        report_dir=str(report_dir),
+        model=FakeJsonModel(),
+        stage_callback=first_stages.append,
+    )
+
+    normalized = first.run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="normalize_evidence",
+        resume_from_phase_artifacts=True,
+    )
+
+    assert normalized["phase"] == "normalize_evidence"
+    assert [item["agent_key"] for item in first_stages if item["phase"] == "started"] == [
+        "planning",
+        "research",
+        "browser",
+    ]
+
+    resumed_stages = []
+    resumed = MultiAgentOrchestrator(
+        output_dir=str(output_dir),
+        report_dir=str(report_dir),
+        model=FakeJsonModel(),
+        stage_callback=resumed_stages.append,
+    ).run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="analyze",
+        resume_from_phase_artifacts=True,
+    )
+
+    assert resumed["phase"] == "analyze"
+    assert [item["agent_key"] for item in resumed_stages if item["phase"] == "started"] == ["analyze"]
+    checkpoint = json.loads((output_dir / "static_phase_checkpoint.json").read_text(encoding="utf-8"))
+    assert checkpoint["phase"] == "analyze"
+    assert checkpoint["runtime"]["executed_agents"] == ["planning", "research", "browser", "analyze"]
+    assert (output_dir / "canonical_metrics.json").is_file()
+
+
 def test_multi_agent_orchestrator_runs_compact_collaborative_by_default(tmp_path):
     orchestrator = MultiAgentOrchestrator(
         output_dir=str(tmp_path / "outputs"),

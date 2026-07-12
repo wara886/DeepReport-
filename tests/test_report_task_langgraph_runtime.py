@@ -291,8 +291,12 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
     assert observability["checkpoint_status"] == "completed"
     assert set(observability["node_latency_ms"]) == {
         "evidence",
-        "official_evidence_backfill",
-        "build_canonical_metrics",
+            "official_evidence_backfill",
+            "planning",
+            "research",
+            "normalize_evidence",
+            "analyze",
+            "build_canonical_metrics",
         "build_section_evidence_packs",
         "generation",
         "inspect_agent_execution",

@@ -248,6 +248,10 @@ class ReportTaskService:
                     verify_sections_callback=self._graph_verify_sections_node,
                     repair_failed_sections_callback=self._graph_repair_failed_sections_node,
                     inspect_agent_execution_callback=self._graph_inspect_agent_execution_node,
+                    planning_callback=lambda state: self._graph_static_agent_phase_node(state, "planning"),
+                    research_callback=lambda state: self._graph_static_agent_phase_node(state, "research"),
+                    normalize_evidence_callback=lambda state: self._graph_static_agent_phase_node(state, "normalize_evidence"),
+                    analyze_callback=lambda state: self._graph_static_agent_phase_node(state, "analyze"),
                 )
                 self._langgraph_runtime = LangGraphReportRuntime(
                     handlers,
@@ -341,6 +345,26 @@ class ReportTaskService:
         self._run_orchestrator(task_id=task_id, metadata=metadata)
         self._enhance_artifacts_with_task_evidence(task_id)
         self.import_artifacts(task_id)
+        return self._current_run_state_patch(task_id)
+
+    def _graph_static_agent_phase_node(self, state: ReportGraphState, phase: str) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        if self.orchestrator_factory is not MultiAgentOrchestrator or str(metadata.get("execution_mode") or "static") != "static":
+            return self._current_run_state_patch(task_id)
+        result = self._run_orchestrator_instance(
+            task_id=task_id,
+            metadata=metadata,
+            stop_after_phase=phase,
+            resume_from_phase_artifacts=True,
+        )
+        self._record_runtime_stage(
+            task_id,
+            stage=phase,
+            status="success",
+            message=f"Agent phase {phase} completed",
+            metadata={"checkpoint": result.get("checkpoint"), "result_keys": sorted(result)},
+        )
         return self._current_run_state_patch(task_id)
 
     def _graph_inspect_agent_execution_node(self, state: ReportGraphState) -> dict[str, Any]:
@@ -1407,28 +1431,11 @@ class ReportTaskService:
         }
 
     def _run_orchestrator(self, *, task_id: str, metadata: dict[str, Any]) -> Any:
-        orchestrator_kwargs: dict[str, Any] = {
-            "output_dir": str(metadata["output_dir"]),
-            "report_dir": str(metadata["report_dir"]),
-            "config_path": self.config_path,
-            "memory_enabled": bool(metadata.get("memory_enabled", False)),
-            "memory_root": str(self.memory_root / "durable"),
-            "execution_tier": str(metadata.get("execution_tier") or "developer_fast"),
-        }
-        if _supports_agent_stage_callback(self.orchestrator_factory):
-            orchestrator_kwargs["stage_callback"] = lambda payload: self._record_agent_stage(task_id, payload)
-        orchestrator = self.orchestrator_factory(
-            **orchestrator_kwargs,
-        )
-        result = orchestrator.run(
-            research_topic=str(metadata.get("research_topic") or ""),
-            symbol=str(metadata.get("symbol") or ""),
-            period=str(metadata.get("period") or ""),
-            execution_mode=str(metadata.get("execution_mode") or "static"),
-            fast=bool(metadata.get("fast", True)),
-            search_engines=list(metadata.get("search_engines") or []),
-            enable_remote_data=bool(metadata.get("enable_remote_data", False)),
-            data_source_config_path=str(metadata.get("data_source_config_path") or "configs/data_sources.yaml"),
+        phased_static = self.orchestrator_factory is MultiAgentOrchestrator and str(metadata.get("execution_mode") or "static") == "static"
+        result = self._run_orchestrator_instance(
+            task_id=task_id,
+            metadata=metadata,
+            resume_from_phase_artifacts=phased_static,
         )
         with self.session() as session:
             task = self._get_task_for_update(session, task_id)
@@ -1446,6 +1453,42 @@ class ReportTaskService:
             )
             session.commit()
         return result
+
+    def _run_orchestrator_instance(
+        self,
+        *,
+        task_id: str,
+        metadata: dict[str, Any],
+        stop_after_phase: str = "",
+        resume_from_phase_artifacts: bool = False,
+    ) -> Any:
+        orchestrator_kwargs: dict[str, Any] = {
+            "output_dir": str(metadata["output_dir"]),
+            "report_dir": str(metadata["report_dir"]),
+            "config_path": self.config_path,
+            "memory_enabled": bool(metadata.get("memory_enabled", False)),
+            "memory_root": str(self.memory_root / "durable"),
+            "execution_tier": str(metadata.get("execution_tier") or "developer_fast"),
+        }
+        if _supports_agent_stage_callback(self.orchestrator_factory):
+            orchestrator_kwargs["stage_callback"] = lambda payload: self._record_agent_stage(task_id, payload)
+        orchestrator = self.orchestrator_factory(
+            **orchestrator_kwargs,
+        )
+        run_kwargs: dict[str, Any] = {
+            "research_topic": str(metadata.get("research_topic") or ""),
+            "symbol": str(metadata.get("symbol") or ""),
+            "period": str(metadata.get("period") or ""),
+            "execution_mode": str(metadata.get("execution_mode") or "static"),
+            "fast": bool(metadata.get("fast", True)),
+            "search_engines": list(metadata.get("search_engines") or []),
+            "enable_remote_data": bool(metadata.get("enable_remote_data", False)),
+            "data_source_config_path": str(metadata.get("data_source_config_path") or "configs/data_sources.yaml"),
+        }
+        if self.orchestrator_factory is MultiAgentOrchestrator:
+            run_kwargs["stop_after_phase"] = stop_after_phase
+            run_kwargs["resume_from_phase_artifacts"] = resume_from_phase_artifacts
+        return orchestrator.run(**run_kwargs)
 
     def _record_agent_stage(self, task_id: str, payload: dict[str, Any]) -> None:
         phase = str(payload.get("phase") or "running")

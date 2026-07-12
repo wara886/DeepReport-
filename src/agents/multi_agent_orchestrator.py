@@ -287,6 +287,8 @@ class MultiAgentOrchestrator:
         claim_contract: str = "",
         allow_document_enrichment: bool = True,
         execution_deadline: float | None = None,
+        stop_after_phase: str = "",
+        resume_from_phase_artifacts: bool = False,
     ) -> Dict[str, str]:
         quality_remediation_plan = quality_remediation_plan or _read_existing_quality_remediation_plan(self.output_dir)
         entity_resolution = _resolve_run_identity(research_topic=research_topic, symbol=symbol, raw_data_root=self.raw_data_root)
@@ -357,6 +359,8 @@ class MultiAgentOrchestrator:
                 data_source_config_path=data_source_config_path,
                 entity_resolution=entity_resolution,
                 quality_remediation_plan=quality_remediation_plan,
+                stop_after_phase=stop_after_phase,
+                resume_from_phase_artifacts=resume_from_phase_artifacts,
             )
         raise ValueError(f"Unsupported execution_mode: {execution_mode}")
 
@@ -733,8 +737,11 @@ class MultiAgentOrchestrator:
         data_source_config_path: str = "configs/data_sources.yaml",
         entity_resolution: Dict[str, Any] | None = None,
         quality_remediation_plan: Dict[str, Any] | None = None,
+        stop_after_phase: str = "",
+        resume_from_phase_artifacts: bool = False,
     ) -> Dict[str, str]:
-        self.trace = []
+        stored_trace = self._read_json("static_phase_trace.json", []) if resume_from_phase_artifacts else []
+        self.trace = [dict(item) for item in stored_trace if isinstance(item, dict)]
         run_started_at = time.perf_counter()
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.report_dir.mkdir(parents=True, exist_ok=True)
@@ -783,9 +790,11 @@ class MultiAgentOrchestrator:
             task_type="planning",
         )
 
-        planning_result = self._execute(
-            "planning",
-            AgentTask(
+        plan = self._read_json("task_plan.json", {}) if resume_from_phase_artifacts else {}
+        if not plan:
+            planning_result = self._execute(
+                "planning",
+                AgentTask(
                 task_id="task_000_planning",
                 task_type="planning",
                 description=research_topic,
@@ -798,10 +807,12 @@ class MultiAgentOrchestrator:
                     "skill_brief": planning_skill_brief,
                 },
                 priority=5,
-            ),
-        )
-        plan = planning_result.output.get("plan", {})
-        self._write_json("task_plan.json", plan)
+                ),
+            )
+            plan = planning_result.output.get("plan", {})
+            self._write_json("task_plan.json", plan)
+        if stop_after_phase == "planning":
+            return self._static_phase_result("planning", ["task_plan.json"])
         research_blackboard = initialize_research_blackboard(
             symbol=symbol,
             period=period,
@@ -811,9 +822,13 @@ class MultiAgentOrchestrator:
         )
 
         research_query = _query_from_plan(plan=plan, research_topic=research_topic, symbol=symbol, period=period)
-        research_result = self._execute(
-            "research",
-            AgentTask(
+        research_checkpoint = self._read_json("research_phase.json", {}) if resume_from_phase_artifacts else {}
+        if research_checkpoint:
+            research_output = dict(research_checkpoint.get("output") or {})
+        else:
+            research_result = self._execute(
+                "research",
+                AgentTask(
                 task_id="task_001_research",
                 task_type="deep_researcher",
                 description="Collect local and searchable evidence for the report.",
@@ -832,16 +847,18 @@ class MultiAgentOrchestrator:
                 },
                 dependencies=["task_000_planning"],
                 priority=5,
-            ),
-        )
-        evidence_candidates = research_result.output.get("evidence_candidates", [])
+                ),
+            )
+            research_output = dict(research_result.output or {})
+            self._write_json("research_phase.json", {"phase": "research", "output": research_output})
+        evidence_candidates = research_output.get("evidence_candidates", [])
         static_state: Dict[str, Any] = {
             "research_topic": research_topic,
             "symbol": symbol,
             "period": period,
             "entity_resolution": entity_resolution,
             "search_engines": search_engines or [],
-            "search_meta": research_result.output.get("search_meta", {}),
+            "search_meta": research_output.get("search_meta", {}),
             "evidence_candidates": evidence_candidates,
             "evidence_records": [],
             "claims": [],
@@ -853,22 +870,36 @@ class MultiAgentOrchestrator:
             research_blackboard,
             "deep_researcher",
             static_state,
-            research_result.output,
+            research_output,
         )
+        self._write_json("research_blackboard.json", research_blackboard)
+        self._write_json("search_meta.json", static_state["search_meta"])
+        if stop_after_phase == "research":
+            return self._static_phase_result("research", ["task_plan.json", "research_phase.json", "search_meta.json"])
 
-        browser_result = self._execute(
-            "browser",
-            AgentTask(
+        normalize_phase = self._read_json("normalize_evidence_phase.json", {}) if resume_from_phase_artifacts else {}
+        if normalize_phase:
+            evidence_records = self._read_json("evidence.json", [])
+            browser_output = {"evidence_records": evidence_records}
+        else:
+            browser_result = self._execute(
+                "browser",
+                AgentTask(
                 task_id="task_002_browser",
                 task_type="browser",
                 description="Normalize evidence candidates into citation-ready records.",
                 parameters={"evidence_candidates": evidence_candidates, "symbol": symbol},
                 dependencies=["task_001_research"],
                 priority=4,
-            ),
-        )
-        evidence_records = browser_result.output.get("evidence_records", [])
-        self._write_json("evidence.json", evidence_records)
+                ),
+            )
+            browser_output = dict(browser_result.output or {})
+            evidence_records = browser_output.get("evidence_records", [])
+            self._write_json("evidence.json", evidence_records)
+            self._write_json(
+                "normalize_evidence_phase.json",
+                {"phase": "normalize_evidence", "evidence_count": len(evidence_records)},
+            )
         static_state["evidence_records"] = evidence_records
         attach_annual_report_sections_to_state(static_state, raw_data_root=self.raw_data_root)
         attach_pdf_artifacts_to_state(state=static_state)
@@ -877,12 +908,21 @@ class MultiAgentOrchestrator:
             research_blackboard,
             "browser",
             static_state,
-            browser_result.output,
+            browser_output,
         )
+        self._write_json("research_blackboard.json", research_blackboard)
+        if stop_after_phase == "normalize_evidence":
+            return self._static_phase_result("normalize_evidence", ["evidence.json", "research_blackboard.json"])
 
-        analyze_result = self._execute(
-            "analyze",
-            AgentTask(
+        analyze_phase = self._read_json("analyze_phase.json", {}) if resume_from_phase_artifacts else {}
+        analysis_checkpoint = self._read_json("analysis_artifacts.json", {}) if analyze_phase else {}
+        claims_checkpoint = self._read_json("claims.json", []) if analyze_phase else []
+        if analyze_phase:
+            analysis_output = {"claims": claims_checkpoint, "analysis_artifacts": analysis_checkpoint}
+        else:
+            analyze_result = self._execute(
+                "analyze",
+                AgentTask(
                 task_id="task_003_analyze",
                 task_type="deep_analyze",
                 description="Generate financial claims from evidence records.",
@@ -895,10 +935,11 @@ class MultiAgentOrchestrator:
                 },
                 dependencies=["task_002_browser"],
                 priority=5,
-            ),
-        )
-        claims = analyze_result.output.get("claims", [])
-        analysis_artifacts = analyze_result.output.get("analysis_artifacts", {})
+                ),
+            )
+            analysis_output = dict(analyze_result.output or {})
+        claims = analysis_output.get("claims", [])
+        analysis_artifacts = analysis_output.get("analysis_artifacts", {})
         analysis_artifacts = self._apply_canonical_metrics(
             analysis_artifacts,
             evidence_records=evidence_records,
@@ -911,7 +952,7 @@ class MultiAgentOrchestrator:
             research_blackboard,
             "deep_analyze",
             static_state,
-            analyze_result.output,
+            analysis_output,
         )
         self._write_json("claims.json", claims)
         self._write_json("analysis_artifacts.json", analysis_artifacts)
@@ -953,6 +994,16 @@ class MultiAgentOrchestrator:
             "valuation_sensitivity.json",
             analysis_artifacts.get("valuation_sensitivity", {}) if isinstance(analysis_artifacts, dict) else {},
         )
+        self._write_json("research_blackboard.json", research_blackboard)
+        self._write_json(
+            "analyze_phase.json",
+            {"phase": "analyze", "claim_count": len(claims), "metric_artifact_ready": bool(analysis_artifacts)},
+        )
+        if stop_after_phase == "analyze":
+            return self._static_phase_result(
+                "analyze",
+                ["claims.json", "analysis_artifacts.json", "financial_metrics.json", "canonical_metrics.json", "tables.json"],
+            )
         tables = analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else []
         official_artifacts = build_official_evidence_artifacts(
             evidence_records if isinstance(evidence_records, list) else [],
@@ -2366,6 +2417,27 @@ class MultiAgentOrchestrator:
             return json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return default
+
+    def _static_phase_result(self, phase: str, artifact_names: List[str]) -> Dict[str, str]:
+        self._write_json("static_phase_trace.json", self.trace)
+        manifest = {
+            "schema_version": "static_agent_phase.v1",
+            "phase": phase,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "artifacts": {
+                name: str(self.output_dir / name)
+                for name in artifact_names
+                if (self.output_dir / name).is_file()
+            },
+            "runtime": self._runtime_execution_summary(),
+            "trace_count": len(self.trace),
+        }
+        self._write_json("static_phase_checkpoint.json", manifest)
+        return {
+            "phase": phase,
+            "checkpoint": str(self.output_dir / "static_phase_checkpoint.json"),
+            **manifest["artifacts"],
+        }
 
     def _persist_quality_feedback(self, state: Dict[str, Any], remediation: Dict[str, Any]) -> None:
         """Add quality remediation feedback to conversation state so agents see it."""

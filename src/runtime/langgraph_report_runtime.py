@@ -73,6 +73,14 @@ class ReportGraphHandlers(Protocol):
 
     def build_section_evidence_packs(self, state: ReportGraphState) -> dict[str, Any]: ...
 
+    def planning(self, state: ReportGraphState) -> dict[str, Any]: ...
+
+    def research(self, state: ReportGraphState) -> dict[str, Any]: ...
+
+    def normalize_evidence(self, state: ReportGraphState) -> dict[str, Any]: ...
+
+    def analyze(self, state: ReportGraphState) -> dict[str, Any]: ...
+
     def generation(self, state: ReportGraphState) -> dict[str, Any]: ...
 
     def inspect_agent_execution(self, state: ReportGraphState) -> dict[str, Any]: ...
@@ -101,6 +109,10 @@ class CallbackReportGraphHandlers:
     verify_sections_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
     repair_failed_sections_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
     inspect_agent_execution_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
+    planning_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
+    research_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
+    normalize_evidence_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
+    analyze_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
 
     def evidence(self, state: ReportGraphState) -> dict[str, Any]:
         return self.evidence_callback(state)
@@ -122,6 +134,18 @@ class CallbackReportGraphHandlers:
 
     def generation(self, state: ReportGraphState) -> dict[str, Any]:
         return self.generation_callback(state)
+
+    def planning(self, state: ReportGraphState) -> dict[str, Any]:
+        return self.planning_callback(state) if self.planning_callback is not None else {}
+
+    def research(self, state: ReportGraphState) -> dict[str, Any]:
+        return self.research_callback(state) if self.research_callback is not None else {}
+
+    def normalize_evidence(self, state: ReportGraphState) -> dict[str, Any]:
+        return self.normalize_evidence_callback(state) if self.normalize_evidence_callback is not None else {}
+
+    def analyze(self, state: ReportGraphState) -> dict[str, Any]:
+        return self.analyze_callback(state) if self.analyze_callback is not None else {}
 
     def inspect_agent_execution(self, state: ReportGraphState) -> dict[str, Any]:
         if self.inspect_agent_execution_callback is None:
@@ -229,6 +253,10 @@ class LangGraphReportRuntime:
         builder.add_node("official_evidence_backfill", self._official_evidence_backfill_node)
         builder.add_node("build_canonical_metrics", self._build_canonical_metrics_node)
         builder.add_node("build_section_evidence_packs", self._build_section_evidence_packs_node)
+        builder.add_node("planning", self._planning_node)
+        builder.add_node("research", self._research_node)
+        builder.add_node("normalize_evidence", self._normalize_evidence_node)
+        builder.add_node("analyze", self._analyze_node)
         builder.add_node("generation", self._generation_node)
         builder.add_node("inspect_agent_execution", self._inspect_agent_execution_node)
         builder.add_node("verify_sections", self._verify_sections_node)
@@ -241,8 +269,12 @@ class LangGraphReportRuntime:
         builder.add_conditional_edges(
             "evidence",
             self._route_after_evidence,
-            {"build_canonical_metrics": "build_canonical_metrics", "end": END},
+            {"planning": "planning", "end": END},
         )
+        builder.add_edge("planning", "research")
+        builder.add_edge("research", "normalize_evidence")
+        builder.add_edge("normalize_evidence", "analyze")
+        builder.add_edge("analyze", "build_canonical_metrics")
         builder.add_edge("build_canonical_metrics", "build_section_evidence_packs")
         builder.add_edge("build_section_evidence_packs", "generation")
         builder.add_edge("generation", "inspect_agent_execution")
@@ -272,6 +304,18 @@ class LangGraphReportRuntime:
 
     def _generation_node(self, state: ReportGraphState) -> dict[str, Any]:
         return self._execute_node("generation", state, self.handlers.generation)
+
+    def _planning_node(self, state: ReportGraphState) -> dict[str, Any]:
+        return self._execute_node("planning", state, self.handlers.planning)
+
+    def _research_node(self, state: ReportGraphState) -> dict[str, Any]:
+        return self._execute_node("research", state, self.handlers.research)
+
+    def _normalize_evidence_node(self, state: ReportGraphState) -> dict[str, Any]:
+        return self._execute_node("normalize_evidence", state, self.handlers.normalize_evidence)
+
+    def _analyze_node(self, state: ReportGraphState) -> dict[str, Any]:
+        return self._execute_node("analyze", state, self.handlers.analyze)
 
     def _inspect_agent_execution_node(self, state: ReportGraphState) -> dict[str, Any]:
         return self._execute_node("inspect_agent_execution", state, self.handlers.inspect_agent_execution)
@@ -318,7 +362,7 @@ class LangGraphReportRuntime:
         evidence = state.get("evidence_state", {})
         if state.get("lifecycle_status") == "evidence_blocked" or evidence.get("blocked") is True:
             return "end"
-        return "build_canonical_metrics"
+        return "planning"
 
     @staticmethod
     def _route_after_finalize(state: ReportGraphState) -> str:

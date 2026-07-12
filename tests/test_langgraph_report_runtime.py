@@ -112,6 +112,10 @@ def test_langgraph_runtime_runs_typed_nodes_and_interrupts_for_claim_review():
     assert [item["node"] for item in completed["runtime_events"]] == [
         "official_evidence_backfill",
         "evidence",
+        "planning",
+        "research",
+        "normalize_evidence",
+        "analyze",
         "build_canonical_metrics",
         "build_section_evidence_packs",
         "generation",
