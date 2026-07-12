@@ -393,6 +393,9 @@ def _discover_peers_via_search(
                 "valuation_input_usable": True,
                 "valuation_input_rejection_reason": "",
                 "free_cash_flow_period_basis": "annual",
+                "data_period": "current_ttm",
+                "source_type": "yahoo_finance",
+                "source_url": f"https://finance.yahoo.com/quote/{ps}",
             })
         except Exception as exc:
             logger.warning("Failed to fetch Yahoo data for peer %s: %s", ps, exc)
@@ -425,6 +428,9 @@ def _discover_peers_via_search(
             "valuation_input_usable": True,
             "valuation_input_rejection_reason": "",
             "free_cash_flow_period_basis": "annual",
+            "data_period": "current_ttm",
+            "source_type": "yahoo_finance",
+            "source_url": f"https://finance.yahoo.com/quote/{symbol}",
         }
     except Exception as exc:
         logger.warning("Failed to fetch Yahoo target data for %s: %s", symbol, exc)

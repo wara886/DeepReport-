@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from src.agents.base_agent import AgentTask, BaseAgent, TaskResult
 from src.agents.react_loop import run_react_tool_loop
+from src.data.company_universe import infer_market_from_symbol
 from src.features.financial_metric_lineage import build_financial_metric_lineage, build_financial_metric_tables
 from src.evaluation.financial_currency_audit import build_currency_audit
 from src.models import ModelAdapter
@@ -64,6 +65,11 @@ FORMAL_CRITICAL_CLAIM_TYPES = {
 }
 
 
+def _allow_external_peer_discovery(symbol: str) -> bool:
+    market = infer_market_from_symbol(symbol)
+    return str(market.get("market") or "") == "us" if isinstance(market, dict) else str(market) == "us"
+
+
 class DeepAnalyzeAgent(BaseAgent):
     """Convert evidence records into evidence-backed financial claims."""
 
@@ -116,7 +122,11 @@ class DeepAnalyzeAgent(BaseAgent):
         trend_rows = trend_payload["rows"]
         statement_view = observed.get("build_three_statement_view") or self.call_tool("build_three_statement_view", records=records)
         peer_context = observed.get("build_peer_comparison") or self.call_tool(
-            "build_peer_comparison", symbol=symbol, period=period, raw_data_root=raw_data_root
+            "build_peer_comparison",
+            symbol=symbol,
+            period=period,
+            raw_data_root=raw_data_root,
+            allow_external_discovery=_allow_external_peer_discovery(symbol),
         )
         valuation = observed.get("perform_company_valuation") or self.call_tool(
                 "perform_company_valuation",
@@ -317,7 +327,12 @@ class DeepAnalyzeAgent(BaseAgent):
                 "calculate_financial_ratios": {"records": records},
                 "build_trend_features": {"records": records},
                 "build_three_statement_view": {"records": records},
-                "build_peer_comparison": {"symbol": symbol, "period": period, "raw_data_root": raw_data_root},
+                "build_peer_comparison": {
+                    "symbol": symbol,
+                    "period": period,
+                    "raw_data_root": raw_data_root,
+                    "allow_external_discovery": _allow_external_peer_discovery(symbol),
+                },
                 "perform_company_valuation": {
                     "symbol": symbol,
                     "period": period,
@@ -695,12 +710,16 @@ def build_rule_claims(
             ClaimItem(
                 claim_id=f"cl_{claim_index:04d}",
                 section_name="peer_compare",
-                claim_text=f"{target_symbol} 已完成本地同行对比：" + "；".join(parts) + "。",
+                claim_text=(
+                    f"{target_symbol} 已完成量化同行对比（同行指标为当前 TTM 市场快照）："
+                    + "；".join(parts)
+                    + "。"
+                ),
                 evidence_ids=financial_evidence_ids,
                 numeric_values=numeric_values,
                 risk_level="low",
                 confidence=0.78,
-                notes="由同行比较工具生成。",
+                notes=f"由同行比较工具生成；来源={peer_context.get('source') or 'local'}，同行数据口径为当前 TTM 快照。",
             )
         )
         claim_index += 1
