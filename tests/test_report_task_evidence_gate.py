@@ -463,6 +463,36 @@ def test_task_report_patch_uses_market_meta_tags_and_avoids_truncated_english_se
         assert "Kweichow Moutai" not in report_md
 
 
+def test_report_patch_preserves_substantive_writer_section_that_mentions_data_gap():
+    from src.services.report_task_service import _patch_report_markdown_with_official_evidence
+
+    writer_valuation = (
+        "当前滚动市盈率约38.2倍，财务期间为FY2024，行情时点为当前日期。"
+        "该倍数反映市场对服务收入、现金流和品牌壁垒的较高预期。"
+        "若收入或利润率不及预期，估值倍数与盈利可能同步承压。"
+        "完整目标价模型仍待补充长期增长率假设，但不影响当前倍数观察。"
+    )
+    markdown = f"# AAPL报告\n\n## 估值观察\n{writer_valuation}\n"
+
+    updated = _patch_report_markdown_with_official_evidence(
+        markdown,
+        official_records=[
+            {
+                "evidence_id": "sec_aapl",
+                "source_type": "sec_edgar",
+                "source_authority": "official",
+                "title": "AAPL Form 10-K",
+                "content": "Revenue and risk disclosures.",
+            }
+        ],
+        claims=[],
+        metadata={"symbol": "AAPL", "company_name": "Apple Inc.", "period": "FY2024"},
+    )
+
+    assert writer_valuation in updated
+    assert "估值口径：估值应区分" not in updated
+
+
 def test_enforced_evidence_gate_blocks_delivery_when_official_source_is_missing(tmp_path):
     service, client = build_client(tmp_path)
     seed_task_evidence(service, source_type="local_evidence", trust_level="primary")

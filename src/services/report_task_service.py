@@ -1888,8 +1888,9 @@ def _replace_or_insert_section(markdown: str, heading: str, content: str, *, pre
 
 def _is_substantive_report_section(section: str) -> bool:
     body = re.sub(r"(?m)^##\s+.*$", "", section).strip()
-    placeholders = ("本节暂不展开", "待补", "暂无结论", "evidence_not_available")
-    return len(re.findall(r"[\u4e00-\u9fff]", body)) >= 80 and not any(term in body for term in placeholders)
+    # This post-processing step may fill missing sections, but it must never
+    # replace a Writer-owned section merely because the prose states a data gap.
+    return len(re.findall(r"[\u4e00-\u9fff]", body)) >= 80
 
 
 def _report_meta_tags(symbol: str, official_records: list[dict[str, Any]]) -> dict[str, Any]:
