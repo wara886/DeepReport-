@@ -618,10 +618,40 @@ def test_minimum_valuation_claims_compute_multiples_and_sensitivity():
     )
     text = "\n".join(claim.claim_text for claim in claims)
 
-    assert "P/E 约为 100.0x" in text
+    assert "当前市值/FY净利润倍数约为 100.0x" in text
+    assert "混合当前市值与2026Q1利润口径" in text
     assert "P/B 约为 4.0x" in text
     assert "P/S 约为 10.0x" in text
     assert "敏感性分析显示" in text
+
+
+def test_minimum_valuation_claim_prefers_provider_trailing_pe_over_mixed_period_multiple():
+    claims = build_rule_claims(
+        records=[
+            {
+                "evidence_id": "market_aapl",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "source_type": "market_api",
+                "metadata": {"financials": {"marketCap": 4_631_217_307_648.0, "trailingPE": 38.174335}},
+            }
+        ],
+        ratio_rows=[],
+        trend_rows=[],
+        statement_view={
+            "rows": [
+                {"symbol": "AAPL", "period": "FY2024", "statement": "income_statement", "line_item": "revenue", "value": 391_035_000_000.0},
+                {"symbol": "AAPL", "period": "FY2024", "statement": "income_statement", "line_item": "net_income", "value": 93_736_000_000.0},
+            ]
+        },
+    )
+
+    valuation = next(claim for claim in claims if claim.section_name == "valuation" and "P/E" in claim.claim_text)
+
+    assert "当前市场滚动 P/E 约为 38.2x" in valuation.claim_text
+    assert "49.4" not in valuation.claim_text
+    assert valuation.numeric_values["pe"] == 38.174335
+    assert "market_aapl" in valuation.citation_evidence_ids
 
 
 def test_eastmoney_claims_use_professional_units_not_scientific_notation():

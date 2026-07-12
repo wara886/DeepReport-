@@ -1386,16 +1386,27 @@ def _minimum_valuation_claims(
     if equity is None:
         equity = _statement_value(rows, "balance_sheet", "shareholder_equity")
     market_cap, market_unit, market_source = _market_cap_from_records(records)
+    trailing_pe, trailing_pe_source = _market_multiple_from_records(records, "trailingPE")
     evidence_ids = list(dict.fromkeys(financial_evidence_ids + market_evidence_ids + ([market_source] if market_source else [])))
-    valuation_citation_ids = list(dict.fromkeys(financial_evidence_ids[:3] + ([market_source] if market_source else market_evidence_ids[:1])))
+    valuation_citation_ids = list(
+        dict.fromkeys(
+            financial_evidence_ids[:3]
+            + ([trailing_pe_source] if trailing_pe_source else [])
+            + ([market_source] if market_source else market_evidence_ids[:1])
+        )
+    )
     output: List[ClaimItem] = []
     claim_index = start_index
 
     multiples: List[str] = []
     numeric_values: Dict[str, float] = {}
-    if market_cap and net_income and net_income > 0:
+    if trailing_pe and trailing_pe > 0:
+        pe = trailing_pe
+        multiples.append(f"当前市场滚动 P/E 约为 {pe:.1f}x")
+        numeric_values["pe"] = pe
+    elif market_cap and net_income and net_income > 0:
         pe = market_cap / _align_market_denominator(net_income)
-        multiples.append(f"P/E 约为 {pe:.1f}x")
+        multiples.append(f"当前市值/FY净利润倍数约为 {pe:.1f}x（混合当前市值与{period}利润口径）")
         numeric_values["pe"] = pe
     if market_cap and equity and equity > 0:
         pb = market_cap / _align_market_denominator(equity)
@@ -1422,7 +1433,7 @@ def _minimum_valuation_claims(
                 numeric_values=numeric_values,
                 risk_level="medium",
                 confidence=0.7,
-                notes="最小估值模型：market cap + net income/equity/revenue。",
+                notes="最小估值模型：优先采用市场源 trailing P/E；P/B、P/S 使用当前市值与目标财期三表口径。",
             )
         )
         claim_index += 1
@@ -1500,6 +1511,24 @@ def _market_cap_from_records(records: List[Dict[str, Any]]) -> tuple[float | Non
         if value:
             return float(value), unit, str(record.get("evidence_id") or record.get("sample_id") or "")
     return None, "", ""
+
+
+def _market_multiple_from_records(records: List[Dict[str, Any]], key: str) -> tuple[float | None, str]:
+    for record in records:
+        source_type = str(record.get("source_type") or "").lower()
+        if source_type not in {"market", "market_api", "eastmoney_quote"}:
+            continue
+        metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+        sources = [
+            metadata.get("financials") if isinstance(metadata.get("financials"), dict) else {},
+            metadata.get("snapshot") if isinstance(metadata.get("snapshot"), dict) else {},
+            metadata,
+        ]
+        for source in sources:
+            value = _safe_float(source.get(key))
+            if value is not None and value > 0:
+                return value, str(record.get("evidence_id") or record.get("sample_id") or "")
+    return None, ""
 
 
 def _minimum_executive_summary_claim(
