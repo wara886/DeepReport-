@@ -236,15 +236,15 @@ class LangGraphReportRuntime:
         builder.add_node("quality", self._quality_node)
         builder.add_node("finalize", self._finalize_node)
         builder.add_node("human_review", self._human_review_node)
-        builder.add_edge(START, "evidence")
+        builder.add_edge(START, "official_evidence_backfill")
+        builder.add_edge("official_evidence_backfill", "evidence")
         builder.add_conditional_edges(
             "evidence",
             self._route_after_evidence,
             {"generation": "generation", "end": END},
         )
         builder.add_edge("generation", "inspect_agent_execution")
-        builder.add_edge("inspect_agent_execution", "official_evidence_backfill")
-        builder.add_edge("official_evidence_backfill", "build_canonical_metrics")
+        builder.add_edge("inspect_agent_execution", "build_canonical_metrics")
         builder.add_edge("build_canonical_metrics", "build_section_evidence_packs")
         builder.add_edge("build_section_evidence_packs", "verify_sections")
         builder.add_edge("verify_sections", "repair_failed_sections")

@@ -70,10 +70,11 @@ def test_report_task_status_lifecycle_records_events(tmp_path):
     stages = [event["stage"] for event in body["events"]]
     expected_order = [
         "queued",
+        "runtime_start",
+        "official_evidence_backfill",
         "evidence_gate",
         "orchestrator",
         "inspect_agent_execution",
-        "official_evidence_backfill",
         "build_canonical_metrics",
         "build_section_evidence_packs",
         "verify_sections",

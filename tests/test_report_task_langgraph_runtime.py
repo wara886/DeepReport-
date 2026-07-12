@@ -290,7 +290,7 @@ def test_report_task_retries_failed_generation_node_from_checkpoint(tmp_path):
     assert body["checkpoint"]["next"] == []
     assert FailingOnceOrchestrator.calls == 2
     evidence_events = [event for event in body["task"]["events"] if event["stage"] == "evidence_gate"]
-    assert len(evidence_events) == 2
+    assert len(evidence_events) == 1
 
 
 def test_report_task_remote_runtime_executes_official_backfill(monkeypatch, tmp_path):
@@ -330,6 +330,65 @@ def test_report_task_remote_runtime_executes_official_backfill(monkeypatch, tmp_
     assert backfill["status"] == "completed"
     assert backfill["acquired_record_count"] == 2
     assert backfill["formal_delivery_allowed"] is True
+
+
+def test_official_backfill_is_imported_before_enforced_evidence_gate(monkeypatch, tmp_path):
+    def fake_backfill(**kwargs):
+        output_dir = Path(kwargs["output_dir"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "evidence.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "evidence_id": "aapl-fy2024-official",
+                        "title": "Apple FY2024 Form 10-K",
+                        "content": "Apple FY2024 official annual filing.",
+                        "source_type": "sec_edgar",
+                        "source_url": "https://www.sec.gov/Archives/aapl-fy2024",
+                        "trust_level": "official",
+                        "symbol": "AAPL",
+                        "period": "FY2024",
+                        "metadata": {"symbol": "AAPL", "period": "FY2024"},
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "acquired_record_count": 1,
+            "merged_record_count": 1,
+            "pdf_record_count": 1,
+            "table_count": 0,
+            "attempts": [{"source_key": "sec_edgar", "status": "success", "record_count": 1}],
+            "coverage": {"formal_delivery_allowed": True, "missing_requirements": []},
+            "backfill_remaining": {"tasks": []},
+        }
+
+    monkeypatch.setattr("src.services.report_task_service.execute_official_evidence_backfill", fake_backfill)
+
+    with make_client(tmp_path, ReviewArtifactOrchestrator) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={
+                "task_id": "task-backfill-before-gate",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "enable_remote_data": True,
+                "enforce_evidence_gate": True,
+                "run_immediately": True,
+            },
+        )
+
+    body = created.json()
+    assert created.status_code == 201
+    assert body["status"] == "completed"
+    assert body["metadata"]["pre_generation_evidence_gate"]["blocked"] is False
+    completed_stages = [
+        event["stage"]
+        for event in body["events"]
+        if event["stage"] != "runtime_start"
+    ]
+    assert completed_stages.index("official_evidence_backfill") < completed_stages.index("evidence_gate")
 
 
 def test_report_task_can_use_legacy_pipeline_compatibility_switch(tmp_path):

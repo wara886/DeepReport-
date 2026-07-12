@@ -160,10 +160,10 @@ class ReportTaskService:
             session.add(
                 ReportTaskEvent(
                     task_id=task.task_id,
-                    stage="evidence_gate",
+                    stage="runtime_start",
                     status="running",
-                    message="生成前证据门禁开始",
-                    metadata_json=None,
+                    message="研报运行开始",
+                    metadata_json={"runtime": "langgraph" if self.langgraph_runtime_enabled else "legacy"},
                 )
             )
             session.commit()
@@ -263,6 +263,10 @@ class ReportTaskService:
     def _graph_official_evidence_backfill_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
         summary = self._run_official_evidence_backfill(task_id)
+        metadata = self._task_metadata(task_id)
+        evidence_path = Path(str(metadata.get("output_dir") or "")) / "evidence.json"
+        if evidence_path.is_file():
+            self.import_artifacts(task_id)
         self._record_runtime_stage(
             task_id,
             stage="official_evidence_backfill",

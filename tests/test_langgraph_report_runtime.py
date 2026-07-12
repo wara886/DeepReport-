@@ -110,10 +110,10 @@ def test_langgraph_runtime_runs_typed_nodes_and_interrupts_for_claim_review():
     assert completed["export_readiness"]["can_export_formal_package"] is True
     assert completed["review_decision"]["approved"] is True
     assert [item["node"] for item in completed["runtime_events"]] == [
+        "official_evidence_backfill",
         "evidence",
         "generation",
         "inspect_agent_execution",
-        "official_evidence_backfill",
         "build_canonical_metrics",
         "build_section_evidence_packs",
         "verify_sections",
@@ -218,7 +218,7 @@ def test_failed_canonical_metrics_node_has_own_checkpoint():
     assert completed["delivery_readiness"]["can_deliver_formal_report"] is True
 
 
-def test_post_generation_nodes_run_once_in_dependency_order():
+def test_runtime_nodes_run_once_in_dependency_order():
     calls = []
     post_generation = []
     base = successful_handlers(calls, pending_review=False)
@@ -238,7 +238,7 @@ def test_post_generation_nodes_run_once_in_dependency_order():
     result = LangGraphReportRuntime(handlers).invoke(initial_state(), thread_id="task-node-order")
 
     assert calls == ["evidence", "generation", "quality", "finalize"]
-    assert post_generation == ["inspect", "official", "canonical", "packs", "verify", "repair"]
+    assert post_generation == ["official", "inspect", "canonical", "packs", "verify", "repair"]
     assert result["delivery_readiness"]["can_deliver_formal_report"] is True
 
 
