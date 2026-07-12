@@ -2783,6 +2783,7 @@ class QualityGateTraceBackend:
 _DEFAULT_SECTION_REPAIR_PROMPT = """Rewrite one failed Chinese equity-research report section.
 Return JSON with only section_markdown. Do not include the section heading.
 Use the canonical metrics and must-use evidence in the input. Cite evidence IDs in square brackets.
+Exceed verification.min_chars by at least 30 Chinese characters; do not satisfy length with lists or repeated filler.
 Do not invent facts, use placeholders, expose internal field names, or paste raw English source paragraphs.
 Give a concrete analytical conclusion, supporting reasons, risks, and evidence boundaries where relevant.
 Only repair the requested section."""

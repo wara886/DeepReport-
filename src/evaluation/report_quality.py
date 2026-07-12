@@ -346,6 +346,7 @@ def _score_financial(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) ->
     tables = artifacts["tables"]
     metrics = artifacts["financial_metrics"]
     text = _report_text(artifacts)
+    visible_text = _strip_reference_sections(str(artifacts.get("report_md") or text))
     statements = _statement_names_from_tables(tables)
     has_income = any("income" in item for item in statements)
     has_balance = any("balance" in item for item in statements)
@@ -353,7 +354,7 @@ def _score_financial(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) ->
     for ok, name in [(has_income, "income"), (has_balance, "balance"), (has_cashflow, "cashflow")]:
         if not ok:
             _issue(issues, "blocker", "financial", f"missing {name} summary")
-    if SCI_NOTATION_RE.search(text):
+    if SCI_NOTATION_RE.search(visible_text):
         _issue(issues, "blocker", "financial", "report contains scientific notation, unprofessional financial display")
     if not re.search(r"(billion|million|pct|bps|%)", text, flags=re.IGNORECASE):
         _issue(issues, "warning", "financial", "report lacks clear unit or percentage expression")
@@ -362,7 +363,7 @@ def _score_financial(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) ->
     metric_score = 1.0 if metrics else 0.45
     period_alignment = _period_alignment_score(artifacts, issues)
     table_score = (int(has_income) + int(has_balance) + int(has_cashflow)) / 3
-    return round(0.45 * table_score + 0.25 * metric_score + 0.2 * period_alignment + 0.1 * (0 if SCI_NOTATION_RE.search(text) else 1), 4)
+    return round(0.45 * table_score + 0.25 * metric_score + 0.2 * period_alignment + 0.1 * (0 if SCI_NOTATION_RE.search(visible_text) else 1), 4)
 
 
 def _score_multimodal(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> float:

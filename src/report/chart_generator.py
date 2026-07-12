@@ -117,6 +117,7 @@ _METRIC_CATEGORY: Dict[str, str] = {
     "eps_diluted": "financial_scale",
     "rd_expense_billion": "financial_scale",
     "market_cap_billion": "financial_scale",
+    "market_cap_trillion": "financial_scale",
     "revenue": "financial_scale",
     "net_income": "financial_scale",
     "assets": "financial_scale",
@@ -446,6 +447,7 @@ def _categorize_metric_points(claims: List[Dict[str, Any]]) -> Dict[str, List[Tu
             parsed = _safe_float(value)
             if parsed is None:
                 continue
+            parsed = _chart_value_in_base_units(key, parsed)
             label = METRIC_LABEL_MAP.get(key)
             if label is None:
                 label = FALLBACK_LABEL_MAP.get(key, key)
@@ -454,6 +456,17 @@ def _categorize_metric_points(claims: List[Dict[str, Any]]) -> Dict[str, List[Tu
             if label not in categories[cat]:
                 categories[cat][label] = parsed
     return {cat: list(points.items()) for cat, points in categories.items()}
+
+
+def _chart_value_in_base_units(metric_key: str, value: float) -> float:
+    """Normalize explicitly scaled claim metrics before chart-wide display scaling."""
+
+    key = str(metric_key or "").lower()
+    if key == "market_cap_trillion":
+        return value * 1_000_000_000_000
+    if key.endswith("_billion") and abs(value) < 1_000_000:
+        return value * 1_000_000_000
+    return value
 
 
 def _confidence_points_from_claims(claims: List[Dict[str, Any]]) -> List[Tuple[str, float]]:

@@ -243,7 +243,7 @@ def _section_body(markdown: str, title: str) -> str | None:
 
 
 def _count_chars(text: str) -> int:
-    return len(re.sub(r"\s+", "", str(text or "")))
+    return len(re.sub(r"[\s\n\r#\-*:：，、。）（\[\]【】\"''a-zA-Z0-9]", "", str(text or "")))
 
 
 def _paragraph_count(text: str) -> int:
