@@ -97,6 +97,10 @@ FAST_PROFILE = {
     "research_topk": 6,
     "research_use_react": False,
     "research_react_max_steps": 2,
+    "research_merge_standard_search_after_react": True,
+    "react_max_tool_calls": 8,
+    "react_tool_timeout_seconds": 45.0,
+    "react_tool_max_attempts": 2,
     "research_use_chunks": True,
     "browser_skip_llm_extract": True,
     "browser_use_reader": False,
@@ -149,6 +153,10 @@ DEFAULT_PROFILE = {
     "research_topk": 12,
     "research_use_react": True,
     "research_react_max_steps": 3,
+    "research_merge_standard_search_after_react": True,
+    "react_max_tool_calls": 8,
+    "react_tool_timeout_seconds": 45.0,
+    "react_tool_max_attempts": 2,
     "research_use_chunks": True,
     "browser_skip_llm_extract": False,
     "browser_use_reader": True,
@@ -2389,8 +2397,10 @@ class MultiAgentOrchestrator:
                 repair_params["topk"] = int(profile.get("research_topk", 6))
                 repair_params["engines"] = _market_engines(str(state.get("symbol", "")))
                 repair_params["raw_data_root"] = self.raw_data_root
+                repair_params["curated_dir"] = _retrieval_curated_dir(self.output_dir)
                 repair_params["ranking_mode"] = str(state.get("retrieval_ranking_mode", "hybrid_rerank"))
                 repair_params["enable_remote"] = bool(state.get("enable_remote_data", True))
+                repair_params["merge_standard_search_after_react"] = True
             elif agent_key == "browser":
                 repair_params["evidence_candidates"] = list(state.get("evidence_candidates", []))
                 repair_params["skip_llm_extract"] = bool(profile.get("browser_skip_llm_extract", False))
@@ -3162,6 +3172,13 @@ def enrich_task_parameters(
         params.setdefault("topk", int(profile["research_topk"]))
         params.setdefault("use_react", bool(profile.get("research_use_react", False)))
         params.setdefault("react_max_steps", int(profile.get("research_react_max_steps", 3)))
+        params.setdefault(
+            "merge_standard_search_after_react",
+            bool(profile.get("research_merge_standard_search_after_react", True)),
+        )
+        params.setdefault("react_max_tool_calls", int(profile.get("react_max_tool_calls", 8)))
+        params.setdefault("react_tool_timeout_seconds", float(profile.get("react_tool_timeout_seconds", 45.0)))
+        params.setdefault("react_tool_max_attempts", int(profile.get("react_tool_max_attempts", 2)))
         params.setdefault("use_chunks", bool(profile.get("research_use_chunks", True)))
         params["engines"] = _market_engines(state["symbol"])
         params.setdefault("raw_data_root", raw_data_root)
@@ -3191,6 +3208,9 @@ def enrich_task_parameters(
         params.setdefault("max_tokens", int(profile["analyze_max_tokens"]))
         params.setdefault("use_react", bool(profile.get("analyze_use_react", False)))
         params.setdefault("react_max_steps", int(profile.get("analyze_react_max_steps", 3)))
+        params.setdefault("react_max_tool_calls", int(profile.get("react_max_tool_calls", 8)))
+        params.setdefault("react_tool_timeout_seconds", float(profile.get("react_tool_timeout_seconds", 45.0)))
+        params.setdefault("react_tool_max_attempts", int(profile.get("react_tool_max_attempts", 2)))
         params.setdefault("claim_contract", str(state.get("claim_contract", "")))
     elif task.task_type in {
         "identity_profile",

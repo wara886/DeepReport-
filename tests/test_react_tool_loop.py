@@ -1,8 +1,10 @@
 import json
+import time
 
 from src.agents import AgentTask
 from src.agents.deep_analyze_agent import DeepAnalyzeAgent, apply_evidence_gate
 from src.agents.deep_researcher_agent import DeepResearcherAgent
+from src.agents.react_loop import run_react_tool_loop
 from src.models import ModelResponse
 from src.schemas.claim import ClaimItem
 from src.tools import ToolRegistry, ToolSpec
@@ -110,7 +112,14 @@ def test_deep_researcher_can_use_react_tool_loop_before_search_fallback():
             task_id="task_react",
             task_type="deep_researcher",
             description="Find AAPL evidence",
-            parameters={"query": "AAPL revenue", "topk": 2, "symbol": "AAPL", "period": "2025Q4", "use_react": True},
+            parameters={
+                "query": "AAPL revenue",
+                "topk": 2,
+                "symbol": "AAPL",
+                "period": "2025Q4",
+                "use_react": True,
+                "merge_standard_search_after_react": False,
+            },
         )
     )
 
@@ -206,6 +215,193 @@ def test_deep_analyze_can_use_react_tools_for_financial_artifacts():
     }
     assert result.output["analysis_artifacts"]["ratio_rows"][0]["revenue_billion"] == 126.3
     assert result.output["claims"]
+
+
+class ScriptedReactModel:
+    model_name = "scripted-react-model"
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+
+    def chat(self, **kwargs):
+        return self.responses.pop(0)
+
+
+def _tool_call(name, arguments, call_id="call_1"):
+    return {"id": call_id, "type": "function", "function": {"name": name, "arguments": arguments}}
+
+
+def test_react_loop_returns_invalid_arguments_to_model_instead_of_crashing():
+    model = ScriptedReactModel(
+        [
+            ModelResponse(success=True, tool_calls=[_tool_call("lookup", '{"query":"AAPL"')]),
+            ModelResponse(success=True, content="Recovered after invalid arguments."),
+        ]
+    )
+
+    result = run_react_tool_loop(
+        model=model,
+        system_prompt="test",
+        user_prompt="test",
+        tool_schemas=[{"type": "function", "function": {"name": "lookup", "parameters": {"type": "object"}}}],
+        handlers={"lookup": lambda **kwargs: {"ok": True}},
+    )
+
+    assert result["success"] is True
+    assert result["status"] == "degraded"
+    assert result["observations"][0]["result"]["error_type"] == "invalid_arguments"
+
+
+def test_react_loop_marks_max_steps_as_failed():
+    model = ScriptedReactModel(
+        [ModelResponse(success=True, tool_calls=[_tool_call("lookup", "{}")])]
+    )
+
+    result = run_react_tool_loop(
+        model=model,
+        system_prompt="test",
+        user_prompt="test",
+        tool_schemas=[{"type": "function", "function": {"name": "lookup", "parameters": {"type": "object"}}}],
+        handlers={"lookup": lambda **kwargs: {"ok": True}},
+        max_steps=1,
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "failed"
+    assert result["error"] == "max_steps_reached"
+
+
+def test_react_loop_retries_tool_and_locks_bound_arguments():
+    calls = []
+
+    def flaky_lookup(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise RuntimeError("temporary failure")
+        return {"symbol": kwargs["symbol"]}
+
+    model = ScriptedReactModel(
+        [
+            ModelResponse(
+                success=True,
+                tool_calls=[_tool_call("lookup", json.dumps({"query": "revenue", "symbol": "MSFT"}))],
+            ),
+            ModelResponse(success=True, content="done"),
+        ]
+    )
+    schema = {
+        "type": "function",
+        "function": {
+            "name": "lookup",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}, "symbol": {"type": "string"}},
+                "required": ["query", "symbol"],
+            },
+        },
+    }
+
+    result = run_react_tool_loop(
+        model=model,
+        system_prompt="test",
+        user_prompt="test",
+        tool_schemas=[schema],
+        handlers={"lookup": flaky_lookup},
+        tool_max_attempts=2,
+        bound_arguments={"lookup": {"symbol": "AAPL"}},
+    )
+
+    assert result["success"] is True
+    assert result["observations"][0]["attempts"] == 2
+    assert calls == [{"query": "revenue", "symbol": "AAPL"}] * 2
+
+
+def test_react_loop_reports_tool_timeout():
+    def slow_lookup(**kwargs):
+        time.sleep(0.05)
+        return {"ok": True}
+
+    model = ScriptedReactModel(
+        [
+            ModelResponse(success=True, tool_calls=[_tool_call("lookup", "{}")]),
+            ModelResponse(success=True, content="continue after timeout"),
+        ]
+    )
+
+    result = run_react_tool_loop(
+        model=model,
+        system_prompt="test",
+        user_prompt="test",
+        tool_schemas=[{"type": "function", "function": {"name": "lookup", "parameters": {"type": "object"}}}],
+        handlers={"lookup": slow_lookup},
+        tool_timeout_seconds=0.01,
+        tool_max_attempts=1,
+    )
+
+    assert result["success"] is True
+    assert result["status"] == "degraded"
+    assert result["observations"][0]["result"]["error_type"] == "tool_timeout"
+
+
+def test_research_react_merges_standard_search_by_default():
+    class StubSearchManager:
+        def search(self, **kwargs):
+            return {
+                "query": kwargs["query"],
+                "hits": [
+                    {
+                        "result_id": "ev_standard",
+                        "title": "SEC filing",
+                        "snippet": "Official revenue disclosure.",
+                        "url": "https://sec.gov/filing",
+                        "source_type": "sec_edgar",
+                        "score": 1.0,
+                    }
+                ],
+                "meta": {"engines": ["sec_edgar"]},
+            }
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="retrieve_local_evidence",
+            description="Retrieve evidence.",
+            parameters={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+            handler=lambda **kwargs: {
+                "hits": [
+                    {
+                        "result_id": "ev_react",
+                        "title": "Local evidence",
+                        "snippet": "Local revenue evidence.",
+                        "url": "https://example.com/local",
+                        "source_type": "local_evidence",
+                        "score": 2.0,
+                    }
+                ]
+            },
+        )
+    )
+    registry.register(
+        ToolSpec(
+            name="fetch_yahoo_market_snapshot",
+            description="Fetch market snapshot.",
+            parameters={"type": "object", "properties": {"symbol": {"type": "string"}}},
+            handler=lambda **kwargs: {"evidence": {}},
+        )
+    )
+    agent = DeepResearcherAgent(model=FakeReactModel(), search_manager=StubSearchManager(), tool_registry=registry)
+
+    result = agent.execute_task(
+        AgentTask(
+            task_id="task_react_merge",
+            task_type="deep_researcher",
+            description="Find AAPL evidence",
+            parameters={"query": "AAPL revenue", "topk": 5, "symbol": "AAPL", "period": "FY2024", "use_react": True},
+        )
+    )
+
+    assert result.metadata["standard_search_merged"] is True
+    assert {item["result_id"] for item in result.output["evidence_candidates"]} == {"ev_react", "ev_standard"}
 
 
 def test_analyze_evidence_gate_rejects_unsupported_numeric_claims():

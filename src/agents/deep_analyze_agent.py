@@ -310,6 +310,21 @@ class DeepAnalyzeAgent(BaseAgent):
             tool_schemas=schemas,
             handlers=handlers,
             max_steps=int(task.parameters.get("react_max_steps", 3) or 3),
+            max_tool_calls=int(task.parameters.get("react_max_tool_calls", 8) or 8),
+            tool_timeout_seconds=float(task.parameters.get("react_tool_timeout_seconds", 45.0) or 45.0),
+            tool_max_attempts=int(task.parameters.get("react_tool_max_attempts", 2) or 2),
+            bound_arguments={
+                "calculate_financial_ratios": {"records": records},
+                "build_trend_features": {"records": records},
+                "build_three_statement_view": {"records": records},
+                "build_peer_comparison": {"symbol": symbol, "period": period, "raw_data_root": raw_data_root},
+                "perform_company_valuation": {
+                    "symbol": symbol,
+                    "period": period,
+                    "records": records,
+                    "raw_data_root": raw_data_root,
+                },
+            },
         )
 
 def build_rule_claims(
