@@ -263,6 +263,17 @@ def test_enforced_evidence_gate_allows_generation_with_required_official_source(
     assert gate["status"] == "success"
     assert gate["coverage"]["quality_ready"] is True
     assert gate["coverage"]["returned_sources"] == ["sec_edgar"]
+    curated_path = (
+        tmp_path
+        / "outputs"
+        / "runs"
+        / "task-gate-pass"
+        / "outputs"
+        / "retrieval_curated"
+        / "task_evidence.jsonl"
+    )
+    curated_records = [json.loads(line) for line in curated_path.read_text(encoding="utf-8").splitlines() if line]
+    assert [item["evidence_id"] for item in curated_records] == ["ev_gate_sec_edgar_source"]
 
 
 def test_evidence_gate_excludes_wrong_period_financials_and_dedupes_snapshots(tmp_path):

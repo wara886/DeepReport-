@@ -1920,12 +1920,16 @@ def _merge_records_by_id(existing: list[dict[str, Any]], additions: list[dict[st
 
 
 def _sync_task_retrieval_curated_dir(output_dir: Path) -> None:
-    source = output_dir / "official_backfill_curated.jsonl"
-    if not source.is_file():
-        return
     target_dir = output_dir / "retrieval_curated"
     target_dir.mkdir(parents=True, exist_ok=True)
-    (target_dir / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    source = output_dir / "official_backfill_curated.jsonl"
+    if source.is_file():
+        (target_dir / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    task_records = _read_json_list(output_dir / "evidence.json")
+    if task_records:
+        payload = "\n".join(json.dumps(item, ensure_ascii=False) for item in task_records) + "\n"
+        (target_dir / "task_evidence.jsonl").write_text(payload, encoding="utf-8")
 
 
 def _read_json_list(path: Path) -> list[dict[str, Any]]:
