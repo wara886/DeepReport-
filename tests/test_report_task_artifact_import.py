@@ -448,7 +448,7 @@ def test_report_task_imports_agent_trace_as_llm_runs(tmp_path):
         runs = client.get("/api/llm-runs", params={"task_id": "task-agent-trace", "limit": 20})
         dashboard = client.get("/api/dashboard/summary")
         detail = client.get("/api/report-tasks/task-agent-trace")
-        tool_runs = client.get("/api/report-tasks/task-agent-trace/tool-runs")
+        tool_runs = client.get("/api/report-tasks/task-agent-trace/tool-runs", params={"limit": 1})
 
     assert created.status_code == 201
     body = runs.json()
@@ -472,13 +472,14 @@ def test_report_task_imports_agent_trace_as_llm_runs(tmp_path):
     assert diagnostics["failure_categories"]["模型跳过:gap_resolver"] == 1
     assert tool_runs.status_code == 200
     tool_items = tool_runs.json()["items"]
-    assert len(tool_items) == 2
-    retrieval = next(item for item in tool_items if item["tool_name"] == "retrieve_local_evidence")
+    assert tool_runs.json()["total"] == 2
+    assert len(tool_items) == 1
+    retrieval = next(item for item in detail.json()["tool_runs"] if item["tool_name"] == "retrieve_local_evidence")
     assert retrieval["status"] == "success"
     assert retrieval["duration_ms"] == 125
     assert retrieval["attempt_count"] == 2
     assert retrieval["evidence_ids"] == ["ev_financials"]
-    bls = next(item for item in tool_items if item["tool_name"] == "bls")
+    bls = next(item for item in detail.json()["tool_runs"] if item["tool_name"] == "bls")
     assert bls["status"] == "failed"
     assert bls["error_type"] == "tool_timeout"
     runtime_tools = detail.json()["runtime_observability"]["tools"]

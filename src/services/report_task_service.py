@@ -1274,6 +1274,7 @@ class ReportTaskService:
             task_exists = session.scalar(select(ReportTask.id).where(ReportTask.task_id == task_id))
             if task_exists is None:
                 raise ReportTaskNotFound(task_id)
+            total = int(session.scalar(select(func.count(ToolRun.id)).where(ToolRun.task_id == task_id)) or 0)
             rows = list(
                 session.scalars(
                     select(ToolRun)
@@ -1282,7 +1283,7 @@ class ReportTaskService:
                     .limit(max(1, min(int(limit), 500)))
                 ).all()
             )
-        return {"task_id": task_id, "items": [serialize_tool_run(item) for item in rows], "total": len(rows)}
+        return {"task_id": task_id, "items": [serialize_tool_run(item) for item in rows], "total": total}
 
     def session(self) -> Session:
         self._ensure_db()
