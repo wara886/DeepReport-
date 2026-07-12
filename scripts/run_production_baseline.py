@@ -37,6 +37,7 @@ def main() -> int:
     parser.add_argument("--symbols", nargs="*", default=[item[0] for item in DEFAULT_CASES])
     parser.add_argument("--task-prefix", default="production-baseline-v5")
     parser.add_argument("--output-root", default="data/evaluation/production_baseline_v5")
+    parser.add_argument("--execution-mode", default="static", choices=("static", "dynamic", "collaborative", "diagnostic_full"))
     parser.add_argument("--poll-seconds", type=float, default=10.0)
     parser.add_argument("--timeout-seconds", type=float, default=1200.0)
     args = parser.parse_args()
@@ -59,6 +60,7 @@ def main() -> int:
             symbol=symbol,
             company_name=company_names.get(symbol, symbol),
             period=args.period,
+            execution_mode=args.execution_mode,
         )
         created = request_json(args.base_url, "/api/report-tasks", method="POST", payload=payload)
         task = wait_for_task(
@@ -79,7 +81,14 @@ def main() -> int:
     return 0
 
 
-def build_task_payload(*, task_id: str, symbol: str, company_name: str, period: str) -> dict[str, Any]:
+def build_task_payload(
+    *,
+    task_id: str,
+    symbol: str,
+    company_name: str,
+    period: str,
+    execution_mode: str = "static",
+) -> dict[str, Any]:
     return {
         "task_id": task_id,
         "symbol": symbol,
@@ -91,7 +100,7 @@ def build_task_payload(*, task_id: str, symbol: str, company_name: str, period: 
         ),
         "report_type": "annual_review",
         "data_source_scope": "official_first",
-        "execution_mode": "collaborative",
+        "execution_mode": execution_mode,
         "execution_tier": "delivery",
         "fast": False,
         "enable_remote_data": True,
@@ -136,6 +145,7 @@ def summarize_case(task: dict[str, Any], *, diagnostics: dict[str, Any]) -> dict
         "task_id": task.get("task_id"),
         "symbol": task.get("symbol"),
         "period": task.get("period"),
+        "execution_mode": metadata.get("execution_mode"),
         "status": task.get("status"),
         "quality_score": task.get("quality_score"),
         "formal_delivery": bool((task.get("delivery_readiness") or {}).get("can_deliver_formal_report")),

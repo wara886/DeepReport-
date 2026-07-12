@@ -7,9 +7,22 @@ def test_build_task_payload_uses_production_runtime_contract():
     assert payload["run_immediately"] is True
     assert payload["run_async"] is True
     assert payload["execution_tier"] == "delivery"
+    assert payload["execution_mode"] == "static"
     assert payload["fast"] is False
     assert payload["enable_remote_data"] is True
     assert payload["enforce_evidence_gate"] is True
+
+
+def test_build_task_payload_allows_explicit_diagnostic_mode():
+    payload = build_task_payload(
+        task_id="baseline-aapl-diagnostic",
+        symbol="AAPL",
+        company_name="Apple Inc.",
+        period="FY2024",
+        execution_mode="diagnostic_full",
+    )
+
+    assert payload["execution_mode"] == "diagnostic_full"
 
 
 def test_summarize_case_reads_production_artifacts(tmp_path):
@@ -46,6 +59,7 @@ def test_summarize_case_reads_production_artifacts(tmp_path):
     assert result["evidence_count"] == 1
     assert result["canonical_metric_count"] == 1
     assert result["section_pack_count"] == 1
+    assert result["execution_mode"] is None
     assert result["local_retrieval"]["failure_reason"] == "no_records"
     assert result["delivery_gate"]["blocker_categories"] == ["evidence_consumption"]
 
