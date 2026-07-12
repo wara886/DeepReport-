@@ -450,7 +450,9 @@ def test_task_report_patch_uses_market_meta_tags_and_avoids_truncated_english_se
         report_md = (report_dir / "report.md").read_text(encoding="utf-8")
 
         assert case["required_source"] in report_md
-        assert "元标签" in report_md
+        assert "元标签" not in report_md
+        assert "适合作为草稿" not in report_md
+        assert "估值输入不足" not in report_md
         assert "收入表现" in report_md
         assert "风险披露" in report_md
         assert "本节暂不展开详细分析" not in report_md

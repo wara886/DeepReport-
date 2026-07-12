@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.agents.deep_analyze_agent import apply_evidence_gate
+from src.agents.deep_analyze_agent import _attach_metric_lineage_to_claims, apply_evidence_gate
 from src.agents.research_blackboard import (
     apply_pre_write_critic,
     initialize_research_blackboard,
@@ -199,6 +199,39 @@ def test_numeric_financial_claim_without_metric_lineage_is_rejected():
     assert accepted == []
     assert report["rejected_claim_count"] == 1
     assert "missing_metric_lineage" in report["rejected_claims"][0]["reasons"]
+
+
+def test_derived_claim_inherits_source_evidence_from_metric_lineage():
+    claim = ClaimItem(
+        claim_id="cl_0001",
+        section_name="financial_analysis",
+        claim_text="FY2024 ROE约为164.6%，ROA约为25.7%。",
+        evidence_ids=["ev_market"],
+        numeric_values={"roe_pct": 164.6, "roa_pct": 25.7},
+        risk_level="medium",
+        confidence=0.9,
+    )
+    lineage = {
+        "metrics": [
+            {
+                "metric_lineage_id": "lineage_net_income",
+                "metric_name": "net_income",
+                "value": 93.736,
+                "source_evidence_id": "sec_companyfacts_aapl",
+            },
+            {
+                "metric_lineage_id": "lineage_total_assets",
+                "metric_name": "total_assets",
+                "value": 364.98,
+                "source_evidence_id": "sec_companyfacts_aapl",
+            },
+        ]
+    }
+
+    updated = _attach_metric_lineage_to_claims([claim], lineage)[0]
+
+    assert "sec_companyfacts_aapl" in updated.evidence_ids
+    assert updated.evidence_ids.count("sec_companyfacts_aapl") == 1
 
 
 def test_three_statement_view_derives_core_rows():

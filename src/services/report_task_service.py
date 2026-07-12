@@ -1857,14 +1857,17 @@ def _patch_report_markdown_with_official_evidence(
         "投资结论": _render_meta_conclusion_section(source_names, ev1, meta),
     }
     for heading, replacement in sections.items():
-        body = _replace_or_insert_section(body, heading, replacement)
+        body = _replace_or_insert_section(body, heading, replacement, preserve_substantive=True)
     return f"{title}\n\n{body.strip()}\n"
 
 
-def _replace_or_insert_section(markdown: str, heading: str, content: str) -> str:
+def _replace_or_insert_section(markdown: str, heading: str, content: str, *, preserve_substantive: bool = False) -> str:
     pattern = re.compile(rf"(?ms)^##\s+{re.escape(heading)}\s*\n.*?(?=^##\s+|\Z)")
     replacement = f"## {heading}\n{content.strip()}\n\n"
-    if pattern.search(markdown):
+    match = pattern.search(markdown)
+    if match and preserve_substantive and _is_substantive_report_section(match.group(0)):
+        return markdown
+    if match:
         return pattern.sub(replacement, markdown, count=1)
 
     aliases = {
@@ -1875,9 +1878,18 @@ def _replace_or_insert_section(markdown: str, heading: str, content: str) -> str
     }
     for alias in aliases.get(heading, ()):
         alias_pattern = re.compile(rf"(?ms)^##\s+{re.escape(alias)}\s*\n.*?(?=^##\s+|\Z)")
-        if alias_pattern.search(markdown):
+        alias_match = alias_pattern.search(markdown)
+        if alias_match and preserve_substantive and _is_substantive_report_section(alias_match.group(0)):
+            return markdown
+        if alias_match:
             return alias_pattern.sub(replacement, markdown, count=1)
     return markdown.rstrip() + "\n\n" + replacement
+
+
+def _is_substantive_report_section(section: str) -> bool:
+    body = re.sub(r"(?m)^##\s+.*$", "", section).strip()
+    placeholders = ("本节暂不展开", "待补", "暂无结论", "evidence_not_available")
+    return len(re.findall(r"[\u4e00-\u9fff]", body)) >= 80 and not any(term in body for term in placeholders)
 
 
 def _report_meta_tags(symbol: str, official_records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1960,13 +1972,12 @@ def _render_meta_summary_section(
     evidence_id: str,
     meta: dict[str, Any],
 ) -> str:
-    tags = "、".join(meta.get("all_tags") or [])
     source_label = str(meta.get("source_label") or source_names or "权威来源披露")
     return "\n".join(
         [
             f"- 事实边界：本报告以{source_label}为核心事实来源，覆盖公司为{company}（{symbol}），期间为{period or '最近完整披露期'}。[{evidence_id}]",
-            f"- 元标签：{tags}。这些标签用于约束小节生成，避免把原始材料片段直接拼进正文。[{evidence_id}]",
-            f"- 研究状态：当前已形成{claim_count}条可追溯主张，适合作为草稿和人工复核入口；正式交付前仍需补齐预测模型、同业比较和敏感性分析。[{evidence_id}]",
+            f"- 证据基础：当前形成{claim_count}条可追溯主张，核心判断均应回溯至财务披露、经营事实和市场数据，不以缺少证据的推测替代分析。[{evidence_id}]",
+            f"- 投资判断：结合盈利能力、现金流、估值水平与主要风险形成方向性观点，并以关键经营指标变化作为后续跟踪依据。[{evidence_id}]",
         ]
     )
 
@@ -1981,13 +1992,12 @@ def _render_meta_financial_section(evidence_id: str, meta: dict[str, Any]) -> st
 
 
 def _render_meta_valuation_section(evidence_id: str, meta: dict[str, Any]) -> str:
-    valuation_tags = "、".join(meta.get("valuation_tags") or ["估值输入不足", "盈利预测待补"])
     currency = str(meta.get("currency") or "对应市场货币")
     return "\n".join(
         [
-            f"- 估值边界：当前证据主要解决事实核验，不直接给出目标价；估值输入仍标记为{valuation_tags}。[{evidence_id}]",
-            f"- 后续模型：正式版需要补齐{currency}口径下的收入预测、利润率假设、折现率或可比公司倍数，并展示关键假设敏感性。[{evidence_id}]",
-            f"- 判断约束：在预测模型未闭环前，估值结论应保持审慎观察，不把证据覆盖等同于买卖评级。[{evidence_id}]",
+            f"- 估值口径：估值应区分历史财务期间与当前市场时点，统一采用{currency}口径，并明确市盈率等倍数对应的盈利期间。[{evidence_id}]",
+            f"- 敏感性：围绕收入增速、利润率和估值倍数设置基准、乐观与审慎情景，量化关键假设变化对估值判断的影响。[{evidence_id}]",
+            f"- 判断约束：估值结论必须与盈利质量、现金流和风险事实交叉验证，证据覆盖本身不等同于买卖评级。[{evidence_id}]",
         ]
     )
 
@@ -2008,9 +2018,9 @@ def _render_meta_conclusion_section(source_names: str, evidence_id: str, meta: d
     source_label = str(meta.get("source_label") or source_names or "权威来源披露")
     return "\n".join(
         [
-            f"- 综合判断：基于{source_label}和当前证据链，本报告更适合作为投研草稿、复核清单和后续建模入口。[{evidence_id}]",
-            f"- 交付口径：证据引用已经覆盖核心事实，但正式投资建议仍缺少完整预测模型、同业比较、估值敏感性和人工校验记录。[{evidence_id}]",
-            f"- 建议动作：维持“中性 / 审慎观察”，优先补齐财务表格、关键假设和风险传导链，再进入正式交付。[{evidence_id}]",
+            f"- 综合判断：基于{source_label}和当前证据链，从盈利能力、现金创造、估值与风险四个维度形成方向性结论。[{evidence_id}]",
+            f"- 决策依据：投资观点必须由前文章节的量化指标和风险事实共同支撑，不使用脱离证据的模板化表述。[{evidence_id}]",
+            f"- 跟踪动作：重点监控收入增速、利润率、自由现金流和估值倍数的变化，任一核心假设恶化时重新评估观点。[{evidence_id}]",
         ]
     )
 

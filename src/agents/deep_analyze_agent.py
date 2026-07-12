@@ -2089,9 +2089,13 @@ def _attach_metric_lineage_to_claims(claims: List[ClaimItem], financial_metric_l
     if not isinstance(metrics, list):
         return claims
     by_metric: Dict[str, List[Dict[str, Any]]] = {}
+    lineage_by_id: Dict[str, Dict[str, Any]] = {}
     for row in metrics:
         if isinstance(row, dict):
             by_metric.setdefault(str(row.get("metric_name") or ""), []).append(row)
+            lineage_id = str(row.get("metric_lineage_id") or "")
+            if lineage_id:
+                lineage_by_id[lineage_id] = row
     for claim in claims:
         if not claim.numeric_values:
             continue
@@ -2115,6 +2119,13 @@ def _attach_metric_lineage_to_claims(claims: List[ClaimItem], financial_metric_l
                         input_ids.append(lineage_id)
         claim.metric_lineage_ids = lineage_ids
         claim.input_metric_lineage_ids = input_ids
+        evidence_ids = list(claim.evidence_ids or [])
+        for lineage_id in dict.fromkeys([*lineage_ids, *input_ids]):
+            row = lineage_by_id.get(lineage_id, {})
+            source_evidence_id = str(row.get("source_evidence_id") or "").strip()
+            if source_evidence_id and source_evidence_id not in evidence_ids:
+                evidence_ids.append(source_evidence_id)
+        claim.evidence_ids = evidence_ids
     return claims
 
 
