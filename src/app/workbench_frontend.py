@@ -2888,7 +2888,7 @@ def render_workbench_html() -> str:
         <div class="analysis-stats">
           <div class="analysis-stat"><span class="label">草稿产物</span><strong>${esc(readiness.draft_generated === true ? "已生成" : "尚未生成")}</strong></div>
           <div class="analysis-stat"><span class="label">可重新生成</span><strong>${esc(readiness.can_generate_draft === true ? "是" : "否")}</strong></div>
-          <div class="analysis-stat"><span class="label">人工复核</span><strong>${esc(passText(readiness.can_enter_human_review))}</strong></div>
+          <div class="analysis-stat"><span class="label">人工复核</span><strong>${esc(humanReviewText(readiness.human_review_status, readiness.can_enter_human_review))}</strong></div>
           <div class="analysis-stat"><span class="label">正式交付</span><strong>${esc(passText(readiness.can_deliver_formal_report))}</strong></div>
           <div class="analysis-stat"><span class="label">正式导出</span><strong>${esc(passText(readiness.can_export_formal_package))}</strong></div>
         </div>
@@ -3645,7 +3645,7 @@ def render_workbench_html() -> str:
 
     async function loadTasks() {
       const symbol = $("symbolFilter").value.trim();
-      const suffix = symbol ? `?symbol=${encodeURIComponent(symbol)}` : "";
+	      const suffix = symbol ? `?symbol=${encodeURIComponent(symbol)}&limit=20` : "?limit=20";
       try {
         const payload = await getJson("/api/report-tasks" + suffix);
         const rows = payload.items || [];
@@ -3758,6 +3758,15 @@ def render_workbench_html() -> str:
       if (value === false) return "未通过";
       if (value === null || value === undefined) return "未记录";
       return String(value);
+    }
+
+    function humanReviewText(status, canEnterReview) {
+      const key = String(status || "").toLowerCase();
+      if (key === "completed") return "已完成";
+      if (key === "pending") return "待复核";
+      if (key === "not_required") return "无需复核";
+      if (canEnterReview === true) return "可进入复核";
+      return "未开始";
     }
 
     function metadataName(task) {
