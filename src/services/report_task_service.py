@@ -1502,6 +1502,8 @@ def _source_display_name(source_key: str) -> str:
 
 
 def _artifact_record_from_evidence(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> dict[str, Any]:
+    from src.schemas.runtime_contracts import normalize_evidence_record
+
     item_metadata = dict(item.metadata_json or {})
     record = {
         "evidence_id": item.evidence_id,
@@ -1533,7 +1535,13 @@ def _artifact_record_from_evidence(item: EvidenceItem, *, task: ReportTask, meta
             "source_document_type": item_metadata.get("source_document_type") or grade.get("source_document_type"),
         }
     )
-    return {key: value for key, value in record.items() if value not in (None, "")}
+    cleaned = {key: value for key, value in record.items() if value not in (None, "")}
+    return normalize_evidence_record(
+        cleaned,
+        task_id=task.task_id,
+        run_id=str(metadata.get("run_id") or task.task_id),
+        target_period=str(task.period or metadata.get("period") or ""),
+    )
 
 
 def _is_official_artifact_evidence(record: dict[str, Any]) -> bool:

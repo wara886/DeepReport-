@@ -7,6 +7,13 @@ from src.schemas.multimodal import ChartArtifact, VisualEvidence, audit_chart_li
 from src.schemas.report import ReportDocument, ReportSection
 from src.schemas.table import TableArtifact
 from src.schemas.task import ReportTask
+from src.schemas.runtime_contracts import (
+    RUNTIME_CONTRACT_VERSION,
+    build_company_identity,
+    build_period_spec,
+    normalize_evidence_record,
+    normalize_metric_candidate,
+)
 
 __all__ = [
     "EvidenceItem",
@@ -19,4 +26,9 @@ __all__ = [
     "ReportSection",
     "ReportDocument",
     "ReportTask",
+    "RUNTIME_CONTRACT_VERSION",
+    "build_company_identity",
+    "build_period_spec",
+    "normalize_evidence_record",
+    "normalize_metric_candidate",
 ]

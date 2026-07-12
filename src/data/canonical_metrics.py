@@ -8,6 +8,7 @@ import json
 from typing import Any, Dict, Iterable, List
 
 from src.utils.periods import period_match
+from src.schemas.runtime_contracts import build_company_identity, build_period_spec, normalize_metric_candidate
 
 
 CORE_CANONICAL_METRICS = {
@@ -46,7 +47,12 @@ def build_canonical_metrics_artifact(
     """Choose one formal value for each metric from candidate metric/table rows."""
 
     candidates, rejected_candidates = _partition_period_candidates(
-        _candidate_rows(financial_metrics=financial_metrics, tables=tables),
+        _candidate_rows(
+            financial_metrics=financial_metrics,
+            tables=tables,
+            symbol=symbol,
+            target_period=period,
+        ),
         period=period,
     )
     grouped: dict[str, list[dict[str, Any]]] = {}
@@ -82,10 +88,12 @@ def build_canonical_metrics_artifact(
     missing_core = sorted(CORE_CANONICAL_METRICS - set(canonical))
     unresolved_conflicts = [item for item in conflicts if item.get("resolution_status") == "unresolved"]
     return {
-        "schema_version": "canonical_metrics.v1",
+        "schema_version": "canonical_metrics.v2",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "symbol": symbol,
         "period": period,
+        "company_identity": build_company_identity(symbol),
+        "period_spec": build_period_spec(period, source_period=period),
         "metric_count": len(canonical),
         "candidate_count": len(candidates),
         "rejected_candidate_count": len(rejected_candidates),
@@ -145,10 +153,16 @@ def canonical_metrics_as_financial_metrics(artifact: Any, fallback: Any | None =
     return output
 
 
-def _candidate_rows(*, financial_metrics: Any, tables: Any) -> list[dict[str, Any]]:
+def _candidate_rows(
+    *,
+    financial_metrics: Any,
+    tables: Any,
+    symbol: str = "",
+    target_period: str = "",
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for metric in _metric_rows(financial_metrics):
-        candidate = _normalize_candidate(metric)
+        candidate = _normalize_candidate(metric, symbol=symbol, target_period=target_period)
         if candidate:
             rows.append(candidate)
     for table in tables if isinstance(tables, list) else []:
@@ -166,7 +180,7 @@ def _candidate_rows(*, financial_metrics: Any, tables: Any) -> list[dict[str, An
             merged.setdefault("source_type", row.get("source_type") or table.get("source_type"))
             merged.setdefault("unit", row.get("unit") or table.get("unit"))
             merged.setdefault("currency", row.get("currency") or table.get("currency"))
-            candidate = _normalize_candidate(merged)
+            candidate = _normalize_candidate(merged, symbol=symbol, target_period=target_period)
             if candidate:
                 rows.append(candidate)
     return rows
@@ -189,14 +203,19 @@ def _metric_rows(financial_metrics: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _normalize_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
+def _normalize_candidate(
+    row: dict[str, Any],
+    *,
+    symbol: str = "",
+    target_period: str = "",
+) -> dict[str, Any] | None:
     metric_name = str(row.get("metric_name") or row.get("metric_key") or row.get("line_item") or "").strip()
     value = _float_or_none(row.get("value"))
     if not metric_name or value is None:
         return None
     source_type = str(row.get("source_type") or "").lower()
     period_match = row.get("period_match")
-    return {
+    candidate = {
         "metric_name": metric_name,
         "value": value,
         "unit": str(row.get("unit") or ""),
@@ -205,6 +224,12 @@ def _normalize_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
         "source_period": str(row.get("source_period") or row.get("period") or ""),
         "period_match": period_match,
         "source_type": source_type,
+        "source_url": str(row.get("source_url") or ""),
+        "source_authority": str(row.get("source_authority") or ""),
+        "authority_level": str(row.get("authority_level") or ""),
+        "authority_score": float(row.get("authority_score") or 0.0),
+        "source_document_type": str(row.get("source_document_type") or ""),
+        "trust_level": str(row.get("trust_level") or ""),
         "source_evidence_id": str(row.get("source_evidence_id") or row.get("evidence_id") or row.get("source_id") or ""),
         "source_table_id": str(row.get("source_table_id") or ""),
         "report_date": str(row.get("report_date") or ""),
@@ -212,6 +237,11 @@ def _normalize_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
         "confidence": float(row.get("confidence") or 0.0),
         "priority": SOURCE_PRIORITY.get(source_type, 99),
     }
+    return normalize_metric_candidate(
+        candidate,
+        symbol=symbol or str(row.get("symbol") or ""),
+        target_period=target_period or str(row.get("target_period") or row.get("period") or ""),
+    )
 
 
 def _partition_period_candidates(rows: list[dict[str, Any]], *, period: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -288,6 +318,7 @@ def _conflict_resolution(winner: dict[str, Any], losers: list[dict[str, Any]]) -
 
 def _compact_candidate(row: dict[str, Any]) -> dict[str, Any]:
     return {
+        "metric_id": row.get("metric_id"),
         "value": row.get("value"),
         "unit": row.get("unit"),
         "source_type": row.get("source_type"),
@@ -295,6 +326,9 @@ def _compact_candidate(row: dict[str, Any]) -> dict[str, Any]:
         "source_table_id": row.get("source_table_id"),
         "period_match": row.get("period_match"),
         "confidence": row.get("confidence"),
+        "authority": row.get("authority"),
+        "period_spec": row.get("period_spec"),
+        "lineage": row.get("lineage"),
     }
 
 

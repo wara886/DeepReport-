@@ -476,6 +476,8 @@ def _is_curated_backfill_record(record: dict[str, Any]) -> bool:
 
 
 def _curated_record(record: dict[str, Any]) -> dict[str, Any]:
+    from src.schemas.runtime_contracts import normalize_evidence_record
+
     metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
     curated = dict(record)
     curated.setdefault("sample_id", curated.get("evidence_id") or curated.get("chunk_id") or "")
@@ -489,4 +491,4 @@ def _curated_record(record: dict[str, Any]) -> dict[str, Any]:
         if metadata.get("page") not in (None, ""):
             curated.setdefault("page_no", metadata.get("page"))
     curated["content"] = str(curated.get("content") or "")[:12000]
-    return curated
+    return normalize_evidence_record(curated, target_period=str(curated.get("period") or ""))

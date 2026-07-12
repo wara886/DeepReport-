@@ -71,6 +71,10 @@ def test_report_runtime_rejects_illegal_transition_and_projects_legacy_columns()
 def test_queued_task_has_one_canonical_readiness_projection():
     state = build_report_run_state(task_stub(metadata={"report_runtime": {"schema_version": "report_runtime.v1"}}))
 
+    assert state["schema_version"] == "report_run_state.v2"
+    assert state["company_identity"]["symbol"] == "NVDA"
+    assert state["period_spec"]["target_period"] == "FY2024"
+    assert state["delivery_readiness"]["schema_version"] == "delivery_readiness.v2"
     assert state["lifecycle_status"] == "queued"
     assert state["delivery_readiness"]["can_generate_draft"] is True
     assert state["delivery_readiness"]["can_deliver_formal_report"] is False

@@ -12,6 +12,8 @@ from collections import Counter
 from datetime import datetime
 from typing import Any, Literal, TypedDict
 
+from src.schemas.runtime_contracts import build_company_identity, build_period_spec
+
 
 ReportLifecycleStatus = Literal[
     "queued",
@@ -29,6 +31,7 @@ ReportLifecycleStatus = Literal[
 
 
 class DeliveryReadiness(TypedDict):
+    schema_version: str
     status: str
     can_generate_draft: bool
     can_enter_human_review: bool
@@ -42,8 +45,11 @@ class DeliveryReadiness(TypedDict):
 class ReportRunState(TypedDict):
     schema_version: str
     task_id: str
+    run_id: str
     symbol: str
     period: str
+    company_identity: dict[str, Any]
+    period_spec: dict[str, Any]
     report_type: str
     run_mode: str
     lifecycle_status: ReportLifecycleStatus
@@ -215,10 +221,18 @@ def build_report_run_state(task: Any) -> ReportRunState:
         artifact_state=artifact_state,
     )
     return {
-        "schema_version": "report_run_state.v1",
+        "schema_version": "report_run_state.v2",
         "task_id": _text(getattr(task, "task_id", None)),
+        "run_id": _text(metadata.get("run_id")) or _text(getattr(task, "task_id", None)),
         "symbol": _text(getattr(task, "symbol", None)),
         "period": _text(getattr(task, "period", None)),
+        "company_identity": build_company_identity(
+            _text(getattr(task, "symbol", None)),
+            company_name=_text(metadata.get("company_name")),
+            company_id=getattr(task, "company_id", None),
+            market=_text(metadata.get("market")),
+        ),
+        "period_spec": build_period_spec(_text(getattr(task, "period", None))),
         "report_type": _text(getattr(task, "report_type", None)) or "equity_research",
         "run_mode": _text(metadata.get("run_mode")) or "queue_only",
         "lifecycle_status": lifecycle,
@@ -377,6 +391,7 @@ def _delivery_readiness(
     else:
         status = "blocked"
     return {
+        "schema_version": "delivery_readiness.v2",
         "status": status,
         "can_generate_draft": lifecycle == "queued",
         "can_enter_human_review": can_review,
