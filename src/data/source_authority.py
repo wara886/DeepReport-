@@ -127,6 +127,17 @@ class SourceAuthorityPolicy:
         doc_type = infer_document_type(source_type=source_type, url=url, title=title)
         joined = f"{source_type} {url} {title}".lower()
 
+        if "baostock" in joined:
+            return SourceAuthorityGrade(
+                source_authority="third_party_structured",
+                authority_level="secondary",
+                authority_score=0.72,
+                trust_level="medium",
+                source_document_type=doc_type,
+                allowed_claim_types=tuple(sorted(CORE_FINANCIAL_CLAIMS | MARKET_CLAIMS)),
+                reason="BaoStock is keyless third-party structured data and cannot replace official filings",
+            )
+
         if "eastmoney" in joined or "东方财富" in joined:
             return SourceAuthorityGrade(
                 source_authority="third_party_structured",

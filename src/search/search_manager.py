@@ -19,6 +19,7 @@ from src.data.company_universe import resolve_company_identifier, resolve_symbol
 from src.data.evidence_intake_gate import evidence_rejection_reason, record_mentions_target_company
 from src.data.independent_sources import fetch_macro_evidence, fetch_sec_companyfacts_evidence
 from src.data.hkex_official_source import fetch_hkex_official_announcements
+from src.data.baostock_source import fetch_baostock_financials
 from src.data.source_quality import apply_source_quality
 from src.data.yahoo_finance import yahoo_financials_to_evidence, yahoo_snapshot_to_evidence
 
@@ -93,6 +94,7 @@ class SearchManager:
         manager.register_engine("cninfo_announcements", cninfo_announcement_search)
         manager.register_engine("exchange_announcements", exchange_announcement_search)
         manager.register_engine("eastmoney_financials", eastmoney_financials_search)
+        manager.register_engine("baostock_financials", baostock_financials_search)
         manager.register_engine("hkex_announcements", hkex_announcement_search)
         manager.register_engine("hk_financials", hk_financials_search)
         manager.register_engine("serper", serper_search)
@@ -1324,6 +1326,21 @@ def eastmoney_financials_search(
             "query": query,
         },
     }
+
+
+def baostock_financials_search(
+    query: str,
+    topk: int = 6,
+    symbol: str | None = None,
+    period: str | None = None,
+    raw_data_root: str = "data/raw/real_data",
+    enable_remote: bool = True,
+    **_: Any,
+) -> Dict[str, Any]:
+    if not enable_remote:
+        return {"hits": [], "meta": {"mode": "baostock_financials", "failure_reason": "remote_sources_disabled"}}
+    resolved = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or query or "")
+    return fetch_baostock_financials(symbol=resolved, period=str(period or ""), topk=topk)
 
 
 def independent_macro_search(

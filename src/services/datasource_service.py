@@ -34,6 +34,7 @@ DEFAULT_SOURCE_CATALOG: dict[str, dict[str, Any]] = {
     "cninfo_announcements": {"name": "巨潮资讯公告", "source_type": "official_announcement", "trust_level": "official", "market_scope": ["CN"]},
     "exchange_announcements": {"name": "交易所公告", "source_type": "official_announcement", "trust_level": "official", "market_scope": ["CN", "HK"]},
     "eastmoney_financials": {"name": "东方财富财务", "source_type": "financial_statement", "trust_level": "secondary", "market_scope": ["CN"]},
+    "baostock_financials": {"name": "BaoStock 财务指标", "source_type": "financial_statement", "trust_level": "secondary", "market_scope": ["CN"]},
     "hkex_announcements": {"name": "港交所公告", "source_type": "official_announcement", "trust_level": "official", "market_scope": ["HK"]},
     "hk_financials": {"name": "港股财务数据", "source_type": "financial_statement", "trust_level": "secondary", "market_scope": ["HK"]},
     "serper": {"name": "Serper 搜索", "source_type": "web_search", "trust_level": "secondary", "market_scope": ["US", "CN", "HK"]},
