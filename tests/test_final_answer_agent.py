@@ -4,11 +4,35 @@ remove_debug_leakage, remove_internal_ids, remove_template_phrases."""
 from src.agents.final_answer_agent import (
     auto_rewrite_core_sections,
     enforce_section_depth,
+    _build_final_prompt,
     remove_broken_or_half_sentences,
     remove_debug_leakage,
     remove_internal_ids,
     remove_template_phrases,
 )
+
+
+def test_final_prompt_includes_prewrite_section_evidence_packs():
+    prompt = _build_final_prompt(
+        topic="AAPL FY2024",
+        claims=[],
+        evidence_records=[],
+        symbol="AAPL",
+        period="FY2024",
+        section_evidence_packs={
+            "packs": {
+                "conclusion": {
+                    "must_use_evidence_ids": ["ev_sec"],
+                    "missing_evidence_ids": [],
+                    "canonical_metrics": [{"metric_name": "revenue", "value": 391.0}],
+                }
+            }
+        },
+    )
+
+    assert "Pre-write section evidence packs" in prompt
+    assert "ev_sec" in prompt
+    assert "391.0" in prompt
 
 
 def test_enforce_section_depth_fills_thin_sections():

@@ -58,6 +58,7 @@ from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write
 from src.evaluation.multimodal_consistency import audit_multimodal_consistency
 from src.evaluation.quality_remediation import build_quality_remediation_plan_from_outputs, write_quality_remediation_plan_for_outputs
 from src.evaluation.report_quality import evaluate_report_quality_from_paths
+from src.evaluation.section_evidence_pack import build_section_evidence_packs
 from src.models import ModelAdapter
 from src.report import (
     append_compliance_disclosures,
@@ -489,6 +490,18 @@ class MultiAgentOrchestrator:
         dossiers = self._inject_pdf_facts_into_dossiers(state, dossiers, path="rework")
         state["section_dossiers"] = dossiers
         return dossiers
+
+    def _prepare_prewrite_section_evidence_packs(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Materialize the current state so the writer consumes section packs before drafting."""
+        self._write_json("evidence.json", list(state.get("evidence_records", [])))
+        self._write_json("claims.json", list(state.get("claims", [])))
+        analysis = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
+        self._write_json("analysis_artifacts.json", analysis)
+        self._write_json("financial_metrics.json", analysis.get("financial_metrics", {}))
+        self._write_json("canonical_metrics.json", analysis.get("canonical_metrics", {}))
+        self._write_json("tables.json", analysis.get("tables", []))
+        self._write_json("section_dossiers.json", state.get("section_dossiers", {}))
+        return build_section_evidence_packs(self.output_dir)
 
     def _inject_pdf_facts_into_dossiers(self, state: Dict[str, Any], dossiers: Dict[str, Any], *, path: str) -> Dict[str, Any]:
         """Enrich section dossiers with structured PDF facts and write an audit artifact."""
@@ -1853,6 +1866,19 @@ class MultiAgentOrchestrator:
                         priority=enriched.priority,
                         metadata=dict(enriched.metadata),
                     )
+            if enriched.task_type == "final_answer":
+                section_packs = self._prepare_prewrite_section_evidence_packs(state)
+                params = dict(enriched.parameters)
+                params["section_evidence_packs"] = section_packs
+                enriched = AgentTask(
+                    task_id=enriched.task_id,
+                    task_type=enriched.task_type,
+                    description=enriched.description,
+                    parameters=params,
+                    dependencies=list(enriched.dependencies),
+                    priority=enriched.priority,
+                    metadata=dict(enriched.metadata),
+                )
             result = self._execute(agent_key_for_task(enriched.task_type), enriched)
             results[enriched.task_id] = result
             merge_task_result(state=state, task_type=enriched.task_type, result=result)

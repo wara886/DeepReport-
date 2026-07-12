@@ -132,6 +132,9 @@ class FinalAnswerAgent(BaseAgent):
         section_dossiers = task.parameters.get("section_dossiers", {})
         if not isinstance(section_dossiers, dict):
             section_dossiers = {}
+        section_evidence_packs = task.parameters.get("section_evidence_packs", {})
+        if not isinstance(section_evidence_packs, dict):
+            section_evidence_packs = {}
 
         prompt_claims, claim_pack_meta = pack_claims(
             all_claims,
@@ -162,6 +165,9 @@ class FinalAnswerAgent(BaseAgent):
             "pdf_section_context_count": len(pdf_sections) if isinstance(pdf_sections, list) else 0,
             "company_profile_context_used": bool(company_profile),
             "section_evidence": {},
+            "section_evidence_pack_count": len(section_evidence_packs.get("packs", {}))
+            if isinstance(section_evidence_packs.get("packs"), dict)
+            else 0,
             "research_blackboard_used": isinstance(research_blackboard, dict) and bool(research_blackboard),
             "pre_write_critic_objection_count": len(pre_write_critic.get("objections", []))
             if isinstance(pre_write_critic, dict)
@@ -200,6 +206,7 @@ class FinalAnswerAgent(BaseAgent):
                         pre_write_critic=pre_write_critic,
                         section_evidence=section_evidence,
                         section_dossiers=section_dossiers,
+                        section_evidence_packs=section_evidence_packs,
                     ),
                     system_prompt=FINAL_ANSWER_SYSTEM_PROMPT,
                     extra_body={"max_tokens": int(task.parameters.get("max_tokens", 4000) or 4000)},
@@ -334,6 +341,8 @@ class FinalAnswerAgent(BaseAgent):
 
         # Build the list of top blockers
         top_blockers = contracts.top_blockers()
+        section_evidence_packs = task.parameters.get("section_evidence_packs", {})
+        section_evidence_packs = section_evidence_packs if isinstance(section_evidence_packs, dict) else {}
 
         # Render the full report from contracts
         report_title = f"财务研究报告：{symbol}（{period}）"
@@ -347,6 +356,28 @@ class FinalAnswerAgent(BaseAgent):
         # Each section gets its own focused LLM call so a timeout/cutoff on one
         # section doesn't lose the others (Fix: per-section rewrite, not batch JSON).
         llm_context = render_diagnostic_contract_inputs(contracts)
+        pack_rows = section_evidence_packs.get("packs", {}) if isinstance(section_evidence_packs.get("packs"), dict) else {}
+        if pack_rows:
+            llm_context += "\n\nPre-write section evidence packs:\n" + json.dumps(
+                {
+                    key: {
+                        "must_use_evidence_ids": value.get("must_use_evidence_ids", []),
+                        "supporting_evidence": [
+                            {
+                                "evidence_id": row.get("evidence_id"),
+                                "period": row.get("period"),
+                                "authority": row.get("authority"),
+                                "content_excerpt": row.get("content_excerpt", "")[:500],
+                            }
+                            for row in value.get("supporting_evidence", [])[:6]
+                            if isinstance(row, dict)
+                        ],
+                    }
+                    for key, value in pack_rows.items()
+                    if isinstance(value, dict)
+                },
+                ensure_ascii=False,
+            )
         final_md = contract_markdown
         llm_used = False
         if self.model and hasattr(self.model, "generate") and llm_context:
@@ -795,6 +826,7 @@ def _build_final_prompt(
     pre_write_critic: Any = None,
     section_evidence: Dict[str, str] | None = None,
     section_dossiers: Dict[str, Any] | None = None,
+    section_evidence_packs: Dict[str, Any] | None = None,
 ) -> str:
     evidence = evidence_records if isinstance(evidence_records, list) else []
     compact_evidence = [
@@ -970,6 +1002,22 @@ def _build_final_prompt(
             + "3. If evidence_strength is 'weak' or min_content_level is 'data_gap', write a brief\n"
             + "   data-gap note instead of filling with generic content\n"
             + "4. Use citation IDs like [evidence_id] after factual statements\n"
+        )
+    if isinstance(section_evidence_packs, dict) and isinstance(section_evidence_packs.get("packs"), dict):
+        compact_packs = {
+            key: {
+                "must_use_evidence_ids": value.get("must_use_evidence_ids", []),
+                "missing_evidence_ids": value.get("missing_evidence_ids", []),
+                "canonical_metrics": value.get("canonical_metrics", [])[:6],
+            }
+            for key, value in section_evidence_packs["packs"].items()
+            if isinstance(value, dict)
+        }
+        prompt.append(
+            "Pre-write section evidence packs. Each section must consume its must_use_evidence_ids "
+            "and may use only the supplied canonical metrics:\n"
+            + json.dumps(compact_packs, ensure_ascii=False)
+            + "\n"
         )
     section_claim_map = {
         "投资结论": conclusion_texts,
