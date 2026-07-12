@@ -495,10 +495,12 @@ class ReportTaskService:
         output_dir = Path(str(metadata.get("output_dir") or ""))
         financial_metrics = _read_json_any(output_dir / "financial_metrics.json", default={})
         tables = _read_json_any(output_dir / "tables.json", default=[])
+        evidence_records = _read_json_any(output_dir / "evidence.json", default=[])
         artifact = write_canonical_metrics_artifact(
             output_dir,
             financial_metrics=financial_metrics,
             tables=tables,
+            evidence_records=evidence_records,
             symbol=str(metadata.get("symbol") or ""),
             period=str(metadata.get("period") or ""),
         )

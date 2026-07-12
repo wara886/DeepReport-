@@ -144,6 +144,62 @@ def test_canonical_metrics_rejects_wrong_fiscal_year_market_candidate():
     assert artifact["rejected_candidates"][0]["source_evidence_id"] == "aapl_yahoo_fy2024_wrong_end"
 
 
+def test_canonical_metrics_extracts_period_matched_yahoo_statement_history():
+    artifact = build_canonical_metrics_artifact(
+        financial_metrics={"metrics": []},
+        tables=[],
+        evidence_records=[
+            {
+                "evidence_id": "aapl_yahoo_financials",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "source_type": "market_api",
+                "source_url": "https://finance.yahoo.com/quote/AAPL/financials",
+                "metadata": {
+                    "target_period": "FY2024",
+                    "financials": {
+                        "totalRevenue": 451442016256.0,
+                        "income_history": [
+                            {
+                                "end_date": "2024-09-30",
+                                "Total Revenue": 391035000000.0,
+                                "Net Income": 93736000000.0,
+                                "Gross Profit": 180683000000.0,
+                            }
+                        ],
+                        "balance_history": [
+                            {
+                                "end_date": "2024-09-30",
+                                "Total Assets": 364980000000.0,
+                                "Total Liabilities Net Minority Interest": 308030000000.0,
+                                "Cash And Cash Equivalents": 29943000000.0,
+                            }
+                        ],
+                        "cashflow_history": [
+                            {
+                                "end_date": "2024-09-30",
+                                "Operating Cash Flow": 118254000000.0,
+                                "Free Cash Flow": 108807000000.0,
+                            }
+                        ],
+                    },
+                },
+            }
+        ],
+        symbol="AAPL",
+        period="FY2024",
+    )
+
+    assert artifact["metric_count"] == 8
+    assert artifact["canonical_metrics"]["revenue"]["value"] == 391.035
+    assert artifact["canonical_metrics"]["net_income"]["value"] == 93.736
+    assert artifact["canonical_metrics"]["total_assets"]["value"] == 364.98
+    assert artifact["canonical_metrics"]["operating_cash_flow"]["value"] == 118.254
+    assert artifact["canonical_metrics"]["revenue"]["source_evidence_id"] == "aapl_yahoo_financials"
+    assert artifact["canonical_metrics"]["revenue"]["report_date"] == "2024-09-30"
+    assert artifact["canonical_metrics"]["revenue"]["unit"] == "USD_billion"
+
+
 def test_quality_artifact_loader_prefers_canonical_metrics(tmp_path):
     run_dir = tmp_path / "run"
     outputs = run_dir / "outputs"

@@ -41,6 +41,7 @@ def build_canonical_metrics_artifact(
     *,
     financial_metrics: Any,
     tables: Any,
+    evidence_records: Any = None,
     symbol: str = "",
     period: str = "",
 ) -> Dict[str, Any]:
@@ -50,6 +51,7 @@ def build_canonical_metrics_artifact(
         _candidate_rows(
             financial_metrics=financial_metrics,
             tables=tables,
+            evidence_records=evidence_records,
             symbol=symbol,
             target_period=period,
         ),
@@ -118,12 +120,14 @@ def write_canonical_metrics_artifact(
     *,
     financial_metrics: Any,
     tables: Any,
+    evidence_records: Any = None,
     symbol: str = "",
     period: str = "",
 ) -> dict[str, Any]:
     artifact = build_canonical_metrics_artifact(
         financial_metrics=financial_metrics,
         tables=tables,
+        evidence_records=evidence_records,
         symbol=symbol,
         period=period,
     )
@@ -157,6 +161,7 @@ def _candidate_rows(
     *,
     financial_metrics: Any,
     tables: Any,
+    evidence_records: Any = None,
     symbol: str = "",
     target_period: str = "",
 ) -> list[dict[str, Any]]:
@@ -183,7 +188,123 @@ def _candidate_rows(
             candidate = _normalize_candidate(merged, symbol=symbol, target_period=target_period)
             if candidate:
                 rows.append(candidate)
+    rows.extend(
+        _structured_evidence_candidates(
+            evidence_records,
+            symbol=symbol,
+            target_period=target_period,
+        )
+    )
     return rows
+
+
+def _structured_evidence_candidates(
+    evidence_records: Any,
+    *,
+    symbol: str,
+    target_period: str,
+) -> list[dict[str, Any]]:
+    """Extract period-matched statement values embedded in evidence metadata."""
+
+    output: list[dict[str, Any]] = []
+    for record in evidence_records if isinstance(evidence_records, list) else []:
+        if not isinstance(record, dict):
+            continue
+        metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+        financials = metadata.get("financials") if isinstance(metadata.get("financials"), dict) else {}
+        if not financials:
+            continue
+        evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
+        source_type = str(record.get("source_type") or "").lower()
+        source_quality = metadata.get("source_quality") if isinstance(metadata.get("source_quality"), dict) else {}
+        currency = str(metadata.get("currency") or record.get("currency") or _default_currency(symbol))
+        common = {
+            "symbol": symbol or str(record.get("symbol") or ""),
+            "period": str(record.get("period") or target_period),
+            "source_period": str(metadata.get("target_period") or record.get("period") or target_period),
+            "source_type": source_type,
+            "source_url": str(record.get("source_url") or ""),
+            "source_evidence_id": evidence_id,
+            "source_authority": str(source_quality.get("source_authority") or ""),
+            "authority_level": str(source_quality.get("authority_level") or ""),
+            "authority_score": float(source_quality.get("authority_score") or 0.0),
+            "trust_level": str(source_quality.get("trust_level") or ""),
+            "source_document_type": str(source_quality.get("source_document_type") or ""),
+            "currency": currency,
+            "confidence": 0.82 if source_type in {"market_api", "market_data"} else 0.9,
+        }
+        income = _period_statement_row(financials, ("income_history", "quarterly_income_history"), target_period)
+        balance = _period_statement_row(financials, ("balance_history", "quarterly_balance_history"), target_period)
+        cashflow = _period_statement_row(financials, ("cashflow_history", "quarterly_cashflow_history"), target_period)
+        revenue = _first_number(income, ("Total Revenue", "Operating Revenue", "revenue"))
+        net_income = _first_number(income, ("Net Income", "Net Income Common Stockholders"))
+        gross_profit = _first_number(income, ("Gross Profit",))
+        values = {
+            "revenue": revenue,
+            "net_income": net_income,
+            "gross_margin": (gross_profit / revenue * 100.0) if gross_profit is not None and revenue not in (None, 0) else None,
+            "total_assets": _first_number(balance, ("Total Assets",)),
+            "total_liabilities": _first_number(balance, ("Total Liabilities Net Minority Interest", "Total Liabilities")),
+            "cash_and_equivalents": _first_number(balance, ("Cash And Cash Equivalents",)),
+            "operating_cash_flow": _first_number(
+                cashflow,
+                ("Operating Cash Flow", "Cash Flow From Continuing Operating Activities"),
+            ),
+            "free_cash_flow": _first_number(cashflow, ("Free Cash Flow",)),
+        }
+        report_date = str(income.get("end_date") or balance.get("end_date") or cashflow.get("end_date") or "")
+        for metric_name, raw_value in values.items():
+            if raw_value is None:
+                continue
+            is_ratio = metric_name == "gross_margin"
+            candidate = _normalize_candidate(
+                {
+                    **common,
+                    "metric_name": metric_name,
+                    "value": raw_value if is_ratio else _to_billion(raw_value),
+                    "unit": "pct" if is_ratio else f"{currency}_billion",
+                    "report_date": report_date,
+                },
+                symbol=symbol,
+                target_period=target_period,
+            )
+            if candidate:
+                output.append(candidate)
+    return output
+
+
+def _period_statement_row(financials: dict[str, Any], keys: tuple[str, ...], target_period: str) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    for key in keys:
+        value = financials.get(key)
+        if isinstance(value, list):
+            rows.extend(item for item in value if isinstance(item, dict))
+    for row in rows:
+        if period_match(period=target_period, report_date=str(row.get("end_date") or ""), raw=row) is True:
+            return row
+    return {}
+
+
+def _first_number(row: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    for key in keys:
+        value = _float_or_none(row.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _to_billion(value: float) -> float:
+    number = float(value)
+    return number / 1_000_000_000 if abs(number) > 1_000_000 else number
+
+
+def _default_currency(symbol: str) -> str:
+    normalized = str(symbol or "").upper()
+    if normalized.endswith(".HK"):
+        return "HKD"
+    if normalized.endswith((".SS", ".SZ")):
+        return "CNY"
+    return "USD"
 
 
 def _metric_rows(financial_metrics: Any) -> list[dict[str, Any]]:

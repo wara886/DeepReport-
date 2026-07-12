@@ -599,6 +599,7 @@ class MultiAgentOrchestrator:
             evidence_records = list(state.get("evidence_records", []))
             analysis_artifacts = self._apply_canonical_metrics(
                 state.get("analysis_artifacts", {}),
+                evidence_records=evidence_records,
                 symbol=symbol,
                 period=str(state.get("period", "") or ""),
             )
@@ -704,8 +705,20 @@ class MultiAgentOrchestrator:
             logging.getLogger(__name__).exception("Failed to build contracts and bind citations")
             return None, None
 
-    def _apply_canonical_metrics(self, analysis_artifacts: Any, *, symbol: str, period: str) -> Dict[str, Any]:
-        return _apply_canonical_metrics_to_artifacts(analysis_artifacts, symbol=symbol, period=period)
+    def _apply_canonical_metrics(
+        self,
+        analysis_artifacts: Any,
+        *,
+        evidence_records: Any = None,
+        symbol: str,
+        period: str,
+    ) -> Dict[str, Any]:
+        return _apply_canonical_metrics_to_artifacts(
+            analysis_artifacts,
+            evidence_records=evidence_records,
+            symbol=symbol,
+            period=period,
+        )
 
     def _run_static(
         self,
@@ -886,7 +899,12 @@ class MultiAgentOrchestrator:
         )
         claims = analyze_result.output.get("claims", [])
         analysis_artifacts = analyze_result.output.get("analysis_artifacts", {})
-        analysis_artifacts = self._apply_canonical_metrics(analysis_artifacts, symbol=symbol, period=period)
+        analysis_artifacts = self._apply_canonical_metrics(
+            analysis_artifacts,
+            evidence_records=evidence_records,
+            symbol=symbol,
+            period=period,
+        )
         static_state["claims"] = claims
         static_state["analysis_artifacts"] = analysis_artifacts
         research_blackboard = update_blackboard_for_task(
@@ -2311,6 +2329,7 @@ class MultiAgentOrchestrator:
         analysis = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
         analysis = self._apply_canonical_metrics(
             analysis,
+            evidence_records=list(state.get("evidence_records", [])),
             symbol=str(state.get("symbol", "") or ""),
             period=str(state.get("period", "") or ""),
         )
@@ -4039,13 +4058,20 @@ def agent_key_for_task(task_type: str) -> str:
     return mapping[task_type]
 
 
-def _apply_canonical_metrics_to_artifacts(analysis_artifacts: Any, *, symbol: str, period: str) -> Dict[str, Any]:
+def _apply_canonical_metrics_to_artifacts(
+    analysis_artifacts: Any,
+    *,
+    evidence_records: Any = None,
+    symbol: str,
+    period: str,
+) -> Dict[str, Any]:
     artifacts = dict(analysis_artifacts) if isinstance(analysis_artifacts, dict) else {}
     raw_financial_metrics = artifacts.get("raw_financial_metrics", artifacts.get("financial_metrics", {}))
     tables = artifacts.get("tables", []) if isinstance(artifacts.get("tables"), list) else []
     canonical = build_canonical_metrics_artifact(
         financial_metrics=raw_financial_metrics,
         tables=tables,
+        evidence_records=evidence_records,
         symbol=symbol,
         period=period,
     )
