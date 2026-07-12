@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from src.db.models import (
@@ -1151,8 +1151,15 @@ def _get_or_create_company_id(session: Session, *, symbol: str, name: str, marke
     if not normalized_symbol and not normalized_name:
         return None
     if normalized_symbol:
-        company = session.scalar(select(Company).where(Company.symbol == normalized_symbol, Company.market == normalized_market))
+        company = session.scalar(
+            select(Company)
+            .where(func.upper(Company.symbol) == normalized_symbol)
+            .order_by(Company.id.asc())
+            .limit(1)
+        )
         if company is not None:
+            if not company.market and normalized_market:
+                company.market = normalized_market
             return company.id
     company = Company(
         name=normalized_name or normalized_symbol or "未知公司",
