@@ -481,7 +481,7 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
     if not isinstance(section_dossiers, dict):
         section_dossiers = {}
     text = _report_text(artifacts)
-    body_text = str(artifacts.get("report_md") or text)
+    body_text = _strip_reference_sections(str(artifacts.get("report_md") or text))
     total_checks = len(CONTENT_DEPTH_THRESHOLDS)
     passes = 0
 
@@ -531,7 +531,9 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
             _issue(issues, "blocker", "content_depth", f"report contains debug leakage: {pattern}")
     if _contains_any(text, ("Item 1A", "Risk Factors", "Management's Discussion", "Our business", "We face intense competition")) and len(re.findall(r"\b[A-Za-z]{5,}\b", text)) > 120:
         _issue(issues, "blocker", "raw_english_annual_section_leak", "report appears to contain raw English annual-report sections")
-    report_body_text = "\n".join([str(artifacts.get("report_md") or ""), str(artifacts.get("report_html") or "")])
+    report_body_text = _strip_reference_sections(
+        "\n".join([str(artifacts.get("report_md") or ""), str(artifacts.get("report_html") or "")])
+    )
     for key in ("revenue_growth_pct", "adjusted_net_income", "non_recurring_gain"):
         if key in report_body_text:
             _issue(issues, "blocker", "internal_metric_key_leak", f"internal metric key leaked: {key}")
@@ -560,6 +562,13 @@ def _score_content_depth(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]
     if total_checks == 0:
         return 1.0
     return round(passes / total_checks, 4)
+
+
+def _strip_reference_sections(text: str) -> str:
+    """Keep citation metadata out of prose-quality and raw-English checks."""
+    value = str(text or "")
+    match = re.search(r"(?im)^##\s+(?:参考来源|References)\s*$", value)
+    return value[: match.start()] if match else value
 
 
 def _section_has_truncation(body: str) -> bool:

@@ -253,6 +253,12 @@ def test_remove_debug_leakage_strips_cl_pattern():
     assert "cl_0042" not in result
 
 
+def test_remove_debug_leakage_preserves_reference_urls():
+    result = remove_debug_leakage("## 参考来源\n- SEC filing - https://www.sec.gov/Archives/report.htm")
+    assert "https://www.sec.gov/Archives/report.htm" in result
+    assert "https//www.sec.gov" not in result
+
+
 def test_remove_internal_ids_strips_claim_id_labels():
     """remove_internal_ids strips cl_XXXX:metric_key patterns."""
     markdown = "Revenue from cl_0001:revenue_billion grew 24%."

@@ -1570,7 +1570,8 @@ def remove_debug_leakage(markdown: str) -> str:
     # Strip "未分类领域" as standalone text
     output = re.sub(r'未分类领域', '', output)
     # Clean up artifacts left after removal
-    output = re.sub(r'[=:]\s*[,，]?\s*', '', output)
+    # Restrict debug assignment cleanup to line starts so URL schemes remain intact.
+    output = re.sub(r'(?m)^[ \t]*[=:]\s*[,，]?\s*', '', output)
     output = re.sub(r' +', ' ', output)
     output = re.sub(r'\n{3,}', '\n\n', output)
     return output.strip()
