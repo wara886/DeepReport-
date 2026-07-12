@@ -44,6 +44,16 @@ def build_section_evidence_packs(output_dir: str | Path) -> dict[str, Any]:
 
     packs: dict[str, Any] = {}
     raw_keys = set(contracts) | set(dossiers)
+    if not raw_keys:
+        raw_keys = {
+            "executive_summary",
+            "business_overview",
+            "financial_analysis",
+            "peer_compare",
+            "valuation",
+            "risks",
+            "conclusion",
+        }
     section_keys = sorted({_canonical_section_key(key) for key in raw_keys})
     for section_key in section_keys:
         aliases = [key for key in raw_keys if _canonical_section_key(key) == section_key]
@@ -65,7 +75,8 @@ def build_section_evidence_packs(output_dir: str | Path) -> dict[str, Any]:
         # A must-use list is a small writing contract, not the complete retrieval
         # result. Prefer explicit contract evidence; otherwise use claim-linked
         # evidence as a bounded fallback.
-        required_ids = contract_ids[:5] if contract_ids else claim_ids[:3]
+        prewrite_ids = _prewrite_evidence_ids(section_key, allowed_evidence)
+        required_ids = contract_ids[:5] if contract_ids else claim_ids[:3] if claim_ids else prewrite_ids
         must_use = [_evidence_summary(allowed_evidence[item], citation_labels.get(item, [])) for item in required_ids if item in allowed_evidence]
         missing = [item for item in required_ids if item not in allowed_evidence]
         supporting_ids = _dedupe(required_ids + claim_ids + dossier_ids)
@@ -218,6 +229,27 @@ def _evidence_allowed_for_section(row: dict[str, Any], *, section_key: str, targ
     if role == "peer":
         return False
     return not symbol or not target_symbol or symbol == target_symbol
+
+
+def _prewrite_evidence_ids(section_key: str, evidence_by_id: dict[str, dict[str, Any]]) -> list[str]:
+    keywords = {
+        "executive_summary": ("revenue", "income", "cash flow", "risk", "收入", "利润", "现金流", "风险"),
+        "business_overview": ("business", "product", "segment", "业务", "产品", "分部"),
+        "financial_analysis": ("revenue", "income", "asset", "cash flow", "收入", "利润", "资产", "现金流"),
+        "peer_compare": ("peer", "competitor", "market snapshot", "同行", "可比", "竞争"),
+        "valuation": ("valuation", "market cap", "price", "p/e", "估值", "市值", "股价"),
+        "risks": ("risk", "regulatory", "competition", "风险", "监管", "竞争"),
+        "conclusion": ("revenue", "income", "cash flow", "risk", "valuation", "收入", "利润", "现金流", "风险", "估值"),
+    }.get(section_key, ())
+    ranked: list[tuple[int, float, str]] = []
+    for evidence_id, row in evidence_by_id.items():
+        text = " ".join([str(row.get("title") or ""), str(row.get("content") or "")[:1200]]).lower()
+        score = sum(1 for keyword in keywords if keyword in text)
+        authority = float(row.get("authority_score") or 0.0)
+        ranked.append((score, authority, evidence_id))
+    ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    matched = [evidence_id for score, _authority, evidence_id in ranked if score > 0]
+    return (matched or [evidence_id for _score, _authority, evidence_id in ranked])[:3]
 
 
 def _canonical_for_section(section_key: str, payload: Any) -> list[dict[str, Any]]:

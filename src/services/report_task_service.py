@@ -347,6 +347,16 @@ class ReportTaskService:
         task_id = str(state["task_id"])
         metadata = self._task_metadata(task_id)
         output_dir = Path(str(metadata.get("output_dir") or ""))
+        # Stage 2 keeps the legacy orchestrator as a transitional generation node.
+        # Refresh artifacts produced by its internal analyze step so runtime
+        # metadata and downstream verification read the same post-generation data.
+        self._refresh_canonical_metrics(task_id)
+        section_packs = build_section_evidence_packs(output_dir)
+        self._update_runtime_metadata(
+            task_id,
+            "section_evidence_packs",
+            _build_section_pack_manifest(output_dir, artifact=section_packs),
+        )
         summary = _build_generation_execution_summary(output_dir)
         self._update_runtime_metadata(task_id, "generation_execution", summary)
         self._record_runtime_stage(

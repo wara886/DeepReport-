@@ -241,12 +241,12 @@ class LangGraphReportRuntime:
         builder.add_conditional_edges(
             "evidence",
             self._route_after_evidence,
-            {"generation": "generation", "end": END},
+            {"build_canonical_metrics": "build_canonical_metrics", "end": END},
         )
-        builder.add_edge("generation", "inspect_agent_execution")
-        builder.add_edge("inspect_agent_execution", "build_canonical_metrics")
         builder.add_edge("build_canonical_metrics", "build_section_evidence_packs")
-        builder.add_edge("build_section_evidence_packs", "verify_sections")
+        builder.add_edge("build_section_evidence_packs", "generation")
+        builder.add_edge("generation", "inspect_agent_execution")
+        builder.add_edge("inspect_agent_execution", "verify_sections")
         builder.add_edge("verify_sections", "repair_failed_sections")
         builder.add_edge("repair_failed_sections", "quality")
         builder.add_edge("quality", "finalize")
@@ -318,7 +318,7 @@ class LangGraphReportRuntime:
         evidence = state.get("evidence_state", {})
         if state.get("lifecycle_status") == "evidence_blocked" or evidence.get("blocked") is True:
             return "end"
-        return "generation"
+        return "build_canonical_metrics"
 
     @staticmethod
     def _route_after_finalize(state: ReportGraphState) -> str:

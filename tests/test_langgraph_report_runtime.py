@@ -112,10 +112,10 @@ def test_langgraph_runtime_runs_typed_nodes_and_interrupts_for_claim_review():
     assert [item["node"] for item in completed["runtime_events"]] == [
         "official_evidence_backfill",
         "evidence",
-        "generation",
-        "inspect_agent_execution",
         "build_canonical_metrics",
         "build_section_evidence_packs",
+        "generation",
+        "inspect_agent_execution",
         "verify_sections",
         "repair_failed_sections",
         "quality",
@@ -209,7 +209,7 @@ def test_failed_canonical_metrics_node_has_own_checkpoint():
 
     snapshot = runtime.snapshot(thread_id="task-canonical-retry")
     assert snapshot["next"] == ["build_canonical_metrics"]
-    assert calls == ["evidence", "generation"]
+    assert calls == ["evidence"]
 
     completed = runtime.retry_from_checkpoint(thread_id="task-canonical-retry")
 
@@ -238,8 +238,44 @@ def test_runtime_nodes_run_once_in_dependency_order():
     result = LangGraphReportRuntime(handlers).invoke(initial_state(), thread_id="task-node-order")
 
     assert calls == ["evidence", "generation", "quality", "finalize"]
-    assert post_generation == ["official", "inspect", "canonical", "packs", "verify", "repair"]
+    assert post_generation == ["official", "canonical", "packs", "inspect", "verify", "repair"]
     assert result["delivery_readiness"]["can_deliver_formal_report"] is True
+
+
+def test_generation_receives_prewrite_canonical_metrics_and_section_packs():
+    calls = []
+    base = successful_handlers(calls, pending_review=False)
+
+    def canonical(state):
+        assert state["evidence_state"]["status"] == "success"
+        return {"artifact_state": {"canonical_metrics_ready": True}}
+
+    def packs(state):
+        assert state["artifact_state"]["canonical_metrics_ready"] is True
+        return {
+            "artifact_state": {
+                **state["artifact_state"],
+                "section_evidence_packs_ready": True,
+            }
+        }
+
+    def generation(state):
+        assert state["artifact_state"]["canonical_metrics_ready"] is True
+        assert state["artifact_state"]["section_evidence_packs_ready"] is True
+        return base.generation(state)
+
+    handlers = CallbackReportGraphHandlers(
+        base.evidence,
+        generation,
+        base.quality,
+        base.finalize,
+        build_canonical_metrics_callback=canonical,
+        build_section_evidence_packs_callback=packs,
+    )
+
+    completed = LangGraphReportRuntime(handlers).invoke(initial_state(), thread_id="task-prewrite-inputs")
+
+    assert completed["delivery_readiness"]["can_deliver_formal_report"] is True
 
 
 def test_sqlite_checkpoint_survives_runtime_recreation(tmp_path: Path):
