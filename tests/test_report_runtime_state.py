@@ -102,6 +102,9 @@ def test_completed_reviewed_task_is_formally_deliverable_and_exportable():
     assert state["lifecycle_status"] == "generation_completed"
     assert state["delivery_readiness"]["blocking_reasons"] == []
     assert state["delivery_readiness"]["can_deliver_formal_report"] is True
+    assert state["delivery_readiness"]["machine_quality_pass"] is True
+    assert state["delivery_readiness"]["human_review_status"] == "completed"
+    assert state["delivery_readiness"]["formal_delivery_pass"] is True
     assert state["export_readiness"]["can_export_formal_package"] is True
 
 
@@ -118,6 +121,9 @@ def test_quality_pass_does_not_override_pending_claim_review():
 
     assert state["quality_state"]["delivery_pass"] is True
     assert state["delivery_readiness"]["can_deliver_formal_report"] is False
+    assert state["delivery_readiness"]["machine_quality_pass"] is True
+    assert state["delivery_readiness"]["human_review_status"] == "pending"
+    assert state["delivery_readiness"]["formal_delivery_pass"] is False
     assert state["export_readiness"]["can_export_formal_package"] is False
     assert state["delivery_readiness"]["blocking_reasons"] == ["pending_claim_review", "approved_claims_missing"]
 

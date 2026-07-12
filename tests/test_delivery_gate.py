@@ -217,6 +217,26 @@ def test_delivery_gate_requires_objective_pass_even_when_scores_are_high(tmp_pat
 
     assert gate["delivery_pass"] is False
     assert gate["objective_pass"] is False
+    assert any(
+        issue["category"] == "objective_quality" and issue["severity"] == "blocker"
+        for issue in gate["issues"]
+    )
+
+
+def test_delivery_gate_explains_verifier_boolean_failure_with_blocker(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    for name, payload in {
+        "verification_report.json": {"passed": False, "warnings": []},
+        "quality_report.json": {"objective_pass": True, "total_score": 0.95, "issues": []},
+        "llm_quality_review.json": {"llm_review_pass": True, "total_score": 0.9, "issues": []},
+    }.items():
+        (outputs / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["machine_quality_pass"] is False
+    assert any(issue["category"] == "verifier" and issue["severity"] == "blocker" for issue in gate["issues"])
 
 
 def test_delivery_gate_never_emits_none_message_and_enforces_llm_score(tmp_path):

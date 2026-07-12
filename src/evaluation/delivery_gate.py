@@ -67,6 +67,15 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
     )
     llm_score_pass = llm_score_strict_pass or llm_score_relaxed_pass
     llm_review_pass = bool(llm_review.get("llm_review_pass", False)) and llm_score_pass and not blocking_issue
+    issues.extend(
+        _missing_gate_failure_issues(
+            issues,
+            verifier_passed=verifier_passed,
+            objective_pass=objective_pass,
+            llm_review_pass=llm_review_pass,
+        )
+    )
+    blocking_issue = any(item.get("severity") in {"fatal", "blocker"} for item in issues)
     content_depth_blockers = [
         item for item in issues
         if item.get("severity") in {"fatal", "blocker"}
@@ -99,6 +108,8 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
         "run_dir": str(Path(run_dir) if run_dir is not None else outputs),
         "status": status,
         "delivery_pass": delivery_pass,
+        "machine_quality_pass": delivery_pass,
+        "formal_delivery_pass": None,
         "diagnostic_delivery_pass": diagnostic_delivery_pass,
         "verifier_passed": verifier_passed,
         "objective_pass": objective_pass,
@@ -142,6 +153,41 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
         "top_issues": issues[:5],
         "issues": issues,
     }
+
+
+def _missing_gate_failure_issues(
+    issues: List[Dict[str, Any]],
+    *,
+    verifier_passed: bool,
+    objective_pass: bool,
+    llm_review_pass: bool,
+) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    requirements = [
+        ("verifier", verifier_passed, "Verifier did not pass, but no blocking verifier issue was emitted."),
+        ("objective_quality", objective_pass, "Objective quality checks did not pass."),
+        ("llm_review", llm_review_pass, "LLM review did not satisfy the formal quality contract."),
+    ]
+    for category, passed, message in requirements:
+        if passed:
+            continue
+        explained = any(
+            str(item.get("category") or "") in {category, "content", "content_depth", "gate"}
+            and str(item.get("severity") or "") in {"fatal", "blocker"}
+            for item in issues
+        )
+        if explained:
+            continue
+        output.append(
+            {
+                "issue_id": f"gate_requirement_{category}_{len(issues) + len(output) + 1:04d}",
+                "severity": "blocker",
+                "category": category,
+                "message": message,
+                "source": "delivery_gate",
+            }
+        )
+    return output
 
 
 def write_delivery_gate(run_dir: str | Path, gate: Dict[str, Any] | None = None) -> Dict[str, str]:

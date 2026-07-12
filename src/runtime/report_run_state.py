@@ -38,6 +38,9 @@ class DeliveryReadiness(TypedDict):
     can_enter_human_review: bool
     can_deliver_formal_report: bool
     can_export_formal_package: bool
+    machine_quality_pass: bool
+    human_review_status: str
+    formal_delivery_pass: bool
     blocking_reasons: list[str]
     warnings: list[str]
     required_actions: list[str]
@@ -400,6 +403,9 @@ def _delivery_readiness(
         "can_enter_human_review": can_review,
         "can_deliver_formal_report": can_deliver,
         "can_export_formal_package": can_deliver,
+        "machine_quality_pass": quality_state["delivery_pass"] is True,
+        "human_review_status": "completed" if claim_state["review_complete"] else ("pending" if claim_state["total_count"] else "not_required"),
+        "formal_delivery_pass": can_deliver,
         "blocking_reasons": blockers,
         "warnings": warnings,
         "required_actions": _required_actions(blockers),
