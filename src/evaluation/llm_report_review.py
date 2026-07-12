@@ -439,9 +439,9 @@ def _build_review_prompt(artifacts: Dict[str, Any]) -> str:
     payload = {
         "objective_quality_report": artifacts["quality_report"],
         "verification_report": artifacts["verification_report"],
-        "claims_sample": artifacts["claims"][:8],
-        "evidence_sample": artifacts["evidence"][:8],
-        "citations_sample": artifacts["citations"][:8],
+        "claims_sample": _compact_review_claims(artifacts["claims"][:8]),
+        "evidence_sample": _compact_review_evidence(artifacts["evidence"][:8]),
+        "citations_sample": _compact_review_citations(artifacts["citations"][:8]),
         "report_markdown": artifacts["report_md"][:18000],
     }
     return (
@@ -452,6 +452,51 @@ def _build_review_prompt(artifacts: Dict[str, Any]) -> str:
         + "\n输入：\n"
         + json.dumps(payload, ensure_ascii=False, indent=2)
     )
+
+
+def _compact_review_claims(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "claim_id": row.get("claim_id"),
+            "section_name": row.get("section_name"),
+            "claim_text": str(row.get("claim_text") or "")[:1200],
+            "evidence_ids": list(row.get("evidence_ids") or [])[:8],
+            "numeric_values": row.get("numeric_values") if isinstance(row.get("numeric_values"), dict) else {},
+        }
+        for row in records
+    ]
+
+
+def _compact_review_evidence(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    for row in records:
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        metrics = metadata.get("metrics") if isinstance(metadata.get("metrics"), dict) else {}
+        output.append(
+            {
+                "evidence_id": row.get("evidence_id") or row.get("sample_id"),
+                "title": str(row.get("title") or "")[:300],
+                "source_type": row.get("source_type"),
+                "source_authority": row.get("source_authority") or row.get("authority_level"),
+                "period": row.get("period") or metadata.get("period"),
+                "source_url": str(row.get("source_url") or "")[:500],
+                "content_excerpt": str(row.get("content") or row.get("snippet") or "")[:1600],
+                "metric_names": list(metrics)[:12],
+            }
+        )
+    return output
+
+
+def _compact_review_citations(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "evidence_id": row.get("evidence_id"),
+            "label": row.get("label") or row.get("citation_label"),
+            "title": str(row.get("title") or "")[:300],
+            "source_url": str(row.get("source_url") or "")[:500],
+        }
+        for row in records
+    ]
 
 
 def _system_prompt() -> str:

@@ -1,6 +1,6 @@
 import json
 
-from src.evaluation.llm_report_review import review_report_with_llm, write_llm_review_outputs
+from src.evaluation.llm_report_review import _build_review_prompt, review_report_with_llm, write_llm_review_outputs
 
 
 class FakeReviewModel:
@@ -169,6 +169,23 @@ def test_llm_review_reconciles_low_score_stale_english_review_after_repair(tmp_p
     assert review["total_score"] >= 0.82
     assert review["artifact_reconciliation_applied"] is True
     assert all(issue["severity"] == "warning" for issue in review["issues"])
+
+
+def test_review_prompt_compacts_large_evidence_payloads():
+    huge = "financial filing text " * 200000
+    prompt = _build_review_prompt(
+        {
+            "quality_report": {"objective_pass": True},
+            "verification_report": {"passed": True},
+            "claims": [{"claim_id": "cl_1", "claim_text": huge, "evidence_ids": ["ev_1"]}],
+            "evidence": [{"evidence_id": "ev_1", "content": huge, "metadata": {"raw": huge}}],
+            "citations": [{"evidence_id": "ev_1", "title": huge, "source_url": "https://example.com"}],
+            "report_md": "## 执行摘要\n" + huge,
+        }
+    )
+
+    assert len(prompt) < 30000
+    assert huge not in prompt
 
 
 def _write_review_run(tmp_path):
