@@ -193,14 +193,24 @@ def test_section_repair_callback_only_changes_failed_section(tmp_path):
         "unsupported_claim_ids": [],
     }}}), encoding="utf-8")
 
+    calls = []
+
     def repair(payload):
+        calls.append(payload["section_key"])
         assert payload["section_key"] == "conclusion"
-        return {"section_markdown": ("维持中性判断，核心理由与风险均由正式证据支持。" * 12) + "[ev1]"}
+        return {
+            "section_markdown": ("维持中性判断，核心理由与风险均由正式证据支持。" * 12) + "[ev1]",
+            "llm_run_id": "llm-repair-1",
+        }
 
     summary = repair_failed_sections_for_outputs(
         output_dir=outputs,
         report_dir=reports,
-        section_verification={"status": "failed", "failed_sections": ["conclusion"], "issues": []},
+        section_verification={
+            "status": "failed",
+            "failed_sections": ["conclusion", "investment_conclusion"],
+            "issues": [],
+        },
         repair_callback=repair,
     )
 
@@ -208,6 +218,8 @@ def test_section_repair_callback_only_changes_failed_section(tmp_path):
     assert financial_body in repaired
     assert summary["repair_strategy"] == "llm_section_rewrite"
     assert summary["evidence_ids_consumed"] == ["ev1"]
+    assert calls == ["conclusion"]
+    assert summary["attempts"][0]["llm_run_id"] == "llm-repair-1"
 
 
 def test_section_repair_records_callback_failure_and_falls_back(tmp_path):

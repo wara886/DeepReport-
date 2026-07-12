@@ -37,6 +37,7 @@ from src.db.models import (
 from src.db.session import create_engine_for_url
 from src.llm.harness import serialize_llm_run
 from src.llm.harness import LLMHarness
+from src.models.model_adapter import ModelAdapter
 from src.evaluation.evidence_retrieval_attribution import write_evidence_retrieval_attribution
 from src.evaluation.delivery_pipeline import run_delivery_quality_pipeline
 from src.evaluation.section_repair import repair_failed_sections_for_outputs
@@ -61,6 +62,7 @@ from src.runtime.langgraph_report_runtime import (
     project_run_state_patch,
 )
 from src.services.artifact_importer import ArtifactImporter
+from src.utils.config import load_config
 from src.utils.periods import latest_completed_period
 
 
@@ -89,6 +91,7 @@ class ReportTaskService:
         langgraph_runtime_enabled: bool = True,
         runtime_checkpoint_path: str | Path | None = None,
         engine: Engine | None = None,
+        section_repair_callback_factory: Callable[[str, dict[str, Any]], Callable[[dict[str, Any]], dict[str, Any]] | None] | None = None,
     ) -> None:
         self.database_url = database_url
         self.output_root = Path(output_root)
@@ -105,6 +108,8 @@ class ReportTaskService:
         self._engine = engine
         self._session_factory: sessionmaker[Session] | None = None
         self._init_lock = threading.Lock()
+        self.section_repair_callback_factory = section_repair_callback_factory
+        self._enable_model_section_repair = orchestrator_factory is None or section_repair_callback_factory is not None
 
     def create_task(self, payload: dict[str, Any]) -> dict[str, Any]:
         symbol = str(payload.get("symbol") or "AAPL").strip().upper()
@@ -375,10 +380,12 @@ class ReportTaskService:
         failed_sections = list(section_verification.get("failed_sections") or [])
         output_dir = Path(str(metadata.get("output_dir") or ""))
         report_dir = Path(str(metadata.get("report_dir") or ""))
+        repair_callback = self._build_section_repair_callback(task_id=task_id, metadata=metadata)
         repair = repair_failed_sections_for_outputs(
             output_dir=output_dir,
             report_dir=report_dir,
             section_verification=_read_json_object(output_dir / "section_verification.json") or section_verification,
+            repair_callback=repair_callback,
         )
         verification = _build_section_verification_manifest(output_dir=output_dir, report_dir=report_dir)
         self._update_runtime_metadata(task_id, "section_verification", verification)
@@ -390,7 +397,13 @@ class ReportTaskService:
             "failed_section_count_after": len(verification.get("failed_sections") or []),
             "failed_sections_after": list(verification.get("failed_sections") or []),
             "repaired": bool(repair.get("repaired", False)),
-            "repair_strategy": "deterministic_section_rewrite",
+            "repair_strategy": str(repair.get("repair_strategy") or "deterministic_section_rewrite"),
+            "model_status": str(repair.get("model_status") or "unavailable"),
+            "llm_run_ids": [
+                str(item.get("llm_run_id"))
+                for item in repair.get("attempts") or []
+                if isinstance(item, dict) and item.get("llm_run_id")
+            ],
             "source_files": {
                 "section_repair": str(output_dir / "section_repair.json"),
                 "section_verification": str(output_dir / "section_verification.json"),
@@ -405,6 +418,57 @@ class ReportTaskService:
             metadata=summary,
         )
         return self._current_run_state_patch(task_id)
+
+    def _build_section_repair_callback(
+        self,
+        *,
+        task_id: str,
+        metadata: dict[str, Any],
+    ) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
+        if self.section_repair_callback_factory is not None:
+            return self.section_repair_callback_factory(task_id, metadata)
+        if not self._enable_model_section_repair:
+            return None
+        adapter = _build_role_model_adapter(
+            config_path=self.config_path,
+            role="final_answer",
+            execution_tier=str(metadata.get("execution_tier") or "delivery"),
+        )
+        if not adapter.api_key:
+            return None
+        active_prompt = self._active_prompt("report_section_repair")
+        backend = SectionRepairModelBackend(adapter)
+        harness = LLMHarness(
+            session_factory=self.session,
+            backend=backend,
+            max_retries=1,
+            timeout_seconds=min(float(adapter.timeout or 90), 120.0),
+        )
+
+        def repair(payload: dict[str, Any]) -> dict[str, Any]:
+            result = harness.run_prompt(
+                prompt_key="report_section_repair",
+                input=payload,
+                schema={
+                    "type": "object",
+                    "required": ["section_markdown"],
+                    "properties": {"section_markdown": {"type": "string"}},
+                },
+                model_role="section_repair",
+                task_id=task_id,
+                prompt=(active_prompt or {}).get("content") or _DEFAULT_SECTION_REPAIR_PROMPT,
+                prompt_version_id=(active_prompt or {}).get("version_id"),
+                metadata={
+                    "source": "langgraph_section_repair",
+                    "section_key": payload.get("section_key"),
+                    "route_profile": adapter.route_profile,
+                },
+            )
+            output = dict(result.output)
+            output["llm_run_id"] = result.run_id
+            return output
+
+        return repair
 
     def _graph_quality_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
@@ -2592,6 +2656,52 @@ class QualityGateTraceBackend:
             "issue_count": len(issues),
             "summary": summary,
         }
+
+
+_DEFAULT_SECTION_REPAIR_PROMPT = """Rewrite one failed Chinese equity-research report section.
+Return JSON with only section_markdown. Do not include the section heading.
+Use the canonical metrics and must-use evidence in the input. Cite evidence IDs in square brackets.
+Do not invent facts, use placeholders, expose internal field names, or paste raw English source paragraphs.
+Give a concrete analytical conclusion, supporting reasons, risks, and evidence boundaries where relevant.
+Only repair the requested section."""
+
+
+class SectionRepairModelBackend:
+    """ModelAdapter bridge used by the observable LLM harness."""
+
+    def __init__(self, adapter: ModelAdapter) -> None:
+        self.adapter = adapter
+        self.name = f"section-repair:{adapter.model_name}"
+
+    def generate_structured(self, prompt: str, schema: dict[str, Any] | None = None, **kwargs: Any) -> dict[str, Any]:
+        del schema
+        payload = json.dumps(kwargs, ensure_ascii=False, default=str)
+        return self.adapter.generate_json(
+            prompt=f"{prompt}\n\nSection repair input:\n{payload}",
+            system_prompt=(
+                "You are a financial report section repair agent. Return valid JSON only. "
+                "The section must be written in Chinese and grounded in the supplied evidence."
+            ),
+            extra_body={"max_tokens": min(self.adapter.max_tokens, 2400)},
+        )
+
+
+def _build_role_model_adapter(*, config_path: str, role: str, execution_tier: str) -> ModelAdapter:
+    config = load_config(config_path)
+    routes = config.get("agent_model_routes") if isinstance(config, dict) else {}
+    defaults = routes.get("defaults", {}) if isinstance(routes, dict) and isinstance(routes.get("defaults"), dict) else {}
+    tier = str(execution_tier or "delivery").lower()
+    role_route = routes.get(role) if isinstance(routes, dict) else None
+    if isinstance(role_route, dict):
+        profile = str(role_route.get(tier) or role_route.get("delivery") or defaults.get(tier) or defaults.get("delivery") or "flash")
+    elif isinstance(role_route, str):
+        profile = role_route
+    else:
+        profile = str(defaults.get(tier) or defaults.get("delivery") or "flash")
+    try:
+        return ModelAdapter.from_profile(profile=profile, config_path=config_path, fallback_section="agent_model")
+    except Exception:
+        return ModelAdapter.from_config(config_path=config_path)
 
 
 def _report_links(artifacts: list[dict[str, Any]]) -> dict[str, Any]:

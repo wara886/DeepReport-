@@ -281,13 +281,15 @@ def _apply_callback_repairs(
 ) -> tuple[str, list[dict[str, Any]]]:
     output = markdown
     attempts: list[dict[str, Any]] = []
+    processed_titles: set[str] = set()
     contract_map = contracts.get("contracts") if isinstance(contracts.get("contracts"), dict) else {}
     pack_map = evidence_packs.get("packs") if isinstance(evidence_packs.get("packs"), dict) else {}
     results = verification.get("section_results") if isinstance(verification.get("section_results"), dict) else {}
     for section in sorted(targets):
         title = SECTION_TITLES.get(section)
-        if not title or _section_body(output, title) is None:
+        if not title or title in processed_titles or _section_body(output, title) is None:
             continue
+        processed_titles.add(title)
         payload = {
             "section_key": section,
             "title": title,
@@ -301,7 +303,10 @@ def _apply_callback_repairs(
             body = str(response.get("section_markdown") or response.get("body") or "").strip() if isinstance(response, dict) else ""
             if body:
                 output = _replace_section_body(output, title, body)
-                attempts.append({"section": section, "strategy": "llm_section_rewrite", "status": "changed"})
+                attempt = {"section": section, "strategy": "llm_section_rewrite", "status": "changed"}
+                if response.get("llm_run_id"):
+                    attempt["llm_run_id"] = str(response["llm_run_id"])
+                attempts.append(attempt)
             else:
                 attempts.append({"section": section, "strategy": "llm_section_rewrite", "status": "empty_response"})
         except Exception as exc:

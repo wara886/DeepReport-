@@ -2,8 +2,10 @@ import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from src.app.api_fastapi import create_fastapi_app
+from src.db.models import LLMRun
 from src.services.report_task_service import ReportTaskService
 
 
@@ -186,6 +188,65 @@ def make_client(tmp_path, orchestrator_factory, *, runtime_enabled=True):
         report_task_service=service,
     )
     return TestClient(app)
+
+
+def test_section_repair_callback_uses_observable_llm_harness(monkeypatch, tmp_path):
+    class FakeRepairAdapter:
+        api_key = "test-key"
+        timeout = 5
+        route_profile = "user_fast"
+        model_name = "fake-repair-model"
+        max_tokens = 1000
+
+        def generate_json(self, prompt, system_prompt=None, **kwargs):
+            assert "Section repair input" in prompt
+            assert "valid JSON only" in system_prompt
+            return {"section_markdown": "基于正式证据维持中性判断。[ev1]"}
+
+    monkeypatch.setattr(
+        "src.services.report_task_service._build_role_model_adapter",
+        lambda **kwargs: FakeRepairAdapter(),
+    )
+    service = ReportTaskService(
+        database_url=f"sqlite:///{tmp_path / 'tasks.db'}",
+        output_root=tmp_path / "outputs",
+        report_root=tmp_path / "reports",
+        memory_root=tmp_path / "memory",
+    )
+    service.create_task(
+        {
+            "task_id": "task-section-repair-harness",
+            "symbol": "AAPL",
+            "period": "FY2024",
+            "execution_tier": "user_fast",
+        }
+    )
+    metadata = service._task_metadata("task-section-repair-harness")
+    callback = service._build_section_repair_callback(
+        task_id="task-section-repair-harness",
+        metadata=metadata,
+    )
+
+    assert callback is not None
+    result = callback(
+        {
+            "section_key": "conclusion",
+            "title": "投资结论",
+            "original_section": "短。",
+            "contract": {},
+            "evidence_pack": {"must_use_evidence_ids": ["ev1"]},
+            "verification": {"reasons": ["too_short"]},
+        }
+    )
+
+    assert result["section_markdown"].endswith("[ev1]")
+    assert result["llm_run_id"].startswith("llm_")
+    with service.session() as session:
+        run = session.scalar(select(LLMRun).where(LLMRun.run_id == result["llm_run_id"]))
+        assert run is not None
+        assert run.task_id == "task-section-repair-harness"
+        assert run.model_role == "section_repair"
+        assert run.status == "success"
 
 
 def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
