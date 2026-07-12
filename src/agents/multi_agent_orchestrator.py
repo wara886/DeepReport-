@@ -788,6 +788,7 @@ class MultiAgentOrchestrator:
                     "topk": 12,
                     "engines": search_engines or _market_engines(symbol),
                     "raw_data_root": self.raw_data_root,
+                    "curated_dir": _retrieval_curated_dir(self.output_dir),
                     "ranking_mode": retrieval_ranking_mode,
                     "data_source_config_path": data_source_config_path,
                     "enable_remote": bool(enable_remote_data),
@@ -1456,6 +1457,7 @@ class MultiAgentOrchestrator:
             retrieval_ranking_mode=retrieval_ranking_mode,
             enable_remote_data=enable_remote_data,
             data_source_config_path=data_source_config_path,
+            curated_dir=_retrieval_curated_dir(self.output_dir),
             skill_registry=self.skill_registry,
             router_memory_brief=durable_memory_brief
             if _use_durable_memory_for_planner_router(self.memory_config.context_scope)
@@ -2861,6 +2863,7 @@ def prepare_dynamic_tasks(
     retrieval_ranking_mode: str = "hybrid_rerank",
     enable_remote_data: bool = False,
     data_source_config_path: str = "configs/data_sources.yaml",
+    curated_dir: str = "data/curated",
     skill_registry: SkillRegistry | None = None,
     router_memory_brief: str = "",
     router_context_max_chars: int = 1600,
@@ -2921,6 +2924,7 @@ def prepare_dynamic_tasks(
             params.setdefault("topk", int(profile["research_topk"]))
             params["engines"] = search_engines or _market_engines(symbol)
             params.setdefault("raw_data_root", raw_data_root)
+            params.setdefault("curated_dir", curated_dir)
             params.setdefault("ranking_mode", retrieval_ranking_mode)
             params.setdefault("data_source_config_path", data_source_config_path)
             params.setdefault("enable_remote", bool(enable_remote_data))
@@ -2936,6 +2940,13 @@ def prepare_dynamic_tasks(
             )
         )
     return cleaned
+
+
+def _retrieval_curated_dir(output_dir: Path) -> str:
+    task_dir = Path(output_dir) / "retrieval_curated"
+    if task_dir.is_dir() and any(task_dir.glob("*.jsonl")):
+        return str(task_dir)
+    return "data/curated"
 
 
 def build_task_route_context(tasks: List[AgentTask]) -> Dict[str, Any]:

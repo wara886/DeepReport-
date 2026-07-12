@@ -73,7 +73,8 @@ def test_unverified_company_profile_is_context_not_official_filing():
 
     assert grade["source_authority"] == "profile_context"
     assert grade["authority_level"] == "secondary"
-    assert grade["allowed_claim_types"] == ["business_context"]
+    assert "business_context" in grade["allowed_claim_types"]
+    assert "revenue" not in grade["allowed_claim_types"]
 
 
 def test_source_authority_policy_does_not_allow_web_snippet_for_core_financial_claims():

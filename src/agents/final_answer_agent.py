@@ -2466,7 +2466,11 @@ def _claims_to_markdown_bullets(claims: List[Dict[str, Any]], section: str = "")
         if _claim_text_is_weak(text):
             text = _rewrite_weak_claim_as_gap_note(section or str(claim.get("section_name") or ""), text)
         lines.append(f"- {text}")
-        evidence_ids = [str(item) for item in claim.get("evidence_ids", []) if str(item)]
+        evidence_ids = [
+            str(item)
+            for item in (claim.get("citation_evidence_ids") or claim.get("evidence_ids", []))
+            if str(item)
+        ]
         if evidence_ids:
             lines.append(f"  - 证据ID: {', '.join(evidence_ids)}")
         try:

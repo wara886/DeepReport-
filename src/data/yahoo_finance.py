@@ -348,9 +348,16 @@ def yahoo_financials_to_evidence(
 
     content_parts: list[str] = [f"{symbol} Yahoo Finance financial data:"]
 
+    target_period = str(period or "").strip().upper()
+    historical_target = bool(target_period and target_period != latest_completed_period())
+    metric_keys = (
+        ("currentPrice", "marketCap", "trailingPE")
+        if historical_target
+        else ("totalRevenue", "operatingCashflow", "freeCashflow", "grossMargins", "profitMargins",
+              "currentPrice", "marketCap", "trailingPE", "revenueGrowth")
+    )
     metrics: list[str] = []
-    for key in ("totalRevenue", "operatingCashflow", "freeCashflow", "grossMargins", "profitMargins",
-                 "currentPrice", "marketCap", "trailingPE", "revenueGrowth"):
+    for key in metric_keys:
         value = financials.get(key)
         if value is not None:
             metrics.append(f"{key}={value}")
@@ -399,6 +406,12 @@ def yahoo_financials_to_evidence(
     content = " | ".join(content_parts)
     digest = hashlib.sha1(f"{symbol}|{period}|financials|{content}".encode("utf-8")).hexdigest()[:10]
 
+    selected_financials = _financials_for_selected_period(
+        financials,
+        income=income,
+        balance=balance,
+        cashflow=cashflow,
+    )
     return {
         "evidence_id": f"{symbol}_{period}_yahoo_financials_{digest}",
         "sample_id": f"{symbol}_{period}_yahoo_financials_{digest}",
@@ -411,7 +424,13 @@ def yahoo_financials_to_evidence(
         "publish_time": "",
         "trust_level": "medium",
         "score": 6.5,
-        "metadata": {"provider": "yahoo_finance", "financials": financials},
+        "metadata": {
+            "provider": "yahoo_finance",
+            "financials": selected_financials,
+            "target_period": target_period,
+            "context_type": "period_matched_financial_supplement" if any((income, balance, cashflow)) else "current_valuation_context",
+            "period_match": bool(any((income, balance, cashflow))) if historical_target else True,
+        },
     }
 
 
@@ -456,24 +475,57 @@ def _yf_statement_rows_for_period(financials: Dict[str, Any], statement: str, pe
         clean_rows = [row for row in rows if isinstance(row, dict)]
         if not clean_rows:
             continue
-        if prefer_quarter:
-            matched = _yf_row_for_period(clean_rows, period)
-            if matched:
-                return [matched]
-            continue
-        return clean_rows
+        matched = _yf_row_for_period(clean_rows, period)
+        if matched:
+            return [matched]
+        if not str(period or "").strip():
+            return clean_rows[:1]
     return []
 
 
 def _yf_row_for_period(rows: list[Dict[str, Any]], period: str) -> Dict[str, Any]:
     target = _yf_period_target_date(period)
-    if not target:
-        return {}
+    target_year = _yf_parse_fiscal_year(period)
     for row in rows:
         row_date = _yf_parse_date(row.get("end_date") or row.get("report_date") or row.get("date") or row.get("asOfDate"))
-        if row_date and abs((row_date - target).days) <= 45:
+        if target and row_date and abs((row_date - target).days) <= 45:
+            return row
+        if target_year and row_date and row_date.year == target_year:
             return row
     return {}
+
+
+def _yf_parse_fiscal_year(value: str | None) -> int | None:
+    match = re.search(r"(?:FY\s*)?(20\d{2})", str(value or ""), flags=re.I)
+    return int(match.group(1)) if match else None
+
+
+def _financials_for_selected_period(
+    financials: Dict[str, Any],
+    *,
+    income: list[Dict[str, Any]],
+    balance: list[Dict[str, Any]],
+    cashflow: list[Dict[str, Any]],
+) -> Dict[str, Any]:
+    output = {
+        key: value
+        for key, value in financials.items()
+        if key not in {
+            "income_history",
+            "quarterly_income_history",
+            "balance_history",
+            "quarterly_balance_history",
+            "cashflow_history",
+            "quarterly_cashflow_history",
+        }
+    }
+    if income:
+        output["income_history"] = income
+    if balance:
+        output["balance_history"] = balance
+    if cashflow:
+        output["cashflow_history"] = cashflow
+    return output
 
 
 def _yf_parse_quarter(value: str | None) -> tuple[int, int] | None:

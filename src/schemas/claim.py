@@ -18,6 +18,7 @@ class ClaimItem:
     section_name: str
     claim_text: str
     evidence_ids: List[str] = field(default_factory=list)
+    citation_evidence_ids: List[str] = field(default_factory=list)
     numeric_values: Dict[str, float] = field(default_factory=dict)
     risk_level: str = "unknown"
     confidence: float = 0.0
@@ -35,6 +36,7 @@ class ClaimItem:
             section_name=data["section_name"],
             claim_text=data["claim_text"],
             evidence_ids=list(data.get("evidence_ids", [])),
+            citation_evidence_ids=list(data.get("citation_evidence_ids", [])),
             numeric_values=values,
             risk_level=data.get("risk_level", "unknown"),
             confidence=float(data.get("confidence", 0.0)),
@@ -56,6 +58,8 @@ class ClaimItem:
             "confidence": self.confidence,
             "notes": self.notes,
         }
+        if self.citation_evidence_ids:
+            payload["citation_evidence_ids"] = list(self.citation_evidence_ids)
         if self.metric_lineage_ids:
             payload["metric_lineage_ids"] = list(self.metric_lineage_ids)
         if self.input_metric_lineage_ids:
@@ -64,4 +68,3 @@ class ClaimItem:
             payload["is_critical"] = self.is_critical
             payload["critical_claim_type"] = self.critical_claim_type
         return payload
-

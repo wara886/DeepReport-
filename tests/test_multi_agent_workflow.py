@@ -464,11 +464,27 @@ def test_prepare_dynamic_tasks_adds_implicit_dependencies():
         raw_data_root="data/raw/real_data",
     )
     deps = {task.task_id: task.dependencies for task in tasks}
+    research = next(task for task in tasks if task.task_type == "deep_researcher")
 
     assert deps["task_002"] == ["task_001"]
     assert deps["task_003"] == ["task_002"]
     assert deps["task_004"] == ["task_003"]
     assert deps["task_005"] == ["task_004"]
+    assert research.parameters["curated_dir"] == "data/curated"
+
+
+def test_prepare_dynamic_tasks_uses_task_scoped_curated_dir():
+    tasks = prepare_dynamic_tasks(
+        plan={"tasks": [{"task_id": "research", "task_type": "deep_researcher", "parameters": {}}]},
+        research_topic="AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        raw_data_root="data/raw/real_data",
+        curated_dir="/tmp/task/retrieval_curated",
+    )
+
+    research = next(task for task in tasks if task.task_type == "deep_researcher")
+    assert research.parameters["curated_dir"] == "/tmp/task/retrieval_curated"
 
 
 def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
@@ -1471,6 +1487,45 @@ def test_rule_verifier_fails_missing_evidence_id():
 
     assert report["passed"] is False
     assert any("missing evidence ids" in error for error in report["errors"])
+
+
+def test_rule_verifier_only_requires_explicit_citation_evidence_ids_in_markdown():
+    verifier = Verifier()
+    claims = [
+        ClaimItem(
+            claim_id="cl_1",
+            section_name="financial_analysis",
+            claim_text="AAPL revenue was 126.3B.",
+            evidence_ids=["ev_primary", "ev_supporting"],
+            citation_evidence_ids=["ev_primary"],
+            numeric_values={"revenue_billion": 126.3},
+            confidence=0.82,
+        )
+    ]
+    evidence_records = [
+        {
+            "evidence_id": "ev_primary",
+            "content": "Revenue 126.3B.",
+            "metadata": {"revenue_billion": 126.3},
+        },
+        {"evidence_id": "ev_supporting", "content": "Supporting context."},
+    ]
+
+    report = verifier.verify(
+        claims=claims,
+        markdown="# Report\n\n## 执行摘要\n\n## 财务分析\n\nAAPL revenue [ev_primary]\n\n## 风险评估\n",
+        evidence_records=evidence_records,
+    )
+
+    assert report["passed"] is True
+
+    missing_required_citation = verifier.verify(
+        claims=claims,
+        markdown="# Report\n\n## 执行摘要\n\n## 财务分析\n\nAAPL revenue\n\n## 风险评估\n",
+        evidence_records=evidence_records,
+    )
+    assert missing_required_citation["passed"] is False
+    assert any("ev_primary" in error for error in missing_required_citation["errors"])
 
 
 def test_rule_verifier_fails_target_symbol_mismatch():

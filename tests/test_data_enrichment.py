@@ -403,6 +403,38 @@ def test_yahoo_financials_evidence_describes_target_quarter_not_latest(monkeypat
     assert "revenue=24000000000.0" not in evidence["content"]
 
 
+def test_yahoo_financials_evidence_filters_annual_history_to_target_year(monkeypatch):
+    def fake_financials(symbol):
+        return {
+            "totalRevenue": 416161000000.0,
+            "currentPrice": 210.0,
+            "income_history": [
+                {"end_date": "2025-09-30", "Total Revenue": 416161000000.0},
+                {"end_date": "2024-09-28", "Total Revenue": 391035000000.0},
+            ],
+            "balance_history": [
+                {"end_date": "2025-09-30", "Total Assets": 359241000000.0},
+                {"end_date": "2024-09-28", "Total Assets": 364980000000.0},
+            ],
+            "cashflow_history": [
+                {"end_date": "2025-09-30", "Operating Cash Flow": 111443000000.0},
+                {"end_date": "2024-09-28", "Operating Cash Flow": 118254000000.0},
+            ],
+        }
+
+    monkeypatch.setattr("src.data.yahoo_finance.fetch_yahoo_financials", fake_financials)
+
+    evidence = yahoo_financials_to_evidence("AAPL", "FY2024")
+
+    assert evidence is not None
+    assert "end_date=2024-09-28" in evidence["content"]
+    assert "end_date=2025-09-30" not in evidence["content"]
+    assert "totalRevenue=416161000000.0" not in evidence["content"]
+    assert evidence["metadata"]["financials"]["income_history"] == [
+        {"end_date": "2024-09-28", "Total Revenue": 391035000000.0}
+    ]
+
+
 def test_market_api_wrong_annual_end_date_is_rejected_for_fiscal_year():
     record = {
         "evidence_id": "aapl_yahoo_fy2024",

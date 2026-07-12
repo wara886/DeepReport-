@@ -265,6 +265,66 @@ def test_enforced_evidence_gate_allows_generation_with_required_official_source(
     assert gate["coverage"]["returned_sources"] == ["sec_edgar"]
 
 
+def test_evidence_gate_excludes_wrong_period_financials_and_dedupes_snapshots(tmp_path):
+    service, client = build_client(tmp_path)
+    with service.session() as session:
+        company = Company(name="Apple Inc.", symbol="AAPL", market="US")
+        session.add(company)
+        session.flush()
+        document = Document(
+            company_id=company.id,
+            batch_id="batch-aapl-history",
+            title="AAPL reusable evidence",
+            doc_type="market_data",
+            report_period="FY2024",
+            source_url="https://finance.yahoo.com/quote/AAPL",
+            parse_status="parsed",
+        )
+        session.add(document)
+        session.flush()
+        for suffix in ["old", "new"]:
+            session.add(
+                EvidenceItem(
+                    evidence_id=f"aapl-snapshot-{suffix}",
+                    company_id=company.id,
+                    document_id=document.id,
+                    source_type="market_api",
+                    trust_level="medium",
+                    title="AAPL Yahoo Finance market snapshot",
+                    content="Current market price context.",
+                    source_url="https://finance.yahoo.com/quote/AAPL",
+                    metadata_json={"period": "FY2024", "context_type": "current_market_snapshot"},
+                )
+            )
+        session.add(
+            EvidenceItem(
+                evidence_id="aapl-wrong-period-financials",
+                company_id=company.id,
+                document_id=document.id,
+                source_type="market_api",
+                trust_level="medium",
+                title="AAPL Yahoo Finance financial data",
+                content="Latest annual financials.",
+                source_url="https://finance.yahoo.com/quote/AAPL/key-statistics",
+                metadata_json={
+                    "period": "FY2024",
+                    "financials": {"income_history": [{"end_date": "2025-09-30", "Total Revenue": 1.0}]},
+                },
+            )
+        )
+        session.commit()
+
+    with client:
+        created = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-aapl-dedupe", "symbol": "AAPL", "period": "FY2024"},
+        ).json()
+        gate = service.run_evidence_gate(created["task_id"])
+
+    assert gate["coverage"]["candidate_count"] == 1
+    assert gate["coverage"]["returned_sources"] == ["market_api"]
+
+
 def test_task_official_db_evidence_is_merged_into_report_artifacts_before_quality_gate(tmp_path):
     WeakArtifactOrchestrator.calls = 0
     service, client = build_client_with_orchestrator(tmp_path, WeakArtifactOrchestrator)

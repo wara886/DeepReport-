@@ -164,7 +164,7 @@ class SourceAuthorityPolicy:
                 authority_score=0.55,
                 trust_level="medium",
                 source_document_type=doc_type,
-                allowed_claim_types=("business_context",),
+                allowed_claim_types=tuple(sorted(EVENT_CLAIMS)),
                 reason="company profile context without a verified official disclosure domain",
             )
 

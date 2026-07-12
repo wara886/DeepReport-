@@ -186,7 +186,8 @@ def _check_evidence_support(
         missing = [evidence_id for evidence_id in claim.evidence_ids if evidence_id not in available_ids]
         if missing:
             errors.append(f"Claim {claim.claim_id} references missing evidence ids: {', '.join(missing)}")
-        uncited = [evidence_id for evidence_id in claim.evidence_ids if evidence_id not in markdown]
+        citation_ids = claim.citation_evidence_ids or claim.evidence_ids
+        uncited = [evidence_id for evidence_id in citation_ids if evidence_id not in markdown]
         if uncited:
             errors.append(f"Claim {claim.claim_id} evidence ids are not cited in markdown: {', '.join(uncited)}")
         _check_numeric_support(claim=claim, evidence_by_id=evidence_by_id, warnings=warnings)

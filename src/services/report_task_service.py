@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.data.company_universe import infer_market_from_symbol
 from src.data.canonical_metrics import write_canonical_metrics_artifact
+from src.data.evidence_intake_gate import PERIOD_GATED_SOURCE_TYPES, record_period_status
 from src.data.official_evidence_archive import build_official_evidence_artifacts
 from src.data.official_evidence_backfill import execute_official_evidence_backfill
 from src.data.source_authority import grade_source_authority
@@ -264,7 +265,9 @@ class ReportTaskService:
         task_id = str(state["task_id"])
         summary = self._run_official_evidence_backfill(task_id)
         metadata = self._task_metadata(task_id)
-        evidence_path = Path(str(metadata.get("output_dir") or "")) / "evidence.json"
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        _sync_task_retrieval_curated_dir(output_dir)
+        evidence_path = output_dir / "evidence.json"
         if evidence_path.is_file():
             self.import_artifacts(task_id)
         self._record_runtime_stage(
@@ -910,6 +913,7 @@ class ReportTaskService:
             "blocks_generation": False,
             "source_file": str(output_dir / "official_evidence_backfill_run.json"),
         }
+        _sync_task_retrieval_curated_dir(output_dir)
         self._update_runtime_metadata(task_id, "official_evidence_backfill", summary)
         return summary
 
@@ -1379,7 +1383,8 @@ class ReportTaskService:
             .limit(1000)
         )
         items = list(session.scalars(stmt).unique().all())
-        return [item for item in items if _evidence_matches_task_gate(item, task=task, metadata=metadata)]
+        matched = [item for item in items if _evidence_matches_task_gate(item, task=task, metadata=metadata)]
+        return _dedupe_task_evidence_candidates(matched)
 
 
 def _evidence_matches_task_gate(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> bool:
@@ -1395,9 +1400,41 @@ def _evidence_matches_task_gate(item: EvidenceItem, *, task: ReportTask, metadat
 
     company_match = _evidence_company_matches(item, task=task, metadata=metadata)
     period_match = _evidence_period_matches(item, task=task, metadata=metadata)
+    if company_match and period_match and str(item.source_type or "").lower() in PERIOD_GATED_SOURCE_TYPES:
+        record = _artifact_record_from_evidence(item, task=task, metadata=metadata)
+        period_match = record_period_status(
+            record,
+            target_period=str(task.period or metadata.get("period") or ""),
+        ) != "mismatch"
     if _norm(task.period or metadata.get("period")):
         return company_match and period_match
     return company_match
+
+
+def _dedupe_task_evidence_candidates(items: list[EvidenceItem]) -> list[EvidenceItem]:
+    """Keep the newest reusable record for snapshot-like datasource outputs."""
+
+    seen: set[str] = set()
+    output: list[EvidenceItem] = []
+    for item in items:
+        source_type = str(item.source_type or "").strip().lower()
+        source_url = str(item.source_url or "").strip().lower().rstrip("/")
+        metadata = item.metadata_json or {}
+        period = str(
+            metadata.get("period")
+            or metadata.get("report_period")
+            or (item.document.report_period if item.document else "")
+            or ""
+        ).strip().upper()
+        if source_type in {"market_api", "market_data", "company_profile", "company_page"} and source_url:
+            key = f"snapshot|{source_type}|{source_url}|{period}"
+        else:
+            key = str(metadata.get("identity_key") or item.evidence_id or item.id)
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(item)
+    return output
 
 
 def _evidence_company_matches(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> bool:
@@ -1880,6 +1917,15 @@ def _merge_records_by_id(existing: list[dict[str, Any]], additions: list[dict[st
         index_by_id[record_id] = len(merged)
         merged.append(dict(record))
     return merged
+
+
+def _sync_task_retrieval_curated_dir(output_dir: Path) -> None:
+    source = output_dir / "official_backfill_curated.jsonl"
+    if not source.is_file():
+        return
+    target_dir = output_dir / "retrieval_curated"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    (target_dir / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def _read_json_list(path: Path) -> list[dict[str, Any]]:

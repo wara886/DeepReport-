@@ -846,6 +846,7 @@ def build_rule_claims(
                 section_name="business_overview",
                 claim_text=biz_text,
                 evidence_ids=[item for item in sample_ids if item],
+                citation_evidence_ids=(profile_evidence_ids[:1] or [item for item in sample_ids if item][:1]),
                 numeric_values={},
                 risk_level="low",
                 confidence=0.76,
@@ -1371,6 +1372,7 @@ def _minimum_valuation_claims(
         equity = _statement_value(rows, "balance_sheet", "shareholder_equity")
     market_cap, market_unit, market_source = _market_cap_from_records(records)
     evidence_ids = list(dict.fromkeys(financial_evidence_ids + market_evidence_ids + ([market_source] if market_source else [])))
+    valuation_citation_ids = list(dict.fromkeys(financial_evidence_ids[:3] + ([market_source] if market_source else market_evidence_ids[:1])))
     output: List[ClaimItem] = []
     claim_index = start_index
 
@@ -1401,6 +1403,7 @@ def _minimum_valuation_claims(
                     + "；该结果仅用于相对估值校验，不构成目标价。"
                 ),
                 evidence_ids=evidence_ids,
+                citation_evidence_ids=valuation_citation_ids,
                 numeric_values=numeric_values,
                 risk_level="medium",
                 confidence=0.7,
@@ -1428,6 +1431,7 @@ def _minimum_valuation_claims(
                     + "，因此不能正式计算 P/E、P/B、P/S；报告应把这些缺口列为下一轮检索任务。"
                 ),
                 evidence_ids=evidence_ids,
+                citation_evidence_ids=valuation_citation_ids,
                 numeric_values={},
                 risk_level="medium",
                 confidence=0.68,
@@ -1449,6 +1453,7 @@ def _minimum_valuation_claims(
                     "对消费品公司，后续敏感性观察重点在收入增速、净利率、渠道价格和消费需求变化。"
                 ),
                 evidence_ids=financial_evidence_ids,
+                citation_evidence_ids=financial_evidence_ids[:4],
                 numeric_values={"net_margin": net_margin, "net_income_delta_1pct": delta},
                 risk_level="medium",
                 confidence=0.7,
@@ -1519,6 +1524,7 @@ def _minimum_executive_summary_claim(
             f"{valuation_text}；模型结论为“{recommendation}”。"
         ),
         evidence_ids=list(dict.fromkeys(financial_evidence_ids + market_evidence_ids))[:6],
+        citation_evidence_ids=list(dict.fromkeys(financial_evidence_ids[:3] + market_evidence_ids[:1])),
         numeric_values=numeric_values,
         risk_level="medium",
         confidence=0.76,
