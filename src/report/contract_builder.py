@@ -758,6 +758,7 @@ def _build_peer_compare(
     cross_market: List[str] = []
 
     valid_peer_rows: List[Dict[str, Any]] = []
+    non_target_rows_seen = False
     target_upper = str(target_symbol or "").strip().upper()
     for row in peer_rows:
         if not isinstance(row, dict):
@@ -767,6 +768,7 @@ def _build_peer_compare(
             continue
         if sym == target_upper:
             continue
+        non_target_rows_seen = True
         if not _peer_row_has_metrics(row):
             c.add_quality_flag(f"peer_metrics_missing:{sym}")
             continue
@@ -811,13 +813,19 @@ def _build_peer_compare(
     elif cross_market:
         c.status = "partial"
         c.add_blocked_reason("peer_only_cross_market_reference")
-    else:
+    elif non_target_rows_seen:
         c.status = "fallback"
+        c.add_blocked_reason("peer_no_metric_rows")
+        c.add_quality_flag("peer_compare_boundary_only")
+    else:
+        c.status = "gap"
+        c.add_blocked_reason("peer_only_target_row")
         c.add_quality_flag("peer_compare_boundary_only")
     if not direct_peers and not cross_market:
-        c.add_quality_flag("peer_only_target_row")
-        if peer_rows:
+        if non_target_rows_seen:
             c.add_quality_flag("peer_no_metric_rows")
+        else:
+            c.add_quality_flag("peer_only_target_row")
     if not valid_peer_rows and direct_peers:
         direct_peers.clear()
         c.status = "fallback"
@@ -828,7 +836,7 @@ def _build_peer_compare(
         table_md = _render_peer_table_markdown(peer_rows, direct_peers, cross_market, target_symbol)
         if table_md:
             c.deterministic_text = table_md
-    elif c.status == "fallback" and not c.deterministic_text:
+    elif c.status in {"fallback", "gap"} and not c.deterministic_text:
         c.deterministic_text = (
             "本轮同行对比未取得可验证的非目标公司量化指标，因此不将同业表作为正式估值依据。"
             "正式交付前需要补齐至少两家可比公司的收入增速、毛利率、净利率、ROE 或现金流指标，"

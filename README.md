@@ -175,6 +175,24 @@ use `main.py` or Docker Compose.
   the repo surface stays focused on product code.
 - Docker build context excludes runtime artifacts and internal notes to keep the
   image smaller and safer to publish.
+- Environment loading is repository-local. Credentials are never inherited from
+  sibling projects.
+
+Inspect the current code/config/runtime baseline without exposing secret values:
+
+```bash
+python scripts/runtime_hygiene.py status --output tmp/runtime_baseline.json
+```
+
+Preview removable logs and scratch state, then explicitly apply the cleanup:
+
+```bash
+python scripts/runtime_hygiene.py clean
+python scripts/runtime_hygiene.py clean --apply
+```
+
+The cleanup command does not remove user reports, the workbench database,
+vector indexes, or frozen benchmark fixtures.
 
 ## Benchmarks
 

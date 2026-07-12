@@ -87,8 +87,8 @@ def test_searchmanager_registered_sources_are_seedable():
 
 
 def test_seed_disables_sources_with_missing_credentials(tmp_path, monkeypatch):
-    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-    monkeypatch.delenv("SERPER_API_KEY", raising=False)
+    monkeypatch.setenv("TAVILY_API_KEY", "")
+    monkeypatch.setenv("SERPER_API_KEY", "")
     with build_client(tmp_path) as client:
         client.post("/api/data-sources/seed", json={})
         tavily = client.get("/api/data-sources/tavily").json()
@@ -109,7 +109,7 @@ def test_seed_disables_sources_with_missing_credentials(tmp_path, monkeypatch):
 
 
 def test_seed_reconciles_legacy_enabled_source_without_credentials(tmp_path, monkeypatch):
-    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    monkeypatch.setenv("TAVILY_API_KEY", "")
     with build_client(tmp_path) as client:
         client.post("/api/data-sources/seed", json={})
         service = client.app.state.datasource_service

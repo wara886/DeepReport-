@@ -6,7 +6,9 @@ from src.search.search_manager import SearchManager
 from src.services.datasource_service import DataSourceService
 
 
-def test_searchmanager_registered_engines_seed_datasource_rows(temp_db_engine):
+def test_searchmanager_registered_engines_seed_datasource_rows(temp_db_engine, monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "")
+    monkeypatch.setenv("SERPER_API_KEY", "")
     service = DataSourceService(
         session_factory=lambda: Session(temp_db_engine),
         search_manager_factory=SearchManager.with_local_sources,

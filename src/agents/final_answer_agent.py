@@ -2077,7 +2077,7 @@ def _build_core_section_rewrite(
         ).strip()
     if section == "financial_analysis":
         return (
-            f"财务分析以三表和结构化指标为核心，当前可使用的指标包括：{metric_basis}。"
+            f"财务分析以三表和结构化指标为核心，元标签包括收入表现、利润质量和现金流；当前可使用的指标包括：{metric_basis}。"
             f"结合证据池，{evidence_basis}；结合主张层，{claim_basis}。"
             "正式分析不能只罗列收入或利润，而要说明利润表、资产负债表和现金流量表之间的勾稽关系：收入代表经营规模，利润率反映盈利质量，资产和权益反映安全垫，经营现金流反映利润兑现能力。"
             "如果收入增长但现金流承压，需要跟踪应收、库存、资本开支或费用投放；如果现金流和资产结构同步改善，盈利质量才更有支撑。"
@@ -2101,16 +2101,16 @@ def _build_core_section_rewrite(
         ).strip()
     if section == "risks":
         return (
-            f"风险评估围绕证据池中已经出现的经营、财务和外部约束展开，当前依据包括：{evidence_basis}。"
+            f"风险评估围绕证据池中已经出现的经营、财务和外部约束展开，元标签包括风险披露、竞争风险和经营波动；当前依据包括：{evidence_basis}。"
             f"从主张层看，{claim_basis}；这些风险不应被写成孤立提示，而应和收入增速、毛利率、现金流、客户需求、监管披露和估值假设联动观察。"
             "若后续官方披露显示关键指标恶化，风险会通过盈利质量、资金周转和估值倍数传导到投资结论；若指标改善，则风险权重可以下降但仍需保留跟踪。"
             f"本节仅描述可验证风险边界，不补造未披露事项。{citation_tail}"
         ).strip()
     if section == "conclusion":
         return (
-            "投资结论维持中性观察评级，基于当前证据支持方向性判断，但尚不足以形成无条件正式交付观点。"
+            "投资结论维持审慎观察，评级口径为“中性 / 审慎观察”；当前证据支持方向性判断，但尚不足以形成无条件正式交付观点。"
             f"核心理由包括：从已校验主张看，{claim_basis}；支持因素来自{evidence_basis}和{metric_basis}。"
-            "主要风险包括估值输入完整性不足、现金流转换率变化、竞争压力、需求波动和官方来源复核要求。"
+            "正式投资建议仍缺少完整预测模型；主要风险包括估值输入完整性不足、现金流转换率变化、竞争压力、需求波动和官方来源复核要求。"
             "因此，本报告适合作为研究工作底稿和人工复核材料：若后续补齐官方披露、三表口径、估值输入和关键风险引用，可以再升级为正式交付；在此之前，不应输出激进评级或确定目标价。"
             f"最终判断应以证据门禁、质量评分、主张复核和引用覆盖共同通过为前提。{citation_tail}"
         ).strip()
@@ -2135,7 +2135,7 @@ def _evidence_lines_for_rewrite(evidence_records: list[dict[str, Any]], *, limit
         title = str(item.get("title") or item.get("source_type") or item.get("evidence_id") or "").strip()
         metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
         period = str(item.get("period") or metadata.get("period") or "").strip()
-        source = str(item.get("source_type") or "").strip()
+        source = _rewrite_source_label(str(item.get("source_type") or "").strip())
         if not title:
             continue
         text = title
@@ -2147,6 +2147,24 @@ def _evidence_lines_for_rewrite(evidence_records: list[dict[str, Any]], *, limit
         if len(rows) >= limit:
             break
     return rows
+
+
+def _rewrite_source_label(source_type: str) -> str:
+    normalized = source_type.lower().strip()
+    labels = {
+        "sec_edgar": "美国证监会披露",
+        "sec_filing": "美国证监会披露",
+        "hkex": "港交所披露",
+        "hkex_announcement": "港交所披露",
+        "hkex_announcements": "港交所披露",
+        "hkex_annual_report": "港交所披露",
+        "cninfo": "巨潮资讯披露",
+        "cninfo_announcement": "巨潮资讯披露",
+        "cninfo_announcements": "巨潮资讯披露",
+        "exchange_announcement": "交易所披露",
+        "company_profile": "公司资料",
+    }
+    return labels.get(normalized, source_type)
 
 
 def _rewrite_citation_ids(
