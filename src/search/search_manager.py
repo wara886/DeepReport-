@@ -1903,7 +1903,20 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
     source_counts: Dict[str, int] = {}
     default_diversity_cap = 4
     source_diversity_caps = {"eastmoney_financials": 3}
+
+    # Valuation depends on Yahoo's supplementary financial record, while the
+    # snapshot and filing engines often have higher authority scores. Reserve
+    # both Yahoo records before global ranking can starve that data source.
+    engine_minimums = {"yahoo_finance": min(2, topk)}
+    for engine, minimum in engine_minimums.items():
+        engine_hits = [hit for hit in ranked if hit.engine == engine]
+        for hit in engine_hits[:minimum]:
+            selected.append(hit)
+            source_counts[hit.source_type or hit.engine] = source_counts.get(hit.source_type or hit.engine, 0) + 1
+
     for hit in ranked:
+        if hit in selected:
+            continue
         source_key = hit.source_type or hit.engine
         diversity_cap = source_diversity_caps.get(source_key, default_diversity_cap)
         if source_counts.get(source_key, 0) >= diversity_cap:

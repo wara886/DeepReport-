@@ -71,6 +71,57 @@ def test_search_manager_dedupes_and_ranks_hits():
     assert payload["hits"][1]["result_id"] == "ev_2"
 
 
+def test_search_manager_reserves_yahoo_valuation_records():
+    manager = SearchManager()
+
+    def sec_engine(query, topk=5, **kwargs):
+        return {
+            "hits": [
+                {
+                    "sample_id": f"sec_{idx}",
+                    "title": "Official filing",
+                    "content": "Official revenue evidence.",
+                    "source_url": f"https://sec.example/{idx}",
+                    "source_type": "filing",
+                    "score": 10.0 - idx,
+                }
+                for idx in range(4)
+            ],
+            "meta": {},
+        }
+
+    def yahoo_engine(query, topk=5, **kwargs):
+        return {
+            "hits": [
+                {
+                    "sample_id": "yahoo_snapshot",
+                    "title": "Yahoo market snapshot",
+                    "content": "Current price context.",
+                    "source_url": "https://finance.yahoo.com/quote/AAPL",
+                    "source_type": "market_api",
+                    "score": 0.2,
+                },
+                {
+                    "sample_id": "yahoo_financials",
+                    "title": "Yahoo financial supplement",
+                    "content": "marketCap=1000 trailingPE=20",
+                    "source_url": "https://finance.yahoo.com/quote/AAPL/key-statistics",
+                    "source_type": "market_api",
+                    "score": 0.1,
+                },
+            ],
+            "meta": {},
+        }
+
+    manager.register_engine("sec_edgar", sec_engine)
+    manager.register_engine("yahoo_finance", yahoo_engine)
+    payload = manager.search("AAPL FY2024 valuation", topk=4, symbol="AAPL", period="FY2024")
+
+    result_ids = [item["result_id"] for item in payload["hits"]]
+    assert "yahoo_snapshot" in result_ids
+    assert "yahoo_financials" in result_ids
+
+
 def test_deep_researcher_agent_uses_search_manager():
     manager = SearchManager()
     manager.register_engine("engine_a", _engine_a)
