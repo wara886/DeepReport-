@@ -1005,6 +1005,26 @@ def _write_run_with_dossiers(
     return run_dir
 
 
+def test_claim_citation_policy_accepts_canonical_root_for_recursive_chunk(tmp_path):
+    recursive_id = "sec_10k_msft_fy2024__paragraph_1_chunk_abc123__paragraph_1_chunk_def456"
+    run_dir = _write_run(
+        tmp_path,
+        report_md=(
+            "# MSFT\n\n## 执行摘要\n\nMicrosoft overview [sec_10k_msft_fy2024].\n\n"
+            "## 财务分析\n\nRevenue analysis.\n\n## 风险评估\n\nRisk analysis.\n"
+        ),
+        claims=[{"claim_id": "cl_chunk", "claim_text": "Microsoft overview", "evidence_ids": [recursive_id], "confidence": 0.9}],
+        citations=[{"evidence_id": "sec_10k_msft_fy2024", "claim_ids": ["cl_chunk"]}],
+        evidence=[{"evidence_id": recursive_id, "source_type": "sec_edgar", "trust_level": "primary"}],
+        symbol="MSFT",
+        period="FY2024",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "claim_citation_policy" for issue in report["issues"])
+
+
 def test_content_depth_gate_flags_sparse_sections(tmp_path):
     """Short sections without data_gap flag -> content_depth issues."""
     run_dir = _write_run_with_dossiers(

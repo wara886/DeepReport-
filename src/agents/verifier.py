@@ -187,7 +187,7 @@ def _check_evidence_support(
         if missing:
             errors.append(f"Claim {claim.claim_id} references missing evidence ids: {', '.join(missing)}")
         citation_ids = claim.citation_evidence_ids or claim.evidence_ids
-        uncited = [evidence_id for evidence_id in citation_ids if evidence_id not in markdown]
+        uncited = [evidence_id for evidence_id in citation_ids if not _evidence_id_is_cited(evidence_id, markdown)]
         if uncited:
             errors.append(f"Claim {claim.claim_id} evidence ids are not cited in markdown: {', '.join(uncited)}")
         _check_numeric_support(claim=claim, evidence_by_id=evidence_by_id, warnings=warnings)
@@ -200,7 +200,7 @@ def _check_numeric_support(
 ) -> None:
     if not claim.numeric_values:
         return
-    if _is_derived_numeric_claim(claim):
+    if _is_derived_numeric_claim(claim) and (claim.metric_lineage_ids or claim.input_metric_lineage_ids):
         return
     evidence_numbers: List[float] = []
     for evidence_id in claim.evidence_ids:
@@ -491,15 +491,18 @@ def _numbers_from_text(text: str) -> List[float]:
 def _ticker_mentions(text: str) -> set[str]:
     stop_words = {
         "API",
+        "AI",
         "ARPU",
         "B",
         "CAGR",
         "CPI",
         "DCF",
+        "EDGAR",
         "EBIT",
         "EBITDA",
         "EPS",
         "EV",
+        "EX",
         "FCF",
         "FRED",
         "GAAP",
@@ -510,6 +513,8 @@ def _ticker_mentions(text: str) -> set[str]:
         "IFRS",
         "JSON",
         "LLM",
+        "MD",
+        "MDA",
         "NASDAQ",
         "NYSE",
         "PB",
@@ -529,12 +534,32 @@ def _ticker_mentions(text: str) -> set[str]:
         "US",
         "USD",
         "WSJ",
+        "XBRL",
     }
     return {
         token
         for token in re.findall(r"\b[A-Z]{2,6}\b", text)
         if token not in stop_words and not re.fullmatch(r"Q[1-4]", token)
     }
+
+
+def _canonical_evidence_id(evidence_id: str) -> str:
+    """Collapse recursively generated chunk suffixes to the business evidence identity."""
+
+    value = str(evidence_id or "").strip()
+    if not value:
+        return ""
+    return re.split(r"__(?:paragraph|section|page|table)_\d+_chunk_[0-9a-f]+", value, maxsplit=1, flags=re.I)[0]
+
+
+def _evidence_id_is_cited(evidence_id: str, markdown: str) -> bool:
+    value = str(evidence_id or "").strip()
+    if not value:
+        return False
+    if value in markdown:
+        return True
+    canonical = _canonical_evidence_id(value)
+    return bool(canonical and canonical != value and canonical in markdown)
 
 
 def _conflicting_company_mentions(symbol: str, text: str) -> List[str]:

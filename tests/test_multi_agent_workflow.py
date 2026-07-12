@@ -1716,6 +1716,100 @@ def test_rule_verifier_only_requires_explicit_citation_evidence_ids_in_markdown(
     assert any("ev_primary" in error for error in missing_required_citation["errors"])
 
 
+def test_rule_verifier_accepts_canonical_citation_for_recursive_chunk_id():
+    verifier = Verifier()
+    recursive_id = (
+        "sec_10k_msft_fy2024"
+        "__paragraph_1_chunk_f76c50aa7b"
+        "__paragraph_1_chunk_18b23bd23f"
+    )
+    report = verifier.verify(
+        claims=[
+            ClaimItem(
+                claim_id="cl_chunk",
+                section_name="financial_analysis",
+                claim_text="MSFT revenue was 245.1B.",
+                evidence_ids=[recursive_id],
+                citation_evidence_ids=[recursive_id],
+                numeric_values={"revenue_billion": 245.1},
+                confidence=0.9,
+            )
+        ],
+        markdown=(
+            "# Report\n\n## Executive Summary\n\nMSFT overview.\n\n"
+            "## Financial Analysis\n\nRevenue was 245.1B [sec_10k_msft_fy2024].\n\n"
+            "## Risk Assessment\n\nRisk discussion.\n"
+        ),
+        evidence_records=[{"evidence_id": recursive_id, "content": "Revenue 245.1B."}],
+        expected_symbol="MSFT",
+    )
+
+    assert report["passed"] is True
+    assert not any("not cited" in error for error in report["errors"])
+
+
+def test_rule_verifier_ignores_financial_domain_acronyms_as_tickers():
+    verifier = Verifier()
+    report = verifier.verify(
+        claims=[
+            ClaimItem(
+                claim_id="cl_acronyms",
+                section_name="financial_analysis",
+                claim_text="MSFT uses AI and files through SEC EDGAR.",
+                evidence_ids=["ev_msft"],
+                confidence=0.9,
+            )
+        ],
+        markdown=(
+            "# MSFT Report\n\n## Executive Summary\n\nAI platform overview.\n\n"
+            "## Financial Analysis\n\nSEC EDGAR MD&A and EX-99.1 context [ev_msft].\n\n"
+            "## Risk Assessment\n\nRisk discussion.\n"
+        ),
+        evidence_records=[{"evidence_id": "ev_msft", "symbol": "MSFT", "content": "MSFT filing."}],
+        expected_symbol="MSFT",
+    )
+
+    assert report["passed"] is True
+    assert not any("ticker-like tokens" in warning for warning in report["warnings"])
+
+
+def test_rule_verifier_requires_numeric_support_for_untraced_derived_claim():
+    verifier = Verifier()
+    claim = ClaimItem(
+        claim_id="cl_derived",
+        section_name="valuation",
+        claim_text="MSFT estimated valuation multiple is 99.9x.",
+        evidence_ids=["ev_msft"],
+        numeric_values={"estimated_multiple": 99.9},
+        confidence=0.8,
+    )
+    report = verifier.verify(
+        claims=[claim],
+        markdown=(
+            "# MSFT Report\n\n## Executive Summary\n\nOverview.\n\n"
+            "## Financial Analysis\n\nFinancial review [ev_msft].\n\n"
+            "## Risk Assessment\n\nRisk review.\n\n## Valuation\n\nEstimated valuation 99.9x [ev_msft].\n"
+        ),
+        evidence_records=[{"evidence_id": "ev_msft", "symbol": "MSFT", "content": "Revenue was 245.1B."}],
+        expected_symbol="MSFT",
+    )
+
+    assert any("numeric value estimated_multiple=99.9" in warning for warning in report["warnings"])
+
+    claim.metric_lineage_ids = ["lineage_estimated_multiple"]
+    traced = verifier.verify(
+        claims=[claim],
+        markdown=(
+            "# MSFT Report\n\n## Executive Summary\n\nOverview.\n\n"
+            "## Financial Analysis\n\nFinancial review [ev_msft].\n\n"
+            "## Risk Assessment\n\nRisk review.\n\n## Valuation\n\nEstimated valuation 99.9x [ev_msft].\n"
+        ),
+        evidence_records=[{"evidence_id": "ev_msft", "symbol": "MSFT", "content": "Revenue was 245.1B."}],
+        expected_symbol="MSFT",
+    )
+    assert not any("numeric value estimated_multiple=99.9" in warning for warning in traced["warnings"])
+
+
 def test_rule_verifier_fails_target_symbol_mismatch():
     verifier = Verifier()
     claims = [

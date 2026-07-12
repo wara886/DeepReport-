@@ -1683,7 +1683,13 @@ def _check_claim_citation_policy(artifacts: Dict[str, Any], issues: List[Dict[st
             evidence_id = str(eid or "").strip()
             if not evidence_id:
                 continue
-            if evidence_id in citation_ids or evidence_id in text:
+            canonical_id = _canonical_evidence_id(evidence_id)
+            if (
+                evidence_id in citation_ids
+                or evidence_id in text
+                or canonical_id in citation_ids
+                or (canonical_id != evidence_id and canonical_id in text)
+            ):
                 continue
             missing.append(evidence_id)
     unique_missing = sorted(set(missing))
@@ -1695,6 +1701,13 @@ def _check_claim_citation_policy(artifacts: Dict[str, Any], issues: List[Dict[st
             "claim_citation_policy",
             f"claim evidence ids are absent from final citations/body: {preview}",
         )
+
+
+def _canonical_evidence_id(evidence_id: str) -> str:
+    value = str(evidence_id or "").strip()
+    if not value:
+        return ""
+    return re.split(r"__(?:paragraph|section|page|table)_\d+_chunk_[0-9a-f]+", value, maxsplit=1, flags=re.I)[0]
 
 
 def _contains_mojibake(text: str) -> bool:
