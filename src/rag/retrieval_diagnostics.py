@@ -147,7 +147,16 @@ def _canonical_source_group(source: str) -> str:
         return "cninfo"
     if normalized in {"hkex", "hkex_announcement", "hkex_announcements", "hkex_annual_report"}:
         return "hkex"
-    if normalized in {"sec", "sec_edgar", "official_10k", "official_10q", "official_filing"}:
+    if normalized in {
+        "sec",
+        "sec_edgar",
+        "sec_companyfacts",
+        "sec_filing",
+        "filing",
+        "official_10k",
+        "official_10q",
+        "official_filing",
+    }:
         return "sec_edgar"
     return normalized
 

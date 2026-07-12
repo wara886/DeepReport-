@@ -5,6 +5,29 @@ from src.agents.verifier import Verifier
 from src.schemas.claim import ClaimItem
 
 
+def test_company_profile_cannot_satisfy_us_official_filing_gate():
+    payload = build_official_evidence_artifacts(
+        [
+            {
+                "evidence_id": "profile-only",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "source_type": "company_profile",
+                "source_authority": "official",
+                "source_url": "https://example.com/company/aapl",
+                "content": "Apple designs consumer devices.",
+            }
+        ],
+        symbol="AAPL",
+        period="FY2024",
+    )
+
+    coverage = payload["evidence_coverage"]
+    assert coverage["official_record_count"] == 0
+    assert coverage["formal_delivery_allowed"] is False
+    assert "period_matched_official_filing" in coverage["missing_requirements"]
+
+
 def test_hk_official_evidence_requires_page_anchored_three_statements():
     payload = build_official_evidence_artifacts(
         [

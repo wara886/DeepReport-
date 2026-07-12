@@ -907,6 +907,7 @@ def _task_evidence_source_counter(claims: list[ReportClaim]) -> Counter[str]:
 def _normalize_source_key(source_type: str | None) -> str:
     value = str(source_type or "local_evidence").strip().lower()
     aliases = {
+        "sec_companyfacts": "sec_edgar",
         "sec_filing": "sec_edgar",
         "filing": "sec_edgar",
         "filings": "sec_edgar",
