@@ -424,19 +424,29 @@ class ArtifactImporter:
                 "numeric_check_status": numeric_check_status,
                 "citation_check_status": citation_check_status,
             }
+            review_status, review_policy = _claim_review_status(
+                record,
+                verification_status=verification_status,
+                numeric_check_status=numeric_check_status,
+                citation_check_status=citation_check_status,
+            )
+            metadata["review_policy"] = review_policy
+            is_critical = bool(record.get("is_critical", record.get("critical", False))) or bool(review_policy.get("critical"))
 
             claim = ReportClaim(
                 task_id=task_id,
                 section_name=_string_or_none(record.get("section_name") or record.get("section")),
                 claim_text=_string(record.get("claim_text") or record.get("text") or record.get("claim") or ""),
                 claim_type=_string_or_none(record.get("claim_type") or record.get("type")),
-                is_critical=bool(record.get("is_critical", record.get("critical", False))),
-                critical_claim_type=_string_or_none(record.get("critical_claim_type")),
+                is_critical=is_critical,
+                critical_claim_type=_string_or_none(record.get("critical_claim_type")) or (
+                    _string_or_none(record.get("section_name") or record.get("section")) if is_critical else None
+                ),
                 verification_status=verification_status,
                 numeric_check_status=numeric_check_status,
                 citation_check_status=citation_check_status,
                 confidence=_optional_float(record.get("confidence")),
-                review_status=_string(record.get("review_status") or "pending"),
+                review_status=review_status,
                 metadata_json=metadata,
             )
             session.add(claim)
@@ -806,6 +816,66 @@ def _claim_citation_check_status(evidence_ids: list[str], linked_evidence: list[
     if not evidence_ids:
         return "failed"
     return "passed" if len(evidence_ids) == len(linked_evidence) else "failed"
+
+
+def _claim_review_status(
+    record: dict[str, Any],
+    *,
+    verification_status: str,
+    numeric_check_status: str | None,
+    citation_check_status: str,
+) -> tuple[str, dict[str, Any]]:
+    explicit = _string_or_none(record.get("review_status"))
+    if explicit and explicit not in {"pending", "unknown"}:
+        return explicit, {"mode": "explicit", "reason": "artifact_review_status"}
+
+    confidence = _optional_float(record.get("confidence"))
+    section_name = _string(record.get("section_name") or record.get("section")).strip().lower()
+    critical_sections = {
+        "executive_summary",
+        "valuation",
+        "valuation_sensitivity",
+        "risks",
+        "risk_assessment",
+        "conclusion",
+        "investment_conclusion",
+    }
+    critical = (
+        bool(record.get("is_critical", record.get("critical", False)))
+        or bool(_string_or_none(record.get("critical_claim_type")))
+        or section_name in critical_sections
+    )
+    checks_passed = (
+        verification_status == "supported"
+        and citation_check_status == "passed"
+        and numeric_check_status in {None, "passed", "not_applicable"}
+    )
+    auto_approved = not critical and checks_passed and confidence is not None and confidence >= 0.75
+    if auto_approved:
+        return "approved", {
+            "mode": "automatic",
+            "reason": "non_critical_machine_verified",
+            "confidence_threshold": 0.75,
+            "critical": False,
+        }
+    reasons: list[str] = []
+    if critical:
+        reasons.append("critical_claim")
+    if verification_status != "supported":
+        reasons.append("verification_not_supported")
+    if citation_check_status != "passed":
+        reasons.append("citation_check_failed")
+    if numeric_check_status not in {None, "passed", "not_applicable"}:
+        reasons.append("numeric_check_failed")
+    if confidence is None or confidence < 0.75:
+        reasons.append("confidence_below_threshold")
+    return "pending", {
+        "mode": "human_required",
+        "reason": reasons[0] if reasons else "policy_default",
+        "reasons": reasons,
+        "confidence_threshold": 0.75,
+        "critical": critical,
+    }
 
 
 def _extract_numeric_values(record: dict[str, Any]) -> dict[str, Any]:
