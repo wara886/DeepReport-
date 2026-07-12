@@ -39,7 +39,7 @@ def reciprocal_rank_fusion(
 
 
 def _hit_id(hit: dict[str, Any], *, id_field: str) -> str:
-    for key in (id_field, "sample_id", "chunk_id", "id", "source_url"):
+    for key in ("identity_key", id_field, "sample_id", "chunk_id", "id", "source_url"):
         value = hit.get(key)
         if value not in (None, ""):
             return str(value)

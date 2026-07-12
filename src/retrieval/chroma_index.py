@@ -66,7 +66,7 @@ class ChromaIndex:
         return self._embedding_backend
 
     def add_records(self, records: Sequence[EvidenceRecord]) -> None:
-        self._records = list(records)
+        self._records = _dedupe_records_by_identity(records)
         docs = [record.searchable_text for record in self._records]
         embeddings = embed_texts(docs, model_name=self.model_name)
         self._embedding_backend = embedding_backend_for_model(self.model_name)
@@ -197,10 +197,14 @@ def _vector_score_from_metadata(
     sample_id = str(metadata.get("sample_id") or "")
     evidence_id = str(metadata.get("evidence_id") or "")
     chunk_id = str(metadata.get("chunk_id") or "")
+    identity_key = str(metadata.get("identity_key") or "")
     for record, vector in zip(records, vectors):
         record_sample_id = str(getattr(record, "sample_id", "") or "")
         record_evidence_id = str(getattr(record, "evidence_id", "") or record_sample_id)
         record_chunk_id = str(getattr(record, "chunk_id", "") or record_sample_id)
+        record_identity_key = str(getattr(record, "identity_key", "") or "")
+        if identity_key and identity_key == record_identity_key:
+            return cosine_similarity(query_vector, vector)
         if sample_id and sample_id == record_sample_id:
             return cosine_similarity(query_vector, vector)
         if evidence_id and evidence_id == record_evidence_id:
@@ -217,8 +221,30 @@ def _unique_record_ids(records: Sequence[EvidenceRecord]) -> List[str]:
     seen: Dict[str, int] = {}
     output: List[str] = []
     for index, record in enumerate(records):
-        raw_id = str(record.sample_id or record.evidence_id or f"record_{index}")
+        raw_id = str(
+            getattr(record, "identity_key", "")
+            or getattr(record, "sample_id", "")
+            or getattr(record, "evidence_id", "")
+            or f"record_{index}"
+        )
         count = seen.get(raw_id, 0)
         seen[raw_id] = count + 1
         output.append(raw_id if count == 0 else f"{raw_id}__dup_{count}")
+    return output
+
+
+def _dedupe_records_by_identity(records: Sequence[EvidenceRecord]) -> List[EvidenceRecord]:
+    output: List[EvidenceRecord] = []
+    seen: set[str] = set()
+    for index, record in enumerate(records):
+        key = str(
+            getattr(record, "identity_key", "")
+            or getattr(record, "sample_id", "")
+            or getattr(record, "evidence_id", "")
+            or f"record_{index}"
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(record)
     return output

@@ -48,3 +48,16 @@ The v2 contracts are additive. Existing top-level fields such as `evidence_id`,
 `symbol`, `period`, `source_type`, and `source_evidence_id` remain until all
 legacy artifact readers are migrated. New runtime nodes must read the nested
 contracts first and treat legacy fields as compatibility projections.
+
+## Retrieval Rules
+
+- Generic paragraphs, table rows, PDF sections, and metric chunks all emit the
+  same evidence identity and period contracts.
+- Persistent vector storage may be shared, but the default collection is
+  isolated by curated source root, symbol, and period.
+- BM25, dense, and graph hits are fused by `identity_key`, so alternate adapter
+  IDs for the same evidence do not inflate retrieval coverage.
+- `hash_fallback` is an explicit degraded embedding backend. Its score may keep
+  retrieval available, but it must not be reported as semantic similarity.
+- Diagnostics distinguish source absence, no candidates, no hits, low semantic
+  similarity, hash fallback, and writer non-use as separate root causes.

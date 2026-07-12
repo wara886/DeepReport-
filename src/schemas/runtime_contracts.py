@@ -114,13 +114,20 @@ def normalize_evidence_record(
     title = str(data.get("title") or data.get("source_title") or "").strip()
     content = str(data.get("content") or data.get("text") or "")
     content_hash = sha256(content.encode("utf-8")).hexdigest()
+    source_document_id = (
+        data.get("source_document_id")
+        or metadata.get("source_document_id")
+        or data.get("document_id")
+        or metadata.get("document_id")
+        or metadata.get("accession_number")
+    )
     document_seed = {
         "symbol": company["symbol"],
         "source_type": str(data.get("source_type") or "").lower(),
         "source_url": source_url,
-        "title": title,
+        "title": "" if source_document_id else title,
         "source_period": period["source_period"],
-        "source_document_id": data.get("source_document_id") or metadata.get("source_document_id") or metadata.get("accession_number"),
+        "source_document_id": source_document_id,
     }
     document_key = _stable_key("doc", document_seed)
     locator = {

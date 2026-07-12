@@ -25,6 +25,8 @@ class EvidenceRecord:
     source_url: str
     trust_level: str
     evidence_id: str = ""
+    identity_key: str = ""
+    document_key: str = ""
     source_timestamp: str = ""
     data_cutoff: str = ""
     freshness_days: int | None = None
@@ -62,6 +64,8 @@ class EvidenceRecord:
             source_url=str(annotated.get("source_url", "")),
             trust_level=str(annotated.get("trust_level", "")),
             evidence_id=str(annotated.get("evidence_id", annotated.get("sample_id", ""))),
+            identity_key=str(annotated.get("identity_key") or ""),
+            document_key=str(annotated.get("document_key") or ""),
             source_timestamp=str(annotated.get("source_timestamp", "")),
             data_cutoff=str(annotated.get("data_cutoff", "")),
             freshness_days=annotated.get("freshness_days") if isinstance(annotated.get("freshness_days"), int) else None,
@@ -89,6 +93,8 @@ class EvidenceRecord:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "evidence_id": self.evidence_id or self.sample_id,
+            "identity_key": self.identity_key,
+            "document_key": self.document_key,
             "sample_id": self.sample_id,
             "source_type": self.source_type,
             "symbol": self.symbol,

@@ -256,8 +256,8 @@ def _retrieve_evidence_with_hybrid_layer(
     vector_persistent_path: str | None,
     vector_collection_name: str,
 ) -> Tuple[List[Dict[str, object]], Dict[str, object]]:
-    if vector_persistent_path is None and vector_collection_name == "finsight_local_evidence":
-        vector_collection_name = _isolated_collection_name(curated_dir)
+    if vector_collection_name == "finsight_local_evidence":
+        vector_collection_name = _isolated_collection_name(curated_dir, symbol=symbol, period=period)
     reranker = RerankerAdapter(checkpoint_path=reranker_checkpoint_path) if ranking_mode == "hybrid_rerank" else None
     hits, meta = HybridRetriever(
         curated_dir=curated_dir,
@@ -275,6 +275,10 @@ def _retrieve_evidence_with_hybrid_layer(
     meta["checkpoint_used"] = bool((meta.get("reranker") or {}).get("checkpoint_used")) if isinstance(meta.get("reranker"), dict) else False
     dense_meta = meta.get("dense") if isinstance(meta.get("dense"), dict) else {}
     meta["vector_backend"] = _legacy_vector_backend_name(str(dense_meta.get("backend", "disabled")))
+    meta["embedding_backend"] = str(dense_meta.get("embedding_backend") or "unknown")
+    meta["semantic_vector_available"] = bool(dense_meta.get("semantic_available", False))
+    meta["vector_degraded"] = bool(dense_meta.get("degraded", False))
+    meta["vector_collection_name"] = vector_collection_name
     meta["vector_hit_count"] = meta.get("dense_hit_count", 0)
     meta["reranked_count"] = len(hits)
     _add_score_stats(meta, hits)
@@ -319,8 +323,9 @@ def _dense_retriever_cls(vector_persistent_path: str | None, vector_collection_n
     return ConfiguredDenseRetriever
 
 
-def _isolated_collection_name(curated_dir: str) -> str:
-    digest = hashlib.sha1(str(curated_dir).encode("utf-8")).hexdigest()[:16]
+def _isolated_collection_name(curated_dir: str, *, symbol: str | None = None, period: str | None = None) -> str:
+    seed = "|".join((str(curated_dir), str(symbol or ""), str(period or "")))
+    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:16]
     return f"finsight_task_{digest}"
 
 

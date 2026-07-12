@@ -11,6 +11,7 @@ from sqlalchemy import Select, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from src.db.models import ClaimEvidence, Company, Document, DocumentProcessingStep, EvidenceItem
+from src.schemas.runtime_contracts import normalize_evidence_record
 
 
 class DocumentNotFound(LookupError):
@@ -314,6 +315,31 @@ def _chunks_to_evidence(
     for chunk in chunks:
         source_type = str(document.doc_type or "manual_text")
         evidence_id = f"manual-ev-{document.id}-chunk-{chunk.index}"
+        normalized = normalize_evidence_record(
+            {
+                "evidence_id": evidence_id,
+                "chunk_id": evidence_id,
+                "parent_evidence_id": f"document-{document.id}",
+                "company_id": company.id if company else None,
+                "company_name": company.name if company else "",
+                "symbol": company.symbol if company else "",
+                "market": company.market if company else "",
+                "period": document.report_period or "",
+                "source_type": source_type,
+                "trust_level": "low",
+                "title": f"{document.title} (片段 {chunk.index + 1})",
+                "content": chunk.content,
+                "source_url": document.source_url or "",
+                "page_no": chunk.page,
+                "metadata": {
+                    "document_id": document.id,
+                    "chunk_index": chunk.index,
+                    "import_type": "manual_import",
+                    "chunking_strategy": "manual_paragraph_overlap_v2",
+                },
+            },
+            target_period=str(document.report_period or ""),
+        )
         items.append(
             EvidenceItem(
                 evidence_id=evidence_id,
@@ -327,8 +353,12 @@ def _chunks_to_evidence(
                 source_url=document.source_url,
                 page_no=chunk.page,
                 metadata_json={
-                    "chunk_index": chunk.index,
-                    "import_type": "manual_import",
+                    **normalized["metadata"],
+                    "identity_key": normalized["identity_key"],
+                    "document_key": normalized["document_key"],
+                    "period_spec": normalized["period_spec"],
+                    "authority": normalized["authority"],
+                    "provenance": normalized["provenance"],
                 },
             )
         )
