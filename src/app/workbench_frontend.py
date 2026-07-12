@@ -1669,6 +1669,7 @@ def render_workbench_html() -> str:
       const map = {
         not_required: "无需配置",
         required: "需要配置密钥",
+        missing: "缺少凭证",
         configured: "已配置",
         expired: "已过期",
       };

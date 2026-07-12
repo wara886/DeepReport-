@@ -98,6 +98,7 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert 'chunk_vectorize: "切分向量化"' in html
     assert 'report_artifact: "研报任务产物"' in html
     assert 'medium: "中可信"' in html
+    assert 'missing: "缺少凭证"' in html
     assert "stepMetadataText" in html
     assert "产物类型：" in html
     assert "证据绑定" in html
