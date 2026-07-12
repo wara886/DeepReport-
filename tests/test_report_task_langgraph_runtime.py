@@ -98,6 +98,46 @@ class ReviewArtifactOrchestrator:
             ),
             encoding="utf-8",
         )
+        (self.output_dir / "run_summary.json").write_text(
+            json.dumps(
+                {
+                    "symbol": "NVDA",
+                    "period": "FY2024",
+                    "executed_agents": ["research", "final_answer"],
+                    "model_usage_by_agent": {
+                        "research": {"provider": "test", "model_name": "fixture"},
+                        "final_answer": {"provider": "test", "model_name": "fixture"},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.output_dir / "agent_collaboration_trace.json").write_text(
+            json.dumps(
+                {
+                    "agents": [
+                        {"agent": "research", "task_type": "research", "status": "completed", "error": ""},
+                        {"agent": "final_answer", "task_type": "writing", "status": "completed", "error": ""},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.output_dir / "tool_trace.json").write_text(
+            json.dumps(
+                {
+                    "calls": [
+                        {
+                            "caller_agent": "research",
+                            "tool_name": "local_evidence",
+                            "success": True,
+                            "failure_reason": "",
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         return {"verification_passed": True}
 
 
@@ -194,6 +234,7 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
         "build_canonical_metrics",
         "build_section_evidence_packs",
         "generation",
+        "inspect_agent_execution",
         "verify_sections",
         "repair_failed_sections",
         "quality",
@@ -201,6 +242,10 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
         "human_review",
     }
     assert body["task"]["metadata"]["report_runtime"]["canonical_metrics"]["status"] == "ready"
+    generation_execution = body["task"]["metadata"]["report_runtime"]["generation_execution"]
+    assert generation_execution["status"] == "ready"
+    assert generation_execution["agent_count"] == 2
+    assert generation_execution["failed_agent_count"] == 0
     assert body["task"]["metadata"]["report_runtime"]["official_evidence_backfill"]["status"] in {"not_required", "remote_disabled"}
     assert body["task"]["metadata"]["report_runtime"]["retrieval_attribution"]["status"] == "ready"
     assert body["task"]["metadata"]["report_runtime"]["retrieval_attribution"]["similarity_status"] == "ok"
@@ -278,7 +323,7 @@ def test_report_task_remote_runtime_executes_official_backfill(monkeypatch, tmp_
         )
 
     assert created.status_code == 201
-    assert calls
+    assert len(calls) == 1
     assert calls[0]["symbol"] == "AAPL"
     assert calls[0]["period"] == "FY2024"
     backfill = created.json()["metadata"]["report_runtime"]["official_evidence_backfill"]

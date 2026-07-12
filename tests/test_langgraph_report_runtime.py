@@ -111,10 +111,11 @@ def test_langgraph_runtime_runs_typed_nodes_and_interrupts_for_claim_review():
     assert completed["review_decision"]["approved"] is True
     assert [item["node"] for item in completed["runtime_events"]] == [
         "evidence",
+        "generation",
+        "inspect_agent_execution",
         "official_evidence_backfill",
         "build_canonical_metrics",
         "build_section_evidence_packs",
-        "generation",
         "verify_sections",
         "repair_failed_sections",
         "quality",
@@ -208,13 +209,37 @@ def test_failed_canonical_metrics_node_has_own_checkpoint():
 
     snapshot = runtime.snapshot(thread_id="task-canonical-retry")
     assert snapshot["next"] == ["build_canonical_metrics"]
-    assert calls == ["evidence"]
+    assert calls == ["evidence", "generation"]
 
     completed = runtime.retry_from_checkpoint(thread_id="task-canonical-retry")
 
     assert canonical_calls == 2
     assert calls == ["evidence", "generation", "quality", "finalize"]
     assert completed["delivery_readiness"]["can_deliver_formal_report"] is True
+
+
+def test_post_generation_nodes_run_once_in_dependency_order():
+    calls = []
+    post_generation = []
+    base = successful_handlers(calls, pending_review=False)
+    handlers = CallbackReportGraphHandlers(
+        base.evidence,
+        base.generation,
+        base.quality,
+        base.finalize,
+        official_evidence_backfill_callback=lambda _state: post_generation.append("official") or {},
+        build_canonical_metrics_callback=lambda _state: post_generation.append("canonical") or {},
+        build_section_evidence_packs_callback=lambda _state: post_generation.append("packs") or {},
+        inspect_agent_execution_callback=lambda _state: post_generation.append("inspect") or {},
+        verify_sections_callback=lambda _state: post_generation.append("verify") or {},
+        repair_failed_sections_callback=lambda _state: post_generation.append("repair") or {},
+    )
+
+    result = LangGraphReportRuntime(handlers).invoke(initial_state(), thread_id="task-node-order")
+
+    assert calls == ["evidence", "generation", "quality", "finalize"]
+    assert post_generation == ["inspect", "official", "canonical", "packs", "verify", "repair"]
+    assert result["delivery_readiness"]["can_deliver_formal_report"] is True
 
 
 def test_sqlite_checkpoint_survives_runtime_recreation(tmp_path: Path):

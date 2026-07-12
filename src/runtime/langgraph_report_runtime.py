@@ -75,6 +75,8 @@ class ReportGraphHandlers(Protocol):
 
     def generation(self, state: ReportGraphState) -> dict[str, Any]: ...
 
+    def inspect_agent_execution(self, state: ReportGraphState) -> dict[str, Any]: ...
+
     def verify_sections(self, state: ReportGraphState) -> dict[str, Any]: ...
 
     def repair_failed_sections(self, state: ReportGraphState) -> dict[str, Any]: ...
@@ -98,6 +100,7 @@ class CallbackReportGraphHandlers:
     build_section_evidence_packs_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
     verify_sections_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
     repair_failed_sections_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
+    inspect_agent_execution_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
 
     def evidence(self, state: ReportGraphState) -> dict[str, Any]:
         return self.evidence_callback(state)
@@ -119,6 +122,11 @@ class CallbackReportGraphHandlers:
 
     def generation(self, state: ReportGraphState) -> dict[str, Any]:
         return self.generation_callback(state)
+
+    def inspect_agent_execution(self, state: ReportGraphState) -> dict[str, Any]:
+        if self.inspect_agent_execution_callback is None:
+            return {}
+        return self.inspect_agent_execution_callback(state)
 
     def verify_sections(self, state: ReportGraphState) -> dict[str, Any]:
         if self.verify_sections_callback is None:
@@ -222,6 +230,7 @@ class LangGraphReportRuntime:
         builder.add_node("build_canonical_metrics", self._build_canonical_metrics_node)
         builder.add_node("build_section_evidence_packs", self._build_section_evidence_packs_node)
         builder.add_node("generation", self._generation_node)
+        builder.add_node("inspect_agent_execution", self._inspect_agent_execution_node)
         builder.add_node("verify_sections", self._verify_sections_node)
         builder.add_node("repair_failed_sections", self._repair_failed_sections_node)
         builder.add_node("quality", self._quality_node)
@@ -231,12 +240,13 @@ class LangGraphReportRuntime:
         builder.add_conditional_edges(
             "evidence",
             self._route_after_evidence,
-            {"official_evidence_backfill": "official_evidence_backfill", "end": END},
+            {"generation": "generation", "end": END},
         )
+        builder.add_edge("generation", "inspect_agent_execution")
+        builder.add_edge("inspect_agent_execution", "official_evidence_backfill")
         builder.add_edge("official_evidence_backfill", "build_canonical_metrics")
         builder.add_edge("build_canonical_metrics", "build_section_evidence_packs")
-        builder.add_edge("build_section_evidence_packs", "generation")
-        builder.add_edge("generation", "verify_sections")
+        builder.add_edge("build_section_evidence_packs", "verify_sections")
         builder.add_edge("verify_sections", "repair_failed_sections")
         builder.add_edge("repair_failed_sections", "quality")
         builder.add_edge("quality", "finalize")
@@ -262,6 +272,9 @@ class LangGraphReportRuntime:
 
     def _generation_node(self, state: ReportGraphState) -> dict[str, Any]:
         return self._execute_node("generation", state, self.handlers.generation)
+
+    def _inspect_agent_execution_node(self, state: ReportGraphState) -> dict[str, Any]:
+        return self._execute_node("inspect_agent_execution", state, self.handlers.inspect_agent_execution)
 
     def _verify_sections_node(self, state: ReportGraphState) -> dict[str, Any]:
         return self._execute_node("verify_sections", state, self.handlers.verify_sections)
@@ -305,7 +318,7 @@ class LangGraphReportRuntime:
         evidence = state.get("evidence_state", {})
         if state.get("lifecycle_status") == "evidence_blocked" or evidence.get("blocked") is True:
             return "end"
-        return "official_evidence_backfill"
+        return "generation"
 
     @staticmethod
     def _route_after_finalize(state: ReportGraphState) -> str:

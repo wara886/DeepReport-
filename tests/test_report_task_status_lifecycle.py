@@ -68,15 +68,21 @@ def test_report_task_status_lifecycle_records_events(tmp_path):
     assert body["started_at"]
     assert body["finished_at"]
     stages = [event["stage"] for event in body["events"]]
-    assert stages[:7] == [
+    expected_order = [
         "queued",
         "evidence_gate",
-        "evidence_gate",
+        "orchestrator",
+        "inspect_agent_execution",
         "official_evidence_backfill",
         "build_canonical_metrics",
         "build_section_evidence_packs",
-        "orchestrator",
+        "verify_sections",
+        "repair_failed_sections",
+        "quality_gate",
+        "completed",
     ]
+    positions = [stages.index(stage) for stage in expected_order]
+    assert positions == sorted(positions)
     assert stages.count("orchestrator") == 2
     assert "artifact_import" in stages
     assert "quality_gate" in stages

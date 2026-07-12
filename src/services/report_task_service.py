@@ -239,6 +239,7 @@ class ReportTaskService:
                     build_section_evidence_packs_callback=self._graph_build_section_evidence_packs_node,
                     verify_sections_callback=self._graph_verify_sections_node,
                     repair_failed_sections_callback=self._graph_repair_failed_sections_node,
+                    inspect_agent_execution_callback=self._graph_inspect_agent_execution_node,
                 )
                 self._langgraph_runtime = LangGraphReportRuntime(
                     handlers,
@@ -324,9 +325,22 @@ class ReportTaskService:
             session.commit()
         self._run_orchestrator(task_id=task_id, metadata=metadata)
         self._enhance_artifacts_with_task_evidence(task_id)
-        self._run_official_evidence_backfill(task_id)
-        self._refresh_canonical_metrics(task_id)
         self.import_artifacts(task_id)
+        return self._current_run_state_patch(task_id)
+
+    def _graph_inspect_agent_execution_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        summary = _build_generation_execution_summary(output_dir)
+        self._update_runtime_metadata(task_id, "generation_execution", summary)
+        self._record_runtime_stage(
+            task_id,
+            stage="inspect_agent_execution",
+            status="success" if summary.get("status") == "ready" else "warning",
+            message="Agent 与工具执行轨迹检查完成",
+            metadata=summary,
+        )
         return self._current_run_state_patch(task_id)
 
     def _graph_verify_sections_node(self, state: ReportGraphState) -> dict[str, Any]:
@@ -1998,6 +2012,75 @@ def _build_section_pack_manifest(output_dir: Path) -> dict[str, Any]:
         "source_files": {
             "report_section_contracts": str(output_dir / "report_section_contracts.json"),
             "section_dossiers": str(output_dir / "section_dossiers.json"),
+        },
+    }
+
+
+def _build_generation_execution_summary(output_dir: Path) -> dict[str, Any]:
+    run_summary = _read_json_object(output_dir / "run_summary.json")
+    collaboration = _read_json_object(output_dir / "agent_collaboration_trace.json")
+    tool_trace = _read_json_object(output_dir / "tool_trace.json")
+    agents = [item for item in collaboration.get("agents", []) if isinstance(item, dict)]
+    failed_agents = [
+        {
+            "agent": str(item.get("agent") or "unknown"),
+            "task_type": str(item.get("task_type") or ""),
+            "status": str(item.get("status") or "unknown"),
+            "error": str(item.get("error") or ""),
+        }
+        for item in agents
+        if str(item.get("status") or "").lower() not in {"success", "completed", "skipped"}
+        or bool(item.get("error"))
+    ]
+    calls = [item for item in tool_trace.get("calls", []) if isinstance(item, dict)]
+    failed_tools = [
+        {
+            "caller_agent": str(item.get("caller_agent") or ""),
+            "tool_name": str(item.get("tool_name") or "unknown"),
+            "failure_reason": str(item.get("failure_reason") or ""),
+        }
+        for item in calls
+        if item.get("success") is False
+    ]
+    executed_agents = [str(item) for item in run_summary.get("executed_agents", []) if str(item)]
+    model_usage = run_summary.get("model_usage_by_agent")
+    model_usage = model_usage if isinstance(model_usage, dict) else {}
+    missing_artifacts = [
+        name
+        for name in ("evidence.json", "claims.json")
+        if not (output_dir / name).exists()
+    ]
+    trace_available = bool(agents or executed_agents)
+    if failed_agents or missing_artifacts:
+        status = "failed"
+        root_cause = "agent_execution_failed" if failed_agents else "generation_artifact_missing"
+    elif not trace_available:
+        status = "trace_missing"
+        root_cause = "generation_trace_missing"
+    elif failed_tools:
+        status = "degraded"
+        root_cause = "tool_execution_degraded"
+    else:
+        status = "ready"
+        root_cause = "none"
+    return {
+        "schema_version": "generation_execution_runtime.v1",
+        "status": status,
+        "root_cause": root_cause,
+        "trace_available": trace_available,
+        "agent_count": len(agents) or len(executed_agents),
+        "executed_agents": executed_agents or [str(item.get("agent") or "") for item in agents],
+        "failed_agent_count": len(failed_agents),
+        "failed_agents": failed_agents,
+        "tool_call_count": len(calls),
+        "failed_tool_count": len(failed_tools),
+        "failed_tools": failed_tools[:20],
+        "model_usage_by_agent": model_usage,
+        "missing_artifacts": missing_artifacts,
+        "source_files": {
+            "run_summary": str(output_dir / "run_summary.json"),
+            "agent_collaboration_trace": str(output_dir / "agent_collaboration_trace.json"),
+            "tool_trace": str(output_dir / "tool_trace.json"),
         },
     }
 
