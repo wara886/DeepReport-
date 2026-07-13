@@ -141,6 +141,7 @@ def render_workbench_html() -> str:
     .dashboard-charts { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; }
     .dashboard-bottom { margin-top: 14px; }
     .work-layout { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; }
+    .work-layout > * { min-width: 0; }
     .tab-switch { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: #f7f9fb; }
     .tab-switch button { border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; padding: 6px 10px; }
     .tab-switch button.active { background: #fff; color: var(--text); box-shadow: 0 1px 4px rgba(16,24,32,.08); }
@@ -230,7 +231,9 @@ def render_workbench_html() -> str:
     .filters { display: flex; gap: 8px; flex-wrap: wrap; }
     .filters input { width: 210px; }
     .filters select { width: 150px; }
+    .table-scroll { width: 100%; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .task-table { min-width: 940px; }
     th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 10px 8px; vertical-align: top; }
     th { color: var(--muted); font-weight: 600; background: #fbfcfd; }
     tr[data-selectable="true"] { cursor: pointer; }
@@ -243,7 +246,20 @@ def render_workbench_html() -> str:
     .status.neutral, .status.low, .status.in_context, .status.ready { color: var(--muted); background: #eef2f5; }
     .status.cancelled, .status.archived, .status.disabled, .status.not_configured, .status.market_mismatch { color: var(--muted); background: #eef2f5; }
     .links { display: flex; gap: 6px; flex-wrap: wrap; }
+    .task-actions { display: flex; align-items: flex-start; gap: 6px; white-space: nowrap; }
+    .action-menu { position: relative; }
+    .action-menu > summary { list-style: none; }
+    .action-menu > summary::-webkit-details-marker { display: none; }
+    .action-menu[open] > summary { border-color: var(--accent); color: var(--accent); }
+    .action-menu-popover { position: absolute; right: 0; z-index: 8; min-width: 190px; margin-top: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 12px 28px rgba(16,24,32,.16); display: grid; gap: 4px; }
+    .action-menu-popover .btn { width: 100%; justify-content: flex-start; }
     .detail { position: sticky; top: 82px; max-height: calc(100vh - 104px); overflow-y: auto; }
+    .task-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+    .task-detail-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); margin: 0 -16px 14px; padding: 0 16px; }
+    .task-detail-tabs button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; padding: 10px 12px; white-space: nowrap; }
+    .task-detail-tabs button.active { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .task-tab-panel { display: none; }
+    .task-tab-panel.active { display: block; }
     .detail-section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
     .kv { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 8px; font-size: 13px; margin: 7px 0; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; }
@@ -320,7 +336,6 @@ def render_workbench_html() -> str:
       .logic-flow { grid-template-columns: 1fr; }
       .filters input, .filters select { width: 100%; }
       table { min-width: 820px; }
-      .table-scroll { overflow-x: auto; }
     }
   </style>
 </head>
@@ -451,7 +466,7 @@ def render_workbench_html() -> str:
         </section>
 
         <section id="tasks" class="view">
-          <div class="grid work-layout">
+          <div class="grid work-layout task-work-layout">
             <section class="panel">
               <div class="toolbar">
                 <h2 style="margin:0">研报任务</h2>
@@ -461,7 +476,7 @@ def render_workbench_html() -> str:
                 </div>
               </div>
               <div class="table-scroll">
-                <table>
+                <table class="task-table">
                   <thead>
                     <tr><th>任务</th><th>公司</th><th>状态</th><th>阶段</th><th>创建时间</th><th>产物</th><th>操作</th></tr>
                   </thead>
@@ -469,7 +484,7 @@ def render_workbench_html() -> str:
                 </table>
               </div>
             </section>
-            <aside class="panel detail" id="taskDetail">
+            <aside class="panel detail task-detail" id="taskDetail">
               <h2>任务详情</h2>
               <div class="empty">选择一个任务查看时间线和产物。</div>
             </aside>
@@ -2874,14 +2889,18 @@ def render_workbench_html() -> str:
     function taskDeliveryStatus(task) {
       const readiness = task?.delivery_readiness || {};
       const lifecycleStatus = String(task?.status || "unknown");
-      if (["failed", "timeout", "cancelled", "archived"].includes(lifecycleStatus)) {
-        return { key: lifecycleStatus, label: statusText(lifecycleStatus) };
+      const evidenceGate = task?.metadata?.pre_generation_evidence_gate || {};
+      if (evidenceGate.blocked === true || evidenceGate.status === "failed") {
+        return { key: "failed", label: "证据不足，已阻塞" };
+      }
+      if (readiness.machine_status === "failed") {
+        return { key: "failed", label: "机器质检未通过" };
       }
       if (readiness.machine_status === "passed" && readiness.review_status === "pending") {
         return { key: "pending", label: "机器质检通过，待人工复核" };
       }
-      if (readiness.machine_status === "failed") {
-        return { key: "failed", label: "机器质检未通过" };
+      if (["failed", "timeout", "cancelled", "archived"].includes(lifecycleStatus)) {
+        return { key: lifecycleStatus, label: statusText(lifecycleStatus) };
       }
       if (readiness.formal_status === "ready") {
         return { key: "completed", label: "可正式交付" };
@@ -2961,7 +2980,7 @@ def render_workbench_html() -> str:
       return `<div class="links">${buttons.join("")}</div>`;
     }
 
-    function taskActionButtons(task) {
+    function taskLifecycleButtons(task) {
       const status = String(task.status || "");
       const runtime = task?.metadata?.report_runtime || {};
       const runtimeFailure = task?.metadata?.runtime_failure || {};
@@ -2989,11 +3008,24 @@ def render_workbench_html() -> str:
       return buttons.length ? `<div class="links">${buttons.join("")}</div>` : `<span class="label">无可用操作</span>`;
     }
 
+    function taskListActions(task) {
+      const lifecycle = taskLifecycleButtons(task);
+      const hasLifecycleAction = lifecycle.includes("data-task-action");
+      return `<div class="task-actions">
+        <button class="btn primary" data-task-detail="${esc(task.task_id)}">查看详情</button>
+        ${hasLifecycleAction ? `<details class="action-menu"><summary class="btn">更多</summary><div class="action-menu-popover">${lifecycle}</div></details>` : ""}
+      </div>`;
+    }
+
     function bindTaskActionButtons(root = document) {
       root.querySelectorAll("[data-task-action]").forEach((btn) => {
         if (btn.dataset.boundTaskAction === "true") return;
         btn.dataset.boundTaskAction = "true";
-        btn.addEventListener("click", () => taskLifecycleAction(btn.dataset.taskId, btn.dataset.taskAction, btn));
+        btn.addEventListener("click", () => {
+          const menu = btn.closest("details.action-menu");
+          taskLifecycleAction(btn.dataset.taskId, btn.dataset.taskAction, btn);
+          if (menu && btn.dataset.confirmAction === btn.dataset.taskAction) menu.open = true;
+        });
       });
     }
 
@@ -3678,16 +3710,16 @@ def render_workbench_html() -> str:
         const rows = payload.items || [];
         $("taskRows").innerHTML = rows.length
           ? rows.map((task) => { const delivery = taskDeliveryStatus(task); return `<tr data-selectable="true" data-task-id="${esc(task.task_id)}">
-              <td><button class="btn" data-task-detail="${esc(task.task_id)}">${esc(metadataName(task))}</button></td>
+              <td><strong>${esc(metadataName(task))}</strong><br><span class="label mono">${esc(task.task_id)}</span></td>
               <td>${esc(task.symbol)}<br><span class="label">${esc(task.period)}</span></td>
               <td><span class="status ${esc(delivery.key)}">${esc(delivery.label)}</span></td>
               <td class="nowrap">${esc(stepText(task.current_stage))}</td>
               <td>${esc(fmt(task.created_at))}</td>
-              <td>${artifactButtons(task)}</td>
-              <td>${taskActionButtons(task)}</td>
+              <td>${task.report_links && Object.keys(task.report_links).length ? `<span class="status completed">已生成</span>` : `<span class="status neutral">待生成</span>`}</td>
+              <td>${taskListActions(task)}</td>
             </tr>`; }).join("")
           : `<tr><td colspan="7"><div class="empty">暂无研报任务</div></td></tr>`;
-        document.querySelectorAll("[data-task-detail]").forEach((btn) => {
+        $("taskRows").querySelectorAll("[data-task-detail]").forEach((btn) => {
           btn.addEventListener("click", () => loadTaskDetail(btn.dataset.taskDetail));
         });
         bindTaskActionButtons($("taskRows"));
@@ -3809,57 +3841,48 @@ def render_workbench_html() -> str:
         const delivery = taskDeliveryStatus(task);
         const events = task.events || [];
         const metadata = task.metadata || {};
-        $("taskDetail").innerHTML = `<h2>任务详情</h2>
+        const overviewPanel = `
           <div class="kv"><span class="label">公司</span><span>${esc(metadata.company_name || task.symbol)} / ${esc(task.symbol)}</span></div>
           <div class="kv"><span class="label">查询期间</span><span>${esc(task.period)}</span></div>
           <div class="kv"><span class="label">报告类型</span><span>${esc(reportTypeText(task.report_type))}</span></div>
           <div class="kv"><span class="label">数据源范围</span><span>${esc(dataSourceScopeText(metadata.data_source_scope))}</span></div>
-          <div class="kv"><span class="label">状态</span><span><span class="status ${esc(delivery.key)}">${esc(delivery.label)}</span></span></div>
           <div class="kv"><span class="label">阶段</span><span>${esc(stepText(task.current_stage))}</span></div>
           <div class="kv"><span class="label">质量分</span><span>${esc(fmt(task.quality_score))}</span></div>
           <div class="detail-section"><h3>研究问题</h3><div class="text-block">${esc(metadata.research_topic || "-")}</div></div>
-          <div class="detail-section"><h3>任务操作</h3>${taskActionButtons(task)}</div>
           ${task.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(task.error_message)}</div></div>` : ""}
           ${renderDeliveryReadiness(task)}
-          ${renderPreGenerationEvidenceGate(metadata.pre_generation_evidence_gate || {})}
           ${renderTaskLinkageOverview(analysis)}
           ${renderTaskNarrative(analysis)}
           ${renderTaskAnalysisStats(analysis.stats || {})}
           ${renderTaskEntityMemory(analysis.entity_memory || {}, task)}
           ${renderTaskSignalSummary(analysis.signal_summary || {}, task)}
-          ${renderRetrievalCoverage(analysis.retrieval_coverage || analysis.quality_proof?.retrieval_coverage || {})}
-          ${renderRetrievalDiagnostics(analysis.retrieval_diagnostics || {})}
-          ${renderCitationUsage(analysis.citation_usage || {})}
-          ${renderQualityProof(analysis.quality_proof || {}, task)}
           ${renderArgumentChain(analysis.argument_chain || {})}
           ${renderRiskChain(analysis.risk_chain || {})}
-          ${renderRecommendedActions(analysis.recommended_actions || [])}
-          ${renderQualityDiagnostics(task)}
-          ${renderToolRuns(task)}
-          <div class="detail-section"><h3>产物</h3>${artifactButtons(task)}</div>
+          ${renderRecommendedActions(analysis.recommended_actions || [])}`;
+        const runtimePanel = `${renderToolRuns(task)}
           ${systemInfoBlock("系统信息", [["任务编号", task.task_id]])}
           <div class="detail-section"><h3>时间线</h3><div class="timeline">${
             events.length ? events.map((event) => `<div class="event"><strong>${esc(stepText(event.stage))}</strong> <span class="status ${esc(event.status)}">${esc(statusText(event.status))}</span><br><span class="label">${esc(fmt(event.created_at))}</span><br>${esc(fmt(event.message))}</div>`).join("") : `<div class="empty">暂无事件</div>`
           }</div></div>`;
-        {
-          const sections = Array.from($("taskDetail").querySelectorAll(":scope > .detail-section"));
-          const coreCount = task.error_message ? 5 : 4;
-          const advanced = sections.slice(coreCount, Math.max(coreCount, sections.length - 2));
-          advanced.forEach((section) => { section.hidden = true; });
-          if (advanced.length) {
-            const toggle = document.createElement("button");
-            toggle.className = "btn";
-            toggle.type = "button";
-            toggle.textContent = "展开高级分析与诊断";
-            toggle.addEventListener("click", () => {
-              const showing = advanced.some((section) => section.hidden);
-              advanced.forEach((section) => { section.hidden = !showing; });
-              toggle.textContent = showing ? "收起高级分析与诊断" : "展开高级分析与诊断";
-            });
-            sections[Math.max(0, coreCount - 1)]?.insertAdjacentElement("afterend", toggle);
-          }
-        }
-        bindTaskActionButtons($("taskDetail"));
+        const qualityPanel = `${renderQualityProof(analysis.quality_proof || {}, task)}${renderQualityDiagnostics(task)}`;
+        const evidencePanel = `${renderPreGenerationEvidenceGate(metadata.pre_generation_evidence_gate || {})}
+          ${renderRetrievalCoverage(analysis.retrieval_coverage || analysis.quality_proof?.retrieval_coverage || {})}
+          ${renderRetrievalDiagnostics(analysis.retrieval_diagnostics || {})}
+          ${renderCitationUsage(analysis.citation_usage || {})}`;
+        $("taskDetail").innerHTML = `<div class="task-detail-head"><div><h2>任务详情</h2><div class="label">${esc(metadataName(task))}</div></div><span class="status ${esc(delivery.key)}">${esc(delivery.label)}</span></div>
+          <div class="task-detail-tabs" role="tablist" aria-label="任务详情分区">
+            <button class="active" role="tab" aria-selected="true" data-task-tab="overview">概览</button>
+            <button role="tab" aria-selected="false" data-task-tab="runtime">运行节点</button>
+            <button role="tab" aria-selected="false" data-task-tab="quality">质量</button>
+            <button role="tab" aria-selected="false" data-task-tab="evidence">证据</button>
+            <button role="tab" aria-selected="false" data-task-tab="artifacts">产物</button>
+          </div>
+          <div class="task-tab-panel active" data-task-panel="overview">${overviewPanel}</div>
+          <div class="task-tab-panel" data-task-panel="runtime">${runtimePanel}</div>
+          <div class="task-tab-panel" data-task-panel="quality">${qualityPanel}</div>
+          <div class="task-tab-panel" data-task-panel="evidence">${evidencePanel}</div>
+          <div class="task-tab-panel" data-task-panel="artifacts"><div class="detail-section"><h3>研报产物</h3>${artifactButtons(task)}</div></div>`;
+        bindTaskDetailTabs($("taskDetail"));
         bindTaskEntityMemoryButtons($("taskDetail"));
         bindTaskSignalButtons($("taskDetail"));
         bindJumpHandlers($("taskDetail"));
@@ -3867,6 +3890,20 @@ def render_workbench_html() -> str:
       } catch (error) {
         showLoadError("taskDetail");
       }
+    }
+
+    function bindTaskDetailTabs(root) {
+      root.querySelectorAll("[data-task-tab]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const tab = button.dataset.taskTab;
+          root.querySelectorAll("[data-task-tab]").forEach((item) => {
+            const active = item.dataset.taskTab === tab;
+            item.classList.toggle("active", active);
+            item.setAttribute("aria-selected", String(active));
+          });
+          root.querySelectorAll("[data-task-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.taskPanel === tab));
+        });
+      });
     }
 
     function evidenceGateStatusText(gate) {

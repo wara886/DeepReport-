@@ -98,6 +98,17 @@ def test_workbench_demo_mode_defaults_to_real_chain_and_maps_internal_terms():
     assert 'setFormLabelsActive(item, active)' in html
     assert '再次点击确认操作' in html
     assert '任务尚未运行。主张、数字和引用检查均为待检查' in html
-    assert '展开高级分析与诊断' in html
+    assert 'data-task-tab="overview">概览</button>' in html
+    assert 'data-task-tab="runtime">运行节点</button>' in html
+    assert 'data-task-tab="quality">质量</button>' in html
+    assert 'data-task-tab="evidence">证据</button>' in html
+    assert 'data-task-tab="artifacts">产物</button>' in html
+    assert '展开高级分析与诊断' not in html
+    assert 'class="table-scroll"' in html
+    assert '.table-scroll { width: 100%; min-width: 0; overflow-x: auto;' in html
+    assert 'class="task-table"' in html
+    assert 'data-task-detail="${esc(task.task_id)}">查看详情</button>' in html
+    assert '<summary class="btn">更多</summary>' in html
+    assert '证据不足，已阻塞' in html
     assert '尚无可评测样本；请先完成至少一个研报任务' in html
     assert '返回对话首页' in html

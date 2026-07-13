@@ -46,7 +46,8 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "查询期间" in html
     assert "报告类型" in html
     assert "运行方式" in html
-    assert "任务操作" in html
+    assert "查看详情" in html
+    assert "更多" in html
     assert "研究问题" in html
     assert "质量诊断" in html
     assert "交付门禁" in html
