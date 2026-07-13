@@ -971,6 +971,52 @@ class ReportTaskService:
             session.commit()
         return self.get_task(task_id)
 
+    def bulk_archive_failed_tasks(self, task_ids: list[str] | None = None) -> dict[str, Any]:
+        """Move failed tasks to the archive without touching deliverable or reviewable work."""
+
+        requested = {str(item).strip() for item in (task_ids or []) if str(item).strip()}
+        failure_statuses = {"failed", "quality_failed", "timeout", "cancelled"}
+        archived_ids: list[str] = []
+        skipped_ids: list[str] = []
+        with self.session() as session:
+            stmt = select(ReportTask).where(ReportTask.status != "archived")
+            if requested:
+                stmt = stmt.where(ReportTask.task_id.in_(requested))
+            tasks = list(session.scalars(stmt).all())
+            found_ids = {task.task_id for task in tasks}
+            skipped_ids.extend(sorted(requested - found_ids))
+            for task in tasks:
+                metadata = dict(task.metadata_json or {})
+                evidence_gate = metadata.get("pre_generation_evidence_gate")
+                evidence_gate = evidence_gate if isinstance(evidence_gate, dict) else {}
+                failed = task.status in failure_statuses or evidence_gate.get("blocked") is True or evidence_gate.get("status") == "failed"
+                if not failed or task.status in {"completed", "running", "archived"}:
+                    skipped_ids.append(task.task_id)
+                    continue
+                previous_status = task.status
+                self._transition_task(task, "archived", reason="bulk_failed_cleanup")
+                task.finished_at = task.finished_at or _utc_now()
+                metadata["archived_from_status"] = previous_status
+                metadata["archive_reason"] = "Bulk archived failed task from workbench"
+                task.metadata_json = metadata
+                session.add(
+                    ReportTaskEvent(
+                        task_id=task.task_id,
+                        stage="archived",
+                        status="archived",
+                        message="失败任务已从当前列表移入归档",
+                        metadata_json={"previous_status": previous_status, "source": "workbench_bulk_cleanup"},
+                    )
+                )
+                archived_ids.append(task.task_id)
+            session.commit()
+        return {
+            "archived_count": len(archived_ids),
+            "archived_task_ids": archived_ids,
+            "skipped_count": len(skipped_ids),
+            "skipped_task_ids": skipped_ids,
+        }
+
     def import_artifacts(self, task_id: str) -> list[dict[str, Any]]:
         importer = ArtifactImporter(
             session_factory=self.session,

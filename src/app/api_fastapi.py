@@ -194,6 +194,19 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.post("/api/report-tasks/bulk-archive-failed")
+    async def bulk_archive_failed_report_tasks(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        task_ids = payload.get("task_ids")
+        if task_ids is not None and not isinstance(task_ids, list):
+            return JSONResponse(status_code=422, content={"error": "task_ids must be a list"})
+        try:
+            return JSONResponse(content=_report_task_service(app).bulk_archive_failed_tasks(task_ids))
+        except ReportTaskConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.get("/api/report-tasks/{task_id}")
     def get_report_task(task_id: str) -> Response:
         try:
@@ -1092,13 +1105,19 @@ def create_fastapi_app(
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
     @app.post("/api/exports/{task_id}/package/files")
-    def write_export_package_files(task_id: str) -> Response:
+    async def write_export_package_files(task_id: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        formats = payload.get("formats")
+        if formats is not None and not isinstance(formats, list):
+            return JSONResponse(status_code=422, content={"error": "formats must be a list"})
         try:
-            return JSONResponse(content=_export_service(app).write_export_package(task_id))
+            return JSONResponse(content=_export_service(app).write_export_package(task_id, formats=formats))
         except ExportTaskNotFound:
             return JSONResponse(status_code=404, content={"error": f"Export entry not found: {task_id}"})
         except ExportNotReady as exc:
             return JSONResponse(status_code=409, content={"error": str(exc), "blocked_reasons": exc.blocked_reasons})
+        except ValueError as exc:
+            return JSONResponse(status_code=422, content={"error": str(exc)})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 

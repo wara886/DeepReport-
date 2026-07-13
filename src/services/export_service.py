@@ -167,14 +167,23 @@ class ExportService:
             },
         }
 
-    def write_export_package(self, task_id: str) -> dict[str, Any]:
+    def write_export_package(self, task_id: str, *, formats: list[str] | None = None) -> dict[str, Any]:
         package = self.build_export_package(task_id)
         readiness = package["json"]["readiness"]
         if not readiness["official_export_ready"]:
             raise ExportNotReady(task_id, list(readiness["blocked_reasons"]))
+        supported_formats = {"json", "markdown", "html", "pdf", "docx", "csv"}
+        default_formats = ["json", "markdown", "html", "pdf", "docx", "csv"]
+        requested_formats = list(dict.fromkeys(str(item).strip().lower() for item in (formats or default_formats) if str(item).strip()))
+        unsupported = sorted(set(requested_formats) - supported_formats)
+        if unsupported:
+            raise ValueError(f"Unsupported export formats: {', '.join(unsupported)}")
+        if not requested_formats:
+            raise ValueError("At least one export format is required")
         target_dir = self.package_root / _safe_task_dir(task_id)
         target_dir.mkdir(parents=True, exist_ok=True)
-        package_digest = _package_digest(package)
+        selection_digest = hashlib.sha256(json.dumps(sorted(requested_formats)).encode("utf-8")).hexdigest()
+        package_digest = hashlib.sha256(f"{_package_digest(package)}:{selection_digest}".encode("utf-8")).hexdigest()
         existing_manifest = _read_json(target_dir / "export_manifest.json")
         if existing_manifest.get("package_digest") == package_digest:
             existing_files = existing_manifest.get("files") if isinstance(existing_manifest.get("files"), list) else []
@@ -185,9 +194,10 @@ class ExportService:
                     "files": existing_files,
                     "readiness": readiness,
                     "trace_context": package["json"]["trace_context"],
+                    "selected_formats": requested_formats,
                     "idempotent_reuse": True,
                 }
-        files = {
+        candidate_files = {
             "json": ("package.json", json.dumps(package["json"], ensure_ascii=False, indent=2)),
             "markdown": ("report_package.md", package["markdown"]),
             "html": ("report_package.html", package["html"]),
@@ -195,6 +205,10 @@ class ExportService:
             "evidence_csv": ("evidence.csv", package["csv"]["evidence"]),
             "facts_csv": ("financial_facts.csv", package["csv"]["financial_facts"]),
             "review_csv": ("review_records.csv", package["csv"]["review_records"]),
+        }
+        files = {
+            key: value for key, value in candidate_files.items()
+            if key in requested_formats or (key.endswith("_csv") and "csv" in requested_formats)
         }
         written = []
         for key, (filename, content) in files.items():
@@ -216,10 +230,11 @@ class ExportService:
             "run_id": package["json"]["trace_context"]["run_id"],
             "quality_score": package["json"]["task"].get("quality_score"),
         }
-        binary_exports = [
-            ("pdf", "report_package.pdf", export_markdown_to_pdf(package["markdown"], target_dir / "report_package.pdf", title=title, metadata=export_metadata)),
-            ("docx", "report_package.docx", export_markdown_to_docx(package["markdown"], target_dir / "report_package.docx", title=title, metadata=export_metadata)),
-        ]
+        binary_exports = []
+        if "pdf" in requested_formats:
+            binary_exports.append(("pdf", "report_package.pdf", export_markdown_to_pdf(package["markdown"], target_dir / "report_package.pdf", title=title, metadata=export_metadata)))
+        if "docx" in requested_formats:
+            binary_exports.append(("docx", "report_package.docx", export_markdown_to_docx(package["markdown"], target_dir / "report_package.docx", title=title, metadata=export_metadata)))
         for key, filename, path in binary_exports:
             written.append(
                 {
@@ -237,6 +252,7 @@ class ExportService:
             "schema_version": "formal_export_manifest.v1",
             "package_digest": package_digest,
             "trace_context": package["json"]["trace_context"],
+            "selected_formats": requested_formats,
             "files": written,
         }
         manifest_path.write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -257,6 +273,7 @@ class ExportService:
             "files": written,
             "readiness": package["json"]["readiness"],
             "trace_context": package["json"]["trace_context"],
+            "selected_formats": requested_formats,
             "idempotent_reuse": False,
         }
 

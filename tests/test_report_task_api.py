@@ -313,6 +313,41 @@ def test_report_task_api_cancel_and_archive_lifecycle(tmp_path):
     assert archived_list.json()["total"] == 1
 
 
+def test_report_task_api_bulk_archives_only_failed_tasks(tmp_path):
+    service = build_service(tmp_path)
+    with service.session() as session:
+        session.add_all(
+            [
+                ReportTask(task_id="task-bulk-failed", symbol="AAPL", period="FY2024", status="failed"),
+                ReportTask(task_id="task-bulk-review", symbol="NVDA", period="FY2024", status="completed"),
+                ReportTask(task_id="task-bulk-running", symbol="TSLA", period="FY2024", status="running"),
+            ]
+        )
+        session.commit()
+    app = create_fastapi_app(
+        output_dir=str(tmp_path / "legacy_outputs"),
+        report_dir=str(tmp_path / "legacy_reports"),
+        memory_root=str(tmp_path / "legacy_memory"),
+        report_task_service=service,
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/report-tasks/bulk-archive-failed",
+            json={"task_ids": ["task-bulk-failed", "task-bulk-review", "task-bulk-running"]},
+        )
+        failed = client.get("/api/report-tasks/task-bulk-failed")
+        review = client.get("/api/report-tasks/task-bulk-review")
+        running = client.get("/api/report-tasks/task-bulk-running")
+
+    assert response.status_code == 200
+    assert response.json()["archived_task_ids"] == ["task-bulk-failed"]
+    assert response.json()["skipped_count"] == 2
+    assert failed.json()["status"] == "archived"
+    assert review.json()["status"] == "completed"
+    assert running.json()["status"] == "running"
+
+
 def test_report_task_api_rejects_cancel_running_task(tmp_path):
     service = build_service(tmp_path)
     app = create_fastapi_app(

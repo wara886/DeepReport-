@@ -188,6 +188,26 @@ def test_export_package_files_are_written_and_downloadable(temp_db_engine, tmp_p
     assert missing_response.status_code == 404
 
 
+def test_export_package_writes_only_selected_html_and_markdown(temp_db_engine, tmp_path):
+    service, client = build_export_client(temp_db_engine, tmp_path)
+    seed_export_task(service)
+
+    with client:
+        response = client.post(
+            "/api/exports/task-export/package/files",
+            json={"formats": ["html", "markdown"]},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["selected_formats"] == ["html", "markdown"]
+    assert {item["filename"] for item in body["files"]} == {
+        "report_package.html",
+        "report_package.md",
+        "export_manifest.json",
+    }
+
+
 def test_formal_export_reuses_identical_package(temp_db_engine, tmp_path):
     service, client = build_export_client(temp_db_engine, tmp_path)
     seed_export_task(service)
