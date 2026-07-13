@@ -49,6 +49,14 @@ def render_workbench_html() -> str:
     .brand-title { font-size: 16px; font-weight: 700; color: #fff; }
     .brand-sub { font-size: 12px; color: #92a4b7; margin-top: 4px; }
     .nav { display: grid; gap: 4px; }
+    .nav-group { border-radius: 8px; }
+    .nav-group > summary { list-style: none; min-height: 38px; padding: 9px 10px; border-radius: 8px; cursor: pointer; color: #c5d1dd; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+    .nav-group > summary::-webkit-details-marker { display: none; }
+    .nav-group > summary::after { content: "▾"; color: #7f93a8; font-size: 11px; }
+    .nav-group:not([open]) > summary::after { content: "▸"; }
+    .nav-group.active > summary, .nav-group > summary:hover { background: rgba(255,255,255,.06); color: #fff; }
+    .nav-secondary { display: grid; gap: 2px; margin: 3px 0 7px; padding-left: 9px; border-left: 1px solid rgba(255,255,255,.12); }
+    .nav-secondary button { min-height: 31px; padding: 6px 9px; font-size: 12px; }
     .nav button {
       width: 100%;
       border: 0;
@@ -306,23 +314,38 @@ def render_workbench_html() -> str:
       </div>
       <nav class="nav" aria-label="工作台导航">
         <button class="active" data-view="dashboard"><span>投研首页</span><span class="tag available">可用</span></button>
-	        <button data-view="workspace"><span>投研空间</span><span class="tag available">可用</span></button>
-	        <button data-view="stockpool"><span>股票池管理</span><span class="tag available">可用</span></button>
-	        <button data-view="datasources"><span>数据源管理</span><span class="tag available">可用</span></button>
-	        <button data-view="ingestion"><span>采集任务</span><span class="tag available">可用</span></button>
-	        <button data-view="manual"><span>手动导入</span><span class="tag available">可用</span></button>
-	        <button data-view="documents"><span>文档处理中心</span><span class="tag available">可用</span></button>
-        <button data-view="evidence"><span>证据库</span><span class="tag available">可用</span></button>
-	        <button data-view="facts"><span>财务事实中心</span><span class="tag available">可用</span></button>
-        <button data-view="signals"><span>投资线索</span><span class="tag enhancing">增强中</span></button>
         <button data-view="tasks"><span>研报任务</span><span class="tag available">可用</span></button>
-        <button data-view="claims"><span>主张复核</span><span class="tag available">可用</span></button>
-	        <button data-view="dictionary"><span>金融词典</span><span class="tag available">可用</span></button>
-	        <button data-view="promptops"><span>提示词运营</span><span class="tag available">可用</span></button>
-        <button data-view="entities"><span>实体库</span><span class="tag enhancing">增强中</span></button>
-        <button data-view="graph"><span>关系图谱</span><span class="tag enhancing">增强中</span></button>
-	        <button data-view="evaluation"><span>评测中心</span><span class="tag available">可用</span></button>
-	        <button data-view="export"><span>导出中心</span><span class="tag available">可用</span></button>
+        <details class="nav-group" data-nav-workspace="data">
+          <summary>数据与文档</summary>
+          <div class="nav-secondary">
+            <button data-view="workspace"><span>投研空间</span></button>
+            <button data-view="stockpool"><span>股票池</span></button>
+            <button data-view="datasources"><span>数据源</span></button>
+            <button data-view="ingestion"><span>采集任务</span></button>
+            <button data-view="manual"><span>手动导入</span></button>
+            <button data-view="documents"><span>文档处理</span></button>
+            <button data-view="facts"><span>财务事实</span></button>
+          </div>
+        </details>
+        <details class="nav-group" data-nav-workspace="evidence">
+          <summary>证据与复核</summary>
+          <div class="nav-secondary">
+            <button data-view="evidence"><span>证据库</span></button>
+            <button data-view="signals"><span>投资线索</span></button>
+            <button data-view="claims"><span>主张复核</span></button>
+          </div>
+        </details>
+        <details class="nav-group" data-nav-workspace="operations">
+          <summary>运营与配置</summary>
+          <div class="nav-secondary">
+            <button data-view="dictionary"><span>金融词典</span></button>
+            <button data-view="promptops"><span>提示词运营</span></button>
+            <button data-view="entities"><span>实体库</span></button>
+            <button data-view="graph"><span>关系图谱</span></button>
+            <button data-view="evaluation"><span>评测中心</span></button>
+          </div>
+        </details>
+        <button data-view="export"><span>导出中心</span><span class="tag available">可用</span></button>
       </nav>
     </aside>
 
@@ -333,11 +356,11 @@ def render_workbench_html() -> str:
           <div class="sub" id="viewSubtitle">任务、文档、主张与数据源真实状态</div>
         </div>
         <div class="top-actions">
-          <select class="select" aria-label="投研空间">
-            <option>默认投研空间</option>
+          <select class="select" id="topWorkspaceSelect" aria-label="投研空间">
+            <option value="">加载投研空间…</option>
           </select>
           <button class="btn primary" data-open-create-task>创建研报任务</button>
-          <button class="btn ghost" data-jump="manual">导入文档</button>
+          <button class="btn ghost" data-jump="claims">主张复核</button>
           <button class="btn ghost" data-jump="export">查看最新报告</button>
           <a class="btn ghost" href="/">返回对话首页</a>
           <button class="btn" id="refreshView">刷新</button>
@@ -1234,7 +1257,7 @@ def render_workbench_html() -> str:
     let taskPeriodRefreshTimer = null;
     const number = (v) => Number.isFinite(Number(v)) ? Number(v).toLocaleString() : "0";
     const pct = (v) => Math.round((Number(v) || 0) * 100) + "%";
-    const activeState = { view: "dashboard" };
+    const activeState = { view: "dashboard", workspaceId: "" };
     const terminalTaskStatuses = new Set(["completed", "failed", "timeout", "cancelled", "archived", "quality_failed"]);
     let taskPoller = null;
     let evidenceSearchContext = new Map();
@@ -1862,6 +1885,11 @@ def render_workbench_html() -> str:
     function activateView(view) {
       activeState.view = view;
       document.querySelectorAll(".nav button").forEach((item) => item.classList.toggle("active", item.dataset.view === view));
+      document.querySelectorAll(".nav-group").forEach((group) => {
+        const active = Boolean(group.querySelector(`[data-view="${view}"]`));
+        group.classList.toggle("active", active);
+        if (active) group.open = true;
+      });
       document.querySelectorAll(".view").forEach((item) => {
         const active = item.id === view;
         item.classList.toggle("active", active);
@@ -2105,8 +2133,12 @@ def render_workbench_html() -> str:
       if (!raw) return null;
       let workspace = null;
       try {
-        const workspaces = await getJson("/api/workspaces?active_only=true&limit=1");
-        workspace = (workspaces.items || [])[0];
+        if (activeState.workspaceId) {
+          workspace = await getJson(`/api/workspaces/${encodeURIComponent(activeState.workspaceId)}`);
+        } else {
+          const workspaces = await getJson("/api/workspaces?active_only=true&limit=1");
+          workspace = (workspaces.items || [])[0];
+        }
         if (workspace) {
           const item = await getJson(`/api/workspaces/${encodeURIComponent(workspace.id)}/resolve-company?q=${encodeURIComponent(raw)}`);
           return {
@@ -2122,6 +2154,24 @@ def render_workbench_html() -> str:
       }
       const fallback = resolveCompany(raw);
       return fallback ? { ...fallback, workspace_id: workspace?.id || null } : null;
+    }
+
+    async function loadTopWorkspaces() {
+      try {
+        const payload = await getJson("/api/workspaces?active_only=true");
+        const rows = payload.items || [];
+        $("topWorkspaceSelect").innerHTML = rows.length
+          ? rows.map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join("")
+          : `<option value="">默认投研空间</option>`;
+        if (activeState.workspaceId && rows.some((item) => String(item.id) === String(activeState.workspaceId))) {
+          $("topWorkspaceSelect").value = activeState.workspaceId;
+        } else {
+          activeState.workspaceId = String(rows[0]?.id || "");
+          $("topWorkspaceSelect").value = activeState.workspaceId;
+        }
+      } catch (error) {
+        $("topWorkspaceSelect").innerHTML = `<option value="">默认投研空间</option>`;
+      }
     }
 
     function csvList(value) {
@@ -2183,6 +2233,7 @@ def render_workbench_html() -> str:
         const created = await postJson("/api/workspaces", payload);
         $("workspaceMessage").innerHTML = `<div class="empty">已创建投研空间：${esc(created.name)}</div>`;
         await loadWorkspaces();
+        await loadTopWorkspaces();
       } catch (error) {
         $("workspaceMessage").innerHTML = `<div class="error">创建失败，空间标识可能已存在。</div>`;
       }
@@ -5609,6 +5660,12 @@ def render_workbench_html() -> str:
     }
 
     $("refreshView").addEventListener("click", () => activateView(activeState.view));
+    $("topWorkspaceSelect").addEventListener("change", () => {
+      activeState.workspaceId = $("topWorkspaceSelect").value;
+      showNotice(`已切换投研空间：${$("topWorkspaceSelect").selectedOptions[0]?.textContent || "默认投研空间"}`);
+      refreshTaskPeriods();
+      activateView(activeState.view);
+    });
     $("refreshWorkspaces").addEventListener("click", loadWorkspaces);
     $("createWorkspace").addEventListener("click", createWorkspace);
     $("refreshStockpool").addEventListener("click", loadStockpool);
@@ -5676,6 +5733,7 @@ def render_workbench_html() -> str:
     $("exportSymbol").addEventListener("keydown", (event) => { if (event.key === "Enter") loadExports(); });
     $("exportStatus").addEventListener("change", loadExports);
 
+    loadTopWorkspaces();
     activateView("dashboard");
     loadTasks();
     updateManualImportFields();

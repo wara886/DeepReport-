@@ -38,6 +38,13 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "慧研投研工作台" in html
     assert "投研首页" in html
     assert "投研空间" in html
+    assert 'id="topWorkspaceSelect"' in html
+    assert "数据与文档" in html
+    assert "证据与复核" in html
+    assert "运营与配置" in html
+    assert html.count('class="nav-group"') == 3
+    assert "loadTopWorkspaces" in html
+    assert "activeState.workspaceId" in html
     assert "股票池管理" in html
     assert "创建投研空间" in html
     assert "添加股票池公司" in html

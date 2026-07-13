@@ -57,7 +57,7 @@ def test_workbench_evaluation_center_is_productized_and_loads_api():
     assert "来源追踪号" in html
     assert "质量闭环待加强" in html
     assert "loadEvaluation" in html
-    assert 'data-view="evaluation"><span>评测中心</span><span class="tag available">可用</span></button>' in html
+    assert 'data-view="evaluation"><span>评测中心</span></button>' in html
 
 
 def test_workbench_p1_closure_copy_and_task_linkage_are_productized():
@@ -89,7 +89,7 @@ def test_workbench_real_metrics_and_maps_internal_terms():
     assert 'llm_review: "智能复核问题"' in html
     assert 'verifier: "主张校验问题"' in html
     assert '"agent.analyze": "分析智能体"' in html
-    assert 'data-view="documents"><span>文档处理中心</span><span class="tag available">可用</span></button>' in html
+    assert 'data-view="documents"><span>文档处理</span></button>' in html
     assert 'data-view="export"><span>导出中心</span><span class="tag available">可用</span></button>' in html
     assert 'const displayRows = realRows;' in html
     assert 'item.hidden = !active' in html
