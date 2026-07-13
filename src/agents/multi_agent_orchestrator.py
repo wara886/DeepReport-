@@ -916,6 +916,9 @@ class MultiAgentOrchestrator:
         attach_annual_report_sections_to_state(static_state, raw_data_root=self.raw_data_root)
         attach_pdf_artifacts_to_state(state=static_state)
         evidence_records = static_state.get("evidence_records", [])
+        # PDF extraction enriches evidence in memory. Persist the enriched set
+        # before LangGraph checkpoints so later agent phases reload the same IDs.
+        self._write_json("evidence.json", evidence_records)
         research_blackboard = update_blackboard_for_task(
             research_blackboard,
             "browser",
@@ -1625,6 +1628,8 @@ class MultiAgentOrchestrator:
                     summary_records + top_chunk_records,
                     key_names=["evidence_id", "sample_id", "source_url"],
                 )
+        evidence_records = list(state.get("evidence_records", [])) if isinstance(state.get("evidence_records"), list) else []
+        self._write_json("evidence.json", evidence_records)
         if not isinstance(pdf_artifacts, dict):
             pdf_artifacts = {
                 "pdf_manifest": [],

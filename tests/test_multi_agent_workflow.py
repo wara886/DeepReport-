@@ -774,6 +774,42 @@ def test_static_normalize_phase_preserves_evidence_gate_records(tmp_path):
     assert len(evidence_ids) > 1
 
 
+def test_static_normalize_checkpoint_persists_pdf_section_evidence(monkeypatch, tmp_path):
+    output_dir = tmp_path / "outputs"
+    report_dir = tmp_path / "reports"
+
+    def attach_pdf(state):
+        state["evidence_records"] = list(state.get("evidence_records") or []) + [
+            {
+                "evidence_id": "pdf_section_checkpointed",
+                "sample_id": "pdf_section_checkpointed",
+                "source_type": "pdf_section",
+                "content": "Persisted PDF section evidence.",
+                "symbol": "AAPL",
+                "period": "FY2024",
+            }
+        ]
+
+    monkeypatch.setattr("src.agents.multi_agent_orchestrator.attach_pdf_artifacts_to_state", attach_pdf)
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(output_dir),
+        report_dir=str(report_dir),
+        model=FakeJsonModel(),
+    )
+
+    orchestrator.run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="normalize_evidence",
+        resume_from_phase_artifacts=True,
+    )
+
+    evidence = json.loads((output_dir / "evidence.json").read_text(encoding="utf-8"))
+    assert any(row.get("evidence_id") == "pdf_section_checkpointed" for row in evidence)
+
+
 def test_multi_agent_orchestrator_runs_compact_collaborative_by_default(tmp_path):
     orchestrator = MultiAgentOrchestrator(
         output_dir=str(tmp_path / "outputs"),

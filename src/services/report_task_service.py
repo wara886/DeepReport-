@@ -64,6 +64,7 @@ from src.runtime.langgraph_report_runtime import (
 )
 from src.runtime.run_manifest import commit_run_artifacts, validate_run_manifest
 from src.services.artifact_importer import ArtifactImporter
+from src.services.datasource_service import DataSourceService
 from src.utils.config import load_config
 from src.utils.periods import latest_completed_period
 
@@ -370,6 +371,8 @@ class ReportTaskService:
             stop_after_phase=phase,
             resume_from_phase_artifacts=True,
         )
+        if phase in {"research", "normalize_evidence"}:
+            self._record_datasource_health(task_id=task_id, output_dir=Path(str(metadata.get("output_dir") or "")))
         self._record_runtime_stage(
             task_id,
             stage=phase,
@@ -398,6 +401,8 @@ class ReportTaskService:
                 ["evidence", "canonical_metrics", "claims", "section_evidence_packs", "citations", "report"],
             )
         summary = _build_generation_execution_summary(output_dir)
+        datasource_health = self._record_datasource_health(task_id=task_id, output_dir=output_dir)
+        summary["datasource_health"] = datasource_health
         self._update_runtime_metadata(task_id, "generation_execution", summary)
         self._record_runtime_stage(
             task_id,
@@ -407,6 +412,17 @@ class ReportTaskService:
             metadata=summary,
         )
         return self._current_run_state_patch(task_id)
+
+    def _record_datasource_health(self, *, task_id: str, output_dir: Path) -> dict[str, Any]:
+        search_meta = _read_json_object(output_dir / "search_meta.json")
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            workspace_id = task.workspace_id
+        return DataSourceService(session_factory=self.session).record_search_run(
+            search_meta=search_meta,
+            task_id=task_id,
+            workspace_id=workspace_id,
+        )
 
     def _graph_verify_sections_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])

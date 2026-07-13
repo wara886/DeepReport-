@@ -192,6 +192,63 @@ class DataSourceService:
             session.commit()
             return self.serialize_source(item)
 
+    def record_search_run(
+        self,
+        *,
+        search_meta: dict[str, Any],
+        task_id: str,
+        workspace_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Persist verified per-engine runtime health from a report search run."""
+
+        engine_meta = search_meta.get("engine_meta") if isinstance(search_meta.get("engine_meta"), dict) else {}
+        if not engine_meta:
+            return {"updated": 0, "sources": []}
+        source_keys = [str(key) for key in engine_meta if str(key)]
+        with self.session_factory() as session:
+            workspace_condition = (
+                or_(DataSource.workspace_id.is_(None), DataSource.workspace_id == workspace_id)
+                if workspace_id is not None
+                else DataSource.workspace_id.is_(None)
+            )
+            rows = list(
+                session.scalars(
+                    select(DataSource).where(
+                        DataSource.source_key.in_(source_keys),
+                        workspace_condition,
+                    )
+                ).all()
+            )
+            updated: list[dict[str, Any]] = []
+            for item in rows:
+                runtime = engine_meta.get(item.source_key)
+                if not isinstance(runtime, dict):
+                    continue
+                hit_count = _runtime_hit_count(runtime)
+                failure_reason = str(runtime.get("failure_reason") or runtime.get("error") or "").strip()
+                if hit_count > 0 and failure_reason:
+                    status = "partial"
+                elif hit_count > 0 or runtime.get("retrieval_available") is True:
+                    status = "success"
+                else:
+                    status = "failed"
+                    failure_reason = failure_reason or "no_records_returned"
+                metadata = dict(item.metadata_json or {})
+                metadata["last_verified_run"] = {
+                    "task_id": task_id,
+                    "status": status,
+                    "hit_count": hit_count,
+                    "duration_ms": runtime.get("duration_ms"),
+                    "mode": runtime.get("mode") or runtime.get("mode_effective"),
+                }
+                item.metadata_json = metadata
+                item.last_sync_at = _utc_now()
+                item.last_status = status
+                item.last_error = failure_reason or None
+                updated.append({"source_key": item.source_key, "status": status, "hit_count": hit_count})
+            session.commit()
+        return {"updated": len(updated), "sources": updated}
+
     def serialize_source(self, item: DataSource) -> dict[str, Any]:
         return {
             "id": item.id,
@@ -229,6 +286,14 @@ def _credential_status(source_key: str) -> str:
 
 def _credentials_available(status: str | None) -> bool:
     return str(status or "").strip().lower() in {"not_required", "configured", "valid"}
+
+
+def _runtime_hit_count(runtime: dict[str, Any]) -> int:
+    for key in ("hit_count", "returned_hit_count", "record_count", "result_count"):
+        value = runtime.get(key)
+        if isinstance(value, (int, float)):
+            return max(0, int(value))
+    return 0
 
 
 def _get_workspace_optional(session: Session, workspace_ref: int | str | None) -> Workspace | None:

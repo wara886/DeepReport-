@@ -124,3 +124,36 @@ def test_seed_reconciles_legacy_enabled_source_without_credentials(tmp_path, mon
     assert reconciled.json()["reconciled"] == 1
     assert current["credential_status"] == "missing"
     assert current["enabled"] is False
+
+
+def test_verified_search_run_updates_datasource_health_without_manual_marking(tmp_path):
+    with build_client(tmp_path) as client:
+        client.post("/api/data-sources/seed", json={})
+        service = client.app.state.datasource_service
+        result = service.record_search_run(
+            task_id="task-health-1",
+            search_meta={
+                "engine_meta": {
+                    "sec_edgar": {"mode": "sec_companyfacts", "hit_count": 2, "duration_ms": 120},
+                    "independent_macro": {
+                        "mode": "independent_macro",
+                        "record_count": 4,
+                        "failure_reason": "partial_source_failures",
+                        "duration_ms": 800,
+                    },
+                    "yahoo_finance": {"mode": "yahoo_finance", "result_count": 0, "failure_reason": "timeout"},
+                }
+            },
+        )
+        sec = client.get("/api/data-sources/sec_edgar").json()
+        macro = client.get("/api/data-sources/independent_macro").json()
+        yahoo = client.get("/api/data-sources/yahoo_finance").json()
+
+    assert result["updated"] == 3
+    assert sec["last_status"] == "success"
+    assert sec["operational"] is True
+    assert sec["metadata"]["last_verified_run"]["task_id"] == "task-health-1"
+    assert macro["last_status"] == "partial"
+    assert macro["last_error"] == "partial_source_failures"
+    assert yahoo["last_status"] == "failed"
+    assert yahoo["last_error"] == "timeout"
