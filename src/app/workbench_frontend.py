@@ -142,55 +142,12 @@ def render_workbench_html() -> str:
     .dashboard-bottom { margin-top: 14px; }
     .work-layout { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; }
     .work-layout > * { min-width: 0; }
-    .tab-switch { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: #f7f9fb; }
-    .tab-switch button { border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; padding: 6px 10px; }
-    .tab-switch button.active { background: #fff; color: var(--text); box-shadow: 0 1px 4px rgba(16,24,32,.08); }
-    .funnel-view { display: none; }
-    .funnel-view.active { display: block; }
-    .funnel-demo-note { border: 1px solid #f4d39b; background: #fff8ea; color: #8a5300; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; line-height: 1.5; }
-    .funnel-visual { display: grid; gap: 8px; margin-bottom: 14px; }
-    .funnel-layer {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
-      align-items: center;
-      gap: 12px;
-      min-height: 48px;
-      margin: 0 auto;
-      padding: 0 16px;
-      border: 1px solid #b8d5ee;
-      background: linear-gradient(90deg, #e9f6ff 0%, #f7fbff 100%);
-      border-radius: 10px;
-      clip-path: polygon(4% 0, 96% 0, 100% 100%, 0% 100%);
-      color: var(--text);
-      cursor: pointer;
-      font: inherit;
-      font-size: 13px;
-      text-align: left;
-      width: 100%;
-    }
-    .funnel-layer:hover { border-color: var(--accent); background: #eef8ff; }
-    .funnel-layer span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-    .funnel-layer strong { font-size: 16px; }
-    .funnel-layer .rate { color: var(--muted); min-width: 58px; text-align: right; white-space: nowrap; }
-    .funnel-loss-card { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 12px; margin-top: 12px; display: grid; gap: 7px; font-size: 13px; }
-    .funnel-loss-card h3 { margin: 0; font-size: 14px; }
-    .funnel-stage {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 92px;
-      align-items: center;
-      gap: 12px;
-      min-height: 42px;
-      margin: 0 auto;
-      padding: 9px 12px;
-      border: 1px solid #cfe2f3;
-      background: linear-gradient(90deg, #eef8ff 0%, #f8fbfd 100%);
-      border-radius: 8px;
-      font-size: 13px;
-    }
-    .funnel-stage strong { text-align: right; font-size: 15px; }
-    .funnel-arrow { color: var(--muted); text-align: center; font-size: 12px; margin-top: -2px; }
-    .funnel { display: grid; gap: 8px; }
-    .funnel-row { display: grid; grid-template-columns: 150px 1fr 56px; align-items: center; gap: 10px; font-size: 13px; }
+    .status-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .status-group { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbfcfd; min-width: 0; }
+    .status-group h3 { margin: 0 0 10px; }
+    .status-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; }
+    .status-metric { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 9px; cursor: pointer; font: inherit; color: inherit; text-align: left; }
+    .status-metric strong { display: block; font-size: 20px; margin-top: 4px; }
     .bar { height: 10px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
     .bar span { display: block; height: 100%; background: var(--accent-2); min-width: 2px; }
     .dist { display: grid; gap: 8px; }
@@ -325,6 +282,7 @@ def render_workbench_html() -> str:
       .sidebar { position: static; height: auto; display: block; }
       .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .work-layout, .dashboard-layout, .dashboard-charts, .cards, .placeholder-grid { grid-template-columns: 1fr; }
+      .status-groups { grid-template-columns: 1fr; }
       .logic-flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .detail { position: static; max-height: none; }
     }
@@ -372,7 +330,7 @@ def render_workbench_html() -> str:
       <header class="topbar">
         <div class="title">
           <h1 id="viewTitle">投研首页</h1>
-          <div class="sub" id="viewSubtitle">任务、证据、主张与处理漏斗</div>
+          <div class="sub" id="viewSubtitle">任务、文档、主张与数据源真实状态</div>
         </div>
         <div class="top-actions">
           <select class="select" aria-label="投研空间">
@@ -393,21 +351,10 @@ def render_workbench_html() -> str:
           <section class="grid dashboard-layout">
             <div class="panel">
               <div class="panel-head">
-                <h2>处理漏斗</h2>
+                <h2>真实运营指标</h2>
                 <button class="btn" data-jump="documents">失败步骤</button>
               </div>
-	              <div class="tab-switch" role="tablist" aria-label="处理漏斗视图">
-	                <button class="active" data-funnel-tab="chain">真实处理链路</button>
-	                <button data-funnel-tab="funnel">示意漏斗</button>
-	              </div>
-	              <div class="funnel-view" id="funnelTab">
-	                <div id="funnelDemoNote"></div>
-	                <div class="funnel-visual" id="funnelVisual"></div>
-	                <div id="funnelLoss"></div>
-	              </div>
-	              <div class="funnel-view active" id="chainTab">
-	                <div class="funnel" id="funnel"></div>
-	              </div>
+              <div class="status-groups" id="operationalMetrics"></div>
             </div>
             <div class="grid">
               <div class="panel">
@@ -1297,7 +1244,7 @@ def render_workbench_html() -> str:
     let activeSignalTaskScope = null;
 
     const viewMeta = {
-      dashboard: ["投研首页", "任务、证据、主张与处理漏斗"],
+      dashboard: ["投研首页", "任务、文档、主张与数据源真实状态"],
       workspace: ["投研空间", "市场、股票池、指标、风险和默认数据源配置"],
       stockpool: ["股票池管理", "维护空间内公司、代码、市场、行业和别名"],
       datasources: ["数据源管理", "配置来源启停、凭证状态、最近同步与错误"],
@@ -1432,32 +1379,6 @@ def render_workbench_html() -> str:
       local_only: "仅本地文档",
     };
     const chartColors = ["#1677ff", "#0f8f7a", "#b56a00", "#7c3aed", "#d92d20", "#475467"];
-    const funnelDemoSteps = [
-      { key: "raw_document_ingested", label: "原始资料入库", count: 1280 },
-      { key: "parsed_success", label: "解析成功", count: 1146 },
-      { key: "table_extracted", label: "表格抽取成功", count: 823 },
-      { key: "chunk_vectorized", label: "切分向量化", count: 790 },
-      { key: "financial_fact_extracted", label: "财务事实提取", count: 356 },
-      { key: "investment_signal_generated", label: "投资线索生成", count: 126 },
-      { key: "report_claim_generated", label: "研报主张生成", count: 72 },
-      { key: "claim_verified", label: "主张校验通过", count: 58 },
-      { key: "manual_review_pending", label: "待人工复核", count: 14 },
-    ];
-    const funnelTargets = {
-      document_ingested: { view: "documents", documentStep: "ingest" },
-      raw_document_ingested: { view: "documents", documentStep: "ingest" },
-      parse_success: { view: "documents", documentStep: "parse" },
-      parsed_success: { view: "documents", documentStep: "parse" },
-      table_extract_success: { view: "documents", documentStep: "table_extract" },
-      table_extracted: { view: "documents", documentStep: "table_extract" },
-      chunk_vectorized: { view: "documents", documentStep: "chunk" },
-      financial_fact_extracted: { view: "facts" },
-      investment_signal_generated: { view: "signals" },
-      report_claim_generated: { view: "claims" },
-      claim_verified: { view: "claims", claimVerification: "supported" },
-      pending_review: { view: "claims", claimStatus: "pending" },
-      manual_review_pending: { view: "claims", claimStatus: "pending" },
-    };
     const companyCandidates = [
       { name: "苹果", aliases: ["苹果", "苹果公司", "Apple", "AAPL"], symbol: "AAPL" },
       { name: "英伟达", aliases: ["英伟达", "NVIDIA", "NVDA"], symbol: "NVDA" },
@@ -1885,18 +1806,7 @@ def render_workbench_html() -> str:
       btn.addEventListener("click", () => activateView(btn.dataset.view));
     });
     bindJumpHandlers();
-    document.querySelectorAll("[data-funnel-tab]").forEach((btn) => {
-      btn.addEventListener("click", () => activateFunnelTab(btn.dataset.funnelTab));
-    });
     initCreateTaskModal();
-    activateFunnelTab("chain");
-
-    function activateFunnelTab(tab) {
-      document.querySelectorAll("[data-funnel-tab]").forEach((item) => item.classList.toggle("active", item.dataset.funnelTab === tab));
-      $("funnelTab").classList.toggle("active", tab === "funnel");
-      $("chainTab").classList.toggle("active", tab === "chain");
-      $("funnelDemoNote").hidden = tab !== "funnel";
-    }
 
     function bindJumpHandlers(root = document) {
       root.querySelectorAll("[data-jump]").forEach((btn) => {
@@ -2683,85 +2593,27 @@ def render_workbench_html() -> str:
         : `<div class="empty">暂无数据</div>`;
     }
 
-    function hasRealFunnelCounts(steps) {
-      return steps.some((step) => Number(step.count || 0) > 0);
-    }
-
-    function isValidFunnelSeries(steps) {
-      if (!hasRealFunnelCounts(steps)) return false;
-      for (let index = 1; index < steps.length; index += 1) {
-        const prev = Number(steps[index - 1].count || 0);
-        const current = Number(steps[index].count || 0);
-        if (current > prev) return false;
-      }
-      return true;
-    }
-
-    function funnelNoteHtml(hasRealCounts, hasConsistentFunnel) {
-      if (!hasRealCounts) {
-        return `<div class="funnel-demo-note">当前暂无真实处理数据，以下为流程示意。创建研报任务或导入文档后将展示真实统计；带有黄色提示的图表不计入真实 KPI。</div>`;
-      }
-      if (!hasConsistentFunnel) {
-        return `<div class="funnel-demo-note">当前真实统计尚未形成完整累计漏斗，以下展示流程示意；请切换到“处理链路”查看真实阶段计数。带有黄色提示的图表不计入真实 KPI。</div>`;
-      }
-      return "";
-    }
-
-    function renderFunnel(payload) {
-      const rawSteps = payload.steps || [];
-      const hasRealCounts = hasRealFunnelCounts(rawSteps);
-      const hasConsistentFunnel = isValidFunnelSeries(rawSteps);
-      const visualSteps = hasConsistentFunnel ? rawSteps : funnelDemoSteps;
-      const chainSteps = hasRealCounts ? rawSteps : [];
-      const visualMax = Math.max(1, ...visualSteps.map((step) => Number(step.count || 0)));
-      const chainMax = Math.max(1, ...chainSteps.map((step) => Number(step.count || 0)));
-      $("funnelDemoNote").innerHTML = funnelNoteHtml(hasRealCounts, hasConsistentFunnel);
-      $("funnelVisual").innerHTML = visualSteps.map((step, index) => {
-        const count = Number(step.count || 0);
-        const prev = index === 0 ? count : Number(visualSteps[index - 1].count || 0);
-        const width = Math.max(40, Math.round((count / visualMax) * 100));
-        const rate = index === 0 ? "基准" : (prev > 0 ? `${Math.round((count / prev) * 1000) / 10}%` : "-");
-        const target = funnelTargets[step.key] || { view: "documents" };
-        return `<button class="funnel-layer" style="width:${width}%" data-jump="${esc(target.view)}"${target.documentStep ? ` data-document-step="${esc(target.documentStep)}"` : ""}${target.claimStatus ? ` data-claim-status="${esc(target.claimStatus)}"` : ""}${target.claimVerification ? ` data-claim-verification="${esc(target.claimVerification)}"` : ""}>
-          <span>${esc(step.label)}</span>
-          <strong>${esc(number(count))}</strong>
-          <span class="rate">${esc(rate)}</span>
-        </button>`;
-      }).join("");
-      $("funnelLoss").innerHTML = renderFunnelLoss(visualSteps);
-      $("funnel").innerHTML = chainSteps.length ? chainSteps.map((step, index) => {
-            const width = Math.max(2, Math.round((Number(step.count || 0) / chainMax) * 100));
-            return `<div>
-              <div class="funnel-row"><span>${esc(step.label)}</span><div class="bar"><span style="width:${width}%"></span></div><strong>${esc(number(step.count))}</strong></div>
-              ${index < chainSteps.length - 1 ? `<div class="funnel-arrow">↓</div>` : ""}
-            </div>`;
-          }).join("") : emptyBox("暂无真实处理链路数据。导入文档或运行研报任务后显示。", [
-            { label: "手动导入", view: "manual", className: "primary" },
-            { label: "创建研报任务", view: "tasks" },
-          ]);
-      bindJumpHandlers($("funnelVisual"));
-      bindJumpHandlers($("funnel"));
-    }
-
-    function renderFunnelLoss(steps) {
-      if (steps.length < 2) return "";
-      let maxLoss = null;
-      for (let index = 1; index < steps.length; index += 1) {
-        const prev = Number(steps[index - 1].count || 0);
-        const current = Number(steps[index].count || 0);
-        const loss = Math.max(0, prev - current);
-        const rate = prev > 0 ? current / prev : 0;
-        if (!maxLoss || loss > maxLoss.loss) {
-          maxLoss = { from: steps[index - 1], to: steps[index], loss, rate };
-        }
-      }
-      if (!maxLoss) return "";
-      return `<div class="funnel-loss-card">
-        <h3>最大流失步骤</h3>
-        <div><strong>${esc(maxLoss.from.label)} → ${esc(maxLoss.to.label)}</strong></div>
-        <div class="dist-row"><span>流失数量</span><strong>${esc(number(maxLoss.loss))}</strong></div>
-        <div class="dist-row"><span>阶段转化率</span><strong>${esc(Math.round(maxLoss.rate * 1000) / 10)}%</strong></div>
-      </div>`;
+    function renderOperationalMetrics(payload, datasourcePayload) {
+      const groups = [...(payload.groups || [])];
+      const sources = datasourcePayload.items || [];
+      groups.push({
+        key: "datasources",
+        label: "数据源",
+        metrics: [
+          { key: "configured", label: "已配置", count: sources.filter((item) => item.configured).length },
+          { key: "healthy", label: "健康", count: sources.filter((item) => item.operational).length },
+          { key: "failed", label: "失败", count: sources.filter((item) => item.configured && item.last_status === "failed").length },
+          { key: "not_run", label: "尚未运行", count: sources.filter((item) => item.configured && !item.last_status).length },
+        ],
+      });
+      const groupView = { documents: "documents", tasks: "tasks", claims: "claims", datasources: "datasources" };
+      $("operationalMetrics").innerHTML = groups.map((group) => `<section class="status-group">
+        <h3>${esc(group.label)}</h3>
+        <div class="status-metrics">${(group.metrics || []).map((metric) => `<button class="status-metric" data-jump="${esc(groupView[group.key] || "dashboard")}">
+          <span class="label">${esc(metric.label)}</span><strong>${esc(number(metric.count || 0))}</strong>
+        </button>`).join("")}</div>
+      </section>`).join("");
+      bindJumpHandlers($("operationalMetrics"));
     }
 
     function renderRecentTaskPanel(payload) {
@@ -3696,7 +3548,7 @@ def render_workbench_html() -> str:
         renderReviewExceptions(summary);
         renderDashboardCharts(summary);
         renderRecentTaskTable(recentTasksPayload);
-        renderFunnel(funnel);
+        renderOperationalMetrics(funnel, datasourcePayload);
       } catch (error) {
         showLoadError("metricCards");
       }

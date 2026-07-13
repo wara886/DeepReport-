@@ -72,28 +72,26 @@ def test_workbench_p1_closure_copy_and_task_linkage_are_productized():
     assert "尚未沉淀证据" in html
     assert "主张通常来自研报产物导入" in html
     assert "示意分布不代表当前空间真实数据" in html
-    assert "带有黄色提示的图表不计入真实 KPI" in html
+    assert "带有黄色提示的图表不计入真实 KPI" not in html
     assert "renderTaskLinkageOverview" in html
     assert "documentEvidenceEmptyState" in html
     assert 'claim: "主张"' in html
     assert 'claim: "Claim"' not in html
 
 
-def test_workbench_demo_mode_defaults_to_real_chain_and_maps_internal_terms():
+def test_workbench_real_metrics_and_maps_internal_terms():
     html = render_workbench_html()
 
-    assert '<button class="active" data-funnel-tab="chain">真实处理链路</button>' in html
-    assert '<button data-funnel-tab="funnel">示意漏斗</button>' in html
-    assert '<div class="funnel-view active" id="chainTab">' in html
+    assert '<div class="status-groups" id="operationalMetrics"></div>' in html
+    assert 'label: "数据源"' in html
+    assert 'funnelDemoSteps' not in html
     assert 'content_depth: "正文完整度不足"' in html
     assert 'llm_review: "智能复核问题"' in html
     assert 'verifier: "主张校验问题"' in html
     assert '"agent.analyze": "分析智能体"' in html
     assert 'data-view="documents"><span>文档处理中心</span><span class="tag available">可用</span></button>' in html
     assert 'data-view="export"><span>导出中心</span><span class="tag available">可用</span></button>' in html
-    assert 'const chainSteps = hasRealCounts ? rawSteps : [];' in html
     assert 'const displayRows = realRows;' in html
-    assert 'activateFunnelTab("chain")' in html
     assert 'item.hidden = !active' in html
     assert 'setFormLabelsActive(item, active)' in html
     assert '再次点击确认操作' in html

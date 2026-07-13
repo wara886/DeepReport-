@@ -69,15 +69,13 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "最近研报任务" in html
     assert "数据源分布" in html
     assert "主张状态分布" in html
-    assert "处理链路" in html
-    assert "当前暂无真实处理数据" in html
-    assert "当前真实统计尚未形成完整累计漏斗" in html
-    assert "请切换到“处理链路”查看真实阶段计数" in html
-    assert "isValidFunnelSeries" in html
-    assert "最大流失步骤" in html
-    assert "funnel-layer" in html
-    assert "funnelVisual" in html
-    assert "funnelLoss" in html
+    assert "真实运营指标" in html
+    assert "operationalMetrics" in html
+    assert "文档处理" in html
+    assert "研报任务" in html
+    assert "主张复核" in html
+    assert "funnelDemoSteps" not in html
+    assert "示意漏斗" not in html
     assert "dataSourceHealth" in html
     assert "dataSourceChart" in html
     assert "claimStatusChart" in html
@@ -118,4 +116,5 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert summary.json()["evidence_count"] == 1
     assert summary.json()["review_pending_claim_count"] == 1
     assert funnel.status_code == 200
-    assert any(step["key"] == "report_claim_generated" for step in funnel.json()["steps"])
+    assert funnel.json()["schema_version"] == "dashboard_status_groups.v1"
+    assert {group["key"] for group in funnel.json()["groups"]} == {"documents", "tasks", "claims"}

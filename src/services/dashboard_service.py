@@ -16,25 +16,11 @@ from src.db.models import (
     DocumentProcessingStep,
     EvidenceItem,
     FinancialFact,
-    InvestmentSignal,
     LLMRun,
     ReportArtifact,
     ReportClaim,
     ReportTask,
 )
-
-
-FUNNEL_STEPS = [
-    ("document_ingested", "原始资料入库"),
-    ("parse_success", "解析成功"),
-    ("table_extract_success", "表格抽取成功"),
-    ("chunk_vectorized", "切分向量化"),
-    ("financial_fact_extracted", "财务事实提取"),
-    ("investment_signal_generated", "投资线索生成"),
-    ("report_claim_generated", "研报 Claim 生成"),
-    ("claim_verified", "Claim 校验通过"),
-    ("pending_review", "待人工复核"),
-]
 
 
 class DashboardService:
@@ -104,19 +90,43 @@ class DashboardService:
 
     def funnel(self) -> dict[str, Any]:
         with self.session_factory() as session:
-            counts = {
-                "document_ingested": _count(session, Document.id),
-                "parse_success": _document_step_success_count(session, "parse", fallback_status="parsed"),
-                "table_extract_success": _document_step_success_count(session, "table_extract"),
-                "chunk_vectorized": _document_step_success_count(session, "chunk"),
-                "financial_fact_extracted": _count(session, FinancialFact.id),
-                "investment_signal_generated": _investment_signal_count(session),
-                "report_claim_generated": _count(session, ReportClaim.id),
-                "claim_verified": _verified_claim_count(session),
-                "pending_review": _count_where(session, ReportClaim.id, ReportClaim.review_status == "pending"),
-            }
-            steps = [{"key": key, "label": label, "count": int(counts.get(key, 0))} for key, label in FUNNEL_STEPS]
-            return {"steps": steps}
+            groups = [
+                {
+                    "key": "documents",
+                    "label": "文档处理",
+                    "metrics": [
+                        _metric("ingested", "入库", _count(session, Document.id)),
+                        _metric("parsed", "解析", _document_step_success_count(session, "parse", fallback_status="parsed")),
+                        _metric("table_extracted", "表格", _document_step_success_count(session, "table_extract")),
+                        _metric("chunked", "切分", _document_step_success_count(session, "chunk")),
+                        _metric("evidenced", "证据化", _distinct_non_null_count(session, EvidenceItem.document_id)),
+                    ],
+                },
+                {
+                    "key": "tasks",
+                    "label": "研报任务",
+                    "metrics": [
+                        _metric("queued", "排队", _task_status_count(session, "queued")),
+                        _metric("running", "运行中", _task_status_count(session, "running")),
+                        _metric("evidence_blocked", "证据阻塞", _task_stage_count(session, "evidence")),
+                        _metric("machine_pass", "机器通过", _task_status_count(session, "completed")),
+                        _metric("review_pending", "待复核", _distinct_pending_task_count(session)),
+                        _metric("delivered", "已交付", _task_status_count(session, "delivered")),
+                    ],
+                },
+                {
+                    "key": "claims",
+                    "label": "主张复核",
+                    "metrics": [
+                        _metric("generated", "已生成", _count(session, ReportClaim.id)),
+                        _metric("supported", "有证据支持", _verified_claim_count(session)),
+                        _metric("pending", "待复核", _count_where(session, ReportClaim.id, ReportClaim.review_status == "pending")),
+                        _metric("approved", "已通过", _count_where(session, ReportClaim.id, ReportClaim.review_status == "approved")),
+                        _metric("rejected", "已驳回", _count_where(session, ReportClaim.id, ReportClaim.review_status == "rejected")),
+                    ],
+                },
+            ]
+            return {"schema_version": "dashboard_status_groups.v1", "groups": groups}
 
 
 def _count(session: Session, column: Any) -> int:
@@ -127,11 +137,24 @@ def _count_where(session: Session, column: Any, condition: Any) -> int:
     return int(session.scalar(select(func.count(column)).where(condition)) or 0)
 
 
-def _investment_signal_count(session: Session) -> int:
-    signals = _count(session, InvestmentSignal.id)
-    if signals:
-        return signals
-    return _count_where(session, ReportClaim.id, ReportClaim.claim_type == "signal")
+def _metric(key: str, label: str, count: int) -> dict[str, Any]:
+    return {"key": key, "label": label, "count": int(count)}
+
+
+def _distinct_non_null_count(session: Session, column: Any) -> int:
+    return int(session.scalar(select(func.count(distinct(column))).where(column.is_not(None))) or 0)
+
+
+def _task_status_count(session: Session, status: str) -> int:
+    return _count_where(session, ReportTask.id, ReportTask.status == status)
+
+
+def _task_stage_count(session: Session, stage_fragment: str) -> int:
+    return _count_where(session, ReportTask.id, ReportTask.current_stage.ilike(f"%{stage_fragment}%"))
+
+
+def _distinct_pending_task_count(session: Session) -> int:
+    return int(session.scalar(select(func.count(distinct(ReportClaim.task_id))).where(ReportClaim.review_status == "pending")) or 0)
 
 
 def _counter(rows: list[tuple[Any, int]], *, empty_key: str = "unknown") -> dict[str, int]:

@@ -1,18 +1,18 @@
 # 投研工作台阶段修复交接记录
 
-> 更新时间：2026-07-13 21:16（Asia/Shanghai）
+> 更新时间：2026-07-13 21:25（Asia/Shanghai）
 > 仓库：`/Users/yuan_dian/AI_project/DeepReport-fin-workbench-v2`  
 > 分支：`feat/fin-research-agent-workbench-v2`  
 > 用途：切换 Codex 对话后，从当前 checkpoint 和未提交工作区继续，不重新猜测或重复审计。
 
-## 0. 21:16 最新 checkpoint（优先于下方历史记录）
+## 0. 21:25 最新 checkpoint（优先于下方历史记录）
 
-阶段 2A 与 2B 已完成代码修复和真实任务验证。阶段 2、阶段 3、阶段 4 均已完成并推送，当前应从阶段 5 继续，不要再从 2A 重新审计。
+阶段 2A 与 2B 已完成代码修复和真实任务验证。阶段 2 至阶段 5 均已完成并推送，当前应从阶段 6 继续，不要再从 2A 重新审计。
 
 最新提交：
 
 ```text
-fix: restructure report task workspace
+fix: replace demo funnel with real metrics
 ```
 
 ### 阶段 3：统一数据源状态已完成
@@ -55,6 +55,17 @@ Tushare: configured=true, enabled=true, operational=false, evidence_count=0,
 验收结果：阶段 4 聚焦 Web/API 测试 24 项通过；`py_compile` 与 `git diff --check` 通过。本地浏览器使用真实任务确认列表、更多菜单、详情五标签和标签切换；质量标签激活后概览内容正确隐藏。真实列表同时确认“证据不足，已阻塞”“机器质检未通过”“机器质检通过，待人工复核”三种优先状态。桌面截图确认列表独立滚动且详情即时可见；窄屏行为由响应式规则和静态页面合同覆盖。
 
 浏览器还暴露一个既有数据问题：`stage2a-machine-pass-cn-fy2024-20260713/analysis` 会因数据库内某条 `evidence_items.metadata` 为 malformed JSON 导致 SQLite `JSON_EXTRACT` 失败；港股任务详情 API 正常。该问题不由阶段 4 前端改动引入，登记到后续数据治理/最终验收，不用展示层掩盖。
+
+### 阶段 5：删除示意漏斗并重建真实指标已完成
+
+- `/api/dashboard/funnel` 保留兼容路由名，但响应升级为 `dashboard_status_groups.v1`，不再返回跨分母伪漏斗。
+- 文档组按 Document cohort 去重统计入库、解析、表格、切分、证据化。
+- 任务组独立统计 queued、running、evidence_blocked、machine_pass、review_pending、delivered。
+- Claim 组独立统计 generated、supported、pending、approved、rejected。
+- 数据源组由前端合并 `/api/data-sources` registry，统计 configured、healthy、failed、not_run。
+- 已删除 `funnelDemoSteps`、1280→58 全部演示数字、示意切换、转化率和最大流失展示，以及遗留 funnel CSS。
+
+真实 API/浏览器验收显示四组指标均来自当前数据库与 registry；浏览器页面不再出现“示意漏斗”或黄色演示 KPI 提示。阶段 5 聚焦测试 13 项通过，未运行全量 pytest。
 
 ### 阶段 2A：A 股机器质量已通过
 
@@ -126,14 +137,14 @@ canonical metrics 离线重建后，收入、净利润、经营现金流、自�
 
 ```text
 http://127.0.0.1:7863/workbench
-PID 70819
+PID 74026
 ```
 
 阶段 2 的提交步骤已经完成。下一步严格按阶段计划执行：
 
-1. 进入阶段 5“删除示意漏斗并重建真实指标”。
-2. 优先建立四组真实 cohort/status 指标，再删除所有 `funnelDemoSteps` 和示意数字。
-3. 只运行阶段 5 聚焦测试，不提前运行全量 pytest。
+1. 进入阶段 6“动态期间选择”。
+2. 先定义 period options/readiness API，再接创建任务表单。
+3. 验收 A/H/US 三市场期间选项与官方披露可用性，不提前运行全量 pytest。
 
 下方第 1–10 节保留为修复前历史诊断；如与本节冲突，以本节为准。
 
