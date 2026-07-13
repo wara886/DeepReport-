@@ -1773,6 +1773,56 @@ def test_rule_verifier_ignores_financial_domain_acronyms_as_tickers():
     assert not any("ticker-like tokens" in warning for warning in report["warnings"])
 
 
+def test_rule_verifier_ignores_macro_provider_and_series_acronyms_as_tickers():
+    verifier = Verifier()
+    report = verifier.verify(
+        claims=[
+            ClaimItem(
+                claim_id="cl_macro",
+                section_name="financial_analysis",
+                claim_text="MSFT analysis uses BEA NIPA, BLS, and FRED UNRATE context.",
+                evidence_ids=["ev_msft"],
+                confidence=0.9,
+            )
+        ],
+        markdown=(
+            "# MSFT Report\n\n## Executive Summary\n\nMSFT overview.\n\n"
+            "## Financial Analysis\n\nBEA NIPA and FRED UNRATE provide macro context [ev_msft].\n\n"
+            "## Risk Assessment\n\nRisk discussion.\n"
+        ),
+        evidence_records=[{"evidence_id": "ev_msft", "symbol": "MSFT", "content": "MSFT filing."}],
+        expected_symbol="MSFT",
+    )
+
+    assert report["passed"] is True
+    assert not any("ticker-like tokens" in warning for warning in report["warnings"])
+
+
+def test_rule_verifier_allows_contextual_competitor_when_target_is_explicit():
+    verifier = Verifier()
+    report = verifier.verify(
+        claims=[
+            ClaimItem(
+                claim_id="cl_competition",
+                section_name="financial_analysis",
+                claim_text="NVDA retains leadership while AMD remains a competitor.",
+                evidence_ids=["ev_nvda"],
+                confidence=0.9,
+            )
+        ],
+        markdown=(
+            "# NVDA Report\n\n## Executive Summary\n\nNVDA remains the target company.\n\n"
+            "## Financial Analysis\n\nNVIDIA competes with AMD in accelerators [ev_nvda].\n\n"
+            "## Risk Assessment\n\nCompetition is a risk.\n"
+        ),
+        evidence_records=[{"evidence_id": "ev_nvda", "symbol": "NVDA", "content": "NVIDIA competition."}],
+        expected_symbol="NVDA",
+    )
+
+    assert report["passed"] is True
+    assert not any("report appears to discuss AMD" in error for error in report["errors"])
+
+
 def test_rule_verifier_requires_numeric_support_for_untraced_derived_claim():
     verifier = Verifier()
     claim = ClaimItem(

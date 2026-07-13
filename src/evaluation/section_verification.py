@@ -274,6 +274,7 @@ def _nonblocking_contract_flag(flag: str) -> bool:
     return (
         flag.endswith("_uses_section_evidence_pack")
         or "_uses_sec_10k" in flag
+        or flag.endswith("_gap_summary_skipped")
         or flag.endswith("_evidence_fallback")
         or flag == "valuation_directional_only"
         or flag.endswith("_pdf_summary_fallback")

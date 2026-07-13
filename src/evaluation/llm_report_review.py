@@ -60,15 +60,36 @@ def review_report_with_llm_from_paths(
         return fallback
 
     prompt = _build_review_prompt(artifacts)
-    try:
-        if hasattr(adapter, "generate_json"):
-            parsed = adapter.generate_json(prompt=prompt, system_prompt=_system_prompt())
-        else:
-            parsed = adapter.generate(prompt=prompt, system_prompt=_system_prompt())
-    except Exception as exc:  # pragma: no cover - defensive fallback
-        return _failed_review(base, f"LLM review call failed: {exc}")
+    parsed: Any = None
+    failures: list[str] = []
+    for _attempt in range(1, 3):
+        try:
+            retry_prompt = prompt
+            if failures:
+                retry_prompt += (
+                    "\n\nThe previous response could not be parsed as JSON. Return one complete JSON object only; "
+                    "do not use markdown fences or truncate arrays."
+                )
+            if hasattr(adapter, "generate_json"):
+                parsed = adapter.generate_json(prompt=retry_prompt, system_prompt=_system_prompt())
+            else:
+                parsed = adapter.generate(prompt=retry_prompt, system_prompt=_system_prompt())
+            break
+        except Exception as exc:  # pragma: no cover - adapter-specific failures
+            failures.append(str(exc))
+    if parsed is None:
+        failed = _failed_review(
+            base,
+            f"LLM review call failed after {len(failures)} attempts: {failures[-1] if failures else 'unknown error'}",
+        )
+        failed["attempt_count"] = len(failures)
+        failed["failure_reasons"] = failures
+        return failed
     normalized = _normalize_review(parsed)
     normalized = _apply_artifact_guard(normalized, artifacts)
+    normalized["attempt_count"] = len(failures) + 1
+    if failures:
+        normalized["recovered_failure_reasons"] = failures
     normalized.update(base)
     return normalized
 

@@ -66,7 +66,7 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
         and objective_pass
     )
     llm_score_pass = llm_score_strict_pass or llm_score_relaxed_pass
-    llm_review_pass = bool(llm_review.get("llm_review_pass", False)) and llm_score_pass and not blocking_issue
+    llm_review_pass = bool(llm_review.get("llm_review_pass", False)) and llm_score_pass and not llm_blocking_issue
     issues.extend(
         _missing_gate_failure_issues(
             issues,
@@ -396,6 +396,7 @@ def _nonblocking_contract_flag(flag: str) -> bool:
         flag.endswith("_uses_section_evidence_pack")
         or "_uses_sec_10k" in flag
         or "_uses_sec_proxy" in flag
+        or flag.endswith("_gap_summary_skipped")
         or flag.endswith("_evidence_fallback")
         or flag == "valuation_directional_only"
         or flag.endswith("_pdf_summary_fallback")

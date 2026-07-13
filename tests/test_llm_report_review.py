@@ -14,6 +14,44 @@ class FakeReviewModel:
         return self.payload
 
 
+class FlakyReviewModel(FakeReviewModel):
+    def __init__(self, payload):
+        super().__init__(payload)
+        self.calls = 0
+        self.prompts = []
+
+    def generate_json(self, **kwargs):
+        self.calls += 1
+        self.prompts.append(kwargs["prompt"])
+        if self.calls == 1:
+            raise json.JSONDecodeError("truncated", "{", 1)
+        return self.payload
+
+
+def test_llm_review_retries_truncated_json_once(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    model = FlakyReviewModel({
+        "total_score": 0.9,
+        "verdict": "pass",
+        "dimension_scores": {key: 0.9 for key in (
+            "professional_report_likeness",
+            "investment_insight",
+            "fact_period_consistency",
+            "company_report_requirement_fit",
+            "chart_usefulness",
+            "language_quality",
+        )},
+        "issues": [],
+    })
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["attempt_count"] == 2
+    assert len(review["recovered_failure_reasons"]) == 1
+    assert "previous response could not be parsed" in model.prompts[1]
+
+
 def test_llm_review_missing_api_key_fails_explicitly(tmp_path):
     run_dir = _write_review_run(tmp_path)
     config = tmp_path / "model_backends.yaml"

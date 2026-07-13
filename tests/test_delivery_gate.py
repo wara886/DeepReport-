@@ -63,6 +63,46 @@ def test_delivery_gate_relaxes_llm_score_when_review_passes_without_blockers(tmp
     assert gate["gate_requirements"]["llm_review_relaxed_score_pass"] is True
 
 
+def test_delivery_gate_keeps_llm_pass_independent_from_non_llm_contract_blocker(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    fixtures = {
+        "verification_report.json": {"passed": True},
+        "quality_report.json": {"objective_pass": True, "total_score": 0.96, "issues": []},
+        "llm_quality_review.json": {"llm_review_pass": True, "total_score": 0.86, "issues": []},
+        "report_section_contracts.json": {"contracts": {"valuation": {"quality_flags": ["hard_valuation_gap", "hard_market_gap"]}}},
+    }
+    for name, payload in fixtures.items():
+        (outputs / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["llm_review_pass"] is True
+    assert gate["delivery_pass"] is False
+    assert any(issue["category"] == "contract" and issue["severity"] == "blocker" for issue in gate["issues"])
+
+
+def test_delivery_gate_treats_skipped_pdf_gap_summary_as_nonblocking(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    fixtures = {
+        "verification_report.json": {"passed": True},
+        "quality_report.json": {"objective_pass": True, "total_score": 0.96, "issues": []},
+        "llm_quality_review.json": {"llm_review_pass": True, "total_score": 0.86, "issues": []},
+        "report_section_contracts.json": {"contracts": {"business_overview": {
+            "status": "supported",
+            "quality_flags": ["business_overview_gap_summary_skipped", "business_overview_uses_sec_10k"],
+        }}},
+    }
+    for name, payload in fixtures.items():
+        (outputs / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["delivery_pass"] is True
+    assert not any(issue["category"] == "contract" for issue in gate["issues"])
+
+
 def test_delivery_gate_treats_nonblocking_evidence_gap_as_warning(tmp_path):
     outputs = tmp_path / "run" / "company" / "outputs"
     outputs.mkdir(parents=True)

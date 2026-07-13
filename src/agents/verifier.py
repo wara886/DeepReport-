@@ -494,8 +494,12 @@ def _ticker_mentions(text: str) -> set[str]:
         "AI",
         "ARPU",
         "B",
+        "BEA",
+        "BLS",
         "CAGR",
         "CPI",
+        "CPU",
+        "CUDA",
         "DCF",
         "DEF",
         "EDGAR",
@@ -511,6 +515,7 @@ def _ticker_mentions(text: str) -> set[str]:
         "FRED",
         "GAAP",
         "GDP",
+        "GPU",
         "HKD",
         "HTML",
         "ID",
@@ -520,6 +525,10 @@ def _ticker_mentions(text: str) -> set[str]:
         "MD",
         "MDA",
         "NASDAQ",
+        "NCG",
+        "NIPA",
+        "NOTE",
+        "NVIDIA",
         "NYSE",
         "PB",
         "PCE",
@@ -537,6 +546,7 @@ def _ticker_mentions(text: str) -> set[str]:
         "SZ",
         "US",
         "USD",
+        "UNRATE",
         "WSJ",
         "XBRL",
     }
@@ -580,9 +590,39 @@ def _conflicting_company_mentions(symbol: str, text: str) -> List[str]:
     for ticker, names in aliases.items():
         if ticker == target:
             continue
-        if any(name in checked_text for name in names):
+        if any(_has_non_contextual_company_mention(checked_text, name) for name in names):
             conflicts.append(ticker)
     return conflicts
+
+
+def _has_non_contextual_company_mention(text: str, name: str) -> bool:
+    pattern = re.compile(rf"(?<![a-z0-9]){re.escape(name.strip())}(?![a-z0-9])", re.I)
+    competition_markers = (
+        "competitor",
+        "competition",
+        "compete",
+        "comparable",
+        "peer",
+        "versus",
+        "rival",
+        "同行",
+        "同业",
+        "可比",
+        "竞争",
+        "对手",
+        "替代",
+        "追赶",
+    )
+    matches = list(pattern.finditer(text))
+    if not matches:
+        return False
+    for match in matches:
+        context = text[max(0, match.start() - 120) : min(len(text), match.end() + 120)]
+        if any(marker in context for marker in ("leak", "串线", "误入", "非同行", "non-peer")):
+            return True
+        if not any(marker in context for marker in competition_markers):
+            return True
+    return False
 
 
 def _non_peer_report_text(text: str) -> str:
