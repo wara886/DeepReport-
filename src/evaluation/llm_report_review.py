@@ -510,6 +510,8 @@ def _build_review_prompt(artifacts: Dict[str, Any]) -> str:
         "claims_sample": _compact_review_claims(artifacts["claims"][:8]),
         "evidence_sample": _compact_review_evidence(artifacts["evidence"][:8]),
         "citations_sample": _compact_review_citations(artifacts["citations"][:8]),
+        "approved_peer_symbols": artifacts.get("approved_peer_symbols", []),
+        "peer_symbol_policy": "approved_peer_symbols are valid only inside the peer comparison section; they are not cross-report contamination there",
         "report_markdown": artifacts["report_md"][:18000],
     }
     return (
@@ -572,6 +574,7 @@ def _system_prompt() -> str:
 
 
 def _load_review_artifacts(outputs_dir: Path, reports_dir: Path) -> Dict[str, Any]:
+    analysis = _read_json(outputs_dir / "analysis_artifacts.json", {})
     return {
         "quality_report": _read_json(outputs_dir / "quality_report.json", {}),
         "verification_report": _read_json(outputs_dir / "verification_report.json", {}),
@@ -581,8 +584,28 @@ def _load_review_artifacts(outputs_dir: Path, reports_dir: Path) -> Dict[str, An
         "claims": _as_list(_read_json(outputs_dir / "claims.json", [])),
         "evidence": _as_list(_read_json(outputs_dir / "evidence.json", [])),
         "citations": _as_list(_read_json(outputs_dir / "citations.json", [])),
+        "approved_peer_symbols": _approved_peer_symbols_for_review(analysis),
         "report_md": _read_text(reports_dir / "report.md"),
     }
+
+
+def _approved_peer_symbols_for_review(analysis: Any) -> list[str]:
+    if not isinstance(analysis, dict):
+        return []
+    peer_analysis = analysis.get("peer_analysis", {}) if isinstance(analysis.get("peer_analysis"), dict) else {}
+    peer_context = analysis.get("peer_context", {}) if isinstance(analysis.get("peer_context"), dict) else {}
+    approved: set[str] = set()
+    for source in (peer_analysis, peer_context, analysis):
+        for value in source.get("approved_peer_symbols", []) if isinstance(source.get("approved_peer_symbols"), list) else []:
+            symbol = str(value or "").strip().upper()
+            if symbol:
+                approved.add(symbol)
+        for row in source.get("peer_rows", []) if isinstance(source.get("peer_rows"), list) else []:
+            if isinstance(row, dict) and not bool(row.get("is_target")):
+                symbol = str(row.get("symbol") or row.get("ticker") or "").strip().upper()
+                if symbol:
+                    approved.add(symbol)
+    return sorted(approved)
 
 
 def _read_json(path: Path, default: Any) -> Any:

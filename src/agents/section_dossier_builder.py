@@ -567,7 +567,8 @@ def _is_fy(state: dict[str, Any]) -> bool:
 def _approved_peer_symbols_from_analysis(analysis: dict[str, Any], blackboard: dict[str, Any]) -> set[str]:
     approved: set[str] = set()
     peer_data = analysis.get("peer_analysis", {}) if isinstance(analysis.get("peer_analysis"), dict) else {}
-    for source in [peer_data, analysis, blackboard]:
+    peer_context = analysis.get("peer_context", {}) if isinstance(analysis.get("peer_context"), dict) else {}
+    for source in [peer_data, peer_context, analysis, blackboard]:
         if not isinstance(source, dict):
             continue
         for key in ["approved_peer_symbols", "peer_symbols"]:
@@ -577,6 +578,11 @@ def _approved_peer_symbols_from_analysis(analysis: dict[str, Any], blackboard: d
                     symbol = str(value or "").strip().upper()
                     if symbol:
                         approved.add(symbol)
+        for row in source.get("peer_rows", []) if isinstance(source.get("peer_rows"), list) else []:
+            if isinstance(row, dict):
+                symbol = str(row.get("symbol") or row.get("ticker") or "").strip().upper()
+                if symbol and not bool(row.get("is_target")):
+                    approved.add(symbol)
     return approved
 
 

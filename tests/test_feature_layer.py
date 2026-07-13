@@ -319,6 +319,45 @@ def test_valuation_uses_optional_market_context():
     assert valuation["valuation_model"]["target_price"] is not None
 
 
+def test_valuation_merges_price_and_market_cap_across_market_records():
+    records = [
+        {
+            "evidence_id": "fin_ev",
+            "symbol": "AAPL",
+            "period": "FY2024",
+            "source_type": "financials",
+            "metadata": {
+                "revenue_billion": 100.0,
+                "net_income_billion": 20.0,
+                "free_cash_flow_billion": 18.0,
+                "free_cash_flow_period_basis": "annual",
+            },
+        },
+        {
+            "evidence_id": "price_ev",
+            "symbol": "AAPL",
+            "period": "FY2024",
+            "source_type": "market_api",
+            "metadata": {"snapshot": {"last_close": 200.0, "currency": "USD"}},
+        },
+        {
+            "evidence_id": "cap_ev",
+            "symbol": "AAPL",
+            "period": "FY2024",
+            "source_type": "market_api",
+            "metadata": {"financials": {"marketCap": 3_000_000_000_000}},
+        },
+    ]
+
+    valuation = perform_company_valuation("AAPL", "FY2024", records=records, raw_data_root="data/raw/does_not_exist")
+
+    assert valuation["valuation_available"] is True
+    assert valuation["market_context"]["market_cap_billion"] == 3000.0
+    assert valuation["market_context"]["shares_outstanding_billion"] == 15.0
+    assert valuation["valuation_sensitivity"]["directional_check"] is True
+    assert valuation["valuation_sensitivity"]["scenario_values"]["base"]["target_price"] is not None
+
+
 def test_valuation_guardrail_blocks_implausible_fcf_scale():
     valuation = perform_company_valuation(
         symbol="ZZZ",

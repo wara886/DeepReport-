@@ -882,6 +882,7 @@ def _target_from_records(records: List[Dict[str, Any]], symbol: str, period: str
 
 
 def _market_context_from_records(records: List[Dict[str, Any]], symbol: str, period: str) -> Dict[str, Any]:
+    context: Dict[str, Any] = {}
     for record in records:
         if str(record.get("symbol", "")).upper() != symbol:
             continue
@@ -917,18 +918,33 @@ def _market_context_from_records(records: List[Dict[str, Any]], symbol: str, per
             shares = market_cap / current_price
         if not market_cap and last_close and shares:
             market_cap = last_close * shares
-        return {
-            "symbol": symbol,
-            "period": period,
-            "last_close": last_close or current_price,
-            "market_cap_billion": market_cap,
-            "currency": str(snapshot.get("currency") or infer_trading_currency(symbol, infer_market_from_symbol(symbol).get("market", ""))),
-            "trading_currency": infer_trading_currency(symbol, infer_market_from_symbol(symbol).get("market", "")),
-            "shares_outstanding_billion": shares,
-            "source_evidence_id": str(record.get("evidence_id") or record.get("sample_id") or ""),
-            "source_url": str(record.get("source_url") or ""),
-        }
-    return {}
+        context.setdefault("symbol", symbol)
+        context.setdefault("period", period)
+        if context.get("last_close") is None and (last_close is not None or current_price is not None):
+            context["last_close"] = last_close if last_close is not None else current_price
+        if context.get("market_cap_billion") is None and market_cap is not None:
+            context["market_cap_billion"] = market_cap
+        if context.get("shares_outstanding_billion") is None and shares is not None:
+            context["shares_outstanding_billion"] = shares
+        if not context.get("currency"):
+            context["currency"] = str(snapshot.get("currency") or infer_trading_currency(symbol, infer_market_from_symbol(symbol).get("market", "")))
+        context.setdefault("trading_currency", infer_trading_currency(symbol, infer_market_from_symbol(symbol).get("market", "")))
+        evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
+        if evidence_id:
+            context.setdefault("source_evidence_ids", []).append(evidence_id)
+            context["source_evidence_id"] = evidence_id
+        if record.get("source_url"):
+            context["source_url"] = str(record.get("source_url"))
+    market_cap = _safe_float(context.get("market_cap_billion"))
+    shares = _safe_float(context.get("shares_outstanding_billion"))
+    price = _safe_float(context.get("last_close"))
+    if shares is None and market_cap is not None and price:
+        context["shares_outstanding_billion"] = market_cap / price
+    elif market_cap is None and shares is not None and price:
+        context["market_cap_billion"] = shares * price
+    if isinstance(context.get("source_evidence_ids"), list):
+        context["source_evidence_ids"] = list(dict.fromkeys(context["source_evidence_ids"]))
+    return context
 
 
 def _normalize_record_financials(record: Dict[str, Any]) -> Dict[str, Any]:

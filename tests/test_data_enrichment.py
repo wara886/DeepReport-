@@ -757,6 +757,60 @@ def test_pdf_statement_table_record_builds_standard_metrics_and_rows():
     assert rows[0]["unit"] == "USD_million"
 
 
+def test_pdf_statement_table_infers_million_scale_from_raw_header():
+    records = [
+        {
+            "evidence_id": "pdf_table_hk_balance",
+            "symbol": "0700.HK",
+            "period": "FY2024",
+            "source_type": "pdf_statement_table",
+            "metadata": {
+                "table_id": "tbl_pdf_balance",
+                "table_type": "balance_sheet",
+                "currency": "CNY",
+                "unit": "raw",
+                "raw_rows": [["CONSOLIDATED STATEMENT OF FINANCIAL POSITION", "RMB’Million"]],
+                "rows": [
+                    {"line_item": "total_assets", "value": 1333425.0},
+                    {"line_item": "total_liabilities", "value": 555382.0},
+                ],
+            },
+        }
+    ]
+
+    metrics = build_standard_financial_metrics(records)
+    rows = build_standard_statement_rows(records)
+
+    by_name = {item["metric_name"]: item for item in metrics["metrics"]}
+    assert by_name["total_assets"]["unit"] == "CNY_million"
+    assert by_name["total_liabilities"]["scale"] == "million"
+    assert {row["unit"] for row in rows} == {"CNY_million"}
+
+
+def test_hk_financial_rows_use_issuer_currency_and_keep_table_lineage():
+    record = {
+        "evidence_id": "hk_income_0700",
+        "symbol": "0700.HK",
+        "period": "FY2024",
+        "source_type": "hk_financials",
+        "metadata": {
+            "table_id": "hk_income_table",
+            "table_type": "income",
+            "currency": "HKD",
+            "rows": [{"line_item": "Total Revenue", "value": 660257000000, "end_date": "2024-12-31"}],
+        },
+    }
+
+    metrics = build_standard_financial_metrics([record])
+    rows = build_standard_statement_rows([record])
+
+    assert metrics["metrics"][0]["unit"] == "CNY"
+    assert metrics["metrics"][0]["source_type"] == "hk_financials"
+    assert rows[0]["currency"] == "CNY"
+    assert rows[0]["source_evidence_id"] == "hk_income_0700"
+    assert rows[0]["source_table_id"] == "hk_income_table"
+
+
 def test_pdf_tables_artifacts_become_statement_table_evidence_records():
     records = _pdf_tables_as_evidence_records(
         [

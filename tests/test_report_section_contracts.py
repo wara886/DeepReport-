@@ -33,9 +33,15 @@ from src.report.contract_builder import (
     _build_strategy_business,
     _build_three_statement_summary,
     _clip_at_sentence_boundary,
+    _format_billion_value,
 )
 from src.utils.money import build_currency_context
 from src.report.citation_binder import CitationBinder
+
+
+def test_cny_billion_values_render_as_hundred_million_yuan():
+    context = build_currency_context(market="cn_a", statement_currency="CNY", display_currency="CNY")
+    assert _format_billion_value(1513.836, context) == "15138.36 亿元人民币"
 
 
 # ── helpers ─────────────────────────────────────────────────────────────
@@ -276,6 +282,27 @@ class TestContractBuilder:
         for fact in c.facts:
             for st in fact.source_types:
                 assert st != "cashflow_table", "risk fallback must not bind cashflow"
+
+    def test_risk_uses_official_pdf_record_when_projection_files_are_empty(self):
+        contracts = ReportSectionContracts()
+        evidence_records = [{
+            "evidence_id": "risk_pdf_001",
+            "source_type": "pdf_section",
+            "source_document_type": "cninfo_announcement",
+            "source_authority": "official",
+            "source_url": "https://static.cninfo.com.cn/annual.pdf",
+            "content": "公司面临消费需求变化、渠道库存、批价波动及食品安全合规风险，需要持续跟踪。",
+            "metadata": {"section_type": "risk_factors"},
+        }]
+
+        _build_risk_factors(contracts, [], [], evidence_records, {}, {"symbol": "600519.SS", "period": "FY2024"})
+
+        risk = contracts.get("risk_factors")
+        assert risk is not None
+        assert risk.status == "supported"
+        assert risk.facts[0].evidence_ids == ["risk_pdf_001"]
+        assert "risk_uses_official_pdf" in risk.quality_flags
+        assert "risk_fallback_no_official_pdf" not in risk.quality_flags
 
     def test_governance_missing_has_specific_blocker(self):
         """Governance gap should have specific blocked_reason, not a generic one."""
@@ -557,6 +584,29 @@ class TestContractBuilder:
         assert sensitivity.status == "partial"
         assert "盈利桥接（非DCF目标价）" in sensitivity.deterministic_text
         assert "valuation_sensitivity_earnings_bridge_only" in sensitivity.quality_flags
+
+    def test_valuation_sensitivity_states_value_and_target_price_units(self):
+        contracts = build_report_section_contracts(
+            state={"symbol": "600519.SS", "period": "FY2024"},
+            evidence_records=[],
+            analysis_artifacts={
+                "valuation_model": {"valuation_status": "available", "currency": "CNY"},
+                "valuation_sensitivity": {
+                    "scenario_values": {
+                        "bear": {"equity_value_billion": 724.31, "target_price": 579.41},
+                        "base": {"equity_value_billion": 893.63, "target_price": 714.85},
+                        "bull": {"equity_value_billion": 1124.29, "target_price": 899.37},
+                    }
+                },
+            },
+            section_dossiers={},
+            citations=[],
+        )
+
+        sensitivity = contracts.get("valuation_sensitivity")
+        assert sensitivity is not None
+        assert "权益价值单位：十亿元人民币" in sensitivity.deterministic_text
+        assert "目标价单位：每股计价货币" in sensitivity.deterministic_text
 
 
 class TestCleanPdfBoilerplate:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+import re
 from typing import Any, Dict, Iterable, List
 
 from src.data.company_universe import infer_market_from_symbol
@@ -555,7 +556,8 @@ def _hk_financials_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     symbol = str(record.get("symbol") or "")
     period = str(record.get("period") or "")
     table_type = str(metadata.get("table_type") or "")
-    currency = str(metadata.get("currency") or "HKD")
+    currency_meta = _statement_currency_meta_for_record(record)
+    currency = currency_meta.statement_currency
     unit = _pdf_unit(currency, "raw")  # reuse: returns base currency code
     table_id = str(metadata.get("table_id") or _table_id(symbol, period, evidence_id, "hk_financials"))
     report_date = ""
@@ -629,7 +631,13 @@ def _hk_financials_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
                     symbol=symbol,
                     report_date=report_date,
                     notice_date=notice_date,
-                    raw={"period": period},
+                    raw={
+                        "period": period,
+                        "source_type": "hk_financials",
+                        "currency_basis": currency_meta.currency_basis,
+                        "currency_confidence": currency_meta.confidence,
+                        "inferred_from": currency_meta.inferred_from,
+                    },
                 )
             )
     return output
@@ -642,7 +650,8 @@ def _hk_financials_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]
     symbol = str(record.get("symbol") or "")
     period = str(record.get("period") or "")
     table_type = str(metadata.get("table_type") or "")
-    currency = str(metadata.get("currency") or "HKD")
+    currency_meta = _statement_currency_meta_for_record(record)
+    currency = currency_meta.statement_currency
     table_id = str(metadata.get("table_id") or _table_id(symbol, period, evidence_id, "hk_financials"))
 
     rows_raw = metadata.get("rows") if isinstance(metadata.get("rows"), list) else []
@@ -675,7 +684,19 @@ def _hk_financials_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]
             "line_item": line_item,
             "value": value,
             "unit": currency,
+            "currency": currency,
+            "scale": "unit",
+            "currency_basis": currency_meta.currency_basis,
+            "currency_confidence": currency_meta.confidence,
+            "inferred_from": currency_meta.inferred_from,
+            "evidence_id": evidence_id,
+            "source_evidence_id": evidence_id,
+            "source_table_id": table_id,
+            "report_date": str(row.get("end_date") or ""),
+            "source_period": period,
+            "period_match": _period_match(period=period, report_date=str(row.get("end_date") or ""), raw={"period": period}),
             "source_type": "hk_financials",
+            "provider": "Yahoo Finance",
         })
     return output
 
@@ -844,7 +865,7 @@ def _pdf_statement_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     currency = str(metadata.get("currency") or "")
     if not currency:
         currency = _currency_meta_for_record(record).statement_currency
-    unit = _pdf_unit(currency, str(metadata.get("unit") or "raw"))
+    unit = _pdf_unit_from_metadata(currency, metadata)
     report_date = str(metadata.get("report_date") or record.get("publish_time") or "")
     notice_date = str(metadata.get("notice_date") or record.get("publish_time") or "")
     rows = metadata.get("rows") if isinstance(metadata.get("rows"), list) else []
@@ -899,7 +920,7 @@ def _pdf_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     currency = str(metadata.get("currency") or "")
     if not currency:
         currency = _currency_meta_for_record(record).statement_currency
-    unit = _pdf_unit(currency, str(metadata.get("unit") or "raw"))
+    unit = _pdf_unit_from_metadata(currency, metadata)
     report_date = str(metadata.get("report_date") or record.get("publish_time") or "")
     rows = metadata.get("rows") if isinstance(metadata.get("rows"), list) else []
     output: List[Dict[str, Any]] = []
@@ -935,11 +956,44 @@ def _pdf_statement_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def _pdf_unit(currency: str, unit: str) -> str:
     base = normalize_currency_code(currency)
-    if unit == "millions":
+    normalized_unit = str(unit or "").strip().lower()
+    if normalized_unit in {"million", "millions"}:
         return f"{base}_million"
-    if unit == "thousands":
+    if normalized_unit in {"thousand", "thousands"}:
         return f"{base}_thousand"
+    if normalized_unit in {"billion", "billions"}:
+        return f"{base}_billion"
     return base
+
+
+def _pdf_unit_from_metadata(currency: str, metadata: Dict[str, Any]) -> str:
+    """Resolve scale from explicit metadata, falling back to extracted table headers."""
+
+    explicit = str(metadata.get("unit") or "raw").strip().lower()
+    if explicit not in {"", "raw", "unit", "units"}:
+        return _pdf_unit(currency, explicit)
+    header_text = " ".join(_flatten_text(metadata.get("raw_rows"))).lower()
+    if re.search(r"\b(?:in\s+)?billions?\b", header_text):
+        return _pdf_unit(currency, "billions")
+    if re.search(r"\b(?:in\s+)?millions?\b", header_text):
+        return _pdf_unit(currency, "millions")
+    if re.search(r"\b(?:in\s+)?thousands?\b", header_text):
+        return _pdf_unit(currency, "thousands")
+    return _pdf_unit(currency, explicit)
+
+
+def _flatten_text(value: Any) -> List[str]:
+    if isinstance(value, dict):
+        output: List[str] = []
+        for item in value.values():
+            output.extend(_flatten_text(item))
+        return output
+    if isinstance(value, (list, tuple)):
+        output = []
+        for item in value:
+            output.extend(_flatten_text(item))
+        return output
+    return [str(value)] if value is not None else []
 
 
 def _metric_row(
@@ -988,7 +1042,17 @@ def _metric_row(
 def _currency_meta_for_record(record: Dict[str, Any]):
     symbol = str(record.get("symbol") or "")
     market = infer_market_from_symbol(symbol).get("market", "")
+    if market == "hk":
+        issuer_meta = infer_statement_currency(symbol=symbol, market=market)
+        if issuer_meta.statement_currency != UNKNOWN_CURRENCY:
+            return issuer_meta
     return infer_statement_currency(symbol=symbol, market=market, source=record)
+
+
+def _statement_currency_meta_for_record(record: Dict[str, Any]):
+    """Prefer issuer statement-currency rules over HK trading-currency metadata."""
+
+    return _currency_meta_for_record(record)
 
 
 def _currency_from_unit(unit: Any) -> str:

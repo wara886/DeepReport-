@@ -38,7 +38,12 @@ def build_currency_audit(
     financial_metrics = financial_metrics if isinstance(financial_metrics, dict) else {}
     valuation_model = valuation_model if isinstance(valuation_model, dict) else {}
     official_records = [record for record in records if is_official_financial_source(str(record.get("source_type") or ""))]
-    currency_meta = infer_statement_currency(symbol=symbol, market=market, source=official_records[0] if official_records else None)
+    issuer_currency_meta = infer_statement_currency(symbol=symbol, market=market)
+    currency_meta = (
+        issuer_currency_meta
+        if issuer_currency_meta.statement_currency != UNKNOWN_CURRENCY
+        else infer_statement_currency(symbol=symbol, market=market, source=official_records[0] if official_records else None)
+    )
     statement_currency = currency_meta.statement_currency
     trading_currency = infer_trading_currency(symbol, market)
     display_currency = currency_meta.display_currency if currency_meta.display_currency != UNKNOWN_CURRENCY else statement_currency

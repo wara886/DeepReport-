@@ -309,7 +309,7 @@ def _build_business_overview(
             c.add_quality_flag("business_overview_gap_summary_skipped")
             continue
         if text_contains_pdf_boilerplate(text):
-            c.add_quality_flag("business_overview_boilerplate_in_summary")
+            c.add_quality_flag("business_overview_boilerplate_cleaned")
             text = clean_pdf_boilerplate(text)
         _append_candidate(text, eid, SRC_ANNUAL_REPORT_PDF_SUMMARY)
 
@@ -1033,7 +1033,13 @@ def _build_valuation_sensitivity(
 
     rows = _normalize_sensitivity_rows(valuation_sensitivity)
     if rows:
-        c.deterministic_text = _render_sensitivity_text(rows)
+        sensitivity_currency = str(
+            valuation_sensitivity.get("currency")
+            or valuation_model.get("valuation_currency")
+            or valuation_model.get("currency")
+            or ""
+        ).replace("_billion", "").upper()
+        c.deterministic_text = _render_sensitivity_text(rows, currency=sensitivity_currency)
         if str(valuation_sensitivity.get("method") or "") == "earnings_bridge":
             c.deterministic_text = "盈利桥接（非DCF目标价）：\n" + c.deterministic_text
             c.status = "partial"
@@ -1107,6 +1113,37 @@ def _build_risk_factors(
             if c.status == "gap":
                 c.status = "partial"
 
+    # Some production paths persist official PDF sections directly in the
+    # normalized evidence list without duplicating them into the summary/chunk
+    # artifacts. Preserve that official risk evidence before using an industry
+    # fallback.
+    if c.status == "gap":
+        for record in evidence_records:
+            if not isinstance(record, dict) or str(record.get("source_type") or "").lower() != "pdf_section":
+                continue
+            metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+            section_type = str(metadata.get("section_type") or record.get("section_type") or "").lower()
+            if section_type not in {"risk_factors", "risks"}:
+                continue
+            document_type = str(record.get("source_document_type") or "").lower()
+            authority = str(record.get("source_authority") or "").lower()
+            source_url = str(record.get("source_url") or "").lower()
+            if authority != "official" and document_type not in {"cninfo_announcement", "exchange_announcement", "hkex_announcement", "official_filing"} and not any(domain in source_url for domain in ("cninfo.com.cn", "sse.com.cn", "szse.cn", "hkexnews.hk")):
+                continue
+            text = str(record.get("content") or "").strip()
+            if len(text) < 30 or _is_pdf_gap_summary(text):
+                continue
+            eid = str(record.get("evidence_id") or record.get("sample_id") or "")
+            c.add_fact(
+                "official_risk_detail",
+                _clip_at_sentence_boundary(text, 700),
+                evidence_ids=[eid] if eid else [],
+                source_types=[SRC_ANNUAL_REPORT_PDF_CHUNK],
+            )
+            c.status = "supported"
+            c.add_quality_flag("risk_uses_official_pdf")
+            break
+
     # SEC 10-K Item 1A Risk Factors (US market)
     if c.status == "gap":
         sec_risk = _get_annual_report_text_by_sec_item(annual_report_sections, {"risk_factors"})
@@ -1173,7 +1210,7 @@ def _build_investment_conclusion(
         c.deterministic_text = (
             f"维持{direction}，结论基于财务质量、估值约束、同行可比性和风险边界。"
             f"{reasons}{risks}"
-            "正式交付前仍需确认所有核心数值来自 canonical metrics，并确保结论与引用证据一致。"
+            "结论仅基于本报告列示的已验证财务、估值与风险证据，不构成确定性收益承诺。"
         )
         c.status = "partial"
     else:
@@ -1471,7 +1508,7 @@ def _render_three_statement_table_markdown(tables: List[Dict[str, Any]], currenc
             continue
         seen.add(label)
         row_context = _row_currency_context(found, currency_context)
-        rows_out.append([label, format_amount_for_context(value, row_context), period, source])
+        rows_out.append([label, _format_statement_amount(value, found, row_context), period, source])
     if len(rows_out) < 3:
         return ""
     lines = [
@@ -1654,7 +1691,7 @@ def _currency_context(state: Dict[str, Any], analysis_artifacts: Dict[str, Any])
 
 
 def _row_currency_context(row: Dict[str, Any], fallback: CurrencyContext) -> CurrencyContext:
-    currency = str(row.get("currency") or row.get("unit") or "")
+    currency = str(row.get("currency") or row.get("unit") or "").split("_", 1)[0]
     if currency.upper() not in {"USD", "CNY", "HKD"}:
         return fallback
     return build_currency_context(
@@ -1664,13 +1701,33 @@ def _row_currency_context(row: Dict[str, Any], fallback: CurrencyContext) -> Cur
     )
 
 
+def _format_statement_amount(value: float, row: Dict[str, Any], context: CurrencyContext) -> str:
+    """Convert unit/million/billion statement rows to base currency before display."""
+
+    unit = str(row.get("unit") or "").lower()
+    scale = str(row.get("scale") or "").lower()
+    multiplier = 1.0
+    if unit.endswith("_trillion") or scale == "trillion":
+        multiplier = 1_000_000_000_000.0
+    elif unit.endswith("_billion") or scale == "billion":
+        multiplier = 1_000_000_000.0
+    elif unit.endswith("_million") or scale == "million":
+        multiplier = 1_000_000.0
+    elif unit.endswith("_thousand") or scale == "thousand":
+        multiplier = 1_000.0
+    return format_amount_for_context(float(value) * multiplier, context)
+
+
 def _format_billion_value(value: Any, context: CurrencyContext) -> str:
     number = _safe_number(value)
     if number is None:
         return ""
     currency = context.display_currency
-    names = {"USD": "十亿美元", "HKD": "十亿港元", "CNY": "十亿元人民币"}
-    return f"{number:.2f} {names.get(currency, f'十亿{currency}')}"
+    if currency == "CNY":
+        return f"{number * 10:.2f} 亿元人民币"
+    if currency == "HKD":
+        return f"{number * 10:.2f} 亿港元"
+    return f"{number:.2f} {'十亿美元' if currency == 'USD' else f'十亿{currency}'}"
 
 
 def _normalize_sensitivity_rows(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1859,7 +1916,8 @@ def _get_approved_peer_symbols(
 ) -> Set[str]:
     approved: Set[str] = set()
     peer_data = _safe_dict(analysis_artifacts, "peer_analysis")
-    for source in [peer_data, analysis_artifacts, blackboard]:
+    peer_context = _safe_dict(analysis_artifacts, "peer_context")
+    for source in [peer_data, peer_context, analysis_artifacts, blackboard]:
         if not isinstance(source, dict):
             continue
         for key in ["approved_peer_symbols", "peer_symbols"]:
@@ -1869,6 +1927,11 @@ def _get_approved_peer_symbols(
                     sym = str(v or "").strip().upper()
                     if sym:
                         approved.add(sym)
+        for row in source.get("peer_rows", []) if isinstance(source.get("peer_rows"), list) else []:
+            if isinstance(row, dict):
+                sym = str(row.get("symbol") or row.get("ticker") or "").strip().upper()
+                if sym and not bool(row.get("is_target")):
+                    approved.add(sym)
     return approved
 
 
@@ -1907,10 +1970,12 @@ def _render_peer_table_markdown(
     return "\n".join(lines)
 
 
-def _render_sensitivity_text(rows: List[Any]) -> str:
+def _render_sensitivity_text(rows: List[Any], currency: str = "") -> str:
     if not rows:
         return ""
-    parts = ["估值敏感性分析："]
+    currency_labels = {"CNY": "十亿元人民币", "HKD": "十亿港元", "USD": "十亿美元"}
+    value_unit = currency_labels.get(str(currency or "").upper(), "十亿计价货币")
+    parts = [f"估值敏感性分析（权益价值单位：{value_unit}；目标价单位：每股计价货币）："]
     for row in rows[:5]:
         if isinstance(row, dict):
             label = str(row.get("label") or row.get("scenario") or row.get("variable") or "")

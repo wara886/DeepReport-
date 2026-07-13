@@ -122,6 +122,189 @@ def test_quality_evaluator_blocks_official_evidence_identity_pollution(tmp_path)
     assert any(issue["category"] == "evidence_identity_pollution" for issue in report["issues"])
 
 
+def test_quality_evaluator_accepts_target_bound_official_pdf_section(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="600519.SS",
+        period="FY2024",
+        report_md="""
+# 600519.SS FY2024 公司研报
+
+## 执行摘要
+贵州茅台年度经营与财务情况已进入证据链。
+## 业务概览
+公司主营高端白酒生产与销售，品牌和渠道构成核心经营基础。
+## 三表摘要
+年度收入、利润、资产负债与现金流均按统一期间整理。
+## 财务分析
+收入、盈利能力和现金流质量需要结合年度披露判断。
+## 同行对比
+同行比较限定在同市场同业务公司，并统一财年和币种口径。
+## 估值观察
+估值结合盈利、现金流和市场价格观察，不使用无依据目标价。
+## 估值敏感性
+盈利增速和估值倍数变化会影响估值区间。
+## 风险评估
+需求、渠道库存、价格体系和行业竞争构成主要风险。
+## 投资结论
+基于盈利质量、估值约束和风险边界，维持中性观察。
+""",
+        evidence=[
+            {
+                "evidence_id": "pdf_section_directory",
+                "source_type": "pdf_section",
+                "source_document_type": "cninfo_announcement",
+                "source_authority": "official",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "title": "PDF section: ownership_governance",
+                "content": "第四节 公司治理 第七节 股份变动及股东情况 第十节 财务报告",
+                "source_url": "https://static.cninfo.com.cn/annual-report.pdf",
+                "metadata": {"expected_symbol": "600519.SS", "evidence_role": "target"},
+            }
+        ],
+        claims=[],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "evidence_identity_pollution" for issue in report["issues"])
+
+
+def test_quality_evaluator_accepts_pdf_section_with_identity_matched_parent(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="600519.SS",
+        period="FY2024",
+        report_md="## 执行摘要\n贵州茅台年度报告。\n## 风险评估\n需求和渠道风险需要关注。\n## 投资结论\n维持中性观察。",
+        evidence=[
+            {
+                "evidence_id": "cninfo_parent",
+                "source_type": "cninfo_announcement",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "title": "贵州茅台2024年年度报告",
+                "content": "CNINFO official announcement for 贵州茅台 (600519): 年度经营和财务披露。",
+                "source_url": "https://static.cninfo.com.cn/moutai.pdf",
+            },
+            {
+                "evidence_id": "pdf_section_risk",
+                "source_type": "pdf_section",
+                "symbol": "600519.SS",
+                "title": "PDF section: risk_factors",
+                "content": "The group is exposed to demand and channel risks.",
+                "source_url": "https://static.cninfo.com.cn/moutai.pdf",
+                "metadata": {"source_evidence_id": "cninfo_parent"},
+            },
+        ],
+        claims=[],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "evidence_identity_pollution" for issue in report["issues"])
+
+
+def test_quality_evaluator_accepts_recursive_pdf_lineage_with_official_terminal(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="600519.SS",
+        period="FY2024",
+        report_md="## 执行摘要\n贵州茅台年度报告。\n## 风险评估\n需求风险。\n## 投资结论\n维持中性。",
+        evidence=[
+            {
+                "evidence_id": "official_parent",
+                "source_type": "cninfo_announcement",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "title": "贵州茅台2024年年度报告",
+                "source_url": "https://static.cninfo.com.cn/moutai.pdf",
+            },
+            {
+                "evidence_id": "pdf_parent",
+                "source_type": "pdf_section",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "metadata": {"source_evidence_id": "official_parent"},
+            },
+            {
+                "evidence_id": "pdf_child",
+                "source_type": "pdf_section",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "content": "Demand and channel risk discussion.",
+                "metadata": {"source_evidence_id": "pdf_parent"},
+            },
+        ],
+        claims=[],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "evidence_identity_pollution" for issue in report["issues"])
+
+
+def test_quality_evaluator_blocks_pdf_lineage_cycle(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="600519.SS",
+        period="FY2024",
+        report_md="## 执行摘要\n贵州茅台年度报告。\n## 风险评估\n需求风险。\n## 投资结论\n维持中性。",
+        evidence=[
+            {
+                "evidence_id": "pdf_a",
+                "source_type": "pdf_section",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "content": "Generic risk text.",
+                "metadata": {"source_evidence_id": "pdf_b"},
+            },
+            {
+                "evidence_id": "pdf_b",
+                "source_type": "pdf_section",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "content": "Generic governance text.",
+                "metadata": {"source_evidence_id": "pdf_a"},
+            },
+        ],
+        claims=[],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert any(issue["category"] == "evidence_identity_pollution" for issue in report["issues"])
+
+
+def test_quality_evaluator_allows_approved_peer_only_in_peer_section(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="600519.SS",
+        period="FY2024",
+        report_md="## 执行摘要\n贵州茅台年度报告。\n## 同行对比\n002304.SZ 为批准同行。\n## 风险评估\n需求风险。\n## 投资结论\n维持中性。",
+    )
+    outputs = run_dir / "company" / "outputs"
+    reports = run_dir / "company" / "reports"
+    (outputs / "analysis_artifacts.json").write_text(
+        json.dumps({"peer_analysis": {"approved_peer_symbols": ["002304.SZ"]}}, ensure_ascii=False), encoding="utf-8"
+    )
+    (reports / "report.html").write_text(
+        '<html><body><h2 id="同行对比"><i></i> 同行对比</h2><p>002304.SZ 为批准同行。</p><h2>风险评估</h2><p>需求风险。</p></body></html>',
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "cross_report_symbol_pollution" for issue in report["issues"])
+
+    (reports / "report.html").write_text(
+        '<html><body><h2>执行摘要</h2><p>002304.SZ 被错误写入摘要。</p><h2 id="同行对比">同行对比</h2><p>002304.SZ 为批准同行。</p></body></html>',
+        encoding="utf-8",
+    )
+    report = evaluate_report_quality(run_dir)
+    assert any(issue["category"] == "cross_report_symbol_pollution" for issue in report["issues"])
+
+
 def test_quality_evaluator_blocks_fy_source_end_date_mismatch(tmp_path):
     run_dir = _write_run(
         tmp_path,

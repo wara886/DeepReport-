@@ -17,7 +17,39 @@ from src.search.search_manager import (
     serper_search,
     tavily_search,
     yahoo_finance_search,
+    _hk_statement_currency,
 )
+
+
+def test_hk_financial_statement_currency_uses_issuer_override():
+    assert _hk_statement_currency("0700.HK", {"currency": "HKD"}) == "CNY"
+
+
+def test_search_manager_keeps_three_hk_financial_tables_with_shared_url():
+    manager = SearchManager()
+
+    def hk_tables(query, topk=5, **kwargs):
+        return {
+            "hits": [
+                {
+                    "evidence_id": f"hk_{table_type}",
+                    "title": f"0700.HK {table_type}",
+                    "content": f"0700.HK {table_type}",
+                    "source_url": "https://finance.yahoo.com/quote/0700.HK",
+                    "source_type": "hk_financials",
+                    "symbol": "0700.HK",
+                    "score": 7.0,
+                    "metadata": {"table_type": table_type},
+                }
+                for table_type in ("income", "balance", "cashflow")
+            ]
+        }
+
+    manager.register_engine("hk_financials", hk_tables)
+    payload = manager.search("Tencent FY2024", topk=5, engines=["hk_financials"], symbol="0700.HK")
+
+    assert len(payload["hits"]) == 3
+    assert {hit["raw"]["metadata"]["table_type"] for hit in payload["hits"]} == {"income", "balance", "cashflow"}
 
 
 def _engine_a(query, topk=5, **kwargs):

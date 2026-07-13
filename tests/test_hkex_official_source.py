@@ -20,7 +20,7 @@ class FakeResponse:
 def test_hkex_direct_source_filters_symbol_period_and_pdf(monkeypatch):
     directory = json.dumps([{"c": "700", "i": "123", "n": "Tencent"}]).encode()
     rows = [
-        {"STOCK_CODE": "00700", "TITLE": "ANNUAL REPORT 2025", "FILE_TYPE": "PDF", "FILE_LINK": "/tencent.pdf", "DATE_TIME": "2026-04-01"},
+        {"STOCK_CODE": "00700", "TITLE": "ANNUAL REPORT 2025", "FILE_TYPE": "PDF", "FILE_LINK": "/tencent.pdf", "DATE_TIME": "01/04/2026 17:02"},
         {"STOCK_CODE": "00020", "TITLE": "ANNUAL REPORT 2025", "FILE_TYPE": "PDF", "FILE_LINK": "/wrong.pdf", "DATE_TIME": "2026-04-01"},
         {"STOCK_CODE": "00700", "TITLE": "ANNUAL REPORT 2024", "FILE_TYPE": "PDF", "FILE_LINK": "/old.pdf", "DATE_TIME": "2025-04-01"},
     ]
@@ -33,4 +33,5 @@ def test_hkex_direct_source_filters_symbol_period_and_pdf(monkeypatch):
     assert result["meta"]["mode"] == "hkex_official"
     assert result["meta"]["result_count"] == 1
     assert result["hits"][0]["source_url"] == "https://www1.hkexnews.hk/tencent.pdf"
+    assert result["hits"][0]["publish_time"] == "2026-04-01"
     assert result["hits"][0]["source_authority"] == "official"

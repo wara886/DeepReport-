@@ -121,4 +121,7 @@ def _release_date(value: Any) -> str:
     match = re.search(r"(20\d{2})[-/](\d{1,2})[-/](\d{1,2})", text)
     if match:
         return f"{match.group(1)}-{int(match.group(2)):02d}-{int(match.group(3)):02d}"
+    match = re.search(r"(\d{1,2})/(\d{1,2})/(20\d{2})", text)
+    if match:
+        return f"{match.group(3)}-{int(match.group(2)):02d}-{int(match.group(1)):02d}"
     return datetime.now(timezone.utc).date().isoformat()

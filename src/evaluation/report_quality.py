@@ -286,6 +286,7 @@ def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
         "report_md": _read_text(paths.reports_dir / "report.md"),
         "report_html": _read_text(paths.reports_dir / "report.html"),
         "report_json": _read_json(paths.reports_dir / "report.json", {}),
+        "analysis_artifacts": _read_json(paths.outputs_dir / "analysis_artifacts.json", {}),
         "section_dossiers": _read_json(paths.outputs_dir / "section_dossiers.json", {}),
         # Contract-first artifacts (optional — only present in contract-mode runs)
         "report_section_contracts": _read_json(paths.outputs_dir / "report_section_contracts.json", {}),
@@ -967,17 +968,52 @@ def _check_cross_report_symbol_pollution(artifacts: Dict[str, Any], issues: List
     if not report_html:
         return
     expected_symbol = _expected_symbol(artifacts)
+    approved_peers = _approved_peer_symbols(artifacts)
     approved = {expected_symbol} if expected_symbol else set()
-    approved.update(_approved_peer_symbols(artifacts))
     if expected_symbol and expected_symbol.startswith("0"):
         approved.add(expected_symbol.replace(".HK", ""))
-    matches = set(re.findall(r"\b\d{4}\.HK\b|\b\d{6}\.(?:SS|SZ)\b", report_html))
-    matches.update(re.findall(r"\(([A-Z]{1,6})\)", report_html))
+    report_body_html = _report_main_html(report_html)
+    peer_html, non_peer_html = _split_peer_section_html(report_body_html)
+    matches = _ticker_like_symbols(report_body_html)
+    peer_matches = _ticker_like_symbols(peer_html)
+    non_peer_matches = _ticker_like_symbols(non_peer_html)
     currency_tokens = {"USD", "CNY", "RMB", "HKD", "JPY", "EUR", "GBP", "AUD", "CAD", "CHF"}
     cleaned = {str(match).strip().upper() for match in matches if str(match).strip() and str(match).strip().upper() not in currency_tokens}
-    unexpected = sorted(symbol for symbol in cleaned if symbol and symbol not in approved)
+    allowed_in_peer = approved | approved_peers
+    unexpected = sorted(
+        symbol for symbol in cleaned
+        if symbol and (
+            symbol not in allowed_in_peer
+            or (symbol in approved_peers and symbol in non_peer_matches)
+            or (symbol in approved_peers and symbol not in peer_matches)
+        )
+    )
     if unexpected:
         _issue(issues, "blocker", "cross_report_symbol_pollution", f"unexpected ticker-like symbols in final html: {unexpected[:8]}")
+
+
+def _ticker_like_symbols(text: str) -> set[str]:
+    matches = set(re.findall(r"\b\d{4}\.HK\b|\b\d{6}\.(?:SS|SZ)\b", str(text or "")))
+    matches.update(re.findall(r"\(([A-Z]{1,6})\)", str(text or "")))
+    return {str(match).strip().upper() for match in matches if str(match).strip()}
+
+
+def _report_main_html(report_html: str) -> str:
+    match = re.search(r"<main\b[^>]*>(.*?)</main>", str(report_html or ""), flags=re.I | re.S)
+    return match.group(1) if match else str(report_html or "")
+
+
+def _split_peer_section_html(report_html: str) -> tuple[str, str]:
+    pattern = re.compile(
+        r"(<h2\b[^>]*>(?:(?!</h2>).)*(?:同行对比|Peer Comparison|Peer Compare)(?:(?!</h2>).)*</h2>)(.*?)(?=<h2\b|</body>|</html>|\Z)",
+        flags=re.I | re.S,
+    )
+    matches = list(pattern.finditer(str(report_html or "")))
+    peer_html = "\n".join(match.group(0) for match in matches)
+    non_peer_html = str(report_html or "")
+    for match in reversed(matches):
+        non_peer_html = non_peer_html[: match.start()] + non_peer_html[match.end() :]
+    return peer_html, non_peer_html
 
 
 def _check_evidence_identity_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
@@ -988,7 +1024,13 @@ def _check_evidence_identity_policy(artifacts: Dict[str, Any], issues: List[Dict
     if not expected_terms:
         return
     polluted: list[str] = []
-    for record in artifacts.get("evidence", []):
+    evidence_records = [record for record in artifacts.get("evidence", []) if isinstance(record, dict)]
+    evidence_by_id = {
+        str(record.get("evidence_id") or record.get("sample_id") or ""): record
+        for record in evidence_records
+        if str(record.get("evidence_id") or record.get("sample_id") or "")
+    }
+    for record in evidence_records:
         if not isinstance(record, dict):
             continue
         evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
@@ -1004,7 +1046,16 @@ def _check_evidence_identity_policy(artifacts: Dict[str, Any], issues: List[Dict
         ).lower()
         if not text.strip():
             continue
-        if any(term in text for term in expected_terms):
+        if source_type == "pdf_section":
+            if _pdf_lineage_matches_identity(
+                record,
+                evidence_by_id,
+                expected_symbol=expected_symbol,
+                expected_period=_expected_period(artifacts),
+                expected_terms=expected_terms,
+            ):
+                continue
+        elif any(term in text for term in expected_terms):
             continue
         polluted.append(evidence_id or str(record.get("title") or source_type))
     if polluted:
@@ -1014,6 +1065,65 @@ def _check_evidence_identity_policy(artifacts: Dict[str, Any], issues: List[Dict
             "evidence_identity_pollution",
             f"official/pdf evidence does not mention target company {expected_symbol}: {polluted[:5]}",
         )
+
+
+def _pdf_lineage_matches_identity(
+    record: Dict[str, Any],
+    evidence_by_id: Dict[str, Dict[str, Any]],
+    *,
+    expected_symbol: str,
+    expected_period: str,
+    expected_terms: set[str],
+    max_depth: int = 8,
+) -> bool:
+    if str(record.get("source_type") or "").lower() != "pdf_section":
+        return False
+    current = record
+    visited: set[str] = set()
+    for _depth in range(max_depth + 1):
+        current_id = str(current.get("evidence_id") or current.get("sample_id") or "")
+        if current_id:
+            if current_id in visited:
+                return False
+            visited.add(current_id)
+        metadata = current.get("metadata") if isinstance(current.get("metadata"), dict) else {}
+        parent_id = str(metadata.get("source_evidence_id") or "")
+        if not parent_id or parent_id == current_id:
+            return _official_identity_terminal_matches(
+                current,
+                expected_symbol=expected_symbol,
+                expected_period=expected_period,
+                expected_terms=expected_terms,
+            )
+        parent = evidence_by_id.get(parent_id)
+        if not isinstance(parent, dict):
+            return False
+        current = parent
+    return False
+
+
+def _official_identity_terminal_matches(
+    record: Dict[str, Any], *, expected_symbol: str, expected_period: str, expected_terms: set[str]
+) -> bool:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    declared_symbol = str(record.get("symbol") or metadata.get("expected_symbol") or "").strip().upper()
+    declared_period = str(record.get("period") or metadata.get("target_period") or metadata.get("period") or "").strip().upper()
+    if declared_symbol != expected_symbol.upper():
+        return False
+    if expected_period and declared_period != expected_period.upper():
+        return False
+    source_type = str(record.get("source_type") or "").strip().lower()
+    document_type = str(record.get("source_document_type") or "").strip().lower()
+    authority = str(record.get("source_authority") or "").strip().lower()
+    url = str(record.get("source_url") or "").strip().lower()
+    official_types = {"cninfo_announcement", "exchange_announcement", "hkex_announcement", "official_filing"}
+    official_domains = ("cninfo.com.cn", "sse.com.cn", "szse.cn", "hkexnews.hk")
+    if source_type not in official_types and document_type not in official_types and authority != "official" and not any(domain in url for domain in official_domains):
+        return False
+    text = " ".join([str(record.get("title") or ""), str(record.get("content") or ""), url]).lower()
+    role = str(metadata.get("evidence_role") or "").strip().lower()
+    expected = str(metadata.get("expected_symbol") or "").strip().upper()
+    return any(term in text for term in expected_terms) or (role == "target" and expected == expected_symbol.upper())
 
 
 def _identity_terms_for_symbol(symbol: str, artifacts: Dict[str, Any]) -> set[str]:
@@ -1035,9 +1145,16 @@ def _identity_terms_for_symbol(symbol: str, artifacts: Dict[str, Any]) -> set[st
         for token in re.split(r"[^a-z0-9]+", name):
             if len(token) >= 5:
                 terms.add(token)
-    # Known bilingual aliases used by local real-data fixtures and HK reports.
-    if symbol_text == "0700.hk":
-        terms.update({"tencent", "腾讯"})
+    try:
+        from src.app.company_aliases import RAW_COMPANY_ENTRIES
+
+        for entry in RAW_COMPANY_ENTRIES:
+            if str(entry.get("symbol") or "").strip().lower() != symbol_text:
+                continue
+            terms.add(str(entry.get("company_name") or "").strip().lower())
+            terms.update(str(alias or "").strip().lower() for alias in entry.get("aliases", []))
+    except (ImportError, TypeError):
+        pass
     return {term for term in terms if len(term) >= 3}
 
 
@@ -1343,8 +1460,28 @@ def _expected_symbol(artifacts: Dict[str, Any]) -> str:
     ).strip().upper()
 
 
+def _expected_period(artifacts: Dict[str, Any]) -> str:
+    summary = artifacts.get("summary", {}) if isinstance(artifacts.get("summary"), dict) else {}
+    request_state = artifacts.get("request_state", {}) if isinstance(artifacts.get("request_state"), dict) else {}
+    report_json = artifacts.get("report_json", {}) if isinstance(artifacts.get("report_json"), dict) else {}
+    return str(summary.get("period") or request_state.get("period") or report_json.get("period") or "").strip().upper()
+
+
 def _approved_peer_symbols(artifacts: Dict[str, Any]) -> set[str]:
     approved: set[str] = set()
+    analysis = artifacts.get("analysis_artifacts", {}) if isinstance(artifacts.get("analysis_artifacts"), dict) else {}
+    peer_analysis = analysis.get("peer_analysis", {}) if isinstance(analysis.get("peer_analysis"), dict) else {}
+    peer_context = analysis.get("peer_context", {}) if isinstance(analysis.get("peer_context"), dict) else {}
+    for source in (peer_analysis, peer_context, analysis):
+        for value in source.get("approved_peer_symbols", []) if isinstance(source.get("approved_peer_symbols"), list) else []:
+            symbol = str(value or "").strip().upper()
+            if symbol:
+                approved.add(symbol)
+        for row in source.get("peer_rows", []) if isinstance(source.get("peer_rows"), list) else []:
+            if isinstance(row, dict) and not bool(row.get("is_target")):
+                symbol = str(row.get("symbol") or row.get("ticker") or "").strip().upper()
+                if symbol:
+                    approved.add(symbol)
     section_dossiers = artifacts.get("section_dossiers", {}) if isinstance(artifacts.get("section_dossiers"), dict) else {}
     peer = section_dossiers.get("peer_compare", {}) if isinstance(section_dossiers.get("peer_compare"), dict) else {}
     for table in peer.get("tables", []) if isinstance(peer.get("tables"), list) else []:

@@ -268,10 +268,57 @@ def _check_pdf_page_support(
             record = evidence_by_id.get(str(evidence_id), {})
             if str(record.get("source_type") or "").lower() not in {"pdf_section", "pdf_statement_table"}:
                 continue
-            metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
-            page = metadata.get("page") or metadata.get("page_number") or record.get("page") or record.get("page_number")
-            if page in (None, ""):
+            if not _has_pdf_page_anchor(str(evidence_id), evidence_by_id):
                 errors.append(f"Claim {claim.claim_id} relies on official PDF evidence without a page anchor: {evidence_id}")
+
+
+def _has_pdf_page_anchor(
+    evidence_id: str,
+    evidence_by_id: Dict[str, Dict[str, Any]],
+    *,
+    max_depth: int = 8,
+) -> bool:
+    """Resolve a page anchor through explicit lineage and canonical chunk parents."""
+
+    current_id = str(evidence_id or "")
+    visited: set[str] = set()
+    for _ in range(max_depth):
+        if not current_id or current_id in visited:
+            return False
+        visited.add(current_id)
+        record = evidence_by_id.get(current_id)
+        if not isinstance(record, dict):
+            return False
+        metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+        page = metadata.get("page") or metadata.get("page_number") or record.get("page") or record.get("page_number") or record.get("page_no")
+        if page not in (None, ""):
+            return True
+        parent_candidates = [
+            record.get("source_evidence_id"),
+            metadata.get("source_evidence_id"),
+            record.get("parent_evidence_id"),
+            metadata.get("parent_evidence_id"),
+        ]
+        canonical_parent = re.split(
+            r"__(?:paragraph|section|page|table)_\d+_chunk_[0-9a-f]+",
+            current_id,
+            maxsplit=1,
+            flags=re.I,
+        )[0]
+        if canonical_parent != current_id:
+            parent_candidates.append(canonical_parent)
+        current_id = next(
+            (
+                str(candidate)
+                for candidate in parent_candidates
+                if str(candidate or "")
+                and str(candidate) != current_id
+                and str(candidate) not in visited
+                and str(candidate) in evidence_by_id
+            ),
+            "",
+        )
+    return False
 
 
 def _requires_pdf_page_support(claim: ClaimItem) -> bool:
@@ -492,12 +539,15 @@ def _ticker_mentions(text: str) -> set[str]:
     stop_words = {
         "API",
         "AI",
+        "ANNUAL",
         "ARPU",
         "B",
         "BEA",
         "BLS",
         "CAGR",
+        "CICC",
         "CPI",
+        "CNY",
         "CPU",
         "CUDA",
         "DCF",
@@ -517,6 +567,9 @@ def _ticker_mentions(text: str) -> set[str]:
         "GDP",
         "GPU",
         "HKD",
+        "HK",
+        "HKEX",
+        "HKG",
         "HTML",
         "ID",
         "IFRS",
@@ -535,8 +588,10 @@ def _ticker_mentions(text: str) -> set[str]:
         "PDF",
         "PE",
         "PS",
+        "PUBG",
         "Q",
         "REUTERS",
+        "REPORT",
         "RMB",
         "ROA",
         "ROE",
@@ -544,9 +599,11 @@ def _ticker_mentions(text: str) -> set[str]:
         "SH",
         "SS",
         "SZ",
+        "TC",
         "US",
         "USD",
         "UNRATE",
+        "VAS",
         "WSJ",
         "XBRL",
     }

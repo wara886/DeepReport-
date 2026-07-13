@@ -67,7 +67,8 @@ FORMAL_CRITICAL_CLAIM_TYPES = {
 
 def _allow_external_peer_discovery(symbol: str) -> bool:
     market = infer_market_from_symbol(symbol)
-    return str(market.get("market") or "") == "us" if isinstance(market, dict) else str(market) == "us"
+    market_name = str(market.get("market") or "") if isinstance(market, dict) else str(market)
+    return market_name in {"us", "cn_a"}
 
 
 class DeepAnalyzeAgent(BaseAgent):
@@ -1037,19 +1038,38 @@ def build_role_outputs(
                 else "Financial analysis must disclose missing statement coverage and avoid full three-statement conclusions."
             ),
         ),
-        "peer_analysis": _role_output(
-            status="complete" if peer_count > 0 else "missing",
-            confidence=0.78 if peer_count > 0 else 0.3,
-            source="peer_comparison_tool",
-            evidence_ids=peer_evidence[:8],
-            findings=peer_findings,
-            missing_inputs=[] if peer_count > 0 else ["peer_universe", "peer_financial_metrics"],
-            impact_on_report=(
-                "同行对比可基于可比公司数据判断相对市场地位。"
-                if peer_count > 0
-                else "同行对比需在数据约束范围内进行定性分析。"
+        "peer_analysis": {
+            **_role_output(
+                status="complete" if peer_count > 0 else "missing",
+                confidence=0.78 if peer_count > 0 else 0.3,
+                source="peer_comparison_tool",
+                evidence_ids=peer_evidence[:8],
+                findings=peer_findings,
+                missing_inputs=[] if peer_count > 0 else ["peer_universe", "peer_financial_metrics"],
+                impact_on_report=(
+                    "同行对比可基于可比公司数据判断相对市场地位。"
+                    if peer_count > 0
+                    else "同行对比需在数据约束范围内进行定性分析。"
+                ),
             ),
-        ),
+            "approved_peer_symbols": [
+                str(row.get("symbol") or row.get("ticker") or "").strip().upper()
+                for row in peer_context.get("peer_rows", [])
+                if isinstance(row, dict)
+                and str(row.get("symbol") or row.get("ticker") or "").strip()
+                and str(row.get("symbol") or row.get("ticker") or "").strip().upper() != str(symbol).strip().upper()
+            ],
+            "peer_rows": [
+                row for row in peer_context.get("peer_rows", [])
+                if isinstance(row, dict)
+                and str(row.get("symbol") or row.get("ticker") or "").strip().upper() != str(symbol).strip().upper()
+            ],
+            "rows": [
+                row for row in peer_context.get("peer_rows", [])
+                if isinstance(row, dict)
+                and str(row.get("symbol") or row.get("ticker") or "").strip().upper() != str(symbol).strip().upper()
+            ],
+        },
         "valuation_analysis": _role_output(
             status="complete" if valuation_available else "partial" if (market_evidence or financial_evidence) else "missing",
             confidence=0.8 if valuation_available else 0.5 if (market_evidence or financial_evidence) else 0.25,

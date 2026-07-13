@@ -24,6 +24,7 @@ from src.data.hkex_official_source import fetch_hkex_official_announcements
 from src.data.baostock_source import fetch_baostock_financials
 from src.data.tushare_source import fetch_tushare_financials
 from src.data.source_quality import apply_source_quality
+from src.market.currency_rules import infer_statement_currency
 from src.data.yahoo_finance import yahoo_financials_to_evidence, yahoo_snapshot_to_evidence
 
 logger = getLogger(__name__)
@@ -32,6 +33,7 @@ from src.retrieval.retrieve import retrieve_evidence_with_mode
 from src.report.fact_extractors.cleaning_pipeline import clean_evidence
 from src.utils.config import load_config
 from src.utils.env import load_env_files, resolve_config_value
+from src.utils.money import UNKNOWN_CURRENCY
 
 
 SearchHandler = Callable[..., Dict[str, Any]]
@@ -493,7 +495,7 @@ def hk_financials_search(
                 "rows": rows_list,
                 "financials_raw": tables,
                 "table_id": f"{resolved}_{period or 'latest'}_hk_financials_{table_type}_{digest}",
-                "currency": _hk_currency(info),
+                "currency": _hk_statement_currency(resolved, info),
                 "unit": "raw",
             },
         }
@@ -511,6 +513,15 @@ def _hk_currency(info: Dict[str, Any]) -> str:
     """从 yfinance info 推断港股财报货币（HKD 或 CNY）。"""
     currency = str(info.get("currency") or "HKD").upper()
     return "CNY" if currency in ("CNY", "RMB") else currency
+
+
+def _hk_statement_currency(symbol: str, info: Dict[str, Any]) -> str:
+    """Use issuer rules before Yahoo's trading-currency metadata for HK filings."""
+
+    inferred = infer_statement_currency(symbol=symbol, market="hk")
+    if inferred.statement_currency and inferred.statement_currency != UNKNOWN_CURRENCY:
+        return inferred.statement_currency
+    return _hk_currency(info)
 
 
 def _yf_df_to_rows(df: Any, period: str) -> List[Dict[str, Any]]:
@@ -1932,7 +1943,7 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
     deduped: Dict[str, SearchResult] = {}
     for hit in hits:
         raw = hit.raw if isinstance(hit.raw, dict) else {}
-        if str(raw.get("source_type") or "") == "eastmoney_financials":
+        if str(raw.get("source_type") or "") in {"eastmoney_financials", "hk_financials"}:
             key = str(hit.result_id)
         else:
             key = str(raw.get("chunk_id") or hit.url or hit.result_id or f"{hit.engine}:{hit.title}:{hit.snippet[:80]}")
@@ -1943,7 +1954,7 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
     selected: List[SearchResult] = []
     source_counts: Dict[str, int] = {}
     default_diversity_cap = 4
-    source_diversity_caps = {"eastmoney_financials": 3}
+    source_diversity_caps = {"eastmoney_financials": 3, "hk_financials": 3}
 
     # Valuation depends on Yahoo's supplementary financial record, while the
     # snapshot and filing engines often have higher authority scores. Reserve

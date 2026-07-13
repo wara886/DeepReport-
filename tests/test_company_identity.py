@@ -13,6 +13,8 @@ def test_resolve_a_share_identity_from_code():
     assert identity.exchange == "SSE"
     assert identity.is_listed is True
     assert "eastmoney_financials" in identity.data_source_plan["engines"]
+    assert "baostock_financials" in identity.data_source_plan["engines"]
+    assert "tushare_financials" in identity.data_source_plan["engines"]
     assert "cninfo_announcements" in identity.data_source_plan["primary_sources"]
 
 
@@ -22,7 +24,9 @@ def test_resolve_hk_identity_from_code():
     assert identity.canonical_symbol == "0700.HK"
     assert identity.market == "hk"
     assert identity.exchange == "HKEX"
+    assert "hk_financials" in identity.data_source_plan["engines"]
     assert "yahoo_finance" in identity.data_source_plan["engines"]
+    assert "serper" not in identity.data_source_plan["primary_sources"]
 
 
 def test_resolve_us_identity_from_ticker_pattern():
