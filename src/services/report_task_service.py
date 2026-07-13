@@ -67,6 +67,7 @@ from src.runtime.langgraph_report_runtime import (
 from src.runtime.run_manifest import commit_run_artifacts, validate_run_manifest
 from src.services.artifact_importer import ArtifactImporter
 from src.services.datasource_service import DataSourceService
+from src.services.entity_service import EntityService
 from src.utils.config import load_config
 from src.utils.periods import latest_completed_period
 
@@ -977,7 +978,49 @@ class ReportTaskService:
             report_root=self.report_root,
         )
         importer.import_for_task(task_id)
+        self._materialize_task_memory(task_id)
         return self.get_task(task_id).get("artifacts", [])
+
+    def _materialize_task_memory(self, task_id: str) -> dict[str, Any]:
+        """Best-effort, idempotent entity/relation materialization after evidence import."""
+
+        try:
+            extracted = EntityService(session_factory=self.session).extract_from_task(task_id)
+            summary = {
+                "status": "ready" if extracted.get("evidence_count", 0) else "no_evidence",
+                "evidence_count": int(extracted.get("evidence_count") or 0),
+                "entity_count": int(extracted.get("entity_count") or 0),
+                "relation_count": int(extracted.get("relation_count") or 0),
+                "materialized_at": _dt(_utc_now()),
+            }
+        except Exception as exc:
+            summary = {
+                "status": "failed",
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+                "materialized_at": _dt(_utc_now()),
+            }
+
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            metadata = dict(task.metadata_json or {})
+            previous = metadata.get("auto_memory_materialization")
+            previous = previous if isinstance(previous, dict) else {}
+            metadata["auto_memory_materialization"] = summary
+            task.metadata_json = metadata
+            comparable_keys = ("status", "evidence_count", "entity_count", "relation_count", "error_type", "error_message")
+            if any(previous.get(key) != summary.get(key) for key in comparable_keys):
+                session.add(
+                    ReportTaskEvent(
+                        task_id=task_id,
+                        stage="memory_materialization",
+                        status="success" if summary["status"] in {"ready", "no_evidence"} else "failed",
+                        message="任务证据已自动沉淀为实体与关系" if summary["status"] == "ready" else "任务记忆自动沉淀完成",
+                        metadata_json=summary,
+                    )
+                )
+            session.commit()
+        return summary
 
     def run_quality_gate(self, task_id: str) -> dict[str, Any]:
         with self.session() as session:
@@ -2723,6 +2766,28 @@ def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun], tool_r
     llm_latency_ms = sum(int(item.latency_ms or 0) for item in llm_runs)
     tool_runs = tool_runs or []
     tool_latency_ms = sum(int(item.duration_ms or 0) for item in tool_runs)
+    latest_tool = tool_runs[0] if tool_runs else None
+    failed_tools = [item for item in tool_runs if item.status == "failed"]
+    latest_failed_tool = failed_tools[0] if failed_tools else None
+    retry_count = sum(max(0, int(item.attempt_count or 1) - 1) for item in tool_runs)
+    last_node = events[-1].get("node") if events and isinstance(events[-1], dict) else None
+    current_node = None if runtime.get("checkpoint_status") == "completed" else (last_node or task.current_stage)
+    runtime_failure = metadata.get("runtime_failure") if isinstance(metadata.get("runtime_failure"), dict) else {}
+    failure_root_cause = None
+    if latest_failed_tool is not None:
+        failure_root_cause = {
+            "type": latest_failed_tool.error_type or "tool_execution_failed",
+            "message": latest_failed_tool.error_message,
+            "tool_name": latest_failed_tool.tool_name,
+            "langgraph_node": latest_failed_tool.langgraph_node,
+        }
+    elif runtime_failure:
+        failure_root_cause = {
+            "type": runtime_failure.get("error_type") or "runtime_failed",
+            "message": runtime_failure.get("message"),
+            "tool_name": None,
+            "langgraph_node": current_node,
+        }
     elapsed_ms = None
     if task.started_at and task.finished_at:
         elapsed_ms = round((task.finished_at - task.started_at).total_seconds() * 1000, 3)
@@ -2734,7 +2799,8 @@ def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun], tool_r
             "task_id": task.task_id,
         },
         "checkpoint_status": runtime.get("checkpoint_status", "not_started"),
-        "last_node": events[-1].get("node") if events and isinstance(events[-1], dict) else None,
+        "last_node": last_node,
+        "current_node": current_node,
         "node_latency_ms": node_latency,
         "total_node_latency_ms": round(sum(float(value or 0.0) for value in node_latency.values()), 3),
         "task_elapsed_ms": elapsed_ms,
@@ -2752,6 +2818,9 @@ def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun], tool_r
             "run_count": len(tool_runs),
             "failed_run_count": sum(1 for item in tool_runs if item.status == "failed"),
             "latency_ms": tool_latency_ms,
+            "retry_count": retry_count,
+            "current_tool": serialize_tool_run(latest_tool) if latest_tool is not None else None,
+            "failure_root_cause": failure_root_cause,
             "by_agent": _tool_run_counts(tool_runs, key="agent_name"),
             "by_tool": _tool_run_counts(tool_runs, key="tool_name"),
         },

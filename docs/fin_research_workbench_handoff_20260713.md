@@ -1,13 +1,13 @@
 # 投研工作台阶段修复交接记录
 
-> 更新时间：2026-07-13 21:39（Asia/Shanghai）
+> 更新时间：2026-07-13 21:50（Asia/Shanghai）
 > 仓库：`/Users/yuan_dian/AI_project/DeepReport-fin-workbench-v2`  
 > 分支：`feat/fin-research-agent-workbench-v2`  
 > 用途：切换 Codex 对话后，从当前 checkpoint 和未提交工作区继续，不重新猜测或重复审计。
 
-## 0. 21:39 最新 checkpoint（优先于下方历史记录）
+## 0. 21:50 最新 checkpoint（优先于下方历史记录）
 
-阶段 2A 与 2B 已完成代码修复和真实任务验证。阶段 2 至阶段 7 均已完成并推送，当前应从阶段 8 继续，不要再从 2A 重新审计。
+阶段 2A 与 2B 已完成代码修复和真实任务验证。阶段 2 至阶段 7 均已完成并推送；阶段 8 已完成实现、聚焦测试和真实任务验收，待本次独立提交推送后进入阶段 9 最终统一验收。
 
 最新提交：
 
@@ -85,6 +85,30 @@ Tushare: configured=true, enabled=true, operational=false, evidence_count=0,
 
 阶段 7 聚焦 Web/workspace/task 测试 19 项通过。浏览器确认首页仅显示 6 个一级工作区，数据与文档二级入口可展开，研报任务、主张复核和导出中心可沿核心路径直接到达。
 
+### 阶段 8：人工复核、记忆和可观测性闭环已完成
+
+- 新增任务级“批量通过有证据支持的主张”，仅处理 `supported/verified/passed` 且存在 ClaimEvidence 的待审主张；每条 ReviewRecord 保存 before/after、审核人、理由和时间，任务事件保存审核数量与 Claim ID。
+- 正式导出包的 JSON 与 `review_records.csv` 已包含审核 before/after，形成可追溯交付审计。
+- 产物导入后自动、幂等地从任务正式证据沉淀实体和关系；结果或失败原因写入 `auto_memory_materialization` 与任务事件，不再依赖手工按钮。
+- ToolRun 根据 agent/tool trace 推导 planning/research/analyze/write_report/verify_report 等真实节点；运行页新增当前节点、最近工具、节点/工具耗时、累计重试与失败根因。
+- 修复历史非法 `evidence_items.metadata` 导致 SQLite `JSON_EXTRACT` 令所有任务分析 500 的问题；SQLite 使用 `json_valid + CASE` 安全读取，其他数据库保持原 JSON 查询。
+
+真实验收任务：
+
+```text
+task_id: release-stage9-final-nvda-fy2024-20260713t085909z
+symbol: NVDA
+period: FY2024
+batch approved supported claims: 25
+pending claims after review: 0
+checkpoint before resume: interrupted / [human_review]
+checkpoint after resume: completed / []
+delivery readiness: export_ready
+official export ready: true
+```
+
+正式包已生成于 `data/export_packages/release-stage9-final-nvda-fy2024-20260713t085909z`，包含 JSON、Markdown、HTML、PDF、DOCX、claims/evidence/facts/review CSV 和 manifest 共 10 个文件，均记录 SHA-256。浏览器确认真实任务详情、运行诊断和批量审核入口正常。阶段 8 扩大聚焦套件 33 项通过；未提前运行全量 pytest。
+
 ### 阶段 2A：A 股机器质量已通过
 
 最终验收任务：
@@ -155,14 +179,14 @@ canonical metrics 离线重建后，收入、净利润、经营现金流、自�
 
 ```text
 http://127.0.0.1:7863/workbench
-PID 79406
+exec session 62812（PID 以 uvicorn 实际输出为准）
 ```
 
 阶段 2 的提交步骤已经完成。下一步严格按阶段计划执行：
 
-1. 进入阶段 8“人工复核、记忆和可观测性闭环”。
-2. 先实现任务级批量 Claim 审核与审计记录，再补自动记忆沉淀和真实 LangGraph 节点可观测性。
-3. 选择一个机器通过任务完成 interrupt/resume 和正式导出，不提前运行全量 pytest。
+1. 完成阶段 8 独立 commit/push。
+2. 进入阶段 9“最终统一验收”，此阶段首次运行全量 pytest。
+3. 按 AAPL/NVDA/MSFT、600519.SS、0700.HK、最新季度、桌面/移动、migration、PDF/DOCX/manifest/SHA 顺序收口。
 
 下方第 1–10 节保留为修复前历史诊断；如与本节冲突，以本节为准。
 

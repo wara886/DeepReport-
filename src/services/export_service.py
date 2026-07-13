@@ -441,6 +441,8 @@ def _package_review_records(session: Session, claims: list[ReportClaim]) -> list
             "target_id": record.target_id,
             "decision": record.decision,
             "comment": record.comment,
+            "before_value": record.before_value,
+            "after_value": record.after_value,
             "reviewer": record.reviewer,
             "created_at": _dt(record.created_at),
         }
@@ -513,7 +515,10 @@ def _facts_csv(rows: list[dict[str, Any]]) -> str:
 
 
 def _review_csv(rows: list[dict[str, Any]]) -> str:
-    return _write_csv(rows, ["id", "target_type", "target_id", "decision", "comment", "reviewer", "created_at"])
+    return _write_csv(
+        rows,
+        ["id", "target_type", "target_id", "decision", "comment", "before_value", "after_value", "reviewer", "created_at"],
+    )
 
 
 def _write_csv(rows: list[dict[str, Any]], fieldnames: list[str]) -> str:

@@ -627,7 +627,7 @@ class ArtifactImporter:
                 ToolRun(
                     run_id=f"tool_{task_id}_{index:04d}",
                     task_id=task_id,
-                    langgraph_node="generation",
+                    langgraph_node=_infer_tool_langgraph_node(call),
                     agent_name=_string_or_none(call.get("caller_agent")),
                     tool_name=tool_name,
                     status="success" if success else "failed",
@@ -1268,6 +1268,25 @@ def _fact_evidence_id(record: dict[str, Any]) -> str | None:
 def _optional_upper(value: Any) -> str | None:
     text = _string_or_none(value)
     return text.upper() if text else None
+
+
+def _infer_tool_langgraph_node(call: dict[str, Any]) -> str:
+    explicit = _string_or_none(call.get("langgraph_node") or call.get("node") or call.get("phase"))
+    if explicit:
+        return explicit
+    agent = _string(call.get("caller_agent") or call.get("agent_name") or call.get("task_type")).lower()
+    tool = _string(call.get("tool_name")).lower()
+    if any(token in agent for token in ("planning", "planner")):
+        return "planning"
+    if any(token in agent for token in ("search", "research", "browser")) or call.get("source") == "search_engine":
+        return "research"
+    if any(token in agent for token in ("analy", "risk", "peer")) or any(token in tool for token in ("statement", "metric", "valuation", "ratio")):
+        return "analyze"
+    if any(token in agent for token in ("writer", "finalanswer", "final_answer")):
+        return "write_report"
+    if any(token in agent for token in ("verifier", "critic", "quality")):
+        return "verify_report"
+    return "write_report"
 
 
 def _fiscal_year_from_period(period: str) -> int | None:

@@ -479,10 +479,17 @@ def test_report_task_imports_agent_trace_as_llm_runs(tmp_path):
     assert retrieval["duration_ms"] == 125
     assert retrieval["attempt_count"] == 2
     assert retrieval["evidence_ids"] == ["ev_financials"]
+    assert retrieval["langgraph_node"] == "research"
     bls = next(item for item in detail.json()["tool_runs"] if item["tool_name"] == "bls")
     assert bls["status"] == "failed"
     assert bls["error_type"] == "tool_timeout"
+    assert bls["langgraph_node"] == "research"
     runtime_tools = detail.json()["runtime_observability"]["tools"]
     assert runtime_tools["run_count"] == 2
     assert runtime_tools["failed_run_count"] == 1
     assert runtime_tools["latency_ms"] == 1625
+    assert runtime_tools["retry_count"] == 1
+    assert runtime_tools["current_tool"]["tool_name"] in {"bls", "retrieve_local_evidence"}
+    assert runtime_tools["failure_root_cause"]["type"] == "tool_timeout"
+    assert detail.json()["metadata"]["auto_memory_materialization"]["status"] in {"ready", "no_evidence"}
+    assert any(event["stage"] == "memory_materialization" for event in detail.json()["events"])

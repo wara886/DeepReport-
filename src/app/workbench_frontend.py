@@ -568,8 +568,10 @@ def render_workbench_html() -> str:
                     <option value="pending">待处理</option>
                   </select>
                   <button class="btn" id="refreshClaims">刷新</button>
+                  <button class="btn primary" id="approveSupportedClaims">批量通过有证据支持的主张</button>
                 </div>
               </div>
+              <div id="claimBulkMessage"></div>
               <div class="table-scroll">
                 <table>
                   <thead>
@@ -3746,13 +3748,21 @@ def render_workbench_html() -> str:
       }
       const recent = runs.slice(0, 12);
       return `<div class="detail-section"><h3>工具调用轨迹</h3>
+        <div class="analysis-stats">
+          <div class="analysis-stat"><span class="label">当前节点</span><strong>${esc(stepText(runtime.current_node || runtime.last_node || "not_started"))}</strong><span class="score-note">断点：${esc(statusText(runtime.checkpoint_status || "not_started"))}</span></div>
+          <div class="analysis-stat"><span class="label">当前 / 最近工具</span><strong>${esc(productText(summary.current_tool?.tool_name || "未运行"))}</strong><span class="score-note">${esc(productText(summary.current_tool?.agent_name || "系统"))}</span></div>
+          <div class="analysis-stat"><span class="label">工具重试</span><strong>${esc(number(summary.retry_count || 0))}</strong><span class="score-note">累计额外尝试次数</span></div>
+          <div class="analysis-stat"><span class="label">节点总耗时</span><strong>${esc(number(runtime.total_node_latency_ms || 0))} ms</strong><span class="score-note">工具耗时 ${esc(number(summary.latency_ms || 0))} ms</span></div>
+        </div>
         <div class="diagnostic-meta">
           <span>调用：${esc(number(summary.run_count || runs.length))}</span>
           <span>失败：${esc(number(summary.failed_run_count || 0))}</span>
           <span>总耗时：${esc(number(summary.latency_ms || 0))} ms</span>
         </div>
+        ${summary.failure_root_cause ? `<div class="error">失败根因：${esc(productText(summary.failure_root_cause.type || "tool_execution_failed"))}${summary.failure_root_cause.tool_name ? ` · ${esc(productText(summary.failure_root_cause.tool_name))}` : ""}${summary.failure_root_cause.message ? `<br>${esc(productText(summary.failure_root_cause.message))}` : ""}</div>` : ""}
+        ${Object.keys(runtime.node_latency_ms || {}).length ? `<div class="reason-list">${Object.entries(runtime.node_latency_ms).map(([node, duration]) => `<span class="reason-pill">${esc(stepText(node))} ${esc(number(duration || 0))} ms</span>`).join("")}</div>` : ""}
         <div class="timeline">${recent.map((run) => `<div class="event">
-          <strong>${esc(productText(run.tool_name || "工具"))}</strong>
+          <strong>${esc(productText(run.tool_name || "工具"))}</strong> · <span class="label">${esc(stepText(run.langgraph_node || "write_report"))}</span>
           <span class="status ${esc(run.status || "unknown")}">${esc(statusText(run.status || "unknown"))}</span><br>
           <span class="label">${esc(productText(run.agent_name || "系统"))} · ${esc(number(run.duration_ms || 0))} ms · ${esc(number(run.attempt_count || 1))} 次尝试</span>
           ${run.error_message ? `<br><span class="error">${esc(productText(run.error_message))}</span>` : ""}
@@ -5397,6 +5407,42 @@ def render_workbench_html() -> str:
       }
     }
 
+    async function approveSupportedClaimsForTask() {
+      const taskId = $("claimTask").value.trim();
+      if (!taskId) {
+        $("claimBulkMessage").innerHTML = `<div class="error">请先输入研报任务编号，批量审核不会跨任务执行。</div>`;
+        return;
+      }
+      const button = $("approveSupportedClaims");
+      if (button.dataset.confirmTask !== taskId) {
+        button.dataset.confirmTask = taskId;
+        button.textContent = "再次点击确认批量通过";
+        setTimeout(() => {
+          if (button.dataset.confirmTask === taskId) {
+            delete button.dataset.confirmTask;
+            button.textContent = "批量通过有证据支持的主张";
+          }
+        }, 6000);
+        return;
+      }
+      delete button.dataset.confirmTask;
+      button.disabled = true;
+      try {
+        const result = await postJson(`/api/report-tasks/${encodeURIComponent(taskId)}/claims/approve-supported`, {
+          reviewer: "workbench_user",
+          comment: "工作台任务级批量复核：仅通过已获证据支持的待复核主张",
+        });
+        $("claimBulkMessage").innerHTML = `<div class="empty">已通过 ${esc(number(result.approved_count))} 条；仍待复核 ${esc(number(result.pending_count))} 条。每条决定均已写入审计记录。</div>`;
+        await loadClaims();
+        loadDashboard();
+      } catch (error) {
+        $("claimBulkMessage").innerHTML = `<div class="error">批量复核失败，请检查任务编号和服务状态。</div>`;
+      } finally {
+        button.disabled = false;
+        button.textContent = "批量通过有证据支持的主张";
+      }
+    }
+
     async function loadDocuments() {
       const params = new URLSearchParams();
       const q = $("documentQuery").value.trim();
@@ -5699,6 +5745,7 @@ def render_workbench_html() -> str:
     });
     $("documentStep").addEventListener("change", loadDocuments);
     $("refreshClaims").addEventListener("click", loadClaims);
+    $("approveSupportedClaims").addEventListener("click", approveSupportedClaimsForTask);
     ["claimQuery", "claimTask"].forEach((id) => {
       $(id).addEventListener("keydown", (event) => { if (event.key === "Enter") loadClaims(); });
     });

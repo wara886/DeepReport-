@@ -1130,6 +1130,20 @@ def create_fastapi_app(
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    @app.post("/api/report-tasks/{task_id}/claims/approve-supported")
+    async def approve_supported_task_claims(task_id: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(
+                content=_claim_review_service(app).approve_supported_for_task(
+                    task_id,
+                    reviewer=_optional_string(payload.get("reviewer")),
+                    comment=_optional_string(payload.get("comment")),
+                )
+            )
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
     @app.post("/api/claims/{claim_id}/reject")
     async def reject_claim(claim_id: int, incoming: Request) -> Response:
         payload = await _json_payload(incoming)

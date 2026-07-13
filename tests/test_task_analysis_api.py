@@ -1,6 +1,7 @@
 import json
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from src.app.api_fastapi import create_fastapi_app
 from src.db.models import (
@@ -157,6 +158,21 @@ def seed_analysis_package(service):
 def test_report_task_analysis_package_connects_quality_chain_and_risk(tmp_path):
     client, service = build_client(tmp_path)
     seed_analysis_package(service)
+    with service.session() as session:
+        session.add(
+            EvidenceItem(
+                evidence_id="ev-legacy-malformed-json",
+                source_type="legacy",
+                title="Legacy malformed metadata row",
+                content="Unrelated historical evidence.",
+                metadata_json={"legacy": True},
+            )
+        )
+        session.flush()
+        session.execute(
+            text("UPDATE evidence_items SET metadata = '{malformed' WHERE evidence_id = 'ev-legacy-malformed-json'")
+        )
+        session.commit()
     _attach_citation_artifacts(service, tmp_path, used=True)
 
     with client:

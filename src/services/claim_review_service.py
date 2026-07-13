@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from src.db.models import ClaimEvidence, EvidenceItem, ReportClaim, ReportTaskEvent, ReviewRecord
@@ -59,6 +59,76 @@ class ClaimReviewService:
 
     def reject(self, claim_id: int | str, *, reviewer: str | None = None, comment: str | None = None) -> dict[str, Any]:
         return self._set_review_status(claim_id, status="rejected", decision="reject", reviewer=reviewer, comment=comment)
+
+    def approve_supported_for_task(
+        self,
+        task_id: str,
+        *,
+        reviewer: str | None = None,
+        comment: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_task_id = str(task_id or "").strip()
+        with self.session_factory() as session:
+            claims = list(
+                session.scalars(
+                    select(ReportClaim)
+                    .where(
+                        ReportClaim.task_id == normalized_task_id,
+                        ReportClaim.review_status == "pending",
+                        ReportClaim.verification_status.in_(["supported", "verified", "passed"]),
+                        ReportClaim.evidence_links.any(),
+                    )
+                    .options(selectinload(ReportClaim.evidence_links))
+                    .order_by(ReportClaim.id)
+                ).all()
+            )
+            approved_ids: list[int] = []
+            for claim in claims:
+                before = snapshot_claim(claim)
+                claim.review_status = "approved"
+                metadata = dict(claim.metadata_json or {})
+                metadata["last_review_action"] = "bulk_approve_supported"
+                claim.metadata_json = metadata
+                after = snapshot_claim(claim)
+                session.add(
+                    ReviewRecord(
+                        target_type="report_claim",
+                        target_id=str(claim.id),
+                        decision="approve",
+                        comment=comment or "Batch approved supported claims",
+                        before_value=before,
+                        after_value=after,
+                        reviewer=reviewer,
+                    )
+                )
+                approved_ids.append(claim.id)
+            session.add(
+                ReportTaskEvent(
+                    task_id=normalized_task_id,
+                    stage="claim_review",
+                    status="approved" if approved_ids else "no_change",
+                    message=f"Batch approved {len(approved_ids)} supported claims",
+                    metadata_json={"approved_claim_ids": approved_ids, "reviewer": reviewer},
+                )
+            )
+            session.commit()
+            pending_count = int(
+                session.scalar(
+                    select(func.count(ReportClaim.id)).where(
+                        ReportClaim.task_id == normalized_task_id,
+                        ReportClaim.review_status == "pending",
+                    )
+                )
+                or 0
+            )
+        return {
+            "task_id": normalized_task_id,
+            "approved_count": len(approved_ids),
+            "approved_claim_ids": approved_ids,
+            "pending_count": pending_count,
+            "review_complete": pending_count == 0,
+            "reviewer": reviewer,
+        }
 
     def edit(
         self,
