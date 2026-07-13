@@ -1,4 +1,4 @@
-from src.data.canonical_metrics import build_canonical_metrics_artifact
+from src.data.canonical_metrics import build_canonical_metrics_artifact, canonical_metrics_as_financial_metrics
 from src.evaluation.report_quality import load_quality_artifacts, resolve_run_paths
 
 
@@ -103,6 +103,33 @@ def test_canonical_metrics_uses_table_rows_as_candidates():
 
     assert artifact["canonical_metrics"]["operating_cash_flow"]["value"] == -23882.0
     assert artifact["canonical_metrics"]["operating_cash_flow"]["source_table_id"] == "tbl_cash"
+
+
+def test_canonical_metrics_builds_auditable_derived_metric_lineage():
+    artifact = build_canonical_metrics_artifact(
+        financial_metrics={
+            "metrics": [
+                {"metric_name": "revenue", "value": 200.0, "unit": "USD_billion", "source_type": "sec_companyfacts", "source_evidence_id": "sec-revenue", "period_match": True},
+                {"metric_name": "net_income", "value": 40_000_000_000.0, "unit": "USD", "source_type": "sec_companyfacts", "source_evidence_id": "sec-income", "period_match": True},
+                {"metric_name": "total_assets", "value": 500.0, "unit": "USD_billion", "source_type": "sec_companyfacts", "source_evidence_id": "sec-assets", "period_match": True},
+                {"metric_name": "free_cash_flow", "value": 30.0, "unit": "USD_billion", "source_type": "sec_companyfacts", "source_evidence_id": "sec-fcf", "period_match": True},
+            ]
+        },
+        tables=[],
+        symbol="MSFT",
+        period="FY2024",
+    )
+
+    net_margin = artifact["derived_metrics"]["net_margin"]
+    assert artifact["schema_version"] == "canonical_metrics.v3"
+    assert net_margin["value"] == 20.0
+    assert net_margin["calculation_formula"] == "net_income / revenue * 100"
+    assert net_margin["input_metric_names"] == ["net_income", "revenue"]
+    assert net_margin["source_evidence_ids"] == ["sec-income", "sec-revenue"]
+    assert len(net_margin["lineage"]["inputs"]) == 2
+
+    financial_metrics = canonical_metrics_as_financial_metrics(artifact)
+    assert any(row["metric_name"] == "net_margin" for row in financial_metrics["metrics"])
 
 
 def test_canonical_metrics_rejects_wrong_fiscal_year_market_candidate():

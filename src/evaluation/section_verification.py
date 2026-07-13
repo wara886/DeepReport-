@@ -99,9 +99,9 @@ def build_section_verification(
         ]
         missing_citations = [evidence_id for evidence_id in must_use_ids if evidence_id not in consumed_ids]
         unsupported_claim_ids = _string_list(pack.get("unsupported_claim_ids"))
-        if must_use_ids and not consumed_ids:
+        if missing_citations:
             status = "failed"
-            reasons.append("must_use_evidence_not_consumed")
+            reasons.append("must_use_evidence_not_fully_consumed")
         if unsupported_claim_ids:
             status = "failed"
             reasons.append("unsupported_claims")

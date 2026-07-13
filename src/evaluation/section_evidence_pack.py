@@ -258,6 +258,8 @@ def _canonical_for_section(section_key: str, payload: Any) -> list[dict[str, Any
     rows = payload.get("metrics") if isinstance(payload.get("metrics"), list) else []
     if not rows and isinstance(payload.get("canonical_metrics"), dict):
         rows = [dict(value, metric_name=key) for key, value in payload["canonical_metrics"].items() if isinstance(value, dict)]
+    derived = payload.get("derived_metrics") if isinstance(payload.get("derived_metrics"), dict) else {}
+    rows = list(rows) + [dict(value, metric_name=key) for key, value in derived.items() if isinstance(value, dict)]
     if section_key not in {"executive_summary", "financial_analysis", "valuation", "conclusion"}:
         return []
     return [dict(row) for row in rows if isinstance(row, dict)]

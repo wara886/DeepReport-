@@ -140,6 +140,24 @@ def test_section_verification_distinguishes_citation_from_supported_claim():
     assert "unsupported_claims" in conclusion["reasons"]
 
 
+def test_section_verification_requires_every_must_use_evidence():
+    markdown = "# 报告\n\n## 估值观察\n" + ("估值分析包含市场数据和财务依据。" * 30) + "[financial-1]\n"
+    packs = {"packs": {"valuation": {
+        "must_use_evidence_ids": ["financial-1", "market-1"],
+        "must_use_evidence": [
+            {"evidence_id": "financial-1", "period": "FY2024", "authority": "official"},
+            {"evidence_id": "market-1", "period": "FY2024", "authority": "market_data"},
+        ],
+    }}}
+
+    result = build_section_verification(markdown=markdown, section_evidence_packs=packs)
+
+    valuation = result["section_results"]["valuation"]
+    assert valuation["status"] == "failed"
+    assert valuation["missing_citation_evidence_ids"] == ["market-1"]
+    assert "must_use_evidence_not_fully_consumed" in valuation["reasons"]
+
+
 def test_delivery_gate_blocks_stale_verification_when_pack_claim_is_unsupported(tmp_path):
     outputs = tmp_path / "run" / "company" / "outputs"
     outputs.mkdir(parents=True)

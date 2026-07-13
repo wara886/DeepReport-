@@ -87,10 +87,11 @@ def build_canonical_metrics_artifact(
                 }
             )
 
+    derived_metrics = _build_derived_metrics(canonical)
     missing_core = sorted(CORE_CANONICAL_METRICS - set(canonical))
     unresolved_conflicts = [item for item in conflicts if item.get("resolution_status") == "unresolved"]
     return {
-        "schema_version": "canonical_metrics.v2",
+        "schema_version": "canonical_metrics.v3",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "symbol": symbol,
         "period": period,
@@ -101,6 +102,7 @@ def build_canonical_metrics_artifact(
         "rejected_candidate_count": len(rejected_candidates),
         "rejected_candidates": rejected_candidates,
         "canonical_metrics": canonical,
+        "derived_metrics": derived_metrics,
         "metrics": list(canonical.values()),
         "conflicts": conflicts,
         "conflict_count": len(conflicts),
@@ -150,11 +152,89 @@ def canonical_metrics_as_financial_metrics(artifact: Any, fallback: Any | None =
         return fallback if fallback is not None else {"metrics": [], "metric_count": 0}
     output = dict(fallback) if isinstance(fallback, dict) else {}
     output["metrics"] = [dict(item) for item in metrics if isinstance(item, dict)]
+    derived = artifact.get("derived_metrics") if isinstance(artifact.get("derived_metrics"), dict) else {}
+    output["metrics"].extend(dict(item) for item in derived.values() if isinstance(item, dict))
     output["metric_count"] = len(output["metrics"])
     output["canonical_source"] = "canonical_metrics.json"
     output["canonical_conflicts"] = list(artifact.get("conflicts") or []) if isinstance(artifact.get("conflicts"), list) else []
     output["coverage"] = dict(artifact.get("coverage") or {}) if isinstance(artifact.get("coverage"), dict) else {}
     return output
+
+
+def _build_derived_metrics(canonical: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    specs = {
+        "net_margin": ("net_income", "revenue", "net_income / revenue * 100"),
+        "return_on_assets": ("net_income", "total_assets", "net_income / total_assets * 100"),
+        "free_cash_flow_conversion": ("free_cash_flow", "net_income", "free_cash_flow / net_income * 100"),
+        "liability_to_assets": ("total_liabilities", "total_assets", "total_liabilities / total_assets * 100"),
+    }
+    output: dict[str, dict[str, Any]] = {}
+    for metric_name, (numerator_name, denominator_name, formula) in specs.items():
+        numerator = canonical.get(numerator_name)
+        denominator = canonical.get(denominator_name)
+        if not isinstance(numerator, dict) or not isinstance(denominator, dict):
+            continue
+        numerator_value = _normalized_metric_value(numerator)
+        denominator_value = _normalized_metric_value(denominator)
+        if numerator_value is None or denominator_value in (None, 0):
+            continue
+        input_metric_ids = [
+            str(row.get("metric_id") or row.get("metric_name") or name)
+            for name, row in ((numerator_name, numerator), (denominator_name, denominator))
+        ]
+        source_evidence_ids = list(
+            dict.fromkeys(
+                str(row.get("source_evidence_id") or "")
+                for row in (numerator, denominator)
+                if str(row.get("source_evidence_id") or "")
+            )
+        )
+        output[metric_name] = {
+            "metric_name": metric_name,
+            "value": round(numerator_value / denominator_value * 100.0, 4),
+            "unit": "pct",
+            "period": str(numerator.get("period") or denominator.get("period") or ""),
+            "source_type": "derived_metric",
+            "calculation_formula": formula,
+            "input_metric_names": [numerator_name, denominator_name],
+            "input_metric_ids": input_metric_ids,
+            "source_evidence_ids": source_evidence_ids,
+            "lineage": {
+                "formula": formula,
+                "inputs": [
+                    _derived_input(numerator_name, numerator),
+                    _derived_input(denominator_name, denominator),
+                ],
+            },
+        }
+    return output
+
+
+def _derived_input(metric_name: str, row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "metric_name": metric_name,
+        "metric_id": row.get("metric_id"),
+        "value": row.get("value"),
+        "unit": row.get("unit"),
+        "source_evidence_id": row.get("source_evidence_id"),
+        "source_table_id": row.get("source_table_id"),
+    }
+
+
+def _normalized_metric_value(row: dict[str, Any]) -> float | None:
+    value = _float_or_none(row.get("value"))
+    if value is None:
+        return None
+    unit = str(row.get("unit") or "").lower()
+    if unit.endswith("_trillion"):
+        return value * 1_000_000_000_000
+    if unit.endswith("_billion"):
+        return value * 1_000_000_000
+    if unit.endswith("_million"):
+        return value * 1_000_000
+    if unit.endswith("_thousand"):
+        return value * 1_000
+    return value
 
 
 def _candidate_rows(
