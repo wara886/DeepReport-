@@ -74,7 +74,10 @@ def test_queued_task_has_one_canonical_readiness_projection():
     assert state["schema_version"] == "report_run_state.v2"
     assert state["company_identity"]["symbol"] == "NVDA"
     assert state["period_spec"]["target_period"] == "FY2024"
-    assert state["delivery_readiness"]["schema_version"] == "delivery_readiness.v2"
+    assert state["delivery_readiness"]["schema_version"] == "delivery_readiness.v3"
+    assert state["delivery_readiness"]["machine_status"] == "not_run"
+    assert state["delivery_readiness"]["review_status"] == "not_required"
+    assert state["delivery_readiness"]["formal_status"] == "blocked"
     assert state["lifecycle_status"] == "queued"
     assert state["delivery_readiness"]["can_generate_draft"] is True
     assert state["delivery_readiness"]["can_deliver_formal_report"] is False
@@ -105,6 +108,9 @@ def test_completed_reviewed_task_is_formally_deliverable_and_exportable():
     assert state["delivery_readiness"]["machine_quality_pass"] is True
     assert state["delivery_readiness"]["human_review_status"] == "completed"
     assert state["delivery_readiness"]["formal_delivery_pass"] is True
+    assert state["delivery_readiness"]["machine_status"] == "passed"
+    assert state["delivery_readiness"]["review_status"] == "completed"
+    assert state["delivery_readiness"]["formal_status"] == "ready"
     assert state["export_readiness"]["can_export_formal_package"] is True
 
 
@@ -124,6 +130,9 @@ def test_quality_pass_does_not_override_pending_claim_review():
     assert state["delivery_readiness"]["machine_quality_pass"] is True
     assert state["delivery_readiness"]["human_review_status"] == "pending"
     assert state["delivery_readiness"]["formal_delivery_pass"] is False
+    assert state["delivery_readiness"]["machine_status"] == "passed"
+    assert state["delivery_readiness"]["review_status"] == "pending"
+    assert state["delivery_readiness"]["formal_status"] == "review_required"
     assert state["export_readiness"]["can_export_formal_package"] is False
     assert state["delivery_readiness"]["blocking_reasons"] == ["pending_claim_review", "approved_claims_missing"]
 
@@ -148,6 +157,27 @@ def test_quality_blocked_task_with_review_complete_requires_remediation():
     assert state["delivery_readiness"]["can_enter_human_review"] is False
     assert "report_task_not_completed" not in state["delivery_readiness"]["blocking_reasons"]
     assert "quality_gate_failed" in state["delivery_readiness"]["blocking_reasons"]
+
+
+def test_machine_failure_takes_precedence_over_pending_human_review():
+    metadata = completed_runtime_metadata()
+    metadata["report_runtime"]["lifecycle_status"] = "quality_blocked"
+    metadata["quality_result"]["delivery_gate"]["delivery_pass"] = False
+    task = task_stub(
+        status="quality_failed",
+        current_stage="quality_failed",
+        metadata=metadata,
+        claims=[SimpleNamespace(review_status="pending", verification_status="supported")],
+        artifacts=[report_artifact()],
+    )
+
+    state = build_report_run_state(task)
+
+    assert state["delivery_readiness"]["machine_status"] == "failed"
+    assert state["delivery_readiness"]["review_status"] == "pending"
+    assert state["delivery_readiness"]["status"] == "remediation_required"
+    assert state["delivery_readiness"]["can_enter_human_review"] is False
+    assert state["delivery_readiness"]["formal_status"] == "blocked"
 
 
 def test_legacy_completed_task_is_compatible_but_marks_inferred_gates():

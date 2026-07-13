@@ -33,6 +33,9 @@ ReportLifecycleStatus = Literal[
 class DeliveryReadiness(TypedDict):
     schema_version: str
     status: str
+    machine_status: str
+    review_status: str
+    formal_status: str
     can_generate_draft: bool
     draft_generated: bool
     can_enter_human_review: bool
@@ -380,9 +383,35 @@ def _delivery_readiness(
     if quality_state.get("inferred_from_legacy_status"):
         warnings.append("legacy_quality_state_inferred")
     blockers = _dedupe(blockers)
+    machine_blockers = {
+        "report_task_not_completed",
+        "evidence_check_pending",
+        "evidence_not_delivery_ready",
+        "quality_check_pending",
+        "quality_gate_failed",
+        "unsupported_claims_present",
+        "claims_missing",
+        "report_artifact_missing",
+    }
+    machine_quality_pass = quality_state["delivery_pass"] is True and not machine_blockers.intersection(blockers)
+    if lifecycle in {"evidence_checking", "generating", "quality_checking"}:
+        machine_status = "running"
+    elif not quality_state["checked"]:
+        machine_status = "not_run"
+    else:
+        machine_status = "passed" if machine_quality_pass else "failed"
+    if claim_state["total_count"] == 0:
+        review_status = "not_required"
+    elif claim_state["rejected_count"]:
+        review_status = "rejected"
+    elif claim_state["review_complete"]:
+        review_status = "completed"
+    else:
+        review_status = "pending"
     review_blockers = {"pending_claim_review", "rejected_claims_present", "approved_claims_missing"}
-    can_review = artifact_state["report_available"] and bool(review_blockers.intersection(blockers))
-    can_deliver = not blockers
+    can_review = machine_quality_pass and artifact_state["report_available"] and bool(review_blockers.intersection(blockers))
+    can_deliver = machine_quality_pass and review_status in {"completed", "not_required"} and not blockers
+    formal_status = "ready" if can_deliver else ("review_required" if machine_quality_pass and review_status == "pending" else "blocked")
     if can_deliver:
         status = "export_ready"
     elif can_review:
@@ -396,15 +425,18 @@ def _delivery_readiness(
     else:
         status = "blocked"
     return {
-        "schema_version": "delivery_readiness.v2",
+        "schema_version": "delivery_readiness.v3",
         "status": status,
+        "machine_status": machine_status,
+        "review_status": review_status,
+        "formal_status": formal_status,
         "can_generate_draft": lifecycle in {"queued", "evidence_blocked", "quality_blocked", "failed", "timeout", "cancelled"},
         "draft_generated": draft_generated,
         "can_enter_human_review": can_review,
         "can_deliver_formal_report": can_deliver,
         "can_export_formal_package": can_deliver,
-        "machine_quality_pass": quality_state["delivery_pass"] is True,
-        "human_review_status": "completed" if claim_state["review_complete"] else ("pending" if claim_state["total_count"] else "not_required"),
+        "machine_quality_pass": machine_quality_pass,
+        "human_review_status": review_status,
         "formal_delivery_pass": can_deliver,
         "blocking_reasons": blockers,
         "warnings": warnings,

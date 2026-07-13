@@ -262,6 +262,7 @@ def test_task_evaluation_and_export_share_readiness_after_claim_review(tmp_path)
     with TestClient(app) as client:
         task_before = client.get("/api/report-tasks/task-readiness-shared").json()
         export_before = client.get("/api/exports/task-readiness-shared").json()
+        evaluation_before = client.get("/api/evaluation/summary").json()
         approved = client.post(f"/api/claims/{claim_id}/approve", json={"reviewer": "analyst"})
         task_after = client.get("/api/report-tasks/task-readiness-shared").json()
         export_after = client.get("/api/exports/task-readiness-shared").json()
@@ -270,11 +271,16 @@ def test_task_evaluation_and_export_share_readiness_after_claim_review(tmp_path)
     assert task_before["delivery_readiness"]["can_deliver_formal_report"] is False
     assert export_before["official_export_ready"] is False
     assert task_before["delivery_readiness"]["blocking_reasons"] == export_before["blocked_reasons"]
+    assert evaluation_before["metrics"]["machine_quality_pass_count"] == 1
+    assert evaluation_before["metrics"]["formal_delivery_pass_count"] == 0
+    assert evaluation_before["metrics"]["delivery_pass_count"] == 0
     assert approved.status_code == 200
     assert task_after["delivery_readiness"]["can_deliver_formal_report"] is True
     assert export_after["official_export_ready"] is True
     assert task_after["delivery_readiness"]["blocking_reasons"] == export_after["blocked_reasons"] == []
     assert evaluation["metrics"]["delivery_pass_count"] == 1
+    assert evaluation["metrics"]["machine_quality_pass_count"] == 1
+    assert evaluation["metrics"]["formal_delivery_pass_count"] == 1
 
 
 def test_report_task_api_cancel_and_archive_lifecycle(tmp_path):

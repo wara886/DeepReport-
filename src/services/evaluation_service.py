@@ -77,7 +77,8 @@ class EvaluationService:
                 )
                 or 0
             )
-            delivery_pass_count = sum(1 for task in quality_evaluated_tasks if _task_delivery_passed(task))
+            machine_quality_pass_count = sum(1 for task in quality_evaluated_tasks if _task_machine_quality_passed(task))
+            formal_delivery_pass_count = sum(1 for task in quality_evaluated_tasks if _task_delivery_passed(task))
             retrieval_coverages = [_task_retrieval_coverage(task) for task in quality_evaluated_tasks]
             evidence_ready_task_count = sum(1 for item in retrieval_coverages if item["evidence_ready"])
             source_quality_ready_task_count = sum(1 for item in retrieval_coverages if item["quality_ready"])
@@ -154,8 +155,13 @@ class EvaluationService:
                 "active_task_count": active_task_count,
                 "completed_task_count": completed_task_count,
                 "quality_evaluated_task_count": quality_evaluated_task_count,
-                "delivery_pass_count": delivery_pass_count,
-                "delivery_pass_rate": _ratio(delivery_pass_count, quality_evaluated_task_count),
+                "machine_quality_pass_count": machine_quality_pass_count,
+                "machine_quality_pass_rate": _ratio(machine_quality_pass_count, quality_evaluated_task_count),
+                "formal_delivery_pass_count": formal_delivery_pass_count,
+                "formal_delivery_pass_rate": _ratio(formal_delivery_pass_count, quality_evaluated_task_count),
+                # Compatibility aliases. Product UI should use the explicit formal-delivery fields.
+                "delivery_pass_count": formal_delivery_pass_count,
+                "delivery_pass_rate": _ratio(formal_delivery_pass_count, quality_evaluated_task_count),
                 "evidence_ready_task_count": evidence_ready_task_count,
                 "evidence_ready_task_rate": _ratio(evidence_ready_task_count, quality_evaluated_task_count),
                 "source_quality_ready_task_count": source_quality_ready_task_count,
@@ -353,6 +359,10 @@ def _task_delivery_passed(task: ReportTask) -> bool:
     return bool(build_report_run_state(task)["delivery_readiness"]["can_deliver_formal_report"])
 
 
+def _task_machine_quality_passed(task: ReportTask) -> bool:
+    return bool(build_report_run_state(task)["delivery_readiness"]["machine_quality_pass"])
+
+
 def _quality_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     metrics = dict(metrics)
     sample_requirements = {
@@ -476,6 +486,10 @@ def _task_quality_row(task: ReportTask) -> dict[str, Any]:
         "status": task.status,
         "quality_score": task.quality_score,
         "delivery_pass": delivery_readiness["can_deliver_formal_report"],
+        "machine_quality_pass": delivery_readiness["machine_quality_pass"],
+        "machine_status": delivery_readiness["machine_status"],
+        "review_status": delivery_readiness["review_status"],
+        "formal_status": delivery_readiness["formal_status"],
         "quality_gate_pass": quality_gate_pass,
         "delivery_readiness": delivery_readiness,
         "export_readiness": run_state["export_readiness"],

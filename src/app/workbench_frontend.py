@@ -2861,6 +2861,15 @@ def render_workbench_html() -> str:
 
     function taskDeliveryStatus(task) {
       const readiness = task?.delivery_readiness || {};
+      if (readiness.machine_status === "passed" && readiness.review_status === "pending") {
+        return { key: "pending", label: "机器质检通过，待人工复核" };
+      }
+      if (readiness.machine_status === "failed") {
+        return { key: "failed", label: "机器质检未通过" };
+      }
+      if (readiness.formal_status === "ready") {
+        return { key: "completed", label: "可正式交付" };
+      }
       const status = String(readiness.status || "");
       if (status) {
         const classMap = { export_ready: "completed", review_required: "pending", remediation_required: "failed", in_progress: "running", queued: "queued", blocked: "failed" };
@@ -3074,7 +3083,8 @@ def render_workbench_html() -> str:
         if (Number(metrics[countKey] || 0) <= 0) metrics[valueKey] = null;
       });
       const cards = [
-        { label: "正式交付通过率", value: percentText(metrics.delivery_pass_rate), note: `${number(metrics.delivery_pass_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务；需同时通过证据、质量和复核门禁`, view: "tasks" },
+        { label: "机器质检通过率", value: percentText(metrics.machine_quality_pass_rate), note: `${number(metrics.machine_quality_pass_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务`, view: "tasks" },
+        { label: "正式交付通过率", value: percentText(metrics.formal_delivery_pass_rate ?? metrics.delivery_pass_rate), note: `${number(metrics.formal_delivery_pass_count ?? metrics.delivery_pass_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务；需完成人工复核`, view: "tasks" },
         { label: "内容完整度评分", value: scoreText(metrics.average_quality_score), note: "仅衡量报告内容完整程度，不等同于正式交付状态", view: "tasks" },
         { label: "可追溯主张率", value: percentText(metrics.traceable_claim_rate), note: `${number(metrics.traceable_claim_count)} / ${number(metrics.claim_count)} 条主张`, view: "claims" },
         { label: "证据召回可用率", value: percentText(metrics.evidence_ready_task_rate), note: `${number(metrics.evidence_ready_task_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务`, view: "evidence" },
