@@ -118,7 +118,8 @@ def test_langgraph_runtime_runs_typed_nodes_and_interrupts_for_claim_review():
         "analyze",
         "build_canonical_metrics",
         "build_section_evidence_packs",
-        "generation",
+        "write_report",
+        "verify_report",
         "inspect_agent_execution",
         "verify_sections",
         "repair_failed_sections",
@@ -177,7 +178,7 @@ def test_failed_node_can_retry_from_checkpoint_without_repeating_completed_nodes
         runtime.invoke(initial_state(), thread_id="task-retry")
 
     snapshot = runtime.snapshot(thread_id="task-retry")
-    assert snapshot["next"] == ["generation"]
+    assert snapshot["next"] == ["write_report"]
     assert calls == ["evidence"]
 
     completed = runtime.retry_from_checkpoint(thread_id="task-retry")

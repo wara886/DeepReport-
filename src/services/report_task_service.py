@@ -16,6 +16,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
+from src.agents.base_agent import AgentTask
+from src.agents.verifier_agent import VerifierAgent
 from src.data.company_universe import infer_market_from_symbol
 from src.data.canonical_metrics import write_canonical_metrics_artifact
 from src.data.evidence_intake_gate import PERIOD_GATED_SOURCE_TYPES, record_period_status
@@ -255,6 +257,7 @@ class ReportTaskService:
                     research_callback=lambda state: self._graph_static_agent_phase_node(state, "research"),
                     normalize_evidence_callback=lambda state: self._graph_static_agent_phase_node(state, "normalize_evidence"),
                     analyze_callback=lambda state: self._graph_static_agent_phase_node(state, "analyze"),
+                    verify_report_callback=self._graph_verify_report_node,
                 )
                 self._langgraph_runtime = LangGraphReportRuntime(
                     handlers,
@@ -347,7 +350,15 @@ class ReportTaskService:
                 )
             )
             session.commit()
-        self._run_orchestrator(task_id=task_id, metadata=metadata)
+        if self.orchestrator_factory is MultiAgentOrchestrator and str(metadata.get("execution_mode") or "static") == "static":
+            self._run_orchestrator_instance(
+                task_id=task_id,
+                metadata=metadata,
+                stop_after_phase="final_answer",
+                resume_from_phase_artifacts=True,
+            )
+        else:
+            self._run_orchestrator(task_id=task_id, metadata=metadata)
         self._enhance_artifacts_with_task_evidence(task_id)
         self._refresh_canonical_metrics(task_id)
         refreshed_metadata = self._task_metadata(task_id)
@@ -357,6 +368,56 @@ class ReportTaskService:
         self._commit_run_artifacts(
             task_id,
             ["evidence", "canonical_metrics", "claims", "section_evidence_packs", "citations", "report"],
+        )
+        return self._current_run_state_patch(task_id)
+
+    def _graph_verify_report_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        if self.orchestrator_factory is not MultiAgentOrchestrator or str(metadata.get("execution_mode") or "static") != "static":
+            return self._current_run_state_patch(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        report_dir = Path(str(metadata.get("report_dir") or ""))
+        claims = _read_json_list(output_dir / "claims.json")
+        evidence = _read_json_list(output_dir / "evidence.json")
+        markdown = (report_dir / "report.md").read_text(encoding="utf-8") if (report_dir / "report.md").exists() else ""
+        adapter = _build_role_model_adapter(
+            config_path=self.config_path,
+            role="verifier",
+            execution_tier=str(metadata.get("execution_tier") or "delivery"),
+        )
+        result = VerifierAgent(model=adapter if adapter.api_key else None).execute_task(
+            AgentTask(
+                task_id="task_005_verifier",
+                task_type="verifier",
+                description="Verify the persisted report artifact.",
+                parameters={
+                    "claims": claims,
+                    "markdown": markdown,
+                    "evidence_records": evidence,
+                    "charts": _read_json_list(output_dir / "charts.json"),
+                    "tables": _read_json_list(output_dir / "tables.json"),
+                    "valuation": _read_json_object(output_dir / "valuation_model.json"),
+                    "expected_symbol": metadata.get("symbol"),
+                    "period": metadata.get("period"),
+                },
+            )
+        )
+        verification = dict(result.output.get("verification_report") or {})
+        (output_dir / "verification_report.json").write_text(
+            json.dumps(verification, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
+        self._record_runtime_stage(
+            task_id,
+            stage="verify_report",
+            status="success" if verification.get("passed") else "warning",
+            message="独立报告校验节点完成",
+            metadata={
+                "passed": bool(verification.get("passed")),
+                "error_count": int(verification.get("error_count") or len(verification.get("errors") or [])),
+                "warning_count": int(verification.get("warning_count") or len(verification.get("warnings") or [])),
+                "llm_used": bool(verification.get("llm_used")),
+            },
         )
         return self._current_run_state_patch(task_id)
 

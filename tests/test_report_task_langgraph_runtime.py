@@ -299,7 +299,8 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
             "analyze",
             "build_canonical_metrics",
         "build_section_evidence_packs",
-        "generation",
+        "write_report",
+        "verify_report",
         "inspect_agent_execution",
         "verify_sections",
         "repair_failed_sections",
@@ -351,7 +352,7 @@ def test_report_task_retries_failed_generation_node_from_checkpoint(tmp_path):
     assert failed.json()["status"] == "failed"
     assert failed.json()["metadata"]["runtime_failure"]["checkpoint_available"] is True
     assert checkpoint.status_code == 200
-    assert checkpoint.json()["next"] == ["generation"]
+    assert checkpoint.json()["next"] == ["write_report"]
     assert retried.status_code == 200
     body = retried.json()
     assert body["task"]["status"] == "completed"

@@ -1247,6 +1247,36 @@ class MultiAgentOrchestrator:
         report_html_path.write_text(html, encoding="utf-8")
         report_json_path.write_text(json.dumps(report_json, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
 
+        self._write_json(
+            "final_answer_phase.json",
+            {
+                "phase": "final_answer",
+                "report_markdown_chars": len(markdown),
+                "claim_count": len(claims) if isinstance(claims, list) else 0,
+                "evidence_count": len(evidence_records) if isinstance(evidence_records, list) else 0,
+            },
+        )
+        if stop_after_phase == "final_answer":
+            trace_path = self.output_dir / "task_trace.jsonl"
+            trace_path.write_text(
+                "\n".join(json.dumps(item, ensure_ascii=False, default=str) for item in self.trace) + "\n",
+                encoding="utf-8",
+            )
+            return self._static_phase_result(
+                "final_answer",
+                [
+                    "claims.json",
+                    "evidence.json",
+                    "citations.json",
+                    "charts.json",
+                    "section_dossiers.json",
+                    "report_section_contracts.json",
+                    "section_evidence_packs.json",
+                    "final_answer_phase.json",
+                    "task_trace.jsonl",
+                ],
+            )
+
         verifier_result = self._execute(
             "verifier",
             AgentTask(
