@@ -16,7 +16,7 @@ from src.agents.final_answer_agent import (
     remove_template_phrases,
 )
 from src.data.canonical_metrics import canonical_metrics_as_financial_metrics
-from src.evaluation.section_verification import write_section_verification
+from src.evaluation.section_verification import build_section_verification, write_section_verification
 from src.report.html_report_generator import render_professional_html_report
 
 
@@ -314,21 +314,59 @@ def _apply_callback_repairs(
             "evidence_pack": evidence_pack,
             "verification": results.get(pack_key) or results.get(section) or {},
         }
-        try:
-            response = callback(payload)
-            body = str(response.get("section_markdown") or response.get("body") or "").strip() if isinstance(response, dict) else ""
-            if body:
+        for attempt_number in range(1, 3):
+            payload["attempt_number"] = attempt_number
+            payload["original_section"] = _section_body(output, title)
+            try:
+                response = callback(payload)
+                body = str(response.get("section_markdown") or response.get("body") or "").strip() if isinstance(response, dict) else ""
+                if not body:
+                    attempts.append({
+                        "section": section,
+                        "attempt_number": attempt_number,
+                        "strategy": "llm_section_rewrite",
+                        "status": "empty_response",
+                    })
+                    continue
                 body = _ensure_must_use_citation(body, evidence_pack)
-                output = _replace_section_body(output, title, body)
-                attempt = {"section": section, "strategy": "llm_section_rewrite", "status": "changed"}
+                candidate = _replace_section_body(output, title, body)
+                immediate = build_section_verification(
+                    markdown=candidate,
+                    report_section_contracts=contracts,
+                    quality_remediation_plan={},
+                    section_evidence_packs=evidence_packs,
+                )
+                section_result = _verification_result(immediate, pack_key, section)
+                output = candidate
+                attempt = {
+                    "section": section,
+                    "attempt_number": attempt_number,
+                    "strategy": "llm_section_rewrite",
+                    "status": "passed" if section_result.get("status") == "passed" else "contract_failed",
+                    "verification_reasons": list(section_result.get("reasons") or []),
+                    "missing_citation_evidence_ids": list(section_result.get("missing_citation_evidence_ids") or []),
+                }
                 if response.get("llm_run_id"):
                     attempt["llm_run_id"] = str(response["llm_run_id"])
                 attempts.append(attempt)
-            else:
-                attempts.append({"section": section, "strategy": "llm_section_rewrite", "status": "empty_response"})
-        except Exception as exc:
-            attempts.append({"section": section, "strategy": "llm_section_rewrite", "status": "failed", "failure_reason": str(exc)})
+                if section_result.get("status") == "passed":
+                    break
+                payload["verification"] = section_result
+            except Exception as exc:
+                attempts.append({
+                    "section": section,
+                    "attempt_number": attempt_number,
+                    "strategy": "llm_section_rewrite",
+                    "status": "failed",
+                    "failure_reason": str(exc),
+                })
     return output, attempts
+
+
+def _verification_result(verification: dict[str, Any], pack_key: str, section: str) -> dict[str, Any]:
+    results = verification.get("section_results") if isinstance(verification.get("section_results"), dict) else {}
+    row = results.get(pack_key) or results.get(section)
+    return row if isinstance(row, dict) else {"status": "failed", "reasons": ["section_verification_missing"]}
 
 
 def _ensure_must_use_citation(body: str, evidence_pack: dict[str, Any]) -> str:

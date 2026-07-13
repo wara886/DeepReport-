@@ -220,6 +220,8 @@ def test_section_repair_callback_only_changes_failed_section(tmp_path):
     assert summary["evidence_ids_consumed"] == ["ev1"]
     assert calls == ["conclusion"]
     assert summary["attempts"][0]["llm_run_id"] == "llm-repair-1"
+    assert summary["attempts"][0]["attempt_number"] == 1
+    assert summary["attempts"][0]["status"] == "passed"
 
 
 def test_section_repair_records_callback_failure_and_falls_back(tmp_path):
@@ -244,6 +246,47 @@ def test_section_repair_records_callback_failure_and_falls_back(tmp_path):
     assert summary["repair_strategy"] == "deterministic_section_rewrite"
     assert summary["model_status"] == "failed_or_no_change"
     assert any(row.get("failure_reason") == "model unavailable" for row in summary["attempts"])
+    assert [row["attempt_number"] for row in summary["attempts"] if row.get("strategy") == "llm_section_rewrite"] == [1, 2]
+
+
+def test_section_repair_retries_only_failed_section_with_previous_contract_reasons(tmp_path):
+    outputs = tmp_path / "outputs"
+    reports = tmp_path / "reports"
+    outputs.mkdir()
+    reports.mkdir()
+    (reports / "report.md").write_text("# 测试报告\n\n## 估值观察\n短。\n", encoding="utf-8")
+    (reports / "report.json").write_text("{}", encoding="utf-8")
+    (outputs / "section_evidence_packs.json").write_text(json.dumps({"packs": {"valuation": {
+        "must_use_evidence_ids": ["financial-1", "market-1"],
+        "must_use_evidence": [
+            {"evidence_id": "financial-1", "period": "FY2024", "authority": "official"},
+            {"evidence_id": "market-1", "period": "FY2024", "authority": "market_data"},
+        ],
+        "unsupported_claim_ids": [],
+    }}}), encoding="utf-8")
+    calls = []
+
+    def repair(payload):
+        calls.append(dict(payload))
+        body = "估值章节基于财务数据与市场快照进行判断。" * 20
+        if payload["attempt_number"] == 1:
+            return {"section_markdown": body + "[financial-1]"}
+        assert "must_use_evidence_not_fully_consumed" in payload["verification"]["reasons"]
+        assert payload["verification"]["missing_citation_evidence_ids"] == ["market-1"]
+        return {"section_markdown": body + "[financial-1][market-1]"}
+
+    summary = repair_failed_sections_for_outputs(
+        output_dir=outputs,
+        report_dir=reports,
+        section_verification={"status": "failed", "failed_sections": ["valuation"], "issues": []},
+        repair_callback=repair,
+    )
+
+    assert len(calls) == 2
+    assert [row["status"] for row in summary["attempts"]] == ["contract_failed", "passed"]
+    verification = json.loads((outputs / "section_verification.json").read_text(encoding="utf-8"))
+    assert verification["section_results"]["valuation"]["status"] == "passed"
+    assert "valuation" not in summary["failed_sections_after"]
 
 
 def test_section_repair_resolves_risk_alias_and_preserves_must_use_citation(tmp_path):
