@@ -7,12 +7,12 @@
 
 ## 0. 22:12 最新 checkpoint（优先于下方历史记录）
 
-阶段 2A 与 2B 已完成代码修复和真实任务验证。阶段 2 至阶段 8 均已完成并推送；阶段 9 最终统一验收已完成，待本次独立提交推送后本轮阶段计划全部收口。
+阶段 2A 与 2B 已完成代码修复和真实任务验证。阶段 2 至阶段 9 均已完成并推送，本轮阶段计划全部收口。
 
 最新提交：
 
 ```text
-a3bdb5d feat: close review and observability workflow
+7714f03 test: complete multi market acceptance
 ```
 
 ### 阶段 3：统一数据源状态已完成
@@ -206,9 +206,8 @@ exec session 57240，PID 417
 
 阶段 2 的提交步骤已经完成。下一步严格按阶段计划执行：
 
-1. 完成阶段 9 独立 commit/push。
-2. 本轮阶段 2–9 计划全部完成；后续新需求从本 checkpoint 继续，不要重跑已完成的真实基线。
-3. 保留 `runtime_checkpoints.sqlite` 与正式任务数据库，不提交运行 artifacts、导出包或日志。
+1. 本轮阶段 2–9 计划全部完成；后续新需求从本 checkpoint 继续，不要重跑已完成的真实基线。
+2. 保留 `runtime_checkpoints.sqlite` 与正式任务数据库，不提交运行 artifacts、导出包或日志。
 
 下方第 1–10 节保留为修复前历史诊断；如与本节冲突，以本节为准。
 
