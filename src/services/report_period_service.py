@@ -6,7 +6,7 @@ from datetime import date, timedelta
 import re
 from typing import Any
 
-from src.data.company_universe import infer_market_from_symbol
+from src.data.company_universe import infer_market_from_symbol, infer_symbol_from_identifier
 from src.utils.periods import period_target_date, previous_completed_quarter
 
 
@@ -17,6 +17,11 @@ def report_period_options(*, symbol: str = "", period: str = "", as_of: date | N
     as_of = as_of or date.today()
     normalized_symbol = str(symbol or "").strip().upper()
     market_meta = infer_market_from_symbol(normalized_symbol)
+    if normalized_symbol and market_meta.get("market") == "unknown":
+        inferred_symbol = str(infer_symbol_from_identifier(normalized_symbol).get("symbol") or "").upper()
+        if inferred_symbol:
+            normalized_symbol = inferred_symbol
+            market_meta = infer_market_from_symbol(normalized_symbol)
     market = market_meta.get("market", "unknown")
     quarter_year, quarter = previous_completed_quarter(as_of)
     quarters = _recent_quarters(quarter_year, quarter, count=8)

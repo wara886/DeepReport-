@@ -104,6 +104,13 @@ def test_workbench_real_metrics_and_maps_internal_terms():
     assert '展开高级分析与诊断' not in html
     assert 'class="table-scroll"' in html
     assert '.table-scroll { width: 100%; min-width: 0; overflow-x: auto;' in html
+    assert '@media (max-width: 1100px)' in html
+    assert '.app { grid-template-columns: 1fr; }' in html
+    assert '.detail { position: static; max-height: none; }' in html
+    assert '@media (max-width: 760px)' in html
+    assert '.topbar { align-items: flex-start; flex-direction: column;' in html
+    assert '.nav { grid-template-columns: 1fr; }' in html
+    assert '.filters input, .filters select { width: 100%; }' in html
     assert 'class="task-table"' in html
     assert 'data-task-detail="${esc(task.task_id)}">查看详情</button>' in html
     assert '<summary class="btn">更多</summary>' in html

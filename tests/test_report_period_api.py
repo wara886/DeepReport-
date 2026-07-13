@@ -10,7 +10,7 @@ from src.services.report_task_service import ReportTaskService
 def test_period_options_cover_recent_quarters_years_and_market_readiness():
     as_of = date(2026, 7, 13)
     us = report_period_options(symbol="AAPL", as_of=as_of)
-    cn = report_period_options(symbol="600519.SS", period="2026Q2", as_of=as_of)
+    cn = report_period_options(symbol="600519", period="2026Q2", as_of=as_of)
     hk = report_period_options(symbol="0700.HK", period="2026Q1", as_of=as_of)
 
     assert us["latest_completed_quarter"] == "2026Q2"
@@ -20,6 +20,8 @@ def test_period_options_cover_recent_quarters_years_and_market_readiness():
     assert us["options"][0]["readiness"]["status"] == "scheduled"
     assert us["options"][0]["readiness"]["available_from"] == "2026-08-14"
     assert next(item for item in us["options"] if item["value"] == "FY2025")["readiness"]["official_disclosure_available"] is True
+    assert cn["symbol"] == "600519.SS"
+    assert cn["market"] == "cn_a"
     assert cn["selected"]["readiness"]["available_from"] == "2026-08-31"
     assert cn["selected"]["readiness"]["official_disclosure_available"] is False
     assert hk["selected"]["readiness"]["status"] == "not_standard"

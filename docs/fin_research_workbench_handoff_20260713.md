@@ -1,18 +1,18 @@
 # 投研工作台阶段修复交接记录
 
-> 更新时间：2026-07-13 21:50（Asia/Shanghai）
+> 更新时间：2026-07-13 22:12（Asia/Shanghai）
 > 仓库：`/Users/yuan_dian/AI_project/DeepReport-fin-workbench-v2`  
 > 分支：`feat/fin-research-agent-workbench-v2`  
 > 用途：切换 Codex 对话后，从当前 checkpoint 和未提交工作区继续，不重新猜测或重复审计。
 
-## 0. 21:50 最新 checkpoint（优先于下方历史记录）
+## 0. 22:12 最新 checkpoint（优先于下方历史记录）
 
-阶段 2A 与 2B 已完成代码修复和真实任务验证。阶段 2 至阶段 7 均已完成并推送；阶段 8 已完成实现、聚焦测试和真实任务验收，待本次独立提交推送后进入阶段 9 最终统一验收。
+阶段 2A 与 2B 已完成代码修复和真实任务验证。阶段 2 至阶段 8 均已完成并推送；阶段 9 最终统一验收已完成，待本次独立提交推送后本轮阶段计划全部收口。
 
 最新提交：
 
 ```text
-refactor: consolidate workbench navigation
+a3bdb5d feat: close review and observability workflow
 ```
 
 ### 阶段 3：统一数据源状态已完成
@@ -109,6 +109,28 @@ official export ready: true
 
 正式包已生成于 `data/export_packages/release-stage9-final-nvda-fy2024-20260713t085909z`，包含 JSON、Markdown、HTML、PDF、DOCX、claims/evidence/facts/review CSV 和 manifest 共 10 个文件，均记录 SHA-256。浏览器确认真实任务详情、运行诊断和批量审核入口正常。阶段 8 扩大聚焦套件 33 项通过；未提前运行全量 pytest。
 
+### 阶段 9：最终统一验收已完成
+
+全量 pytest 最终运行两次均 100% 通过：共收集 958 项，4 项环境预期跳过，其余全部通过。数据库 `init_db` 与 legacy SQLite migration smoke 7 项通过。新增移动端静态合同断言覆盖 1100px/760px 断点、单列导航、详情下沉、筛选器全宽和表格横向滚动。
+
+FY2024 多市场验收：
+
+```text
+AAPL       release-stage9-aapl-fy2024-20260713t075908z       0.975  delivery_pass=true
+NVDA       release-stage9-final-nvda-fy2024-20260713t085909z 0.975  delivery_pass=true / export_ready
+MSFT       release-stage9-msft-fy2024-20260713t075908z       0.975  delivery_pass=true
+600519.SS  stage2a-machine-pass-cn-fy2024-20260713            0.975  delivery_pass=true
+0700.HK    stage9-final-hk-fy2024-20260713t2155z              0.9525 delivery_pass=true
+```
+
+新港股任务用当前代码完整重跑，objective/LLM/delivery 均为 true，停在正常 `human_review` interrupt；自动记忆最终记录 7 个实体、514 条关系；ToolRun 显示真实 `research` 节点，并能定位缺失 Serper key 的失败根因。浏览器任务详情无加载错误、五个标签正常、运行页不再出现 `generation`。
+
+最新季度样本 `stage9-latest-quarter-aapl-2026q2-20260713` 验证了时间边界：截至 2026-07-13，AAPL 2026Q2 官方 SEC 披露预计不早于 2026-08-14，因此只允许草稿、正式交付为 `remediation_required`，明确返回 `no_evidence`、缺 `sec_edgar` 和补采集动作。裸 `600519` 期间 API 已修复为自动规范化 `600519.SS / cn_a / SSE`，2026Q2 披露日期为 2026-08-31。
+
+正式导出复验：NVDA 包共 10 文件；PDF 为 29 页 A4，DOCX OOXML 完整性通过，manifest 中 JSON/Markdown/HTML/PDF/DOCX/4 个 CSV 的 SHA-256 全部匹配。审核包包含 pending→approved 的 before/after、审核人、理由和时间。
+
+应用内浏览器固定为 1280×720，桌面全页面和真实任务详情已实测；创建 390px 标签仍返回 1280×720，且浏览器安全策略禁止嵌套移动视口，因此没有绕过安全限制，移动端以响应式 CSS 合同与全量测试完成验收。
+
 ### 阶段 2A：A 股机器质量已通过
 
 最终验收任务：
@@ -179,14 +201,14 @@ canonical metrics 离线重建后，收入、净利润、经营现金流、自�
 
 ```text
 http://127.0.0.1:7863/workbench
-exec session 62812（PID 以 uvicorn 实际输出为准）
+exec session 57240，PID 417
 ```
 
 阶段 2 的提交步骤已经完成。下一步严格按阶段计划执行：
 
-1. 完成阶段 8 独立 commit/push。
-2. 进入阶段 9“最终统一验收”，此阶段首次运行全量 pytest。
-3. 按 AAPL/NVDA/MSFT、600519.SS、0700.HK、最新季度、桌面/移动、migration、PDF/DOCX/manifest/SHA 顺序收口。
+1. 完成阶段 9 独立 commit/push。
+2. 本轮阶段 2–9 计划全部完成；后续新需求从本 checkpoint 继续，不要重跑已完成的真实基线。
+3. 保留 `runtime_checkpoints.sqlite` 与正式任务数据库，不提交运行 artifacts、导出包或日志。
 
 下方第 1–10 节保留为修复前历史诊断；如与本节冲突，以本节为准。
 
