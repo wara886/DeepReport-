@@ -685,6 +685,69 @@ def test_static_production_path_builds_section_packs_before_writer(tmp_path):
     assert writer_packs["packs"]["keys"] == sorted(packs["packs"])
 
 
+def test_static_delivery_path_enables_bounded_react_for_research_and_analyze(tmp_path):
+    output_dir = tmp_path / "outputs"
+    report_dir = tmp_path / "reports"
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(output_dir),
+        report_dir=str(report_dir),
+        model=FakeJsonModel(),
+        execution_tier="delivery",
+    )
+
+    orchestrator.run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="analyze",
+        resume_from_phase_artifacts=True,
+    )
+
+    trace = json.loads((output_dir / "static_phase_trace.json").read_text(encoding="utf-8"))
+    research = next(row for row in trace if row.get("agent_key") == "research")
+    analyze = next(row for row in trace if row.get("agent_key") == "analyze")
+    assert research["task"]["parameters"]["use_react"] is True
+    assert research["task"]["parameters"]["react_max_steps"] == 3
+    assert research["task"]["parameters"]["react_max_tool_calls"] == 8
+    assert analyze["task"]["parameters"]["use_react"] is True
+    assert analyze["task"]["parameters"]["react_max_steps"] == 3
+
+
+def test_static_checkpoint_persists_react_tool_trace(tmp_path):
+    (tmp_path / "outputs").mkdir()
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        model=FakeJsonModel(),
+    )
+    orchestrator.trace = [{
+        "agent": "DeepResearcherAgent",
+        "agent_key": "research",
+        "metadata": {
+            "react_used": True,
+            "react_trace": [{
+                "step": 1,
+                "tool_name": "retrieve_local_evidence",
+                "arguments": {"query": "AAPL revenue"},
+                "attempts": 1,
+                "duration_ms": 12.0,
+                "evidence_ids": ["ev1"],
+                "error": "",
+            }],
+        },
+    }]
+    orchestrator.state = {"search_meta": {}}
+
+    orchestrator._static_phase_result("research", [])
+
+    tool_trace = json.loads((tmp_path / "outputs" / "tool_trace.json").read_text(encoding="utf-8"))
+    react_call = next(row for row in tool_trace["calls"] if row.get("source") == "react")
+    assert react_call["tool_name"] == "retrieve_local_evidence"
+    assert react_call["success"] is True
+    assert react_call["evidence_ids"] == ["ev1"]
+
+
 def test_static_agent_phases_resume_without_replaying_completed_agents(tmp_path):
     output_dir = tmp_path / "outputs"
     report_dir = tmp_path / "reports"

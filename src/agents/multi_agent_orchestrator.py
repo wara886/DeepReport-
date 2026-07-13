@@ -742,6 +742,7 @@ class MultiAgentOrchestrator:
     ) -> Dict[str, str]:
         stored_trace = self._read_json("static_phase_trace.json", []) if resume_from_phase_artifacts else []
         self.trace = [dict(item) for item in stored_trace if isinstance(item, dict)]
+        profile = self._resolve_profile(fast)
         run_started_at = time.perf_counter()
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.report_dir.mkdir(parents=True, exist_ok=True)
@@ -847,6 +848,12 @@ class MultiAgentOrchestrator:
                     "engine_timeout_seconds": 60.0,
                     "engine_timeout_by_name": _research_engine_timeouts(),
                     "skill_brief": self._skill_brief(research_query, "deep_researcher", max_items=2),
+                    "use_react": bool(profile.get("research_use_react", False)),
+                    "react_max_steps": int(profile.get("research_react_max_steps", 3)),
+                    "react_max_tool_calls": int(profile.get("react_max_tool_calls", 8)),
+                    "react_tool_timeout_seconds": float(profile.get("react_tool_timeout_seconds", 45.0)),
+                    "react_tool_max_attempts": int(profile.get("react_tool_max_attempts", 2)),
+                    "merge_standard_search_after_react": bool(profile.get("research_merge_standard_search_after_react", True)),
                 },
                 dependencies=["task_000_planning"],
                 priority=5,
@@ -947,6 +954,11 @@ class MultiAgentOrchestrator:
                     "period": period,
                     "raw_data_root": self.raw_data_root,
                     "skill_brief": self._skill_brief("financial analysis valuation peer trend", "deep_analyze", max_items=2),
+                    "use_react": bool(profile.get("analyze_use_react", False)),
+                    "react_max_steps": int(profile.get("analyze_react_max_steps", 3)),
+                    "react_max_tool_calls": int(profile.get("react_max_tool_calls", 8)),
+                    "react_tool_timeout_seconds": float(profile.get("react_tool_timeout_seconds", 45.0)),
+                    "react_tool_max_attempts": int(profile.get("react_tool_max_attempts", 2)),
                 },
                 dependencies=["task_002_browser"],
                 priority=5,
@@ -2467,6 +2479,13 @@ class MultiAgentOrchestrator:
 
     def _static_phase_result(self, phase: str, artifact_names: List[str]) -> Dict[str, str]:
         self._write_json("static_phase_trace.json", self.trace)
+        tool_trace = build_tool_trace(
+            agents=self.agents,
+            trace=self.trace,
+            state=dict(getattr(self, "state", None) or {}),
+        )
+        self._write_json("tool_trace.json", tool_trace)
+        artifact_names = list(dict.fromkeys(list(artifact_names) + ["tool_trace.json"]))
         manifest = {
             "schema_version": "static_agent_phase.v1",
             "phase": phase,
