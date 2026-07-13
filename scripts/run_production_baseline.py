@@ -141,6 +141,10 @@ def summarize_case(task: dict[str, Any], *, diagnostics: dict[str, Any]) -> dict
     metric_rows = canonical_metrics.get("metrics", []) if isinstance(canonical_metrics, dict) else []
     packs = section_packs.get("packs", {}) if isinstance(section_packs, dict) else {}
     local_meta = search_meta.get("engine_meta", {}).get("local_evidence", {}) if isinstance(search_meta, dict) else {}
+    readiness = task.get("delivery_readiness") if isinstance(task.get("delivery_readiness"), dict) else {}
+    machine_quality = readiness.get("machine_quality_pass")
+    if machine_quality is None:
+        machine_quality = delivery_gate.get("machine_quality_pass", delivery_gate.get("delivery_pass"))
     return {
         "task_id": task.get("task_id"),
         "symbol": task.get("symbol"),
@@ -148,7 +152,9 @@ def summarize_case(task: dict[str, Any], *, diagnostics: dict[str, Any]) -> dict
         "execution_mode": metadata.get("execution_mode"),
         "status": task.get("status"),
         "quality_score": task.get("quality_score"),
-        "formal_delivery": bool((task.get("delivery_readiness") or {}).get("can_deliver_formal_report")),
+        "machine_quality": machine_quality is True,
+        "formal_delivery": readiness.get("can_deliver_formal_report") is True,
+        "human_review_status": str(readiness.get("human_review_status") or "unknown"),
         "workspace_id": task.get("workspace_id"),
         "company_id": task.get("company_id"),
         "duration_seconds": run_summary.get("total_duration_sec"),
@@ -175,7 +181,8 @@ def summarize_case(task: dict[str, Any], *, diagnostics: dict[str, Any]) -> dict
 
 
 def build_summary(*, cases: list[dict[str, Any]], base_url: str, period: str, generated_at: str) -> dict[str, Any]:
-    passed = sum(1 for item in cases if item["formal_delivery"])
+    machine_passed = sum(1 for item in cases if item.get("machine_quality") is True)
+    formally_delivered = sum(1 for item in cases if item["formal_delivery"])
     quality_scores = [float(item["quality_score"]) for item in cases if isinstance(item.get("quality_score"), (int, float))]
     return {
         "schema_version": "production_baseline.v1",
@@ -184,8 +191,10 @@ def build_summary(*, cases: list[dict[str, Any]], base_url: str, period: str, ge
         "period": period,
         "summary": {
             "case_count": len(cases),
-            "formal_delivery_count": passed,
-            "formal_delivery_rate": round(passed / len(cases), 4) if cases else None,
+            "machine_quality_pass_count": machine_passed,
+            "machine_quality_pass_rate": round(machine_passed / len(cases), 4) if cases else None,
+            "formal_delivery_count": formally_delivered,
+            "formal_delivery_rate": round(formally_delivered / len(cases), 4) if cases else None,
             "average_quality_score": round(sum(quality_scores) / len(quality_scores), 4) if quality_scores else None,
             "unbound_company_count": sum(1 for item in cases if item.get("company_id") is None),
         },
@@ -200,19 +209,22 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- Period: `{payload['period']}`",
         f"- Cases: `{summary['case_count']}`",
+        f"- Machine quality pass rate: `{summary['machine_quality_pass_rate']}`",
         f"- Formal delivery rate: `{summary['formal_delivery_rate']}`",
         f"- Average quality score: `{summary['average_quality_score']}`",
         f"- Unbound companies: `{summary['unbound_company_count']}`",
         "",
-        "| Symbol | Status | Quality | Formal | Evidence | Metrics | Local retrieval | Blockers |",
-        "| --- | --- | ---: | --- | ---: | ---: | --- | ---: |",
+        "| Symbol | Status | Quality | Machine | Human review | Formal | Evidence | Metrics | Local retrieval | Blockers |",
+        "| --- | --- | ---: | --- | --- | --- | ---: | ---: | --- | ---: |",
     ]
     for item in payload["cases"]:
         lines.append(
-            "| {symbol} | {status} | {quality} | {formal} | {evidence} | {metrics} | {retrieval} | {blockers} |".format(
+            "| {symbol} | {status} | {quality} | {machine} | {review} | {formal} | {evidence} | {metrics} | {retrieval} | {blockers} |".format(
                 symbol=item["symbol"],
                 status=item["status"],
                 quality=item["quality_score"],
+                machine="yes" if item.get("machine_quality") else "no",
+                review=item.get("human_review_status") or "unknown",
                 formal="yes" if item["formal_delivery"] else "no",
                 evidence=item["evidence_count"],
                 metrics=item["canonical_metric_count"],

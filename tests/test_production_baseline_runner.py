@@ -50,7 +50,11 @@ def test_summarize_case_reads_production_artifacts(tmp_path):
         "workspace_id": 1,
         "company_id": None,
         "metadata": {"output_dir": str(tmp_path)},
-        "delivery_readiness": {"can_deliver_formal_report": False},
+        "delivery_readiness": {
+            "machine_quality_pass": False,
+            "can_deliver_formal_report": False,
+            "human_review_status": "pending",
+        },
         "events": [{"stage": "orchestrator", "status": "success"}],
     }
 
@@ -60,20 +64,23 @@ def test_summarize_case_reads_production_artifacts(tmp_path):
     assert result["canonical_metric_count"] == 1
     assert result["section_pack_count"] == 1
     assert result["execution_mode"] is None
+    assert result["machine_quality"] is False
+    assert result["human_review_status"] == "pending"
     assert result["local_retrieval"]["failure_reason"] == "no_records"
     assert result["delivery_gate"]["blocker_categories"] == ["evidence_consumption"]
 
 
 def test_summary_and_markdown_report_delivery_rate():
     cases = [
-        {"formal_delivery": True, "quality_score": 0.9, "company_id": 1, "symbol": "AAPL", "status": "completed", "evidence_count": 1, "canonical_metric_count": 1, "local_retrieval": {}, "delivery_gate": {"blocker_count": 0}},
-        {"formal_delivery": False, "quality_score": 0.7, "company_id": None, "symbol": "MSFT", "status": "quality_failed", "evidence_count": 1, "canonical_metric_count": 0, "local_retrieval": {"failure_reason": "no_records"}, "delivery_gate": {"blocker_count": 2}},
+        {"machine_quality": True, "formal_delivery": True, "human_review_status": "completed", "quality_score": 0.9, "company_id": 1, "symbol": "AAPL", "status": "completed", "evidence_count": 1, "canonical_metric_count": 1, "local_retrieval": {}, "delivery_gate": {"blocker_count": 0}},
+        {"machine_quality": True, "formal_delivery": False, "human_review_status": "pending", "quality_score": 0.7, "company_id": None, "symbol": "MSFT", "status": "quality_failed", "evidence_count": 1, "canonical_metric_count": 0, "local_retrieval": {"failure_reason": "no_records"}, "delivery_gate": {"blocker_count": 2}},
     ]
 
     summary = build_summary(cases=cases, base_url="http://test", period="FY2024", generated_at="now")
     markdown = render_markdown(summary)
 
     assert summary["summary"]["formal_delivery_rate"] == 0.5
+    assert summary["summary"]["machine_quality_pass_rate"] == 1.0
     assert summary["summary"]["average_quality_score"] == 0.8
     assert summary["summary"]["unbound_company_count"] == 1
     assert "| MSFT | quality_failed |" in markdown
