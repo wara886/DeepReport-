@@ -74,6 +74,63 @@ def test_search_manager_dedupes_and_ranks_hits():
     assert payload["hits"][1]["result_id"] == "ev_2"
 
 
+def test_search_manager_prefers_richer_live_structured_record_over_stale_local_copy():
+    manager = SearchManager()
+
+    def stale_local(query, topk=5, **kwargs):
+        return {
+            "hits": [
+                {
+                    "evidence_id": "stale-sec-copy",
+                    "source_type": "sec_companyfacts",
+                    "source_url": "https://data.sec.gov/companyfacts/NVDA.json",
+                    "content": "Assets only.",
+                    "score": 0.9,
+                    "metadata": {"parent_metadata": {"metrics": {"Assets": {"value": 1}}}},
+                },
+                {
+                    "evidence_id": "stale-sec-chunk",
+                    "chunk_id": "stale-sec-chunk",
+                    "source_type": "sec_companyfacts",
+                    "source_url": "https://data.sec.gov/companyfacts/NVDA.json",
+                    "content": "Old vector chunk.",
+                    "score": 1.0,
+                },
+            ],
+            "meta": {},
+        }
+
+    def live_sec(query, topk=5, **kwargs):
+        return {
+            "hits": [
+                {
+                    "evidence_id": "live-sec-copy",
+                    "source_type": "sec_companyfacts",
+                    "source_url": "https://data.sec.gov/companyfacts/NVDA.json",
+                    "content": "Current complete company facts.",
+                    "score": 0.0,
+                    "metadata": {
+                        "metrics": {
+                            "Assets": {"value": 1},
+                            "Liabilities": {"value": 2},
+                            "StockholdersEquity": {"value": 3},
+                        }
+                    },
+                }
+            ],
+            "meta": {},
+        }
+
+    manager.register_engine("local_evidence", stale_local)
+    manager.register_engine("sec_edgar", live_sec)
+
+    payload = manager.search("NVDA FY2024", engines=["local_evidence", "sec_edgar"], topk=1, symbol="NVDA")
+
+    assert len(payload["hits"]) == 1
+    assert payload["hits"][0]["result_id"] == "live-sec-copy"
+    assert len(payload["hits"][0]["raw"]["metadata"]["metrics"]) == 3
+
+
 def test_search_manager_records_engine_duration_and_stops_after_budget():
     manager = SearchManager()
 

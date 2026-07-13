@@ -1937,7 +1937,7 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
         else:
             key = str(raw.get("chunk_id") or hit.url or hit.result_id or f"{hit.engine}:{hit.title}:{hit.snippet[:80]}")
         existing = deduped.get(key)
-        if existing is None or (hit.authority_score, hit.score) > (existing.authority_score, existing.score):
+        if existing is None or _dedupe_preference(hit) > _dedupe_preference(existing):
             deduped[key] = hit
     ranked = sorted(deduped.values(), key=lambda item: (item.authority_score, item.score), reverse=True)
     selected: List[SearchResult] = []
@@ -1948,12 +1948,17 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
     # Valuation depends on Yahoo's supplementary financial record, while the
     # snapshot and filing engines often have higher authority scores. Reserve
     # both Yahoo records before global ranking can starve that data source.
-    engine_minimums = {"yahoo_finance": min(2, topk)}
+    engine_minimums = {
+        "yahoo_finance": min(2, topk),
+        "sec_edgar": min(1, topk),
+    }
     for engine, minimum in engine_minimums.items():
         engine_hits = [hit for hit in ranked if hit.engine == engine]
         for hit in engine_hits[:minimum]:
             selected.append(hit)
             source_counts[hit.source_type or hit.engine] = source_counts.get(hit.source_type or hit.engine, 0) + 1
+    if len(selected) >= topk:
+        return selected[:topk]
 
     for hit in ranked:
         if hit in selected:
@@ -1973,6 +1978,13 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
         if len(selected) >= topk:
             break
     return selected
+
+
+def _dedupe_preference(hit: SearchResult) -> tuple[float, int, float]:
+    raw = hit.raw if isinstance(hit.raw, dict) else {}
+    metadata = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
+    metrics = metadata.get("metrics") if isinstance(metadata.get("metrics"), dict) else {}
+    return hit.authority_score, len(metrics), hit.score
 
 
 def _safe_float(value: Any) -> float:
