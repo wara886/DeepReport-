@@ -1449,10 +1449,12 @@ def render_workbench_html() -> str:
       { name: "特斯拉", aliases: ["特斯拉", "Tesla", "TSLA"], symbol: "TSLA" },
       { name: "微软", aliases: ["微软", "Microsoft", "MSFT"], symbol: "MSFT" },
       { name: "腾讯控股", aliases: ["腾讯", "腾讯控股", "Tencent", "0700.HK"], symbol: "0700.HK" },
-      { name: "阿里巴巴", aliases: ["阿里", "阿里巴巴", "Alibaba", "BABA", "9988.HK"], symbol: "BABA" },
-      { name: "贵州茅台", aliases: ["贵州茅台", "茅台", "600519"], symbol: "600519" },
-      { name: "宁德时代", aliases: ["宁德时代", "CATL", "300750"], symbol: "300750" },
-      { name: "比亚迪", aliases: ["比亚迪", "BYD", "002594", "1211.HK"], symbol: "002594" },
+	      { name: "阿里巴巴（港股）", aliases: ["阿里", "阿里巴巴", "Alibaba", "9988.HK"], symbol: "9988.HK" },
+	      { name: "阿里巴巴（美股）", aliases: ["BABA"], symbol: "BABA" },
+	      { name: "贵州茅台", aliases: ["贵州茅台", "茅台", "600519", "600519.SS"], symbol: "600519.SS" },
+	      { name: "宁德时代", aliases: ["宁德时代", "CATL", "300750", "300750.SZ"], symbol: "300750.SZ" },
+	      { name: "比亚迪（A股）", aliases: ["比亚迪", "BYD", "002594", "002594.SZ"], symbol: "002594.SZ" },
+	      { name: "比亚迪（港股）", aliases: ["1211.HK"], symbol: "1211.HK" },
     ];
     const textOf = (map, value) => map[String(value || "")] || fmt(value);
     const statusText = (value) => textOf(statusMap, value);

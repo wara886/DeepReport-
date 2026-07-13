@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.agents.base_agent import AgentTask
 from src.agents.verifier_agent import VerifierAgent
-from src.data.company_universe import infer_market_from_symbol
+from src.data.company_universe import infer_market_from_symbol, resolve_company_identity
 from src.data.canonical_metrics import write_canonical_metrics_artifact
 from src.data.evidence_intake_gate import PERIOD_GATED_SOURCE_TYPES, record_period_status
 from src.data.official_evidence_archive import build_official_evidence_artifacts
@@ -163,6 +163,7 @@ class ReportTaskService:
         return recovered
 
     def create_task(self, payload: dict[str, Any]) -> dict[str, Any]:
+        payload = _normalize_task_identity_payload(payload)
         symbol = str(payload.get("symbol") or "AAPL").strip().upper()
         period = str(payload.get("period") or latest_completed_period()).strip().upper()
         task_id = self._new_task_id(payload.get("task_id"))
@@ -204,6 +205,7 @@ class ReportTaskService:
     def run_task(self, task_id: str) -> dict[str, Any]:
         with self.session() as session:
             task = self._get_task_for_update(session, task_id)
+            _repair_persisted_task_identity(session, task)
             if task.status == "running":
                 raise ReportTaskConflict(f"Task {task_id} is already running")
             if task.status not in {"queued", "failed", "timeout", "quality_failed"}:
@@ -1573,6 +1575,10 @@ class ReportTaskService:
             "research_topic": str(payload.get("research_topic") or payload.get("topic") or f"Generate {symbol} {period} research report"),
             "company_name": str(payload.get("company_name") or symbol),
             "symbol": symbol,
+            "market": str(payload.get("market") or ""),
+            "exchange": str(payload.get("exchange") or ""),
+            "currency": str(payload.get("currency") or ""),
+            "country_region": str(payload.get("country_region") or ""),
             "period": period,
             "report_type": str(payload.get("report_type") or "equity_research"),
             "data_source_scope": str(payload.get("data_source_scope") or "official_first"),
@@ -2940,17 +2946,19 @@ def _resolve_task_bindings(session: Session, *, payload: dict[str, Any], symbol:
 
     company_id = _optional_int(payload.get("company_id"))
     if company_id is not None:
-        return workspace_id, company_id
-    if str(payload.get("run_mode") or "queue_only") != "queue_only":
-        return workspace_id, None
+        company = session.get(Company, company_id)
+        if company is not None and _symbols_refer_to_same_listing(company.symbol, symbol):
+            canonical_company = _find_company_by_symbol(session, symbol)
+            if canonical_company is not None and canonical_company.id != company.id:
+                return workspace_id, canonical_company.id
+            _apply_company_identity(company, payload=payload, symbol=symbol)
+            return workspace_id, company.id
 
     market = str(payload.get("market") or infer_market_from_symbol(symbol).get("market") or "").strip().lower()
-    company = session.scalar(
-        select(Company)
-        .where(func.upper(Company.symbol) == symbol.upper())
-        .order_by(Company.id.asc())
-        .limit(1)
-    )
+    company = _find_company_by_symbol(session, symbol)
+    if company is None:
+        aliases = [item for item in _legacy_symbol_aliases(symbol) if item != symbol.upper()]
+        company = session.scalar(select(Company).where(func.upper(Company.symbol).in_(aliases)).order_by(Company.id.asc()).limit(1)) if aliases else None
     if company is None:
         company = Company(
             name=str(payload.get("company_name") or symbol).strip(),
@@ -2960,7 +2968,84 @@ def _resolve_task_bindings(session: Session, *, payload: dict[str, Any], symbol:
         )
         session.add(company)
         session.flush()
+    else:
+        _apply_company_identity(company, payload=payload, symbol=symbol)
     return workspace_id, company.id
+
+
+def _normalize_task_identity_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    requested = str(normalized.get("symbol") or normalized.get("company_name") or "AAPL").strip()
+    identity = resolve_company_identity(requested, default=requested.upper())
+    if not identity.is_listed and normalized.get("company_name"):
+        identity = resolve_company_identity(str(normalized["company_name"]), default=requested.upper())
+    if not identity.is_listed or not identity.canonical_symbol:
+        return normalized
+
+    original_name = str(normalized.get("company_name") or "").strip()
+    normalized.update(
+        {
+            "symbol": identity.canonical_symbol,
+            "company_name": original_name if original_name and original_name.upper() != requested.upper() else (identity.company_name or identity.canonical_symbol),
+            "market": identity.market,
+            "exchange": identity.exchange,
+            "currency": identity.currency,
+            "country_region": identity.country_region,
+        }
+    )
+    return normalized
+
+
+def _repair_persisted_task_identity(session: Session, task: ReportTask) -> None:
+    metadata = dict(task.metadata_json or {})
+    normalized = _normalize_task_identity_payload(
+        {
+            "symbol": task.symbol,
+            "company_name": metadata.get("company_name"),
+            "workspace_id": task.workspace_id,
+            "company_id": task.company_id,
+        }
+    )
+    canonical_symbol = str(normalized.get("symbol") or task.symbol).upper()
+    if canonical_symbol == str(task.symbol or "").upper() and str(metadata.get("market") or "").lower() not in {"", "unknown"}:
+        return
+
+    task.symbol = canonical_symbol
+    metadata.update({key: normalized.get(key) for key in ("symbol", "company_name", "market", "exchange", "currency", "country_region")})
+    task.metadata_json = metadata
+    workspace_id, company_id = _resolve_task_bindings(session, payload=normalized, symbol=canonical_symbol)
+    task.workspace_id = task.workspace_id or workspace_id
+    task.company_id = company_id
+    request_state_path = Path(str(metadata.get("output_dir") or "")) / "request_state.json"
+    if request_state_path.exists():
+        request_state = _read_json_object(request_state_path)
+        request_state["symbol"] = canonical_symbol
+        request_state_path.write_text(json.dumps(request_state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _apply_company_identity(company: Company, *, payload: dict[str, Any], symbol: str) -> None:
+    company.symbol = symbol
+    company.name = str(payload.get("company_name") or company.name or symbol).strip()
+    company.market = str(payload.get("market") or infer_market_from_symbol(symbol).get("market") or company.market or "").strip().lower() or None
+    company.aliases = sorted({str(item) for item in [*(company.aliases or []), *_legacy_symbol_aliases(symbol)] if str(item).strip()})
+
+
+def _find_company_by_symbol(session: Session, symbol: str) -> Company | None:
+    return session.scalar(
+        select(Company).where(func.upper(Company.symbol) == str(symbol or "").upper()).order_by(Company.id.asc()).limit(1)
+    )
+
+
+def _legacy_symbol_aliases(symbol: str) -> list[str]:
+    canonical = str(symbol or "").upper().strip()
+    aliases = {canonical}
+    if canonical.endswith((".SS", ".SZ", ".HK")):
+        aliases.add(canonical.rsplit(".", 1)[0])
+    return sorted(aliases)
+
+
+def _symbols_refer_to_same_listing(left: str | None, right: str | None) -> bool:
+    return bool(set(_legacy_symbol_aliases(str(left or ""))) & set(_legacy_symbol_aliases(str(right or ""))))
 
 
 def _safe_id(value: str) -> str:
