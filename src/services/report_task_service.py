@@ -166,6 +166,8 @@ class ReportTaskService:
         payload = _normalize_task_identity_payload(payload)
         symbol = str(payload.get("symbol") or "AAPL").strip().upper()
         period = str(payload.get("period") or latest_completed_period()).strip().upper()
+        if not re.fullmatch(r"(?:FY\d{4}|\d{4}Q[1-4])", period):
+            raise ValueError("period must use FY2025 or 2026Q2 format")
         task_id = self._new_task_id(payload.get("task_id"))
         report_type = str(payload.get("report_type") or "equity_research")
         metadata = self._build_task_metadata(task_id=task_id, payload=payload, symbol=symbol, period=period)

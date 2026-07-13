@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import date
 import json
 from pathlib import Path
 import re
@@ -38,6 +39,7 @@ from src.services.report_task_service import (
     ReportTaskNotFound,
     ReportTaskService,
 )
+from src.services.report_period_service import report_period_options
 from src.services.task_analysis_service import TaskAnalysisService
 from src.services.workspace_service import (
     WorkspaceCompanyNotFound,
@@ -141,6 +143,14 @@ def create_fastapi_app(
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "finsight-deepreport"}
 
+    @app.get("/api/report-periods")
+    def get_report_periods(symbol: str = "", period: str = "", as_of: str = "") -> Response:
+        try:
+            as_of_date = date.fromisoformat(as_of) if as_of else None
+        except ValueError:
+            return JSONResponse(status_code=422, content={"error": "as_of must use YYYY-MM-DD"})
+        return JSONResponse(content=report_period_options(symbol=symbol, period=period, as_of=as_of_date))
+
     @app.get("/")
     def index() -> Response:
         return Response(content=render_workbench_html(), media_type="text/html")
@@ -172,6 +182,8 @@ def create_fastapi_app(
             return JSONResponse(status_code=status_code, content=task)
         except ReportTaskConflict as exc:
             return JSONResponse(status_code=409, content={"error": str(exc)})
+        except ValueError as exc:
+            return JSONResponse(status_code=422, content={"error": str(exc)})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 

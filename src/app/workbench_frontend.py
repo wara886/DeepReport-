@@ -1172,13 +1172,10 @@ def render_workbench_html() -> str:
             <div class="field">
               <label for="taskPeriodInput">查询期间</label>
               <select id="taskPeriodInput">
-                <option value="FY2024">FY2024</option>
-                <option value="FY2023">FY2023</option>
-                <option value="2025Q1">2025Q1</option>
-                <option value="2024Q4">2024Q4</option>
-                <option value="2024Q3">2024Q3</option>
-                <option value="最近一年">最近一年</option>
+                <option value="">正在加载期间…</option>
               </select>
+              <input id="taskCustomPeriodInput" placeholder="自定义期间，如 FY2025 或 2026Q2" hidden />
+              <div class="form-note" id="taskPeriodReadiness">选择公司后检查目标分析期和官方披露可用性。</div>
             </div>
             <div class="field">
               <label for="taskReportTypeInput">报告类型</label>
@@ -1233,6 +1230,8 @@ def render_workbench_html() -> str:
     const $ = (id) => document.getElementById(id);
     const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[m]));
     const fmt = (v) => v == null || v === "" ? "-" : String(v);
+    let taskPeriodOptionsPayload = null;
+    let taskPeriodRefreshTimer = null;
     const number = (v) => Number.isFinite(Number(v)) ? Number(v).toLocaleString() : "0";
     const pct = (v) => Math.round((Number(v) || 0) * 100) + "%";
     const activeState = { view: "dashboard" };
@@ -1955,15 +1954,29 @@ def render_workbench_html() -> str:
         btn.addEventListener("click", () => {
           $("taskCompanyInput").value = btn.dataset.companyChoice;
           updateCompanyResolveNote();
+          refreshTaskPeriods();
         });
       });
       document.querySelectorAll("[data-close-create-task]").forEach((btn) => btn.addEventListener("click", closeCreateTaskModal));
       $("createTaskModal").addEventListener("click", (event) => {
         if (event.target === $("createTaskModal")) closeCreateTaskModal();
       });
-      $("taskCompanyInput").addEventListener("input", updateCompanyResolveNote);
+      $("taskCompanyInput").addEventListener("input", () => {
+        updateCompanyResolveNote();
+        clearTimeout(taskPeriodRefreshTimer);
+        taskPeriodRefreshTimer = setTimeout(refreshTaskPeriods, 250);
+      });
+      $("taskPeriodInput").addEventListener("change", () => {
+        $("taskCustomPeriodInput").hidden = $("taskPeriodInput").value !== "__custom__";
+        updateTaskPeriodReadiness();
+      });
+      $("taskCustomPeriodInput").addEventListener("input", () => {
+        clearTimeout(taskPeriodRefreshTimer);
+        taskPeriodRefreshTimer = setTimeout(() => updateTaskPeriodReadiness(true), 300);
+      });
       $("createTaskForm").addEventListener("submit", submitCreateTask);
       updateCompanyResolveNote();
+      refreshTaskPeriods();
       setFormLabelsActive($("createTaskModal"), false);
     }
 
@@ -1971,6 +1984,7 @@ def render_workbench_html() -> str:
       $("createTaskModal").classList.add("active");
       setFormLabelsActive($("createTaskModal"), true);
       $("createTaskMessage").innerHTML = "";
+      refreshTaskPeriods();
       setTimeout(() => $("taskCompanyInput").focus(), 0);
     }
 
@@ -1995,6 +2009,53 @@ def render_workbench_html() -> str:
         : "支持公司中文名、英文名或股票代码；优先解析当前投研空间股票池，未命中时使用本地公司候选。";
     }
 
+    function selectedTaskPeriod() {
+      return $("taskPeriodInput").value === "__custom__"
+        ? $("taskCustomPeriodInput").value.trim().toUpperCase()
+        : $("taskPeriodInput").value;
+    }
+
+    async function refreshTaskPeriods() {
+      const resolved = resolveCompany($("taskCompanyInput").value);
+      const symbol = resolved?.symbol || "";
+      const current = selectedTaskPeriod();
+      try {
+        const payload = await getJson(`/api/report-periods?symbol=${encodeURIComponent(symbol)}${current ? `&period=${encodeURIComponent(current)}` : ""}`);
+        taskPeriodOptionsPayload = payload;
+        const quarterOptions = (payload.options || []).filter((item) => item.kind === "quarter");
+        const annualOptions = (payload.options || []).filter((item) => item.kind === "fiscal_year");
+        const optionHtml = (item) => `<option value="${esc(item.value)}">${esc(item.label)} · ${item.readiness?.official_disclosure_available ? "官方披露可用" : "待披露/非标准"}</option>`;
+        $("taskPeriodInput").innerHTML = `<optgroup label="最近 8 个完整季度">${quarterOptions.map(optionHtml).join("")}</optgroup>
+          <optgroup label="最近 5 个财年">${annualOptions.map(optionHtml).join("")}</optgroup>
+          <option value="__custom__">自定义期间…</option>`;
+        const known = (payload.options || []).some((item) => item.value === current);
+        $("taskPeriodInput").value = known ? current : (current ? "__custom__" : payload.latest_completed_quarter);
+        if (current && !known) $("taskCustomPeriodInput").value = current;
+        $("taskCustomPeriodInput").hidden = $("taskPeriodInput").value !== "__custom__";
+        updateTaskPeriodReadiness();
+      } catch (error) {
+        $("taskPeriodReadiness").textContent = "期间选项加载失败，可输入自定义期间后重试。";
+      }
+    }
+
+    async function updateTaskPeriodReadiness(fetchCustom = false) {
+      const period = selectedTaskPeriod();
+      if (!period) return;
+      let payload = taskPeriodOptionsPayload;
+      let readiness = (payload?.options || []).find((item) => item.value === period)?.readiness;
+      if (fetchCustom || !readiness) {
+        const resolved = resolveCompany($("taskCompanyInput").value);
+        try {
+          payload = await getJson(`/api/report-periods?symbol=${encodeURIComponent(resolved?.symbol || "")}&period=${encodeURIComponent(period)}`);
+          readiness = payload.selected?.readiness;
+        } catch (error) {
+          readiness = null;
+        }
+      }
+      const status = readiness?.official_disclosure_available ? "官方披露可用" : (readiness?.status === "invalid" ? "期间格式无效" : "官方披露尚不可用");
+      $("taskPeriodReadiness").textContent = `目标分析期：${period}；行情时点：${payload?.market_data_as_of || "-"}；${status}（${readiness?.expected_official_source || "官方披露渠道"}）。${readiness?.reason || ""}`;
+    }
+
     async function submitCreateTask(event) {
       event.preventDefault();
       const resolved = await resolveCompanyForTask($("taskCompanyInput").value);
@@ -2004,9 +2065,14 @@ def render_workbench_html() -> str:
       }
       const runMode = $("taskRunModeInput").value;
       const evidenceGateMode = $("taskEvidenceGateInput").value;
+      const taskPeriod = selectedTaskPeriod();
+      if (!/^(FY\d{4}|\d{4}Q[1-4])$/i.test(taskPeriod)) {
+        $("createTaskMessage").innerHTML = `<div class="error">期间格式应为 FY2025 或 2026Q2。</div>`;
+        return;
+      }
       const payload = {
         symbol: resolved.symbol,
-        period: $("taskPeriodInput").value,
+        period: taskPeriod,
         report_type: $("taskReportTypeInput").value,
         research_topic: $("taskTopicInput").value.trim(),
         data_source_scope: $("taskDataSourceInput").value,
