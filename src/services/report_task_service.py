@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import re
@@ -116,6 +116,51 @@ class ReportTaskService:
         self._init_lock = threading.Lock()
         self.section_repair_callback_factory = section_repair_callback_factory
         self._enable_model_section_repair = orchestrator_factory is None or section_repair_callback_factory is not None
+
+    def recover_stale_running_tasks(self, *, max_age_minutes: int = 60) -> list[str]:
+        """Mark abandoned in-process tasks as timed out after a service restart."""
+
+        cutoff = _utc_now() - timedelta(minutes=max(1, int(max_age_minutes)))
+        recovered: list[str] = []
+        with self.session() as session:
+            tasks = list(
+                session.scalars(
+                    select(ReportTask).where(
+                        ReportTask.status == "running",
+                        ReportTask.started_at.is_not(None),
+                        ReportTask.started_at < cutoff,
+                    )
+                ).all()
+            )
+            for task in tasks:
+                previous_stage = str(task.current_stage or "running")
+                self._transition_task(task, "timeout", reason="stale_running_task_recovered_on_startup")
+                task.finished_at = _utc_now()
+                task.error_message = "服务重启后发现该任务已失去执行进程，可从 LangGraph 断点重试。"
+                metadata = dict(task.metadata_json or {})
+                metadata["runtime_failure"] = {
+                    "error_type": "OrphanedRuntime",
+                    "message": task.error_message,
+                    "checkpoint_available": self.langgraph_runtime_enabled,
+                    "previous_stage": previous_stage,
+                }
+                task.metadata_json = metadata
+                session.add(
+                    ReportTaskEvent(
+                        task_id=task.task_id,
+                        stage="timeout",
+                        status="timeout",
+                        message=task.error_message,
+                        metadata_json={
+                            "reason": "stale_running_task_recovered_on_startup",
+                            "previous_stage": previous_stage,
+                            "checkpoint_available": self.langgraph_runtime_enabled,
+                        },
+                    )
+                )
+                recovered.append(task.task_id)
+            session.commit()
+        return recovered
 
     def create_task(self, payload: dict[str, Any]) -> dict[str, Any]:
         symbol = str(payload.get("symbol") or "AAPL").strip().upper()

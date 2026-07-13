@@ -27,6 +27,7 @@ def test_workbench_uses_unified_delivery_readiness():
     html = render_workbench_html()
 
     assert "taskDeliveryStatus" in html
+    assert '["failed", "timeout", "cancelled", "archived"].includes(lifecycleStatus)' in html
     assert "renderDeliveryReadiness" in html
     assert "统一交付状态" in html
     assert "can_generate_draft" in html

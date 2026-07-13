@@ -31,6 +31,51 @@ Alphabet Inc. (GOOGL) 的核心业务覆盖搜索、广告、云和 Other Bets�
     assert any(issue["category"] == "cross_report_symbol_pollution" for issue in report["issues"])
 
 
+def test_quality_evaluator_recovers_target_symbol_from_request_state(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="MSFT",
+        period="FY2024",
+        report_md="""
+# Microsoft (MSFT) FY2024 公司研报
+
+## 执行摘要
+Microsoft 云业务增长，结论基于增长驱动、估值与风险约束。
+## 业务概览
+公司业务覆盖云计算和生产力软件。
+## 三表摘要
+利润表、资产负债表和现金流量表均已摘要。
+## 财务分析
+收入、利润和现金流均已分析。
+## 同行对比
+同行比较覆盖盈利能力和估值指标。
+## 估值观察
+P/E 与 P/B 估值均已说明。
+## 估值敏感性
+收入增速变化影响利润与估值。
+## 风险评估
+竞争与宏观风险均已披露。
+## 投资结论
+基于增长驱动、竞争压力、估值和风险，维持中性。
+## 合规
+来源见引用，仅供参考，不构成投资建议，无利益冲突。
+""",
+    )
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "run_summary.json").write_text(
+        json.dumps({"quality_feedback_used": True}, ensure_ascii=False), encoding="utf-8"
+    )
+    (outputs / "request_state.json").write_text(
+        json.dumps({"symbol": "MSFT", "period": "FY2024"}, ensure_ascii=False), encoding="utf-8"
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    messages = "\n".join(issue["message"] for issue in report["issues"])
+    assert "cannot resolve listed company symbol" not in messages
+    assert "unexpected ticker-like symbols" not in messages
+
+
 def test_quality_evaluator_blocks_official_evidence_identity_pollution(tmp_path):
     run_dir = _write_run(
         tmp_path,

@@ -1269,6 +1269,22 @@ class MultiAgentOrchestrator:
             },
         )
         if stop_after_phase == "final_answer":
+            run_summary = self._read_json("run_summary.json", {})
+            if not isinstance(run_summary, dict):
+                run_summary = {}
+            run_summary.update(
+                {
+                    "research_topic": research_topic,
+                    "symbol": symbol,
+                    "period": period,
+                    "execution_mode": "static",
+                    "execution_tier": self.execution_tier,
+                    "verification_passed": False,
+                    "entity_resolution": entity_resolution,
+                }
+            )
+            run_summary.update(self._runtime_execution_summary())
+            self._write_json("run_summary.json", repair_known_mojibake_obj(run_summary))
             trace_path = self.output_dir / "task_trace.jsonl"
             trace_path.write_text(
                 "\n".join(json.dumps(item, ensure_ascii=False, default=str) for item in self.trace) + "\n",

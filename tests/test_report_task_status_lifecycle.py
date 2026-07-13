@@ -1,6 +1,10 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from src.app.api_fastapi import create_fastapi_app
+from src.db.models import ReportTask
 from src.services.report_task_service import ReportTaskService
 
 
@@ -111,3 +115,37 @@ def test_report_task_retry_moves_failed_task_back_to_completed(tmp_path):
     assert "failed" in stages
     assert "retry" in stages
     assert stages[-1] == "completed"
+
+
+def test_startup_recovers_only_stale_running_tasks(tmp_path):
+    service = ReportTaskService(
+        database_url=f"sqlite:///{tmp_path / 'tasks.db'}",
+        output_root=tmp_path / "outputs",
+        report_root=tmp_path / "reports",
+        memory_root=tmp_path / "memory",
+        orchestrator_factory=SuccessfulOrchestrator,
+        quality_runner=passing_quality_runner,
+    )
+    service.create_task({"task_id": "stale-task", "symbol": "MSFT", "period": "FY2024"})
+    service.create_task({"task_id": "fresh-task", "symbol": "NVDA", "period": "FY2024"})
+    with service.session() as session:
+        stale = session.scalar(select(ReportTask).where(ReportTask.task_id == "stale-task"))
+        fresh = session.scalar(select(ReportTask).where(ReportTask.task_id == "fresh-task"))
+        assert stale is not None and fresh is not None
+        for task in (stale, fresh):
+            task.status = "running"
+            task.current_stage = "agent_browser"
+        stale.started_at = datetime.now(timezone.utc) - timedelta(hours=2)
+        fresh.started_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        session.commit()
+
+    recovered = service.recover_stale_running_tasks(max_age_minutes=60)
+
+    assert recovered == ["stale-task"]
+    stale_result = service.get_task("stale-task")
+    fresh_result = service.get_task("fresh-task")
+    assert stale_result["status"] == "timeout"
+    assert stale_result["current_stage"] == "timeout"
+    assert stale_result["metadata"]["runtime_failure"]["checkpoint_available"] is True
+    assert stale_result["events"][-1]["metadata"]["previous_stage"] == "agent_browser"
+    assert fresh_result["status"] == "running"

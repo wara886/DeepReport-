@@ -1376,7 +1376,12 @@ def render_workbench_html() -> str:
       ingest: "入库", parse: "解析", table_extract: "表格抽取", chunk: "切分", chunk_vectorize: "切分向量化",
       evidence: "证据化", claim_bind: "绑定主张", verify: "校验",
       evidence_gate: "生成前证据检查", evidence_gate_failed: "证据不足，已暂停生成",
-      orchestrator: "多智能体执行", artifact_import: "产物导入", quality_gate: "质量门禁", completed: "完成",
+      orchestrator: "多智能体执行", write_report: "撰写并保存研报", verify_report: "独立校验研报",
+      inspect_agent_execution: "检查智能体执行", verify_sections: "校验章节合同",
+      repair_failed_sections: "返工未通过章节", build_canonical_metrics: "统一正式指标",
+      build_section_evidence_packs: "构建章节证据包", normalize_evidence: "清洗并统一证据",
+      official_evidence_backfill: "补齐官方证据", finalize: "汇总交付状态", human_review: "人工复核",
+      artifact_import: "产物导入", quality_gate: "质量门禁", quality: "质量门禁", completed: "完成",
       agent_planning: "规划研究任务", "agent.planning": "规划研究任务",
       agent_research: "检索研究资料", "agent.research": "检索研究资料",
       agent_browser: "读取与整理资料", "agent.browser": "读取与整理资料",
@@ -2861,6 +2866,10 @@ def render_workbench_html() -> str:
 
     function taskDeliveryStatus(task) {
       const readiness = task?.delivery_readiness || {};
+      const lifecycleStatus = String(task?.status || "unknown");
+      if (["failed", "timeout", "cancelled", "archived"].includes(lifecycleStatus)) {
+        return { key: lifecycleStatus, label: statusText(lifecycleStatus) };
+      }
       if (readiness.machine_status === "passed" && readiness.review_status === "pending") {
         return { key: "pending", label: "机器质检通过，待人工复核" };
       }

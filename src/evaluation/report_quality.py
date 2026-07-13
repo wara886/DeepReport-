@@ -260,6 +260,7 @@ def load_quality_artifacts(paths: RunPaths) -> Dict[str, Any]:
     financial_metrics = canonical_metrics_as_financial_metrics(canonical_metrics, fallback=raw_financial_metrics)
     return {
         "summary": _read_json(paths.outputs_dir / "run_summary.json", {}),
+        "request_state": _read_json(paths.outputs_dir / "request_state.json", {}),
         "claims": _as_list(_read_json(paths.outputs_dir / "claims.json", [])),
         "evidence": _as_list(_read_json(paths.outputs_dir / "evidence.json", [])),
         "citations": _as_list(_read_json(paths.outputs_dir / "citations.json", [])),
@@ -675,7 +676,7 @@ def _score_compliance(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -
 def _check_delivery_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -> None:
     summary = artifacts.get("summary", {}) if isinstance(artifacts.get("summary"), dict) else {}
     entity = summary.get("entity_resolution", {}) if isinstance(summary.get("entity_resolution"), dict) else {}
-    resolved_symbol = str(entity.get("resolved_symbol") or summary.get("symbol") or "").strip()
+    resolved_symbol = _expected_symbol(artifacts)
     confidence = float(entity.get("confidence") or entity.get("resolution_confidence") or 0.0)
     if not resolved_symbol:
         _issue(issues, "blocker", "delivery_policy", "cannot resolve listed company symbol, cannot generate formal company research report")
@@ -1329,7 +1330,17 @@ def _report_text(artifacts: Dict[str, Any]) -> str:
 def _expected_symbol(artifacts: Dict[str, Any]) -> str:
     summary = artifacts.get("summary", {}) if isinstance(artifacts.get("summary"), dict) else {}
     entity = summary.get("entity_resolution", {}) if isinstance(summary.get("entity_resolution"), dict) else {}
-    return str(entity.get("resolved_symbol") or summary.get("symbol") or artifacts.get("report_json", {}).get("symbol") or "").strip().upper()
+    request_state = artifacts.get("request_state", {}) if isinstance(artifacts.get("request_state"), dict) else {}
+    report_json = artifacts.get("report_json", {}) if isinstance(artifacts.get("report_json"), dict) else {}
+    company_identity = request_state.get("company_identity", {}) if isinstance(request_state.get("company_identity"), dict) else {}
+    return str(
+        entity.get("resolved_symbol")
+        or summary.get("symbol")
+        or request_state.get("symbol")
+        or company_identity.get("symbol")
+        or report_json.get("symbol")
+        or ""
+    ).strip().upper()
 
 
 def _approved_peer_symbols(artifacts: Dict[str, Any]) -> set[str]:

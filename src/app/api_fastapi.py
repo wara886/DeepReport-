@@ -78,6 +78,9 @@ def create_fastapi_app(
             datasource_service = getattr(app.state, "datasource_service", None)
             if datasource_service is not None:
                 datasource_service.seed_registered_sources()
+            task_service = getattr(app.state, "report_task_service", None)
+            if task_service is not None:
+                task_service.recover_stale_running_tasks()
             yield
         finally:
             task_service = getattr(app.state, "report_task_service", None)
