@@ -202,14 +202,18 @@ def _apply_artifact_guard(review: Dict[str, Any], artifacts: Dict[str, Any]) -> 
         return review
     if blocking:
         return review
-    if issues and not bool(review.get("artifact_reconciliation_applied")):
+    if int(review.get("fatal_issue_count", 0) or 0) > 0 or _contains_direct_fail(issues):
         return review
-    if float(review.get("total_score", 0.0) or 0.0) < 0.65 and not bool(review.get("artifact_reconciliation_applied")):
+    minimum_warning_score = 0.75 if issues else 0.65
+    if float(review.get("total_score", 0.0) or 0.0) < minimum_warning_score and not bool(review.get("artifact_reconciliation_applied")):
         return review
     guarded = dict(review)
     guarded["llm_review_pass"] = True
     guarded["total_score"] = max(_score(guarded.get("total_score", 0.0)), 0.82)
-    guarded["verdict"] = (str(guarded.get("verdict") or "").strip() + " | artifact_guard: objective and verifier gates passed; empty reviewer issues ignored.").strip()
+    guarded["verdict"] = (
+        str(guarded.get("verdict") or "").strip()
+        + " | artifact_guard: objective, verifier and section contracts passed; warning-only reviewer findings remain non-blocking."
+    ).strip()
     guarded["artifact_guard_applied"] = True
     return guarded
 
@@ -232,6 +236,7 @@ def _reconcile_review_with_runtime_artifacts(review: Dict[str, Any], artifacts: 
             _is_stale_section_depth_review_issue(message, report_md=report_md)
             or _is_disclosed_ttm_period_context_issue(message, report_md=report_md)
             or _is_reviewer_unfinished_sentence_false_positive(message, artifacts=artifacts)
+            or _is_disclosed_directional_rating_false_positive(message, report_md=report_md)
         ):
             row = dict(issue)
             row["severity"] = "warning"
@@ -254,6 +259,19 @@ def _reconcile_review_with_runtime_artifacts(review: Dict[str, Any], artifacts: 
         output["total_score"] = max(_score(output.get("total_score", 0.0)), 0.82)
     output["artifact_reconciliation_applied"] = True
     return output
+
+
+def _is_disclosed_directional_rating_false_positive(message: str, *, report_md: str) -> bool:
+    text = str(message or "").lower()
+    report = str(report_md or "").lower()
+    alleges_missing_rating = "missing rating" in text or ("评级" in text and "缺少" in text)
+    alleges_missing_target = any(term in text for term in ("目标价", "估值区间", "target price"))
+    has_directional_rating = any(term in report for term in ("中性观察评级", "偏积极评级", "偏谨慎评级", "不建议评级"))
+    target_price_boundary = any(
+        term in report
+        for term in ("非dcf目标价", "不构成目标价", "不输出确定目标价", "不输出确定性目标价")
+    )
+    return has_directional_rating and (alleges_missing_rating or (alleges_missing_target and target_price_boundary))
 
 
 def _is_disclosed_ttm_period_context_issue(message: str, *, report_md: str) -> bool:

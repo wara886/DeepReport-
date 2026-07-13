@@ -205,7 +205,23 @@ independent_sources:
                 {"val": 90, "end": "2024-09-28", "filed": "2024-11-01", "form": "10-K", "fy": 2024, "fp": "FY"},
                 {"val": 30, "end": "2024-12-28", "filed": "2025-01-31", "form": "10-Q", "fy": 2025, "fp": "Q1"},
             ]
-            return json.dumps({"facts": {"us-gaap": {"Revenues": {"units": {"USD": values}}}}}).encode("utf-8")
+            return json.dumps(
+                {
+                    "facts": {
+                        "us-gaap": {
+                            "Revenues": {"units": {"USD": values}},
+                            "Liabilities": {"units": {"USD": [{**values[1], "val": 40}]}},
+                            "StockholdersEquity": {"units": {"USD": [{**values[1], "val": 50}]}},
+                            "NetCashProvidedByUsedInInvestingActivities": {
+                                "units": {"USD": [{**values[1], "val": -12}]}
+                            },
+                            "NetCashProvidedByUsedInFinancingActivities": {
+                                "units": {"USD": [{**values[1], "val": -8}]}
+                            },
+                        }
+                    }
+                }
+            ).encode("utf-8")
 
     monkeypatch.setattr("src.data.independent_sources.request.urlopen", lambda req, timeout: FakeResponse())
 
@@ -216,3 +232,8 @@ independent_sources:
     assert revenue["end"] == "2024-09-28"
     assert revenue["fy"] == 2024
     assert revenue["fp"] == "FY"
+    metrics = payload.hits[0]["metadata"]["metrics"]
+    assert metrics["Liabilities"]["value"] == 40
+    assert metrics["StockholdersEquity"]["value"] == 50
+    assert metrics["NetCashProvidedByUsedInInvestingActivities"]["value"] == -12
+    assert metrics["NetCashProvidedByUsedInFinancingActivities"]["value"] == -8

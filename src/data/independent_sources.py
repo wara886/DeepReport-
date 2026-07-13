@@ -41,9 +41,13 @@ DEFAULT_COMPANY_FACTS = [
     "RevenueFromContractWithCustomerExcludingAssessedTax",
     "NetIncomeLoss",
     "Assets",
+    "Liabilities",
+    "StockholdersEquity",
     "CashAndCashEquivalentsAtCarryingValue",
     "NetCashProvidedByUsedInOperatingActivities",
     "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
+    "NetCashProvidedByUsedInInvestingActivities",
+    "NetCashProvidedByUsedInFinancingActivities",
     "PaymentsToAcquirePropertyPlantAndEquipment",
     "PaymentsToAcquireProductiveAssets",
 ]

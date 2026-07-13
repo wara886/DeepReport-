@@ -877,6 +877,9 @@ class MultiAgentOrchestrator:
             "claims": [],
             "analysis_artifacts": {},
             "enable_remote_data": bool(enable_remote_data),
+            "data_source_config_path": data_source_config_path,
+            "chart_output_dir": str(self.output_dir / "charts"),
+            "performance_profile": "fast" if fast else "default",
         }
         self.state = static_state  # P0.5: expose for _execute deadline enforcement
         research_blackboard = update_blackboard_for_task(
@@ -4018,11 +4021,19 @@ def _requires_sec_annual_report(symbol: str, period: str) -> bool:
     return "." not in symbol
 
 
-def _pdf_sections_as_evidence_records(sections: Any, symbol: str, period: str) -> List[Dict[str, Any]]:
+def _pdf_sections_as_evidence_records(
+    sections: Any,
+    symbol: str,
+    period: str,
+    *,
+    max_records: int = 24,
+) -> List[Dict[str, Any]]:
     output: List[Dict[str, Any]] = []
     if not isinstance(sections, list):
         return output
     for section in sections:
+        if len(output) >= max(1, int(max_records)):
+            break
         if not isinstance(section, dict):
             continue
         section_id = str(section.get("section_id") or "")

@@ -686,7 +686,7 @@ def _build_three_statement_summary(
     table_md = _render_three_statement_table_markdown(tables, currency_context)
     if table_md:
         c.deterministic_text = table_md
-        for eid in financial_evidence_ids:
+        for eid in financial_evidence_ids[:6]:
             if eid not in c.citation_evidence_ids:
                 c.citation_evidence_ids.append(eid)
     else:

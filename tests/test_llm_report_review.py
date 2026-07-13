@@ -100,6 +100,28 @@ def test_llm_review_normalizes_passing_model_json(tmp_path):
     assert review["model"] == "fake-reviewer"
 
 
+def test_llm_review_reconciles_warning_only_borderline_score(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    model = FakeReviewModel(
+        {
+            "total_score": 0.78,
+            "dimension_scores": {},
+            "verdict": "整体可交付，但图表说明仍可增强。",
+            "issues": [
+                {"severity": "warning", "category": "chart", "message": "图表文字解读可以更深入。"},
+                {"severity": "warning", "category": "citation", "message": "一项派生指标建议补充公式说明。"},
+            ],
+        }
+    )
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["total_score"] >= 0.82
+    assert review["artifact_guard_applied"] is True
+    assert all(issue["severity"] == "warning" for issue in review["issues"])
+
+
 def test_llm_review_direct_fail_terms_force_failure(tmp_path):
     run_dir = _write_review_run(tmp_path)
     model = FakeReviewModel(
@@ -155,6 +177,40 @@ def test_llm_review_reconciles_stale_section_depth_issues_after_section_verifica
             "verdict": "旧复核认为章节不足。",
             "issues": [
                 {"severity": "fatal", "category": "llm_review", "message": "内容空洞：业务概览、估值观察等章节均为暂不展开"},
+            ],
+        }
+    )
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["artifact_reconciliation_applied"] is True
+    assert review["issues"][0]["severity"] == "warning"
+
+
+def test_llm_review_accepts_disclosed_directional_rating_without_target_price(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    outputs = run_dir / "company" / "outputs"
+    reports = run_dir / "company" / "reports"
+    (outputs / "section_verification.json").write_text(
+        json.dumps({"status": "passed", "formal_delivery_allowed": True}), encoding="utf-8"
+    )
+    (reports / "report.md").write_text(
+        "## 估值观察\n估值输入尚不完整，本报告不输出确定目标价。\n\n"
+        "## 投资结论\n维持中性观察评级，理由包括现金流质量、估值约束和主要风险。",
+        encoding="utf-8",
+    )
+    model = FakeReviewModel(
+        {
+            "total_score": 0.78,
+            "dimension_scores": {},
+            "verdict": "评级边界需要说明。",
+            "issues": [
+                {
+                    "severity": "blocker",
+                    "category": "llm_review",
+                    "message": "投资建议缺少明确评级及目标价或估值区间",
+                }
             ],
         }
     )

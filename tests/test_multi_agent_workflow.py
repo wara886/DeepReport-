@@ -21,6 +21,7 @@ from src.agents.multi_agent_orchestrator import (
     MultiAgentOrchestrator,
     _compact_research_phase_output,
     _compact_trace_task,
+    _pdf_sections_as_evidence_records,
     enrich_task_parameters,
     prepare_dynamic_tasks,
 )
@@ -840,8 +841,10 @@ def test_static_normalize_phase_preserves_evidence_gate_records(tmp_path):
 def test_static_normalize_checkpoint_persists_pdf_section_evidence(monkeypatch, tmp_path):
     output_dir = tmp_path / "outputs"
     report_dir = tmp_path / "reports"
+    observed_chart_dirs = []
 
     def attach_pdf(state):
+        observed_chart_dirs.append(state.get("chart_output_dir"))
         state["evidence_records"] = list(state.get("evidence_records") or []) + [
             {
                 "evidence_id": "pdf_section_checkpointed",
@@ -871,6 +874,20 @@ def test_static_normalize_checkpoint_persists_pdf_section_evidence(monkeypatch, 
 
     evidence = json.loads((output_dir / "evidence.json").read_text(encoding="utf-8"))
     assert any(row.get("evidence_id") == "pdf_section_checkpointed" for row in evidence)
+    assert observed_chart_dirs == [str(output_dir / "charts")]
+
+
+def test_pdf_section_evidence_is_bounded_to_representative_records():
+    sections = [
+        {"section_id": f"section-{index}", "snippet": f"Evidence section {index}", "section_type": "financial_statements"}
+        for index in range(40)
+    ]
+
+    records = _pdf_sections_as_evidence_records(sections, "NVDA", "FY2024", max_records=24)
+
+    assert len(records) == 24
+    assert records[0]["evidence_id"] == "pdf_section_section-0"
+    assert records[-1]["evidence_id"] == "pdf_section_section-23"
 
 
 def test_multi_agent_orchestrator_runs_compact_collaborative_by_default(tmp_path):

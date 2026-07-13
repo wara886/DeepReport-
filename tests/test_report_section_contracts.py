@@ -31,8 +31,10 @@ from src.report.contract_builder import (
     _build_ownership_governance,
     _build_risk_factors,
     _build_strategy_business,
+    _build_three_statement_summary,
     _clip_at_sentence_boundary,
 )
+from src.utils.money import build_currency_context
 from src.report.citation_binder import CitationBinder
 
 
@@ -66,6 +68,33 @@ def _make_evidence_record(source_type: str, eid: str = "ev_rec_001") -> Dict[str
         "title": f"Test {source_type}",
         "content": "test content",
     }
+
+
+def test_three_statement_summary_caps_representative_citations():
+    contracts = ReportSectionContracts()
+    evidence_ids = [f"ev_{index}" for index in range(20)]
+    tables = [
+        {
+            "rows": [
+                {"metric_name": "revenue", "value": 100_000_000_000, "period": "FY2024", "source_type": "sec_companyfacts"},
+                {"metric_name": "net_income", "value": 20_000_000_000, "period": "FY2024", "source_type": "sec_companyfacts"},
+                {"metric_name": "operating_cash_flow", "value": 25_000_000_000, "period": "FY2024", "source_type": "sec_companyfacts"},
+            ]
+        }
+    ]
+
+    _build_three_statement_summary(
+        contracts,
+        {"revenue": 100_000_000_000, "net_income": 20_000_000_000, "operating_cash_flow": 25_000_000_000},
+        tables,
+        evidence_ids,
+        build_currency_context(symbol="NVDA"),
+    )
+
+    contract = contracts.get("three_statement_summary")
+    assert contract is not None
+    assert len(contract.citation_evidence_ids) <= 6
+    assert contract.citation_evidence_ids == evidence_ids[:6]
 
 
 # ── Tests ───────────────────────────────────────────────────────────────

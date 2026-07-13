@@ -380,10 +380,10 @@ def _discover_peers_via_search(
                 "industry": industry,
                 "is_target": False,
                 "revenue_billion": rev,
-                "revenue_growth_pct": _ratio_to_pct(rev_growth) if rev_growth is not None else None,
-                "gross_margin_pct": _ratio_to_pct(gross_margin) if gross_margin is not None else None,
-                "net_margin_pct": _ratio_to_pct(net_margin) if net_margin is not None else None,
-                "roe_pct": _ratio_to_pct(roe_val) if roe_val is not None else None,
+                "revenue_growth_pct": _yahoo_ratio_to_pct(rev_growth) if rev_growth is not None else None,
+                "gross_margin_pct": _yahoo_ratio_to_pct(gross_margin) if gross_margin is not None else None,
+                "net_margin_pct": _yahoo_ratio_to_pct(net_margin) if net_margin is not None else None,
+                "roe_pct": _yahoo_ratio_to_pct(roe_val) if roe_val is not None else None,
                 "free_cash_flow_billion": fcf_val,
                 "net_income_billion": ni,
                 "adjusted_net_income_billion": ni,
@@ -415,10 +415,10 @@ def _discover_peers_via_search(
             "industry": industry,
             "is_target": True,
             "revenue_billion": _to_billion(t_rev) if t_rev is not None else None,
-            "revenue_growth_pct": _ratio_to_pct(_safe_float(ti.get("revenueGrowth")) or 0.0),
-            "gross_margin_pct": _ratio_to_pct(_safe_float(ti.get("grossMargins")) or 0.0),
-            "net_margin_pct": _ratio_to_pct(_safe_float(ti.get("profitMargins")) or 0.0),
-            "roe_pct": _ratio_to_pct(_safe_float(ti.get("returnOnEquity")) or 0.0),
+            "revenue_growth_pct": _yahoo_ratio_to_pct(_safe_float(ti.get("revenueGrowth")) or 0.0),
+            "gross_margin_pct": _yahoo_ratio_to_pct(_safe_float(ti.get("grossMargins")) or 0.0),
+            "net_margin_pct": _yahoo_ratio_to_pct(_safe_float(ti.get("profitMargins")) or 0.0),
+            "roe_pct": _yahoo_ratio_to_pct(_safe_float(ti.get("returnOnEquity")) or 0.0),
             "free_cash_flow_billion": _to_billion(t_fcf) if t_fcf is not None else None,
             "net_income_billion": _to_billion(t_ni) if t_ni is not None else None,
             "adjusted_net_income_billion": _to_billion(t_ni) if t_ni is not None else None,
@@ -1166,6 +1166,12 @@ def _to_billion(value: float) -> float:
 def _ratio_to_pct(value: float) -> float:
     value = float(value)
     return value * 100.0 if abs(value) <= 1.0 else value
+
+
+def _yahoo_ratio_to_pct(value: float) -> float:
+    """Yahoo ratio fields are decimal ratios even when ROE exceeds 100%."""
+
+    return float(value) * 100.0
 
 
 def _market_gap(blended_value: float, market_context: Dict[str, Any]) -> Dict[str, Any]:

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from src.agents.deep_analyze_agent import _attach_metric_lineage_to_claims, apply_evidence_gate
 from src.agents.research_blackboard import (
@@ -15,7 +16,7 @@ from src.data.financial_statement_metrics import build_standard_financial_metric
 from src.evaluation.valuation_audit import audit_valuation_model
 from src.evaluation.company_report_scorecard import build_company_report_scorecard
 from src.schemas.claim import ClaimItem
-from src.features.company_valuation import build_peer_comparison, perform_company_valuation
+from src.features.company_valuation import _yahoo_ratio_to_pct, build_peer_comparison, perform_company_valuation
 from src.features.financial_metric_lineage import build_financial_metric_lineage, build_financial_metric_tables
 from src.features.financial_ratios import build_financial_ratios
 from src.features.financial_statements import build_three_statement_view
@@ -276,6 +277,10 @@ def test_peer_comparison_and_valuation_use_local_real_data():
     valuation["recommendation"] = "中性观察"
     assert valuation["recommendation"] in {"积极关注", "中性偏积极", "中性观察"}
     assert "annual_or_ttm_free_cash_flow" in valuation["missing_inputs"]
+
+
+def test_yahoo_roe_over_one_is_still_a_decimal_ratio():
+    assert _yahoo_ratio_to_pct(1.1422) == pytest.approx(114.22)
 
 
 def test_valuation_uses_optional_market_context():
