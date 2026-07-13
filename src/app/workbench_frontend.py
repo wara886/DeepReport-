@@ -720,7 +720,7 @@ def render_workbench_html() -> str:
               <div class="table-scroll">
                 <table>
                   <thead>
-                    <tr><th>数据源</th><th>类型</th><th>市场</th><th>可信度</th><th>凭证</th><th>最近状态</th><th>操作</th></tr>
+                    <tr><th>数据源</th><th>类型</th><th>市场</th><th>配置 / 启用</th><th>运行状态</th><th>证据</th><th>最近运行</th><th>操作</th></tr>
                   </thead>
                   <tbody id="datasourceRows"></tbody>
                 </table>
@@ -2278,6 +2278,16 @@ def render_workbench_html() -> str:
       return textOf(map, value);
     }
 
+    function datasourceRuntimeState(item) {
+      if (item.configured === false) return { label: "未配置", cls: "not_configured" };
+      if (!item.enabled) return { label: "已停用", cls: "disabled" };
+      if (item.operational) return { label: "运行正常", cls: "success" };
+      if (item.last_status === "not_run" || !item.last_status) return { label: "尚未运行", cls: "not_run" };
+      if (item.last_error === "permission_or_quota_error") return { label: "权限或额度不足", cls: "failed" };
+      if (item.last_status === "partial") return { label: "部分可用", cls: "warning" };
+      return { label: "运行失败", cls: "failed" };
+    }
+
     async function loadDatasources() {
       const params = new URLSearchParams();
       const q = $("datasourceQuery").value.trim();
@@ -2289,24 +2299,28 @@ def render_workbench_html() -> str:
         const payload = await getJson("/api/data-sources" + suffix);
         const rows = payload.items || [];
         $("datasourceRows").innerHTML = rows.length
-          ? rows.map((item) => `<tr data-selectable="true">
+          ? rows.map((item) => {
+            const runtime = datasourceRuntimeState(item);
+            return `<tr data-selectable="true">
               <td><button class="btn" data-datasource-detail="${esc(item.id)}">${esc(item.name || sourceText(item.source_key))}</button><br><span class="label">${esc(sourcePurposeText(item))}</span></td>
               <td>${esc(datasourceTypeText(item.source_type))}</td>
               <td>${esc(marketScopeText(item.market_scope))}</td>
-              <td><span class="status ${esc(item.trust_level || "secondary")}">${esc(statusText(item.trust_level || "secondary"))}</span></td>
-              <td><span class="status ${esc(item.credential_status)}">${esc(credentialText(item.credential_status))}</span></td>
+              <td><span class="status ${item.configured ? "success" : "not_configured"}">${item.configured ? "已配置" : "未配置"}</span><br><span class="label">${item.enabled ? "已启用" : "已停用"}</span></td>
+              <td><span class="status ${esc(runtime.cls)}">${esc(runtime.label)}</span></td>
+              <td>${esc(number(item.evidence_count || 0))}</td>
               <td><span class="status ${esc(item.last_status || "pending")}">${esc(statusText(item.last_status || "pending"))}</span><br><span class="label">${esc(fmt(item.last_sync_at))}</span></td>
               <td class="links">
                 <button class="btn" data-datasource-toggle="${esc(item.id)}" data-enabled="${item.enabled ? "false" : "true"}" ${!item.enabled && item.configured === false ? 'disabled title="请先配置凭证"' : ""}>${item.enabled ? "停用" : "启用"}</button>
                 <button class="btn" data-datasource-health="${esc(item.id)}">查看状态说明</button>
               </td>
-            </tr>`).join("")
-          : `<tr><td colspan="7"><div class="empty"><div>暂无数据源</div><div class="empty-actions"><button class="btn primary" id="seedDatasourcesInline">同步注册源</button></div></div></td></tr>`;
+            </tr>`;
+          }).join("")
+          : `<tr><td colspan="8"><div class="empty"><div>暂无数据源</div><div class="empty-actions"><button class="btn primary" id="seedDatasourcesInline">同步注册源</button></div></div></td></tr>`;
         bindDatasourceButtons($("datasourceRows"));
         const inline = $("seedDatasourcesInline");
         if (inline) inline.addEventListener("click", seedDatasources);
       } catch (error) {
-        showLoadError("datasourceRows", 7);
+        showLoadError("datasourceRows", 8);
       }
     }
 
@@ -2339,6 +2353,9 @@ def render_workbench_html() -> str:
           <div class="kv"><span class="label">覆盖市场</span><span>${esc(marketScopeText(item.market_scope))}</span></div>
           <div class="kv"><span class="label">可信度</span><span><span class="status ${esc(item.trust_level || "secondary")}">${esc(statusText(item.trust_level || "secondary"))}</span></span></div>
           <div class="kv"><span class="label">启用</span><span>${item.enabled ? "是" : "否"}</span></div>
+          <div class="kv"><span class="label">已配置</span><span>${item.configured ? "是" : "否"}</span></div>
+          <div class="kv"><span class="label">可运行</span><span>${item.operational ? "是" : "否"}</span></div>
+          <div class="kv"><span class="label">证据数</span><span>${esc(number(item.evidence_count || 0))}</span></div>
           <div class="kv"><span class="label">凭证</span><span><span class="status ${esc(item.credential_status)}">${esc(credentialText(item.credential_status))}</span></span></div>
           <div class="kv"><span class="label">最近状态</span><span><span class="status ${esc(item.last_status || "pending")}">${esc(statusText(item.last_status || "pending"))}</span></span></div>
           <div class="kv"><span class="label">最近同步</span><span>${esc(fmt(item.last_sync_at))}</span></div>
@@ -2748,24 +2765,12 @@ def render_workbench_html() -> str:
       bindRecentTaskButtons($("recentTasks"));
     }
 
-    function renderDataSourceHealth(summary) {
-      const values = summary.data_source_distribution || {};
-      const sources = [
-        ["sec_edgar", "美国证监会年报"],
-        ["cninfo", "巨潮资讯"],
-        ["hkex", "港交所公告"],
-        ["yahoo_finance", "雅虎财经"],
-        ["company_profile", "公司画像"],
-        ["market_api", "行情接口"],
-        ["local_pdf", "本地文档"],
-      ];
-      const hasAny = Object.values(values).some((value) => Number(value || 0) > 0);
-      $("dataSourceHealth").innerHTML = sources.map(([key, label]) => {
-        const count = Number(values[key] || 0);
-        const state = count > 0 ? "已入库" : "待配置";
-        const cls = count > 0 ? "completed" : "pending";
-        return `<div class="health-row"><span>${esc(label)}</span><strong>${esc(number(count))}</strong><span class="status ${cls}">${state}</span></div>`;
-      }).join("") + (hasAny ? "" : `<div class="empty-actions"><button class="btn primary" data-jump="datasources">配置数据源</button></div>`);
+    function renderDataSourceHealth(payload) {
+      const sources = (payload && payload.items) || [];
+      $("dataSourceHealth").innerHTML = sources.length ? sources.map((item) => {
+        const runtime = datasourceRuntimeState(item);
+        return `<div class="health-row"><span>${esc(item.name || sourceText(item.source_key))}</span><strong>${esc(number(item.evidence_count || 0))}</strong><span class="status ${esc(runtime.cls)}">${esc(runtime.label)}</span></div>`;
+      }).join("") : `<div class="empty-actions"><button class="btn primary" data-jump="datasources">同步数据源</button></div>`;
       bindJumpHandlers($("dataSourceHealth"));
     }
 
@@ -3647,14 +3652,15 @@ def render_workbench_html() -> str:
 
 	    async function loadDashboard() {
       try {
-        const [summary, funnel, recentTasksPayload] = await Promise.all([
+        const [summary, funnel, recentTasksPayload, datasourcePayload] = await Promise.all([
           getJson("/api/dashboard/summary"),
           getJson("/api/dashboard/funnel"),
           getJson("/api/report-tasks?limit=6"),
+          getJson("/api/data-sources"),
         ]);
         renderCards(summary);
         renderRecentTaskPanel(recentTasksPayload);
-        renderDataSourceHealth(summary);
+        renderDataSourceHealth(datasourcePayload);
         renderReviewExceptions(summary);
         renderDashboardCharts(summary);
         renderRecentTaskTable(recentTasksPayload);

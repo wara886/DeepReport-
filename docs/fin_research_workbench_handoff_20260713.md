@@ -7,7 +7,39 @@
 
 ## 0. 21:00 最新 checkpoint（优先于下方历史记录）
 
-阶段 2A 与 2B 已完成代码修复和真实任务验证，当前应进入“检查 diff → 阶段 2 commit/push → 阶段 3”，不要再从 2A 重新审计。
+阶段 2A 与 2B 已完成代码修复和真实任务验证。阶段 2 已提交并推送；阶段 3 也已完成实现与验收，当前应从阶段 4 继续，不要再从 2A 重新审计。
+
+最新提交：
+
+```text
+1fce587 fix: complete cn and hk report source routing
+```
+
+### 阶段 3：统一数据源状态已完成
+
+API、首页与数据源管理页现在共同读取 `/api/data-sources` 的 registry 状态，并明确展示：
+
+```text
+configured
+enabled
+operational / last_status
+evidence_count
+```
+
+后端按规范化来源别名聚合 evidence 数量，已统一 `cninfo/cninfo_announcement/cninfo_announcements`、`hkex/hkex_announcement/hkex_annual_report/hkex_announcements`、SEC 和 Yahoo 等来源键。首页不再用“证据数为 0”推断“待配置”。
+
+真实 API 与浏览器验收：
+
+```text
+CNINFO: configured=true, enabled=true, operational=true, evidence_count=3, last_status=success
+HKEX: configured=true, enabled=true, operational=true, evidence_count=2, last_status=success
+Tushare: configured=true, enabled=true, operational=false, evidence_count=0,
+         last_status=failed, last_error=permission_or_quota_error
+```
+
+浏览器中 Tushare 显示“已配置 / 已启用 / 权限或额度不足”，详情显示“可运行：否、证据数：0”，不再显示“待配置”；CNINFO/HKEX 显示“运行正常”及真实最近运行时间与证据数。阶段 3 后端/前端聚焦测试 16 项通过，并完成本地工作台客户端只读实测。
+
+阶段 3 尚待本次对话执行最后的 commit/push；完成后进入阶段 4“重构任务列表和详情”。
 
 ### 阶段 2A：A 股机器质量已通过
 
@@ -82,11 +114,11 @@ http://127.0.0.1:7863/workbench
 PID 60411
 ```
 
-下一步严格按阶段计划执行：
+阶段 2 的提交步骤已经完成。下一步严格按阶段计划执行：
 
-1. 检查 `git diff`，确认不包含运行目录、SQLite、缓存或报告产物。
-2. 提交并 push 阶段 2，建议信息 `fix: complete cn and hk report source routing`。
-3. 进入阶段 3“统一数据源状态”，先核对 `/api/data-sources` 与前端 Dashboard 的真实字段映射。
+1. 提交并 push 阶段 3 数据源状态修复。
+2. 进入阶段 4“重构任务列表和详情”。
+3. 先解决桌面横向滚动、双滚动条和重复操作，再改任务详情 tabs/抽屉。
 
 下方第 1–10 节保留为修复前历史诊断；如与本节冲突，以本节为准。
 

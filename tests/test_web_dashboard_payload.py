@@ -85,6 +85,11 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert 'getJson("/api/dashboard/summary")' in html
     assert 'getJson("/api/dashboard/funnel")' in html
     assert 'getJson("/api/report-tasks?limit=6")' in html
+    assert 'getJson("/api/data-sources")' in html
+    assert "datasourceRuntimeState" in html
+    assert "权限或额度不足" in html
+    assert "配置 / 启用" in html
+    assert 'const state = count > 0 ? "已入库" : "待配置"' not in html
     assert 'getJson("/api/workspaces")' in html
     assert "/api/workspaces/${encodeURIComponent(workspaceId)}/companies" in html
     assert "resolveCompanyForTask" in html

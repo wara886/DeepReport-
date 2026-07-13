@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from src.app.api_fastapi import create_fastapi_app
-from src.db.models import DataSource
+from src.db.models import DataSource, EvidenceItem
 from src.search.search_manager import SearchManager
 from src.services.report_task_service import ReportTaskService
 
@@ -157,3 +157,26 @@ def test_verified_search_run_updates_datasource_health_without_manual_marking(tm
     assert macro["last_error"] == "partial_source_failures"
     assert yahoo["last_status"] == "failed"
     assert yahoo["last_error"] == "timeout"
+
+
+def test_datasource_registry_counts_evidence_through_normalized_source_aliases(tmp_path):
+    with build_client(tmp_path) as client:
+        client.post("/api/data-sources/seed", json={})
+        service = client.app.state.datasource_service
+        with service.session_factory() as session:
+            session.add_all(
+                [
+                    EvidenceItem(evidence_id="cninfo_ev", source_type="cninfo_announcement", content="annual report"),
+                    EvidenceItem(evidence_id="hkex_ev", source_type="hkex_annual_report", content="annual report"),
+                    EvidenceItem(evidence_id="sec_ev", source_type="sec_companyfacts", content="company facts"),
+                    EvidenceItem(evidence_id="yahoo_ev", source_type="market_api", content="market snapshot"),
+                ]
+            )
+            session.commit()
+        listed = client.get("/api/data-sources").json()["items"]
+
+    by_key = {item["source_key"]: item for item in listed}
+    assert by_key["cninfo_announcements"]["evidence_count"] == 1
+    assert by_key["hkex_announcements"]["evidence_count"] == 1
+    assert by_key["sec_edgar"]["evidence_count"] == 1
+    assert by_key["yahoo_finance"]["evidence_count"] == 1

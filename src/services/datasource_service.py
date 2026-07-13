@@ -7,11 +7,11 @@ from datetime import datetime, timezone
 import os
 from typing import Any
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from src.db.models import DataSource, Workspace
+from src.db.models import DataSource, EvidenceItem, Workspace
 from src.search.search_manager import SearchManager
 
 
@@ -40,6 +40,25 @@ DEFAULT_SOURCE_CATALOG: dict[str, dict[str, Any]] = {
     "hk_financials": {"name": "港股财务数据", "source_type": "financial_statement", "trust_level": "secondary", "market_scope": ["HK"]},
     "serper": {"name": "Serper 搜索", "source_type": "web_search", "trust_level": "secondary", "market_scope": ["US", "CN", "HK"]},
     "tavily": {"name": "Tavily 搜索", "source_type": "web_search", "trust_level": "secondary", "market_scope": ["US", "CN", "HK"]},
+}
+
+EVIDENCE_SOURCE_ALIASES: dict[str, set[str]] = {
+    "local_real_data": {"local_real_data"},
+    "local_evidence": {"local_evidence", "local_index"},
+    "independent_macro": {"independent_macro", "macro_data", "fred", "bls", "bea"},
+    "sec_edgar": {"sec_edgar", "sec_companyfacts", "sec_filing", "sec_10k_filing", "sec_10k_section"},
+    "yahoo_finance": {"yahoo_finance", "yahoo_profile", "yahoo_financials", "market_api", "market_data"},
+    "eastmoney": {"eastmoney", "eastmoney_quote"},
+    "sina_finance": {"sina_finance"},
+    "cninfo_announcements": {"cninfo", "cninfo_announcement", "cninfo_announcements"},
+    "exchange_announcements": {"exchange_announcement", "exchange_announcements"},
+    "eastmoney_financials": {"eastmoney_financials"},
+    "baostock_financials": {"baostock_financials"},
+    "tushare_financials": {"tushare_financials"},
+    "hkex_announcements": {"hkex", "hkex_announcement", "hkex_announcements", "hkex_annual_report"},
+    "hk_financials": {"hk_financials"},
+    "serper": {"serper"},
+    "tavily": {"tavily"},
 }
 
 
@@ -127,12 +146,16 @@ class DataSourceService:
             if enabled is not None:
                 stmt = stmt.where(DataSource.enabled.is_(enabled))
             stmt = _apply_search(stmt, q=q)
-            items = [self.serialize_source(item) for item in session.scalars(stmt).unique().all()]
+            rows = session.scalars(stmt).unique().all()
+            evidence_counts = _evidence_counts_by_source(session, [item.source_key for item in rows])
+            items = [self.serialize_source(item, evidence_count=evidence_counts.get(item.source_key, 0)) for item in rows]
         return {"items": items, "total": len(items)}
 
     def get_source(self, source_ref: int | str) -> dict[str, Any]:
         with self.session_factory() as session:
-            return self.serialize_source(_get_source(session, source_ref))
+            item = _get_source(session, source_ref)
+            counts = _evidence_counts_by_source(session, [item.source_key])
+            return self.serialize_source(item, evidence_count=counts.get(item.source_key, 0))
 
     def create_source(self, payload: dict[str, Any]) -> dict[str, Any]:
         source_key = str(payload.get("source_key") or "").strip()
@@ -249,7 +272,7 @@ class DataSourceService:
             session.commit()
         return {"updated": len(updated), "sources": updated}
 
-    def serialize_source(self, item: DataSource) -> dict[str, Any]:
+    def serialize_source(self, item: DataSource, *, evidence_count: int | None = None) -> dict[str, Any]:
         return {
             "id": item.id,
             "workspace_id": item.workspace_id,
@@ -264,6 +287,7 @@ class DataSourceService:
             "credential_status": item.credential_status,
             "configured": _credentials_available(item.credential_status),
             "operational": bool(item.enabled and _credentials_available(item.credential_status) and item.last_status == "success"),
+            "evidence_count": int(evidence_count or 0),
             "last_sync_at": _dt(item.last_sync_at),
             "last_status": item.last_status,
             "last_error": item.last_error,
@@ -294,6 +318,20 @@ def _runtime_hit_count(runtime: dict[str, Any]) -> int:
         if isinstance(value, (int, float)):
             return max(0, int(value))
     return 0
+
+
+def _evidence_counts_by_source(session: Session, source_keys: list[str]) -> dict[str, int]:
+    raw_counts = {
+        str(source_type or "").strip().lower(): int(count or 0)
+        for source_type, count in session.execute(
+            select(EvidenceItem.source_type, func.count(EvidenceItem.id)).group_by(EvidenceItem.source_type)
+        ).all()
+        if str(source_type or "").strip()
+    }
+    return {
+        source_key: sum(raw_counts.get(alias, 0) for alias in EVIDENCE_SOURCE_ALIASES.get(source_key, {source_key}))
+        for source_key in source_keys
+    }
 
 
 def _get_workspace_optional(session: Session, workspace_ref: int | str | None) -> Workspace | None:
