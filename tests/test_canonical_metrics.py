@@ -132,6 +132,32 @@ def test_canonical_metrics_builds_auditable_derived_metric_lineage():
     assert any(row["metric_name"] == "net_margin" for row in financial_metrics["metrics"])
 
 
+def test_canonical_metric_preserves_candidate_calculation_formula():
+    artifact = build_canonical_metrics_artifact(
+        financial_metrics={
+            "metrics": [
+                {
+                    "metric_name": "revenue_growth_pct",
+                    "value": 2.02,
+                    "unit": "pct",
+                    "source_type": "sec_companyfacts",
+                    "source_evidence_id": "sec-growth",
+                    "period": "FY2024",
+                    "period_match": True,
+                    "calculation_formula": "(revenue - prior_revenue) / abs(prior_revenue) * 100",
+                }
+            ]
+        },
+        tables=[],
+        symbol="AAPL",
+        period="FY2024",
+    )
+
+    growth = artifact["canonical_metrics"]["revenue_growth_pct"]
+    assert growth["source_type"] == "sec_companyfacts"
+    assert growth["calculation_formula"].startswith("(revenue - prior_revenue)")
+
+
 def test_canonical_metrics_rejects_wrong_fiscal_year_market_candidate():
     artifact = build_canonical_metrics_artifact(
         financial_metrics={

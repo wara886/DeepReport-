@@ -232,8 +232,41 @@ independent_sources:
     assert revenue["end"] == "2024-09-28"
     assert revenue["fy"] == 2024
     assert revenue["fp"] == "FY"
+    assert revenue["comparative"]["value"] == 80
+    assert revenue["comparative"]["end"] == "2023-09-30"
+    assert "prior comparable: 80" in payload.hits[0]["content"]
     metrics = payload.hits[0]["metadata"]["metrics"]
     assert metrics["Liabilities"]["value"] == 40
     assert metrics["StockholdersEquity"]["value"] == 50
     assert metrics["NetCashProvidedByUsedInInvestingActivities"]["value"] == -12
     assert metrics["NetCashProvidedByUsedInFinancingActivities"]["value"] == -8
+
+
+def test_sec_companyfacts_rejects_future_filed_comparative(monkeypatch, tmp_path):
+    payload = {
+        "facts": {
+            "us-gaap": {
+                "RevenueFromContractWithCustomerExcludingAssessedTax": {
+                    "units": {
+                        "USD": [
+                            {"val": 110, "end": "2024-09-28", "filed": "2024-11-01", "fy": 2024, "fp": "FY", "form": "10-K"},
+                            {"val": 100, "end": "2023-09-30", "filed": "2024-11-01", "fy": 2024, "fp": "FY", "form": "10-K"},
+                            {"val": 101, "end": "2023-09-30", "filed": "2025-10-31", "fy": 2025, "fp": "FY", "form": "10-K"},
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    monkeypatch.setattr("src.data.independent_sources._get_json", lambda *args, **kwargs: payload)
+    raw_root = tmp_path / "raw"
+    raw_root.mkdir()
+    (raw_root / "company_tickers.json").write_text(
+        json.dumps({"0": {"ticker": "AAPL", "cik_str": 320193}}), encoding="utf-8"
+    )
+
+    result = fetch_sec_companyfacts_evidence("AAPL", "FY2024", raw_data_root=raw_root)
+
+    revenue = result.hits[0]["metadata"]["metrics"]["RevenueFromContractWithCustomerExcludingAssessedTax"]
+    assert revenue["comparative"]["value"] == 100
+    assert revenue["comparative"]["filed"] == "2024-11-01"

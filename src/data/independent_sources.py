@@ -385,7 +385,7 @@ def fetch_sec_companyfacts_evidence(
         return SourcePayload(hits=[], meta={"mode": "sec_companyfacts", "symbol": symbol, "cik": cik, "record_count": 0, "failure_reason": "no_supported_facts"})
     latest_dates = [str(item.get("filed") or item.get("end") or "") for item in metrics.values() if isinstance(item, dict)]
     publish_time = max([item for item in latest_dates if item] or [""])
-    metric_text = "; ".join(f"{name}: {item.get('value')} ({item.get('unit')}, {item.get('end')})" for name, item in metrics.items())
+    metric_text = "; ".join(_format_sec_metric_text(name, item) for name, item in metrics.items())
     metric_scope = f"{period} supported metrics" if period else "latest supported metrics"
     hit = _record(
         evidence_id=f"sec_companyfacts_{symbol.lower()}_{hashlib.sha1(metric_text.encode('utf-8')).hexdigest()[:10]}",
@@ -423,7 +423,7 @@ def _latest_sec_metrics(facts: Dict[str, Any], period: str = "") -> Dict[str, Di
         latest = _select_sec_metric_row(rows, period=period)
         if not latest:
             continue
-        output[metric] = {
+        normalized = {
             "value": latest.get("val"),
             "unit": latest.get("unit", ""),
             "end": latest.get("end", ""),
@@ -433,6 +433,19 @@ def _latest_sec_metrics(facts: Dict[str, Any], period: str = "") -> Dict[str, Di
             "fy": latest.get("fy", ""),
             "fp": latest.get("fp", ""),
         }
+        if metric in {"RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues"}:
+            comparative = _select_prior_annual_metric_row(rows, latest=latest, period=period)
+            if comparative:
+                normalized["comparative"] = {
+                    "value": comparative.get("val"),
+                    "unit": comparative.get("unit", ""),
+                    "end": comparative.get("end", ""),
+                    "filed": comparative.get("filed", ""),
+                    "form": comparative.get("form", ""),
+                    "fy": comparative.get("fy", ""),
+                    "fp": comparative.get("fp", ""),
+                }
+        output[metric] = normalized
     output = _drop_stale_duplicate_revenue_metric(output)
     return output
 
@@ -494,6 +507,57 @@ def _select_sec_metric_row(rows: List[Dict[str, Any]], period: str = "") -> Dict
         )
     )
     return usable[0][0]
+
+
+def _select_prior_annual_metric_row(
+    rows: List[Dict[str, Any]],
+    *,
+    latest: Dict[str, Any],
+    period: str,
+) -> Dict[str, Any]:
+    if _fiscal_year(period) is None:
+        return {}
+    latest_end = _parse_iso_date(latest.get("end"))
+    if latest_end is None:
+        return {}
+    latest_filed = _parse_iso_date(latest.get("filed"))
+    latest_unit = str(latest.get("unit") or "")
+    latest_filing = str(latest.get("filed") or "")
+    candidates: List[tuple[Dict[str, Any], date, date | None]] = []
+    for row in rows:
+        if str(row.get("form") or "").upper() not in {"10-K", "10-K/A", "20-F", "20-F/A"}:
+            continue
+        if latest_unit and str(row.get("unit") or "") != latest_unit:
+            continue
+        end_date = _parse_iso_date(row.get("end"))
+        if end_date is None:
+            continue
+        filed_date = _parse_iso_date(row.get("filed"))
+        if latest_filed is not None and (filed_date is None or filed_date > latest_filed):
+            continue
+        age_days = (latest_end - end_date).days
+        if 250 <= age_days <= 550:
+            candidates.append((row, end_date, filed_date))
+    candidates.sort(
+        key=lambda pair: (
+            1 if latest_filing and str(pair[0].get("filed") or "") == latest_filing else 0,
+            pair[1],
+            pair[2] or date.min,
+        ),
+        reverse=True,
+    )
+    return candidates[0][0] if candidates else {}
+
+
+def _format_sec_metric_text(name: str, item: Dict[str, Any]) -> str:
+    text = f"{name}: {item.get('value')} ({item.get('unit')}, {item.get('end')})"
+    comparative = item.get("comparative") if isinstance(item.get("comparative"), dict) else {}
+    if comparative:
+        text += (
+            f", prior comparable: {comparative.get('value')} "
+            f"({comparative.get('unit')}, {comparative.get('end')})"
+        )
+    return text
 
 
 def _period_target_date(period: str | None) -> date | None:

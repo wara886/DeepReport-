@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 from typing import Dict, List, Sequence
 
 from src.retrieval.evidence_store import EvidenceRecord
@@ -15,7 +16,23 @@ logger = get_task_logger(__name__, task_id="-")
 
 
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+DEFAULT_VECTOR_DB_PATH = "data/vector_db"
 _EMBEDDER_CACHE: Dict[str, object] = {}
+
+
+def resolve_vector_persistent_path(persistent_path: str | None = DEFAULT_VECTOR_DB_PATH) -> str | None:
+    """Resolve the standard vector path from the process environment.
+
+    Explicit custom paths and ``None`` keep their original meaning. This lets a
+    clean deployment isolate Chroma without changing every retrieval caller.
+    """
+
+    if persistent_path != DEFAULT_VECTOR_DB_PATH:
+        return persistent_path
+    configured = os.getenv("FINSIGHT_VECTOR_DB_PATH")
+    if configured is None:
+        return persistent_path
+    return configured.strip() or None
 
 
 class ChromaIndex:
@@ -31,10 +48,11 @@ class ChromaIndex:
     def __init__(
         self,
         model_name: str = DEFAULT_EMBEDDING_MODEL,
-        persistent_path: str | None = "data/vector_db",
+        persistent_path: str | None = DEFAULT_VECTOR_DB_PATH,
         collection_name: str = "finsight_local_evidence",
     ):
         ensure_model_cache_env()
+        persistent_path = resolve_vector_persistent_path(persistent_path)
         self.model_name = model_name
         self.persistent_path = persistent_path
         self.collection_name = collection_name

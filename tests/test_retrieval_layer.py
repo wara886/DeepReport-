@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.retrieval.bm25_index import BM25Index
-from src.retrieval.chroma_index import ChromaIndex
+from src.retrieval.chroma_index import ChromaIndex, resolve_vector_persistent_path
 from src.retrieval.evidence_store import EvidenceRecord, EvidenceStore
 from src.retrieval.retrieve import retrieve_evidence, retrieve_evidence_with_mode
 
@@ -206,6 +206,25 @@ def test_retrieve_evidence_vector_mode_from_curated_dir(tmp_path: Path):
     assert hits[0]["symbol"] == "AAPL"
     assert meta["mode"] == "vector"
     assert meta["vector_backend"] in {"memory", "chromadb"}
+
+
+def test_default_vector_path_can_be_isolated_by_environment(tmp_path: Path, monkeypatch):
+    isolated_path = tmp_path / "isolated_vector_db"
+    monkeypatch.setenv("FINSIGHT_VECTOR_DB_PATH", str(isolated_path))
+
+    index = ChromaIndex()
+
+    assert index.persistent_path == str(isolated_path)
+    assert resolve_vector_persistent_path() == str(isolated_path)
+
+
+def test_explicit_ephemeral_vector_path_ignores_environment(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("FINSIGHT_VECTOR_DB_PATH", str(tmp_path / "should_not_be_used"))
+
+    index = ChromaIndex(persistent_path=None)
+
+    assert index.persistent_path is None
+    assert resolve_vector_persistent_path(None) is None
 
 
 def test_retrieve_evidence_isolated_vector_index_ignores_global_collection(tmp_path: Path):

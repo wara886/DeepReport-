@@ -160,6 +160,15 @@ class FailingOnceOrchestrator:
         return {"verification_passed": True}
 
 
+class AlwaysFailingOrchestrator:
+    def __init__(self, output_dir, report_dir, **kwargs):
+        self.output_dir = Path(output_dir)
+        self.report_dir = Path(report_dir)
+
+    def run(self, **kwargs):
+        raise RuntimeError("persistent graph node failure")
+
+
 def passing_quality_runner(output_dir, report_dir, **kwargs):
     output_dir.mkdir(parents=True, exist_ok=True)
     return {
@@ -358,8 +367,37 @@ def test_report_task_retries_failed_generation_node_from_checkpoint(tmp_path):
     assert body["task"]["status"] == "completed"
     assert body["checkpoint"]["next"] == []
     assert FailingOnceOrchestrator.calls == 2
+    retry_events = [event for event in body["task"]["events"] if event["stage"] == "checkpoint_retry"]
+    assert len(retry_events) == 1
+    assert retry_events[0]["status"] == "running"
+    assert retry_events[0]["metadata"]["node"] == "write_report"
+    assert retry_events[0]["metadata"]["lifecycle_status"] == "generating"
     evidence_events = [event for event in body["task"]["events"] if event["stage"] == "evidence_gate"]
     assert len(evidence_events) == 1
+
+
+def test_failed_checkpoint_retry_returns_task_to_failed_lifecycle(tmp_path):
+    with make_client(tmp_path, AlwaysFailingOrchestrator) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={
+                "task_id": "task-runtime-retry-fails",
+                "symbol": "NVDA",
+                "period": "FY2024",
+                "enable_remote_data": False,
+                "run_immediately": True,
+            },
+        )
+        try:
+            client.post("/api/report-tasks/task-runtime-retry-fails/runtime/retry")
+        except RuntimeError as exc:
+            assert "persistent graph node failure" in str(exc)
+        detail = client.get("/api/report-tasks/task-runtime-retry-fails")
+
+    assert created.json()["status"] == "failed"
+    assert detail.json()["status"] == "failed"
+    retry_events = [event for event in detail.json()["events"] if event["stage"] == "checkpoint_retry"]
+    assert [event["status"] for event in retry_events] == ["running", "failed"]
 
 
 def test_report_task_remote_runtime_executes_official_backfill(monkeypatch, tmp_path):

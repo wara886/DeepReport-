@@ -740,6 +740,19 @@ def perform_company_valuation(
         "valuation_currency": valuation_currency,
         "fx_conversion": fx_note,
         "official_financial_source_count": len(official_records),
+        "input_summary": {
+            "revenue_billion": revenue,
+            "net_income_billion": net_income,
+            "free_cash_flow_billion": free_cash_flow,
+            "revenue_growth_pct": revenue_growth,
+            "net_margin_pct": net_margin,
+            "roe_pct": roe,
+            "market_cap_billion": market_context.get("market_cap_billion"),
+            "shares_outstanding_billion": shares_outstanding,
+            "statement_currency": statement_currency,
+            "trading_currency": trading_currency,
+            "valuation_currency": valuation_currency,
+        },
         "methods": {
             "pe": {"multiple": pe_multiple, "value_billion": round(pe_value, 2)},
             "ps": {"multiple": ps_multiple, "value_billion": round(ps_value, 2)},
@@ -960,8 +973,17 @@ def _normalize_record_financials(record: Dict[str, Any]) -> Dict[str, Any]:
         operating_cf = _first_fact_value(metrics, ["NetCashProvidedByUsedInOperatingActivities"])
         capex = _first_fact_value(metrics, ["PaymentsToAcquirePropertyPlantAndEquipment"])
         free_cash_flow = (operating_cf - capex) if (operating_cf is not None and capex is not None) else None
+        revenue_fact = _first_fact_record(metrics, ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues"])
+        prior_revenue_fact = revenue_fact.get("comparative") if isinstance(revenue_fact.get("comparative"), dict) else {}
+        prior_revenue = _safe_float(prior_revenue_fact.get("value"))
+        revenue_growth = (
+            (float(revenue) - prior_revenue) / abs(prior_revenue) * 100.0
+            if revenue is not None and prior_revenue not in (None, 0)
+            else None
+        )
         return {
             "revenue_billion": _to_billion(revenue) if revenue is not None else None,
+            "revenue_growth_pct": revenue_growth,
             "net_income_billion": _to_billion(net_income) if net_income is not None else None,
             "adjusted_net_income_billion": _to_billion(net_income) if net_income is not None else None,
             "free_cash_flow_billion": _to_billion(free_cash_flow) if free_cash_flow is not None else None,
@@ -1159,6 +1181,14 @@ def _first_fact_value(raw: Dict[str, Any], keys: List[str]) -> float | None:
             if parsed is not None:
                 return parsed
     return None
+
+
+def _first_fact_record(raw: Dict[str, Any], keys: List[str]) -> Dict[str, Any]:
+    for key in keys:
+        value = raw.get(key)
+        if isinstance(value, dict):
+            return value
+    return {}
 
 
 def _first_dict(value: Any) -> Dict[str, Any]:

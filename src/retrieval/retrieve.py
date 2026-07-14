@@ -10,7 +10,7 @@ from src.rag.dense_retriever import DenseRetriever
 from src.rag.hybrid_retriever import HybridRetriever
 from src.rag.reranker_adapter import RerankerAdapter
 from src.retrieval.bm25_index import BM25Index
-from src.retrieval.chroma_index import ChromaIndex
+from src.retrieval.chroma_index import ChromaIndex, DEFAULT_VECTOR_DB_PATH, resolve_vector_persistent_path
 from src.retrieval.chunking import chunk_records
 from src.retrieval.evidence_store import EvidenceStore
 from src.training.infer_reranker import rerank_hits_with_meta
@@ -53,10 +53,11 @@ def retrieve_evidence_with_mode(
     reranker_checkpoint_path: str = "data/outputs/checkpoints/reranker_checkpoint.json",
     use_chunks: bool = False,
     log: bool = True,
-    vector_persistent_path: str | None = "data/vector_db",
+    vector_persistent_path: str | None = DEFAULT_VECTOR_DB_PATH,
     vector_collection_name: str = "finsight_local_evidence",
 ) -> Tuple[List[Dict[str, object]], Dict[str, object]]:
     mode = ranking_mode.strip().lower()
+    vector_persistent_path = resolve_vector_persistent_path(vector_persistent_path)
     if mode in {"vector", "hybrid", "hybrid_rerank"}:
         return _retrieve_evidence_with_hybrid_layer(
             query=query,

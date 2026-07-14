@@ -701,6 +701,42 @@ def test_sec_companyfacts_builds_metric_lineage_rows():
     assert metrics["metric_count"] == 6
 
 
+def test_sec_companyfacts_derives_annual_revenue_growth_with_lineage():
+    metrics = build_standard_financial_metrics(
+        [
+            {
+                "evidence_id": "sec_growth",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "source_type": "sec_companyfacts",
+                "metadata": {
+                    "metrics": {
+                        "RevenueFromContractWithCustomerExcludingAssessedTax": {
+                            "value": 110_000_000_000,
+                            "unit": "USD",
+                            "end": "2024-09-28",
+                            "filed": "2024-11-01",
+                            "comparative": {
+                                "value": 100_000_000_000,
+                                "unit": "USD",
+                                "end": "2023-09-30",
+                                "filed": "2024-11-01",
+                            },
+                        }
+                    }
+                },
+            }
+        ]
+    )
+
+    growth = next(item for item in metrics["metrics"] if item["metric_name"] == "revenue_growth_pct")
+    assert growth["value"] == 10.0
+    assert growth["unit"] == "pct"
+    assert growth["source_evidence_id"] == "sec_growth"
+    assert growth["source_type"] == "sec_companyfacts"
+    assert "prior_comparable_revenue" in growth["calculation_formula"]
+
+
 def test_sec_companyfacts_builds_cash_flow_statement_rows():
     rows = build_standard_statement_rows(
         [

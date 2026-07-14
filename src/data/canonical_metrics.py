@@ -435,6 +435,7 @@ def _normalize_candidate(
         "source_table_id": str(row.get("source_table_id") or ""),
         "report_date": str(row.get("report_date") or ""),
         "notice_date": str(row.get("notice_date") or ""),
+        "calculation_formula": str(row.get("calculation_formula") or ""),
         "confidence": float(row.get("confidence") or 0.0),
         "priority": SOURCE_PRIORITY.get(source_type, 99),
     }

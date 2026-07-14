@@ -279,8 +279,58 @@ class ReportTaskService:
         return {"task": self.get_task(task_id), "runtime": result, "checkpoint": self.get_runtime_checkpoint(task_id)}
 
     def retry_runtime_checkpoint(self, task_id: str) -> dict[str, Any]:
-        self.get_task(task_id)
-        result = self._get_langgraph_runtime().retry_from_checkpoint(thread_id=task_id)
+        runtime = self._get_langgraph_runtime()
+        checkpoint = runtime.snapshot(thread_id=task_id)
+        pending_nodes = [str(node) for node in checkpoint.get("next") or []]
+        if not pending_nodes:
+            raise ReportTaskConflict(f"Task {task_id} has no pending LangGraph checkpoint")
+        resumed_node = pending_nodes[0]
+        resumed_lifecycle = _checkpoint_lifecycle_for_node(resumed_node)
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            if resolve_lifecycle_status(task) in {"failed", "timeout"}:
+                restore_report_transition(task, resumed_lifecycle, reason=f"checkpoint_retry:{resumed_node}")
+                task.error_message = None
+                task.finished_at = None
+                session.add(
+                    ReportTaskEvent(
+                        task_id=task_id,
+                        stage="checkpoint_retry",
+                        status="running",
+                        message=f"LangGraph checkpoint retry started at {resumed_node}",
+                        metadata_json={"node": resumed_node, "lifecycle_status": resumed_lifecycle},
+                    )
+                )
+                session.commit()
+        try:
+            result = runtime.retry_from_checkpoint(thread_id=task_id)
+        except Exception as exc:
+            with self.session() as session:
+                task = self._get_task_for_update(session, task_id)
+                lifecycle = resolve_lifecycle_status(task)
+                if lifecycle in {"evidence_checking", "generating", "quality_checking"}:
+                    self._transition_task(task, "failed", reason=type(exc).__name__)
+                metadata = dict(task.metadata_json or {})
+                metadata["runtime_failure"] = {
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                    "checkpoint_available": True,
+                    "retry_node": resumed_node,
+                }
+                task.metadata_json = metadata
+                task.finished_at = _utc_now()
+                task.error_message = str(exc)
+                session.add(
+                    ReportTaskEvent(
+                        task_id=task_id,
+                        stage="checkpoint_retry",
+                        status="failed",
+                        message=str(exc),
+                        metadata_json={"node": resumed_node, "error_type": type(exc).__name__},
+                    )
+                )
+                session.commit()
+            raise
         self._record_runtime_result(task_id, result)
         return {"task": self.get_task(task_id), "runtime": result, "checkpoint": self.get_runtime_checkpoint(task_id)}
 
@@ -2450,6 +2500,14 @@ def _write_json_list(path: Path, records: list[dict[str, Any]]) -> None:
 def _write_json_object(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _checkpoint_lifecycle_for_node(node: str) -> str:
+    if node == "evidence":
+        return "evidence_checking"
+    if node in {"quality", "finalize", "human_review"}:
+        return "quality_checking"
+    return "generating"
 
 
 def _build_canonical_metrics_manifest(output_dir: Path) -> dict[str, Any]:

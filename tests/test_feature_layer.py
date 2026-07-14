@@ -358,6 +358,61 @@ def test_valuation_merges_price_and_market_cap_across_market_records():
     assert valuation["valuation_sensitivity"]["scenario_values"]["base"]["target_price"] is not None
 
 
+def test_valuation_uses_sec_comparative_revenue_growth_without_history_cache():
+    records = [
+        {
+            "evidence_id": "sec_aapl_fy2024",
+            "symbol": "AAPL",
+            "period": "FY2024",
+            "source_type": "sec_companyfacts",
+            "metadata": {
+                "metrics": {
+                    "RevenueFromContractWithCustomerExcludingAssessedTax": {
+                        "value": 110_000_000_000,
+                        "unit": "USD",
+                        "end": "2024-09-28",
+                        "filed": "2024-11-01",
+                        "comparative": {
+                            "value": 100_000_000_000,
+                            "unit": "USD",
+                            "end": "2023-09-30",
+                            "filed": "2024-11-01",
+                        },
+                    },
+                    "NetIncomeLoss": {"value": 20_000_000_000, "unit": "USD", "end": "2024-09-28"},
+                    "StockholdersEquity": {"value": 50_000_000_000, "unit": "USD", "end": "2024-09-28"},
+                    "NetCashProvidedByUsedInOperatingActivities": {
+                        "value": 25_000_000_000,
+                        "unit": "USD",
+                        "end": "2024-09-28",
+                    },
+                    "PaymentsToAcquirePropertyPlantAndEquipment": {
+                        "value": 5_000_000_000,
+                        "unit": "USD",
+                        "end": "2024-09-28",
+                    },
+                }
+            },
+        },
+        {
+            "evidence_id": "market_aapl",
+            "symbol": "AAPL",
+            "period": "FY2024",
+            "source_type": "market_api",
+            "metadata": {
+                "snapshot": {"last_close": 200.0, "currency": "USD"},
+                "financials": {"marketCap": 3_000_000_000_000},
+            },
+        },
+    ]
+
+    valuation = perform_company_valuation("AAPL", "FY2024", records=records, raw_data_root="data/raw/does_not_exist")
+
+    assert valuation["valuation_available"] is True
+    assert valuation["input_summary"]["revenue_growth_pct"] == 10.0
+    assert valuation["valuation_model"]["target_price"] is not None
+
+
 def test_valuation_guardrail_blocks_implausible_fcf_scale():
     valuation = perform_company_valuation(
         symbol="ZZZ",

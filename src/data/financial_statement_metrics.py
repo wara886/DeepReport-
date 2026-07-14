@@ -203,7 +203,12 @@ def _eastmoney_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def _sec_companyfacts_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     metadata = _dict(record.get("metadata"))
-    facts = _dict(metadata.get("metrics"))
+    source_type = str(record.get("source_type") or "sec_companyfacts")
+    facts = {
+        key: {**value, "source_type": str(value.get("source_type") or source_type)}
+        for key, value in _dict(metadata.get("metrics")).items()
+        if isinstance(value, dict)
+    }
     evidence_id = _evidence_id(record)
     symbol = str(record.get("symbol") or "")
     period = str(record.get("period") or "")
@@ -340,6 +345,30 @@ def _sec_companyfacts_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]
     gp = _first_fact(facts, ["GrossProfit"])
     rev_val = _safe_float(rev.get("value")) if rev else None
     gp_val = _safe_float(gp.get("value")) if gp else None
+    prior_rev = _dict(rev.get("comparative")) if rev else {}
+    prior_rev_val = _safe_float(prior_rev.get("value"))
+    if rev_val is not None and prior_rev_val not in (None, 0):
+        rows.append(
+            _metric_row(
+                metric_name="revenue_growth_pct",
+                value=(rev_val - prior_rev_val) / abs(prior_rev_val) * 100.0,
+                unit="pct",
+                period=period,
+                source_table_id=table_id,
+                source_evidence_id=evidence_id,
+                calculation_formula="(revenue - prior_comparable_revenue) / abs(prior_comparable_revenue) * 100",
+                confidence=0.9,
+                symbol=symbol,
+                report_date=str(rev.get("end") or ""),
+                notice_date=str(rev.get("filed") or record.get("publish_time") or ""),
+                raw={
+                    "revenue": rev_val,
+                    "prior_comparable_revenue": prior_rev_val,
+                    "prior_end": prior_rev.get("end"),
+                    "source_type": source_type,
+                },
+            )
+        )
     if rev_val and gp_val:
         rows.append(
             _metric_row(
@@ -354,7 +383,7 @@ def _sec_companyfacts_metric_rows(record: Dict[str, Any]) -> List[Dict[str, Any]
                 symbol=symbol,
                 report_date=str(rev.get("end") or ""),
                 notice_date=str(rev.get("filed") or record.get("publish_time") or ""),
-                raw={"revenue": rev_val, "gross_profit": gp_val},
+                raw={"revenue": rev_val, "gross_profit": gp_val, "source_type": source_type},
             )
         )
     return rows
