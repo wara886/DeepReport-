@@ -27,6 +27,7 @@ from src.agents.multi_agent_orchestrator import (
 )
 from src.agents.research_blackboard import build_pre_write_critic, initialize_research_blackboard, validate_role_output_write
 from src.agents.verifier import Verifier
+from src.evaluation.section_evidence_pack import build_section_evidence_packs
 from src.schemas.claim import ClaimItem
 from src.search import SearchManager
 
@@ -684,6 +685,64 @@ def test_static_production_path_builds_section_packs_before_writer(tmp_path):
     assert writer_packs["section_count"] == packs["section_count"]
     assert writer_packs["packs"]["type"] == "dict"
     assert writer_packs["packs"]["keys"] == sorted(packs["packs"])
+
+
+def test_static_prewrite_checkpoint_keeps_upstream_artifacts_immutable_for_writer(tmp_path):
+    output_dir = tmp_path / "outputs"
+    report_dir = tmp_path / "reports"
+    prepare_stages = []
+    prepared = MultiAgentOrchestrator(
+        output_dir=str(output_dir),
+        report_dir=str(report_dir),
+        model=FakeJsonModel(),
+        stage_callback=prepare_stages.append,
+    ).run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="prepare_write",
+        resume_from_phase_artifacts=True,
+    )
+
+    assert prepared["phase"] == "prepare_write"
+    assert not (output_dir / "section_evidence_packs.json").exists()
+    assert "final_answer" not in [item["agent_key"] for item in prepare_stages if item["phase"] == "started"]
+
+    build_section_evidence_packs(output_dir)
+    canonical_path = output_dir / "canonical_metrics.json"
+    canonical_payload = json.loads(canonical_path.read_text(encoding="utf-8"))
+    canonical_path.write_text(
+        json.dumps(canonical_payload, ensure_ascii=False, indent=4, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    upstream_files = [
+        "canonical_metrics.json",
+        "claims.json",
+        "section_dossiers.json",
+        "report_section_contracts.json",
+        "section_evidence_packs.json",
+    ]
+    before = {name: (output_dir / name).read_bytes() for name in upstream_files}
+    writer_stages = []
+
+    completed = MultiAgentOrchestrator(
+        output_dir=str(output_dir),
+        report_dir=str(report_dir),
+        model=FakeJsonModel(),
+        stage_callback=writer_stages.append,
+    ).run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="final_answer",
+        resume_from_phase_artifacts=True,
+    )
+
+    assert completed["phase"] == "final_answer"
+    assert [item["agent_key"] for item in writer_stages if item["phase"] == "started"] == ["final_answer"]
+    assert {name: (output_dir / name).read_bytes() for name in upstream_files} == before
 
 
 def test_static_delivery_path_enables_bounded_react_for_research_and_analyze(tmp_path):

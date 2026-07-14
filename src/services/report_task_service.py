@@ -349,6 +349,7 @@ class ReportTaskService:
                     review_callback=self._graph_review_node,
                     official_evidence_backfill_callback=self._graph_official_evidence_backfill_node,
                     build_canonical_metrics_callback=self._graph_build_canonical_metrics_node,
+                    prepare_write_callback=lambda state: self._graph_static_agent_phase_node(state, "prepare_write"),
                     build_section_evidence_packs_callback=self._graph_build_section_evidence_packs_node,
                     verify_sections_callback=self._graph_verify_sections_node,
                     repair_failed_sections_callback=self._graph_repair_failed_sections_node,
@@ -450,7 +451,8 @@ class ReportTaskService:
                 )
             )
             session.commit()
-        if self.orchestrator_factory is MultiAgentOrchestrator and str(metadata.get("execution_mode") or "static") == "static":
+        static_runtime = self.orchestrator_factory is MultiAgentOrchestrator and str(metadata.get("execution_mode") or "static") == "static"
+        if static_runtime:
             self._run_orchestrator_instance(
                 task_id=task_id,
                 metadata=metadata,
@@ -459,16 +461,17 @@ class ReportTaskService:
             )
         else:
             self._run_orchestrator(task_id=task_id, metadata=metadata)
-        self._enhance_artifacts_with_task_evidence(task_id)
-        self._refresh_canonical_metrics(task_id)
-        refreshed_metadata = self._task_metadata(task_id)
-        refreshed_output_dir = Path(str(refreshed_metadata.get("output_dir") or ""))
-        build_section_evidence_packs(refreshed_output_dir)
+        if not static_runtime:
+            self._enhance_artifacts_with_task_evidence(task_id)
+            self._refresh_canonical_metrics(task_id)
+            refreshed_metadata = self._task_metadata(task_id)
+            refreshed_output_dir = Path(str(refreshed_metadata.get("output_dir") or ""))
+            build_section_evidence_packs(refreshed_output_dir)
         self.import_artifacts(task_id)
-        self._commit_run_artifacts(
-            task_id,
-            ["evidence", "canonical_metrics", "claims", "section_evidence_packs", "citations", "report"],
-        )
+        artifact_names = ["citations", "report"] if static_runtime else [
+            "evidence", "canonical_metrics", "claims", "section_evidence_packs", "citations", "report"
+        ]
+        self._commit_run_artifacts(task_id, artifact_names)
         return self._current_run_state_patch(task_id)
 
     def _graph_verify_report_node(self, state: ReportGraphState) -> dict[str, Any]:

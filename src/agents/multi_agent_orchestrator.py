@@ -81,6 +81,7 @@ from src.report.mojibake_guard import (
 )
 from src.report.contract_builder import build_report_section_contracts
 from src.report.citation_binder import CitationBinder
+from src.report.section_contracts import ReportSectionContracts
 from src.search import SearchManager
 from src.tools import SkillRegistry, build_core_tool_registry, build_financial_skill_registry
 from src.utils.config import load_config
@@ -970,12 +971,21 @@ class MultiAgentOrchestrator:
             analysis_output = dict(analyze_result.output or {})
         claims = analysis_output.get("claims", [])
         analysis_artifacts = analysis_output.get("analysis_artifacts", {})
-        analysis_artifacts = self._apply_canonical_metrics(
-            analysis_artifacts,
-            evidence_records=evidence_records,
-            symbol=symbol,
-            period=period,
-        )
+        persisted_canonical = self._read_json("canonical_metrics.json", {}) if analyze_phase else {}
+        if analyze_phase and isinstance(persisted_canonical, dict) and persisted_canonical.get("canonical_metrics"):
+            analysis_artifacts = dict(analysis_artifacts) if isinstance(analysis_artifacts, dict) else {}
+            analysis_artifacts["canonical_metrics"] = persisted_canonical
+            analysis_artifacts["financial_metrics"] = canonical_metrics_as_financial_metrics(
+                persisted_canonical,
+                fallback=analysis_artifacts.get("financial_metrics", {}),
+            )
+        else:
+            analysis_artifacts = self._apply_canonical_metrics(
+                analysis_artifacts,
+                evidence_records=evidence_records,
+                symbol=symbol,
+                period=period,
+            )
         static_state["claims"] = claims
         static_state["analysis_artifacts"] = analysis_artifacts
         research_blackboard = update_blackboard_for_task(
@@ -990,10 +1000,13 @@ class MultiAgentOrchestrator:
             "financial_metrics.json",
             analysis_artifacts.get("financial_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
         )
-        canonical_metrics_path = self._write_json(
-            "canonical_metrics.json",
-            analysis_artifacts.get("canonical_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
-        )
+        if analyze_phase and (self.output_dir / "canonical_metrics.json").is_file():
+            canonical_metrics_path = self.output_dir / "canonical_metrics.json"
+        else:
+            canonical_metrics_path = self._write_json(
+                "canonical_metrics.json",
+                analysis_artifacts.get("canonical_metrics", {}) if isinstance(analysis_artifacts, dict) else {},
+            )
         currency_audit_path = self._write_json(
             "currency_audit.json",
             analysis_artifacts.get("currency_audit", {}) if isinstance(analysis_artifacts, dict) else {},
@@ -1051,58 +1064,113 @@ class MultiAgentOrchestrator:
         evidence_coverage_path = self._write_json("evidence_coverage.json", official_artifacts["evidence_coverage"])
         sec_filing_resolver_path = self._write_json("sec_filing_resolver.json", static_state.get("sec_filing_resolver", {}))
         annual_report_sections_path = self._write_json("annual_report_sections.json", static_state.get("annual_report_sections", {}))
-        critic_result = self._execute(
-            "critic",
-            AgentTask(
-                task_id="task_003a_pre_write_critic",
-                task_type="pre_write_critic",
-                description="Review the shared research blackboard before final writing.",
-                parameters={
-                    "research_blackboard": research_blackboard,
-                    "state_snapshot": {
-                        "symbol": symbol,
-                        "period": period,
-                        "evidence_count": len(evidence_records) if isinstance(evidence_records, list) else 0,
-                        "claim_count": len(claims) if isinstance(claims, list) else 0,
+        prewrite_phase = self._read_json("prepare_write_phase.json", {}) if resume_from_phase_artifacts else {}
+        if prewrite_phase:
+            pre_write_critic = self._read_json("pre_write_critic.json", {})
+            persisted_blackboard = self._read_json("research_blackboard.json", {})
+            if isinstance(persisted_blackboard, dict) and persisted_blackboard:
+                research_blackboard = persisted_blackboard
+        else:
+            critic_result = self._execute(
+                "critic",
+                AgentTask(
+                    task_id="task_003a_pre_write_critic",
+                    task_type="pre_write_critic",
+                    description="Review the shared research blackboard before final writing.",
+                    parameters={
+                        "research_blackboard": research_blackboard,
+                        "state_snapshot": {
+                            "symbol": symbol,
+                            "period": period,
+                            "evidence_count": len(evidence_records) if isinstance(evidence_records, list) else 0,
+                            "claim_count": len(claims) if isinstance(claims, list) else 0,
+                        },
                     },
-                },
-                dependencies=["task_003_analyze"],
-                priority=5,
-            ),
-        )
-        pre_write_critic = critic_result.output.get("pre_write_critic", {})
-        research_blackboard = apply_pre_write_critic(research_blackboard, pre_write_critic)
+                    dependencies=["task_003_analyze"],
+                    priority=5,
+                ),
+            )
+            pre_write_critic = critic_result.output.get("pre_write_critic", {})
+            research_blackboard = apply_pre_write_critic(research_blackboard, pre_write_critic)
 
         # Build claim-evidence bundles for grounded writing
-        static_bundles = build_claim_evidence_bundles(
-            claims=claims if isinstance(claims, list) else [],
-            evidence_records=evidence_records if isinstance(evidence_records, list) else [],
-            derived_evidence=build_derived_evidence({
-                "symbol": symbol,
-                "period": period,
-                "claims": claims if isinstance(claims, list) else [],
-                "evidence_records": evidence_records if isinstance(evidence_records, list) else [],
-                "analysis_artifacts": analysis_artifacts if isinstance(analysis_artifacts, dict) else {},
-                "research_blackboard": research_blackboard if isinstance(research_blackboard, dict) else {},
-            }),
-        )
+        if prewrite_phase:
+            static_bundles = self._read_json("claim_evidence_bundles.json", [])
+        else:
+            static_bundles = build_claim_evidence_bundles(
+                claims=claims if isinstance(claims, list) else [],
+                evidence_records=evidence_records if isinstance(evidence_records, list) else [],
+                derived_evidence=build_derived_evidence({
+                    "symbol": symbol,
+                    "period": period,
+                    "claims": claims if isinstance(claims, list) else [],
+                    "evidence_records": evidence_records if isinstance(evidence_records, list) else [],
+                    "analysis_artifacts": analysis_artifacts if isinstance(analysis_artifacts, dict) else {},
+                    "research_blackboard": research_blackboard if isinstance(research_blackboard, dict) else {},
+                }),
+            )
 
         # Build section dossiers for depth enforcement
         _sanitize_state_peer_rows(static_state)
-        static_dossiers = SectionDossierBuilder().build(
-            state=static_state,
-            claims=claims if isinstance(claims, list) else [],
-            evidence_records=evidence_records if isinstance(evidence_records, list) else [],
-            analysis_artifacts=analysis_artifacts if isinstance(analysis_artifacts, dict) else {},
-            derived_evidence=build_derived_evidence(static_state),
-            bundles=static_bundles,
-        )
-        static_dossiers = self._inject_pdf_facts_into_dossiers(static_state, static_dossiers, path="main")
+        if prewrite_phase:
+            static_dossiers = self._read_json("section_dossiers.json", {})
+        else:
+            static_dossiers = SectionDossierBuilder().build(
+                state=static_state,
+                claims=claims if isinstance(claims, list) else [],
+                evidence_records=evidence_records if isinstance(evidence_records, list) else [],
+                analysis_artifacts=analysis_artifacts if isinstance(analysis_artifacts, dict) else {},
+                derived_evidence=build_derived_evidence(static_state),
+                bundles=static_bundles,
+            )
+            static_dossiers = self._inject_pdf_facts_into_dossiers(static_state, static_dossiers, path="main")
         static_state["section_dossiers"] = static_dossiers
 
         # Build contract-first generation artifacts
-        static_contracts, static_binder = self._build_contracts_and_bind(static_state)
-        static_section_packs = self._prepare_prewrite_section_evidence_packs(static_state)
+        if prewrite_phase:
+            contract_payload = self._read_json("report_section_contracts.json", {})
+            static_contracts = (
+                ReportSectionContracts.from_dict(contract_payload)
+                if isinstance(contract_payload, dict) and contract_payload.get("contracts")
+                else None
+            )
+            static_binder = CitationBinder(evidence_records if isinstance(evidence_records, list) else []) if static_contracts else None
+            if static_binder is not None:
+                static_binder.bind_all(static_contracts)
+        else:
+            static_contracts, static_binder = self._build_contracts_and_bind(static_state)
+            self._write_json("pre_write_critic.json", pre_write_critic)
+            self._write_json("claim_evidence_bundles.json", static_bundles)
+            self._write_json("section_dossiers.json", static_dossiers)
+            self._write_json("research_blackboard.json", research_blackboard)
+            self._write_json(
+                "prepare_write_phase.json",
+                {
+                    "phase": "prepare_write",
+                    "contract_count": len(getattr(static_contracts, "contracts", {}) or {}),
+                    "dossier_count": len(static_dossiers) if isinstance(static_dossiers, dict) else 0,
+                    "bundle_count": len(static_bundles) if isinstance(static_bundles, list) else 0,
+                },
+            )
+        if stop_after_phase == "prepare_write":
+            return self._static_phase_result(
+                "prepare_write",
+                [
+                    "claims.json",
+                    "canonical_metrics.json",
+                    "pre_write_critic.json",
+                    "claim_evidence_bundles.json",
+                    "section_dossiers.json",
+                    "report_section_contracts.json",
+                    "prepare_write_phase.json",
+                ],
+            )
+        if prewrite_phase:
+            static_section_packs = self._read_json("section_evidence_packs.json", {})
+            if not static_section_packs:
+                static_section_packs = self._prepare_prewrite_section_evidence_packs(static_state)
+        else:
+            static_section_packs = self._prepare_prewrite_section_evidence_packs(static_state)
 
         final_result = self._execute(
             "final_answer",

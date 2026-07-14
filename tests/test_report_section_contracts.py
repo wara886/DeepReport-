@@ -117,6 +117,21 @@ class TestSectionContractData:
         assert c.status == "gap"
         assert c.forbidden_source_types  # should have forbidden types
 
+    def test_round_trip_preserves_nested_contract_types(self):
+        contracts = ReportSectionContracts(metadata={"target_symbol": "AAPL", "target_period": "FY2024"})
+        section = contracts.ensure("business_overview")
+        section.status = "supported"
+        section.add_fact("business_model", "公司销售硬件与服务。", ["ev_business"], ["sec_10k_section"])
+
+        restored = ReportSectionContracts.from_dict(contracts.to_dict())
+
+        restored_section = restored.get("business_overview")
+        assert restored.metadata["target_symbol"] == "AAPL"
+        assert restored_section is not None
+        assert restored_section.status == "supported"
+        assert restored_section.facts[0].text == "公司销售硬件与服务。"
+        assert restored_section.citation_evidence_ids == ["ev_business"]
+
     def test_status_lifecycle(self):
         contracts = ReportSectionContracts()
         c = contracts.ensure("business_overview")

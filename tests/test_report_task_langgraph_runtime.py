@@ -307,6 +307,7 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
             "normalize_evidence",
             "analyze",
             "build_canonical_metrics",
+            "prepare_write",
         "build_section_evidence_packs",
         "write_report",
         "verify_report",

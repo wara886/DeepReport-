@@ -71,6 +71,8 @@ class ReportGraphHandlers(Protocol):
 
     def build_canonical_metrics(self, state: ReportGraphState) -> dict[str, Any]: ...
 
+    def prepare_write(self, state: ReportGraphState) -> dict[str, Any]: ...
+
     def build_section_evidence_packs(self, state: ReportGraphState) -> dict[str, Any]: ...
 
     def planning(self, state: ReportGraphState) -> dict[str, Any]: ...
@@ -107,6 +109,7 @@ class CallbackReportGraphHandlers:
     review_callback: Callable[[ReportGraphState, Any], dict[str, Any]] | None = None
     official_evidence_backfill_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
     build_canonical_metrics_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
+    prepare_write_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
     build_section_evidence_packs_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
     verify_sections_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
     repair_failed_sections_callback: Callable[[ReportGraphState], dict[str, Any]] | None = None
@@ -129,6 +132,11 @@ class CallbackReportGraphHandlers:
         if self.build_canonical_metrics_callback is None:
             return {}
         return self.build_canonical_metrics_callback(state)
+
+    def prepare_write(self, state: ReportGraphState) -> dict[str, Any]:
+        if self.prepare_write_callback is None:
+            return {}
+        return self.prepare_write_callback(state)
 
     def build_section_evidence_packs(self, state: ReportGraphState) -> dict[str, Any]:
         if self.build_section_evidence_packs_callback is None:
@@ -258,6 +266,7 @@ class LangGraphReportRuntime:
         builder.add_node("evidence", self._evidence_node)
         builder.add_node("official_evidence_backfill", self._official_evidence_backfill_node)
         builder.add_node("build_canonical_metrics", self._build_canonical_metrics_node)
+        builder.add_node("prepare_write", self._prepare_write_node)
         builder.add_node("build_section_evidence_packs", self._build_section_evidence_packs_node)
         builder.add_node("planning", self._planning_node)
         builder.add_node("research", self._research_node)
@@ -282,7 +291,8 @@ class LangGraphReportRuntime:
         builder.add_edge("research", "normalize_evidence")
         builder.add_edge("normalize_evidence", "analyze")
         builder.add_edge("analyze", "build_canonical_metrics")
-        builder.add_edge("build_canonical_metrics", "build_section_evidence_packs")
+        builder.add_edge("build_canonical_metrics", "prepare_write")
+        builder.add_edge("prepare_write", "build_section_evidence_packs")
         builder.add_edge("build_section_evidence_packs", "write_report")
         builder.add_edge("write_report", "verify_report")
         builder.add_edge("verify_report", "inspect_agent_execution")
@@ -306,6 +316,9 @@ class LangGraphReportRuntime:
 
     def _build_canonical_metrics_node(self, state: ReportGraphState) -> dict[str, Any]:
         return self._execute_node("build_canonical_metrics", state, self.handlers.build_canonical_metrics)
+
+    def _prepare_write_node(self, state: ReportGraphState) -> dict[str, Any]:
+        return self._execute_node("prepare_write", state, self.handlers.prepare_write)
 
     def _build_section_evidence_packs_node(self, state: ReportGraphState) -> dict[str, Any]:
         return self._execute_node("build_section_evidence_packs", state, self.handlers.build_section_evidence_packs)

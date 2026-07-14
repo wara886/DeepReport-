@@ -117,6 +117,7 @@ def test_langgraph_runtime_runs_typed_nodes_and_interrupts_for_claim_review():
         "normalize_evidence",
         "analyze",
         "build_canonical_metrics",
+        "prepare_write",
         "build_section_evidence_packs",
         "write_report",
         "verify_report",
@@ -234,6 +235,7 @@ def test_runtime_nodes_run_once_in_dependency_order():
         base.finalize,
         official_evidence_backfill_callback=lambda _state: post_generation.append("official") or {},
         build_canonical_metrics_callback=lambda _state: post_generation.append("canonical") or {},
+        prepare_write_callback=lambda _state: post_generation.append("prepare") or {},
         build_section_evidence_packs_callback=lambda _state: post_generation.append("packs") or {},
         inspect_agent_execution_callback=lambda _state: post_generation.append("inspect") or {},
         verify_sections_callback=lambda _state: post_generation.append("verify") or {},
@@ -243,7 +245,7 @@ def test_runtime_nodes_run_once_in_dependency_order():
     result = LangGraphReportRuntime(handlers).invoke(initial_state(), thread_id="task-node-order")
 
     assert calls == ["evidence", "generation", "quality", "finalize"]
-    assert post_generation == ["official", "canonical", "packs", "inspect", "verify", "repair"]
+    assert post_generation == ["official", "canonical", "prepare", "packs", "inspect", "verify", "repair"]
     assert result["delivery_readiness"]["can_deliver_formal_report"] is True
 
 

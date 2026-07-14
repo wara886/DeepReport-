@@ -255,6 +255,34 @@ class ReportSectionContracts:
             "contracts": {k: v.to_dict() for k, v in self.contracts.items()},
         }
 
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "ReportSectionContracts":
+        raw_contracts = payload.get("contracts") if isinstance(payload.get("contracts"), dict) else {}
+        contracts: Dict[str, SectionEvidenceContract] = {}
+        for section_key, raw in raw_contracts.items():
+            if not isinstance(raw, dict):
+                continue
+            facts = [Fact(**item) for item in raw.get("facts", []) if isinstance(item, dict)]
+            peer_groups = [PeerGroupDef(**item) for item in raw.get("peer_groups", []) if isinstance(item, dict)]
+            contracts[str(section_key)] = SectionEvidenceContract(
+                section_key=str(raw.get("section_key") or section_key),
+                title=str(raw.get("title") or SECTION_TITLES.get(str(section_key), section_key)),
+                status=str(raw.get("status") or "gap"),
+                facts=facts,
+                allowed_source_types=list(raw.get("allowed_source_types") or []),
+                forbidden_source_types=list(raw.get("forbidden_source_types") or []),
+                citation_evidence_ids=list(raw.get("citation_evidence_ids") or []),
+                blocked_reasons=list(raw.get("blocked_reasons") or []),
+                quality_flags=list(raw.get("quality_flags") or []),
+                render_policy=dict(raw.get("render_policy") or {}),
+                deterministic_text=str(raw.get("deterministic_text") or ""),
+                peer_groups=peer_groups,
+            )
+        return cls(
+            contracts=contracts,
+            metadata=dict(payload.get("metadata") or {}) if isinstance(payload.get("metadata"), dict) else {},
+        )
+
     def to_json_file(self, path: str) -> None:
         import json
         with open(path, "w", encoding="utf-8") as f:
