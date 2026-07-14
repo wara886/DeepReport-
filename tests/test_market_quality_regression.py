@@ -109,7 +109,8 @@ def test_real_artifact_remediation_rewrites_thin_core_sections(tmp_path):
     assert result["changed"] is True
     assert result["before"]["content_depth_blockers"] > result["after"]["content_depth_blockers"]
     assert result["after"]["content_depth_blockers"] == 0
-    assert "投资结论维持中性观察评级" in repaired
+    assert "投资结论维持审慎观察" in repaired
+    assert "中性 / 审慎观察" in repaired
     assert "估值弹性应主要绑定收入增速" in repaired
     assert "估值观察与" not in repaired
     assert outputs.joinpath("real_artifact_remediation.json").exists()
@@ -176,6 +177,8 @@ def test_real_artifact_remediation_refreshes_local_retrieval_from_backfill_curat
 
     assert local["candidate_count"] >= 1
     assert local["returned_hit_count"] >= 1
+    assert local["mode"] == "hybrid"
+    assert local["vector_score_max"] is not None
     assert local["official_backfill_curated"].endswith("official_backfill_curated.jsonl")
     assert "hkex_pdf_section_1" in local["returned_evidence_ids"]
 
@@ -217,6 +220,7 @@ def test_real_artifact_remediation_builds_curated_from_existing_official_evidenc
 
     assert outputs.joinpath("official_backfill_curated.jsonl").exists()
     assert meta["engine_meta"]["local_evidence"]["candidate_count"] >= 1
+    assert meta["engine_meta"]["local_evidence"]["vector_score_max"] is not None
     assert "cninfo_pdf_section_1" in meta["engine_meta"]["local_evidence"]["returned_evidence_ids"]
 
 

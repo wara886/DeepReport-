@@ -33,12 +33,14 @@ def test_workbench_exposes_export_center_entry_contract(temp_db_engine, tmp_path
     assert 'getJson("/api/exports" + suffix)' in html
     assert 'getJson(`/api/exports/${encodeURIComponent(taskId)}`)' in html
     assert 'getJson(`/api/exports/${encodeURIComponent(taskId)}/package`)' in html
-    assert 'postJson(`/api/exports/${encodeURIComponent(taskId)}/package/files`, {})' in html
+    assert 'postJson(`/api/exports/${encodeURIComponent(taskId)}/package/files`, { formats })' in html
     assert "正式导出" in html
     assert "预览正式导出包" in html
     assert 'pdf: "PDF"' in html
     assert 'docx: "DOCX"' in html
-    assert "生成下载文件" in html
+    assert "生成所选格式" in html
+    assert "Markdown（.md）" in html
+    assert "HTML 网页" in html
     assert "下载文件" in html
     assert "仅已通过复核" in html
     assert "排除主张" in html

@@ -4,11 +4,35 @@ remove_debug_leakage, remove_internal_ids, remove_template_phrases."""
 from src.agents.final_answer_agent import (
     auto_rewrite_core_sections,
     enforce_section_depth,
+    _build_final_prompt,
     remove_broken_or_half_sentences,
     remove_debug_leakage,
     remove_internal_ids,
     remove_template_phrases,
 )
+
+
+def test_final_prompt_includes_prewrite_section_evidence_packs():
+    prompt = _build_final_prompt(
+        topic="AAPL FY2024",
+        claims=[],
+        evidence_records=[],
+        symbol="AAPL",
+        period="FY2024",
+        section_evidence_packs={
+            "packs": {
+                "conclusion": {
+                    "must_use_evidence_ids": ["ev_sec"],
+                    "missing_evidence_ids": [],
+                    "canonical_metrics": [{"metric_name": "revenue", "value": 391.0}],
+                }
+            }
+        },
+    )
+
+    assert "Pre-write section evidence packs" in prompt
+    assert "ev_sec" in prompt
+    assert "391.0" in prompt
 
 
 def test_enforce_section_depth_fills_thin_sections():
@@ -188,6 +212,17 @@ def test_remove_half_sentences_preserves_good_text():
     assert "自由现金流" in result
 
 
+def test_remove_half_sentences_preserves_substantive_includes_clause():
+    markdown = """## 投资结论
+
+核心理由包括：收入增长、现金流改善和估值约束。
+"""
+
+    result = remove_broken_or_half_sentences(markdown)
+
+    assert "核心理由包括：收入增长、现金流改善和估值约束。" in result
+
+
 def test_remove_debug_leakage_strips_internal_fields():
     """remove_debug_leakage removes debug/tracking field names."""
     markdown = """## 执行摘要
@@ -216,6 +251,12 @@ def test_remove_debug_leakage_strips_cl_pattern():
     result = remove_debug_leakage(markdown)
     assert "cl_0001" not in result
     assert "cl_0042" not in result
+
+
+def test_remove_debug_leakage_preserves_reference_urls():
+    result = remove_debug_leakage("## 参考来源\n- SEC filing - https://www.sec.gov/Archives/report.htm")
+    assert "https://www.sec.gov/Archives/report.htm" in result
+    assert "https//www.sec.gov" not in result
 
 
 def test_remove_internal_ids_strips_claim_id_labels():

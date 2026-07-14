@@ -72,7 +72,17 @@ def seed_export_task(service, *, rejected=False, pending=False):
         session.add(approved_claim)
         session.flush()
         session.add(ClaimEvidence(claim_id=approved_claim.id, evidence_item_id=evidence.id, support_type="supporting"))
-        session.add(ReviewRecord(target_type="report_claim", target_id=str(approved_claim.id), decision="approved", comment="Ready", reviewer="analyst"))
+        session.add(
+            ReviewRecord(
+                target_type="report_claim",
+                target_id=str(approved_claim.id),
+                decision="approved",
+                comment="Ready",
+                before_value={"review_status": "pending"},
+                after_value={"review_status": "approved"},
+                reviewer="analyst",
+            )
+        )
         if rejected:
             session.add(ReportClaim(task_id="task-export", claim_text="Rejected claim.", review_status="rejected"))
         if pending:
@@ -144,6 +154,9 @@ def test_export_package_excludes_rejected_and_pending_claims(temp_db_engine, tmp
     assert payload["evidence"][0]["evidence_id"] == "ev-export-1"
     assert payload["financial_facts"][0]["metric_name"] == "Revenue"
     assert payload["review_records"][0]["decision"] == "approved"
+    assert payload["review_records"][0]["before_value"]["review_status"] == "pending"
+    assert payload["review_records"][0]["after_value"]["review_status"] == "approved"
+    assert "before_value" in body["csv"]["review_records"]
     assert "Approved claim." in body["markdown"]
     assert "Rejected claim." not in body["markdown"]
     assert "Approved claim." in body["csv"]["claims"]
@@ -173,6 +186,26 @@ def test_export_package_files_are_written_and_downloadable(temp_db_engine, tmp_p
     assert docx_response.status_code == 200
     assert docx_response.content.startswith(b"PK")
     assert missing_response.status_code == 404
+
+
+def test_export_package_writes_only_selected_html_and_markdown(temp_db_engine, tmp_path):
+    service, client = build_export_client(temp_db_engine, tmp_path)
+    seed_export_task(service)
+
+    with client:
+        response = client.post(
+            "/api/exports/task-export/package/files",
+            json={"formats": ["html", "markdown"]},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["selected_formats"] == ["html", "markdown"]
+    assert {item["filename"] for item in body["files"]} == {
+        "report_package.html",
+        "report_package.md",
+        "export_manifest.json",
+    }
 
 
 def test_formal_export_reuses_identical_package(temp_db_engine, tmp_path):

@@ -776,7 +776,7 @@ git push origin feat/fin-research-agent-workbench-v2
 - 新增 `/api/report-tasks`：创建、列表、详情、重试、产物链接。
 - 包装当前 `MultiAgentOrchestrator.run`。
 - 运行前写 `report_tasks`，阶段变化写 `report_task_events`，完成后导入 artifacts。
-- 保留旧 `/api/run` 兼容。
+- 旧 `/api/run` 兼容层已移除，统一使用 `/api/report-tasks` 任务生命周期接口。
 - 前端轮询必须按 `task_id`，禁止继续只用全局 latest。
 
 测试：

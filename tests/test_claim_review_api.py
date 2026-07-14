@@ -96,3 +96,38 @@ def test_claim_review_regenerate_writes_task_event(temp_db_engine, tmp_path):
     assert response.status_code == 200
     assert any(event["stage"] == "claim_review" for event in task.json()["events"])
     assert any(event["status"] == "regenerate_requested" for event in task.json()["events"])
+
+
+def test_task_bulk_review_approves_only_supported_claims_and_audits_each_decision(temp_db_engine, tmp_path):
+    service, client = build_claim_review_client(temp_db_engine, tmp_path)
+    supported_id = seed_claim(service)
+    with service.session() as session:
+        session.add(
+            ReportClaim(
+                task_id="task-claim-review",
+                claim_text="Unsupported claim remains pending.",
+                verification_status="failed",
+                review_status="pending",
+            )
+        )
+        session.commit()
+
+    with client:
+        result = client.post(
+            "/api/report-tasks/task-claim-review/claims/approve-supported",
+            json={"reviewer": "lead-analyst", "comment": "evidence checked"},
+        )
+        supported = client.get(f"/api/claims/{supported_id}")
+        pending = client.get("/api/claims", params={"task_id": "task-claim-review", "status": "pending"})
+        task = client.get("/api/report-tasks/task-claim-review")
+
+    assert result.status_code == 200
+    assert result.json()["approved_count"] == 1
+    assert result.json()["pending_count"] == 1
+    assert result.json()["review_complete"] is False
+    assert supported.json()["review_status"] == "approved"
+    assert supported.json()["review_records"][0]["reviewer"] == "lead-analyst"
+    assert supported.json()["review_records"][0]["before_value"]["review_status"] == "pending"
+    assert supported.json()["review_records"][0]["after_value"]["review_status"] == "approved"
+    assert pending.json()["items"][0]["claim_text"] == "Unsupported claim remains pending."
+    assert any(event["message"] == "Batch approved 1 supported claims" for event in task.json()["events"])

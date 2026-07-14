@@ -2,7 +2,12 @@ import json
 from datetime import date
 
 from src.data.evidence_metadata import annotate_evidence_record
-from src.data.independent_sources import fetch_fred_series_evidence, fetch_independent_evidence_bundle, fetch_sec_companyfacts_evidence
+from src.data.independent_sources import (
+    fetch_bls_series_evidence,
+    fetch_fred_series_evidence,
+    fetch_independent_evidence_bundle,
+    fetch_sec_companyfacts_evidence,
+)
 from src.data.source_authority import grade_source_authority
 
 
@@ -68,16 +73,61 @@ independent_sources:
             return False
 
         def read(self):
-            return json.dumps({"observations": [{"date": "2026-04-01", "value": "4.33"}]}).encode("utf-8")
+            return json.dumps({"observations": [{"date": "2024-12-01", "value": "4.33"}]}).encode("utf-8")
 
-    monkeypatch.setattr("src.data.independent_sources.request.urlopen", lambda req, timeout: FakeResponse())
+    requested_urls = []
 
-    payload = fetch_fred_series_evidence(series={"FEDFUNDS": "Effective Federal Funds Rate"}, config_path=str(config_path))
+    def fake_urlopen(req, timeout):
+        requested_urls.append(req.full_url)
+        return FakeResponse()
+
+    monkeypatch.setattr("src.data.independent_sources.request.urlopen", fake_urlopen)
+
+    payload = fetch_fred_series_evidence(
+        series={"FEDFUNDS": "Effective Federal Funds Rate"},
+        config_path=str(config_path),
+        period="FY2024",
+    )
 
     assert payload.hits[0]["source_type"] == "fred_series"
-    assert payload.hits[0]["data_cutoff"] == "2026-04-01"
+    assert payload.hits[0]["data_cutoff"] == "2024-12-01"
     assert payload.hits[0]["authority_level"] == "primary"
+    assert payload.hits[0]["metadata"]["target_period"] == "FY2024"
+    assert payload.hits[0]["metadata"]["period_match"] is True
+    assert "observation_end=2024-12-31" in requested_urls[0]
     assert payload.meta["failure_reason"] == ""
+
+
+def test_bls_series_fetch_keeps_requested_report_period(monkeypatch, tmp_path):
+    config_path = tmp_path / "data_sources.yaml"
+    config_path.write_text("independent_sources:\n  macro:\n    bls: {}\n", encoding="utf-8")
+    request_payloads = []
+
+    def fake_post_json(url, payload, headers, timeout):
+        request_payloads.append(payload)
+        return {
+            "Results": {
+                "series": [
+                    {
+                        "seriesID": "LNS14000000",
+                        "data": [{"year": "2024", "period": "M12", "value": "4.1"}],
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr("src.data.independent_sources._post_json", fake_post_json)
+
+    result = fetch_bls_series_evidence(
+        series={"LNS14000000": "Unemployment Rate"},
+        config_path=str(config_path),
+        period="FY2024",
+    )
+
+    assert request_payloads[0]["startyear"] == "2024"
+    assert request_payloads[0]["endyear"] == "2024"
+    assert result.hits[0]["metadata"]["target_period"] == "FY2024"
+    assert result.hits[0]["metadata"]["observation_date"] == "2024-M12"
 
 
 def test_sec_companyfacts_fetch_normalizes_supported_metrics(monkeypatch, tmp_path):
@@ -155,7 +205,23 @@ independent_sources:
                 {"val": 90, "end": "2024-09-28", "filed": "2024-11-01", "form": "10-K", "fy": 2024, "fp": "FY"},
                 {"val": 30, "end": "2024-12-28", "filed": "2025-01-31", "form": "10-Q", "fy": 2025, "fp": "Q1"},
             ]
-            return json.dumps({"facts": {"us-gaap": {"Revenues": {"units": {"USD": values}}}}}).encode("utf-8")
+            return json.dumps(
+                {
+                    "facts": {
+                        "us-gaap": {
+                            "Revenues": {"units": {"USD": values}},
+                            "Liabilities": {"units": {"USD": [{**values[1], "val": 40}]}},
+                            "StockholdersEquity": {"units": {"USD": [{**values[1], "val": 50}]}},
+                            "NetCashProvidedByUsedInInvestingActivities": {
+                                "units": {"USD": [{**values[1], "val": -12}]}
+                            },
+                            "NetCashProvidedByUsedInFinancingActivities": {
+                                "units": {"USD": [{**values[1], "val": -8}]}
+                            },
+                        }
+                    }
+                }
+            ).encode("utf-8")
 
     monkeypatch.setattr("src.data.independent_sources.request.urlopen", lambda req, timeout: FakeResponse())
 
@@ -166,3 +232,8 @@ independent_sources:
     assert revenue["end"] == "2024-09-28"
     assert revenue["fy"] == 2024
     assert revenue["fp"] == "FY"
+    metrics = payload.hits[0]["metadata"]["metrics"]
+    assert metrics["Liabilities"]["value"] == 40
+    assert metrics["StockholdersEquity"]["value"] == 50
+    assert metrics["NetCashProvidedByUsedInInvestingActivities"]["value"] == -12
+    assert metrics["NetCashProvidedByUsedInFinancingActivities"]["value"] == -8

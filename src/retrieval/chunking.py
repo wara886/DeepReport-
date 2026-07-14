@@ -7,6 +7,8 @@ import hashlib
 import re
 from typing import Any, Dict, Iterable, List
 
+from src.schemas.runtime_contracts import normalize_evidence_record
+
 
 NUMERIC_RE = re.compile(
     r"(?P<label>[A-Za-z][A-Za-z /_-]{1,48}?)\s*(?:=|:|was|were|of)?\s*"
@@ -63,7 +65,7 @@ class EvidenceChunk:
         return f"{section_prefix} {self.source_type} {self.chunk_type} {metric_text} {self.content}".strip()
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "sample_id": self.chunk_id,
             "evidence_id": self.chunk_id,
             "chunk_id": self.chunk_id,
@@ -87,6 +89,8 @@ class EvidenceChunk:
             "numeric_values": dict(self.numeric_values),
             "metadata": dict(self.metadata),
         }
+        target_period = str(payload["metadata"].get("target_period") or self.period)
+        return normalize_evidence_record(payload, target_period=target_period)
 
 
 def chunk_records(records: Iterable[Any], max_chars: int = 650) -> List[EvidenceChunk]:
@@ -97,7 +101,7 @@ def chunk_records(records: Iterable[Any], max_chars: int = 650) -> List[Evidence
 
 
 def chunk_record(record: Any, max_chars: int = 650) -> List[EvidenceChunk]:
-    data = _record_to_dict(record)
+    data = normalize_evidence_record(_record_to_dict(record))
     parent_id = str(data.get("sample_id") or data.get("evidence_id") or _stable_id(data, "record"))
     source_type = str(data.get("source_type", ""))
     metadata = data.get("metadata", {}) if isinstance(data.get("metadata"), dict) else {}
@@ -166,6 +170,10 @@ def _make_chunk(
         numeric_values=numeric_values or {},
         metadata={
             "parent_metadata": metadata,
+            "parent_identity_key": data.get("identity_key", ""),
+            "document_key": data.get("document_key", ""),
+            "target_period": (data.get("period_spec") or {}).get("target_period", data.get("period", "")),
+            "period_match": (data.get("period_spec") or {}).get("match"),
             **{
                 key: data.get(key, metadata.get(key))
                 for key in ("source_period", "period_fallback")

@@ -46,7 +46,7 @@ class DeepResearcherAgent(BaseAgent):
                 react_payload = self._run_react_search(task=task, query=query, topk=topk, skill_brief=skill_brief)
                 candidates = react_payload.get("evidence_candidates", [])
                 if candidates:
-                    if not bool(task.parameters.get("merge_standard_search_after_react", False)):
+                    if not bool(task.parameters.get("merge_standard_search_after_react", True)):
                         return self.success(
                             task,
                             {
@@ -122,6 +122,9 @@ class DeepResearcherAgent(BaseAgent):
             ranking_mode=task.parameters.get("ranking_mode", "bm25"),
             data_source_config_path=task.parameters.get("data_source_config_path", "configs/data_sources.yaml"),
             enable_remote=bool(task.parameters.get("enable_remote", False)),
+            search_budget_seconds=float(task.parameters.get("search_budget_seconds", 240.0) or 240.0),
+            engine_timeout_seconds=float(task.parameters.get("engine_timeout_seconds", 60.0) or 60.0),
+            engine_timeout_by_name=dict(task.parameters.get("engine_timeout_by_name") or {}),
         )
 
     def _run_react_search(self, task: AgentTask, query: str, topk: int, skill_brief: str = "") -> Dict[str, Any]:
@@ -132,12 +135,22 @@ class DeepResearcherAgent(BaseAgent):
         retrieve_handler = handlers.get("retrieve_local_evidence")
         if retrieve_handler:
             handlers["retrieve_local_evidence"] = lambda **kwargs: retrieve_handler(
-                symbol=kwargs.pop("symbol", task.parameters.get("symbol")),
-                period=kwargs.pop("period", task.parameters.get("period")),
-                ranking_mode=kwargs.pop("ranking_mode", task.parameters.get("ranking_mode", "hybrid_rerank")),
-                use_chunks=kwargs.pop("use_chunks", task.parameters.get("use_chunks", True)),
                 **kwargs,
             )
+
+        bound_arguments = {
+            "retrieve_local_evidence": {
+                "symbol": task.parameters.get("symbol"),
+                "period": task.parameters.get("period"),
+                "curated_dir": task.parameters.get("curated_dir", "data/curated"),
+                "ranking_mode": task.parameters.get("ranking_mode", "hybrid_rerank"),
+                "use_chunks": task.parameters.get("use_chunks", True),
+            },
+            "fetch_yahoo_market_snapshot": {
+                "symbol": task.parameters.get("symbol"),
+                "period": task.parameters.get("period"),
+            },
+        }
 
         result = run_react_tool_loop(
             model=self.model,
@@ -157,6 +170,10 @@ class DeepResearcherAgent(BaseAgent):
             tool_schemas=schemas,
             handlers=handlers,
             max_steps=int(task.parameters.get("react_max_steps", 3) or 3),
+            max_tool_calls=int(task.parameters.get("react_max_tool_calls", 8) or 8),
+            tool_timeout_seconds=float(task.parameters.get("react_tool_timeout_seconds", 45.0) or 45.0),
+            tool_max_attempts=int(task.parameters.get("react_tool_max_attempts", 2) or 2),
+            bound_arguments=bound_arguments,
         )
         candidates = _evidence_candidates_from_observations(result.get("observations", []))
         return {

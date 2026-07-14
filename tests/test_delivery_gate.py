@@ -63,6 +63,46 @@ def test_delivery_gate_relaxes_llm_score_when_review_passes_without_blockers(tmp
     assert gate["gate_requirements"]["llm_review_relaxed_score_pass"] is True
 
 
+def test_delivery_gate_keeps_llm_pass_independent_from_non_llm_contract_blocker(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    fixtures = {
+        "verification_report.json": {"passed": True},
+        "quality_report.json": {"objective_pass": True, "total_score": 0.96, "issues": []},
+        "llm_quality_review.json": {"llm_review_pass": True, "total_score": 0.86, "issues": []},
+        "report_section_contracts.json": {"contracts": {"valuation": {"quality_flags": ["hard_valuation_gap", "hard_market_gap"]}}},
+    }
+    for name, payload in fixtures.items():
+        (outputs / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["llm_review_pass"] is True
+    assert gate["delivery_pass"] is False
+    assert any(issue["category"] == "contract" and issue["severity"] == "blocker" for issue in gate["issues"])
+
+
+def test_delivery_gate_treats_skipped_pdf_gap_summary_as_nonblocking(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    fixtures = {
+        "verification_report.json": {"passed": True},
+        "quality_report.json": {"objective_pass": True, "total_score": 0.96, "issues": []},
+        "llm_quality_review.json": {"llm_review_pass": True, "total_score": 0.86, "issues": []},
+        "report_section_contracts.json": {"contracts": {"business_overview": {
+            "status": "supported",
+            "quality_flags": ["business_overview_gap_summary_skipped", "business_overview_uses_sec_10k"],
+        }}},
+    }
+    for name, payload in fixtures.items():
+        (outputs / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["delivery_pass"] is True
+    assert not any(issue["category"] == "contract" for issue in gate["issues"])
+
+
 def test_delivery_gate_treats_nonblocking_evidence_gap_as_warning(tmp_path):
     outputs = tmp_path / "run" / "company" / "outputs"
     outputs.mkdir(parents=True)
@@ -184,7 +224,10 @@ def test_delivery_gate_demotes_boundary_contract_blockers_after_objective_pass(t
         "section_verification.json": {"status": "passed", "formal_delivery_allowed": True},
         "report_section_contracts.json": {
             "contracts": {
-                "ownership_governance": {"blocked_reasons": ["governance_section_not_found"]},
+                "ownership_governance": {
+                    "blocked_reasons": ["governance_section_not_found"],
+                    "quality_flags": ["governance_uses_sec_proxy"],
+                },
                 "strategy_business": {"blocked_reasons": ["strategy_pdf_sections_not_found"]},
                 "valuation_sensitivity": {"quality_flags": ["valuation_sensitivity_framework_only"]},
                 "risk_factors": {
@@ -217,6 +260,26 @@ def test_delivery_gate_requires_objective_pass_even_when_scores_are_high(tmp_pat
 
     assert gate["delivery_pass"] is False
     assert gate["objective_pass"] is False
+    assert any(
+        issue["category"] == "objective_quality" and issue["severity"] == "blocker"
+        for issue in gate["issues"]
+    )
+
+
+def test_delivery_gate_explains_verifier_boolean_failure_with_blocker(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    for name, payload in {
+        "verification_report.json": {"passed": False, "warnings": []},
+        "quality_report.json": {"objective_pass": True, "total_score": 0.95, "issues": []},
+        "llm_quality_review.json": {"llm_review_pass": True, "total_score": 0.9, "issues": []},
+    }.items():
+        (outputs / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    gate = build_delivery_gate(tmp_path / "run")
+
+    assert gate["machine_quality_pass"] is False
+    assert any(issue["category"] == "verifier" and issue["severity"] == "blocker" for issue in gate["issues"])
 
 
 def test_delivery_gate_never_emits_none_message_and_enforces_llm_score(tmp_path):

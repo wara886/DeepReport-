@@ -64,7 +64,7 @@ class ManualImportService:
                 symbol=_optional_string(payload.get("symbol")),
                 market=_optional_string(payload.get("market")),
             )
-            parse_status = "pending" if import_type == "pdf" else "parsed"
+            parse_status = "parsed" if content else "pending"
             batch = IngestionBatch(
                 batch_id=batch_id,
                 workspace_id=workspace.id if workspace else None,
@@ -157,7 +157,7 @@ def _initial_steps(
             metadata_json=ingest_metadata,
         )
     ]
-    if import_type in {"text", "url"}:
+    if content:
         steps.append(
             DocumentProcessingStep(
                 step_name="parse",

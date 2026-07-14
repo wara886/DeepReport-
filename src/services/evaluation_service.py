@@ -77,7 +77,8 @@ class EvaluationService:
                 )
                 or 0
             )
-            delivery_pass_count = sum(1 for task in quality_evaluated_tasks if _task_delivery_passed(task))
+            machine_quality_pass_count = sum(1 for task in quality_evaluated_tasks if _task_machine_quality_passed(task))
+            formal_delivery_pass_count = sum(1 for task in quality_evaluated_tasks if _task_delivery_passed(task))
             retrieval_coverages = [_task_retrieval_coverage(task) for task in quality_evaluated_tasks]
             evidence_ready_task_count = sum(1 for item in retrieval_coverages if item["evidence_ready"])
             source_quality_ready_task_count = sum(1 for item in retrieval_coverages if item["quality_ready"])
@@ -154,8 +155,13 @@ class EvaluationService:
                 "active_task_count": active_task_count,
                 "completed_task_count": completed_task_count,
                 "quality_evaluated_task_count": quality_evaluated_task_count,
-                "delivery_pass_count": delivery_pass_count,
-                "delivery_pass_rate": _ratio(delivery_pass_count, quality_evaluated_task_count),
+                "machine_quality_pass_count": machine_quality_pass_count,
+                "machine_quality_pass_rate": _ratio(machine_quality_pass_count, quality_evaluated_task_count),
+                "formal_delivery_pass_count": formal_delivery_pass_count,
+                "formal_delivery_pass_rate": _ratio(formal_delivery_pass_count, quality_evaluated_task_count),
+                # Compatibility aliases. Product UI should use the explicit formal-delivery fields.
+                "delivery_pass_count": formal_delivery_pass_count,
+                "delivery_pass_rate": _ratio(formal_delivery_pass_count, quality_evaluated_task_count),
                 "evidence_ready_task_count": evidence_ready_task_count,
                 "evidence_ready_task_rate": _ratio(evidence_ready_task_count, quality_evaluated_task_count),
                 "source_quality_ready_task_count": source_quality_ready_task_count,
@@ -353,7 +359,25 @@ def _task_delivery_passed(task: ReportTask) -> bool:
     return bool(build_report_run_state(task)["delivery_readiness"]["can_deliver_formal_report"])
 
 
+def _task_machine_quality_passed(task: ReportTask) -> bool:
+    return bool(build_report_run_state(task)["delivery_readiness"]["machine_quality_pass"])
+
+
 def _quality_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
+    metrics = dict(metrics)
+    sample_requirements = {
+        "delivery_pass_rate": "quality_evaluated_task_count",
+        "evidence_ready_task_rate": "quality_evaluated_task_count",
+        "source_quality_ready_task_rate": "quality_evaluated_task_count",
+        "traceable_claim_rate": "claim_count",
+        "citation_support_rate": "claim_count",
+        "numeric_consistency_rate": "numeric_checked_count",
+        "schema_valid_rate": "schema_checked_count",
+        "llm_success_rate": "llm_run_count",
+    }
+    for value_key, count_key in sample_requirements.items():
+        if int(metrics.get(count_key) or 0) <= 0:
+            metrics[value_key] = None
     return [
         _gate("delivery_pass_rate", "交付通过率", metrics["delivery_pass_rate"], 0.8, "完成且通过质量门禁的研报任务占比。"),
         _gate("average_quality_score", "平均质量分", metrics["average_quality_score"], 0.8, "已评分研报的客观质量均值。"),
@@ -462,6 +486,10 @@ def _task_quality_row(task: ReportTask) -> dict[str, Any]:
         "status": task.status,
         "quality_score": task.quality_score,
         "delivery_pass": delivery_readiness["can_deliver_formal_report"],
+        "machine_quality_pass": delivery_readiness["machine_quality_pass"],
+        "machine_status": delivery_readiness["machine_status"],
+        "review_status": delivery_readiness["review_status"],
+        "formal_status": delivery_readiness["formal_status"],
         "quality_gate_pass": quality_gate_pass,
         "delivery_readiness": delivery_readiness,
         "export_readiness": run_state["export_readiness"],
@@ -893,6 +921,7 @@ def _task_evidence_source_counter(claims: list[ReportClaim]) -> Counter[str]:
 def _normalize_source_key(source_type: str | None) -> str:
     value = str(source_type or "local_evidence").strip().lower()
     aliases = {
+        "sec_companyfacts": "sec_edgar",
         "sec_filing": "sec_edgar",
         "filing": "sec_edgar",
         "filings": "sec_edgar",
@@ -996,10 +1025,10 @@ def _source_health_status(
         return "not_configured", "数据源尚未配置，无法补齐该市场的关键证据。", "datasources"
     if not market_supported:
         return "market_mismatch", "当前来源不覆盖该任务市场。", "datasources"
+    if str(credential_status or "") in {"required", "missing", "expired"}:
+        return "credential_required", "需要先配置或更新访问凭证。", "datasources"
     if not source.enabled:
         return "disabled", "数据源已停用，采集链路不会使用该来源。", "datasources"
-    if str(credential_status or "") in {"required", "expired"}:
-        return "credential_required", "需要先配置或更新访问凭证。", "datasources"
     if evidence_count > 0:
         return "covered", "已有证据命中该来源，可用于主张追溯。", "evidence"
     if batch is not None and batch.status == "failed":

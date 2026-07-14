@@ -8,6 +8,8 @@ from typing import Any, Dict
 
 import yaml
 
+from src.utils.env import load_env_files
+
 
 _RETRIEVAL_CONFIG_CACHE: Dict[str, Any] | None = None
 
@@ -15,13 +17,15 @@ _RETRIEVAL_CONFIG_CACHE: Dict[str, Any] | None = None
 def ensure_model_cache_env(config: Dict[str, Any] | None = None) -> Path:
     """Pin Hugging Face/SentenceTransformers cache paths inside the project."""
 
+    repo_root = Path(__file__).resolve().parents[2]
+    load_env_files(config_path=repo_root / "configs" / "retrieval.yaml")
     cfg = config if isinstance(config, dict) else _load_retrieval_config()
     retrieval = cfg.get("retrieval", cfg) if isinstance(cfg, dict) else {}
     raw_root = ""
     if isinstance(retrieval, dict):
         raw_root = str(retrieval.get("model_cache_root") or "")
-    repo_root = Path(__file__).resolve().parents[2]
-    cache_root = Path(raw_root or "models")
+    env_root = str(os.getenv("FINSIGHT_MODEL_CACHE_ROOT") or "").strip()
+    cache_root = Path(env_root or raw_root or "models").expanduser()
     if not cache_root.is_absolute():
         cache_root = repo_root / cache_root
     hf_home = cache_root / "huggingface"
@@ -47,6 +51,47 @@ def embedding_local_files_only() -> bool:
         if isinstance(router, dict) and router.get("local_files_only") is not None:
             return bool(router.get("local_files_only"))
     return False
+
+
+def resolve_local_model_path(model_name: str, *, category: str | None = None) -> str:
+    """Resolve a configured model id to a complete local model directory.
+
+    Local model bundles in this project are not always stored in Hugging Face's
+    cache layout. Rerankers, for example, may live under ``models/rerankers``.
+    Returning the original id keeps the standard Hugging Face lookup behavior
+    when no complete local bundle is available.
+    """
+
+    text = str(model_name or "").strip()
+    if not text:
+        return text
+    direct = Path(text).expanduser()
+    if direct.is_dir() and _is_model_directory(direct):
+        return str(direct.resolve())
+
+    cache_root = ensure_model_cache_env()
+    leaf = text.rsplit("/", 1)[-1]
+    candidates = []
+    if category:
+        candidates.append(cache_root / category / leaf)
+    candidates.extend(
+        [
+            cache_root / "rerankers" / leaf,
+            cache_root / "models" / leaf,
+            cache_root / leaf,
+        ]
+    )
+    for candidate in candidates:
+        if candidate.is_dir() and _is_model_directory(candidate):
+            return str(candidate.resolve())
+    return text
+
+
+def _is_model_directory(path: Path) -> bool:
+    return (path / "config.json").is_file() and any(
+        (path / filename).is_file()
+        for filename in ("model.safetensors", "pytorch_model.bin", "tf_model.h5")
+    )
 
 
 def _load_retrieval_config() -> Dict[str, Any]:

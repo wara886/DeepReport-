@@ -8,6 +8,42 @@ from src.db.init_db import init_db
 from src.services.report_task_service import ReportTaskService
 
 
+def test_init_db_merges_duplicate_companies_and_backfills_legacy_task_bindings(tmp_path):
+    db_path = tmp_path / "binding_repair.db"
+    engine = init_db(f"sqlite:///{db_path}")
+    with engine.begin() as conn:
+        conn.exec_driver_sql("INSERT INTO companies (name, symbol, market, created_at) VALUES ('Apple old', 'AAPL', NULL, CURRENT_TIMESTAMP)")
+        old_id = conn.exec_driver_sql("SELECT last_insert_rowid()").scalar_one()
+        conn.exec_driver_sql("INSERT INTO companies (name, symbol, market, created_at) VALUES ('Apple', 'AAPL', 'US', CURRENT_TIMESTAMP)")
+        canonical_id = conn.exec_driver_sql("SELECT last_insert_rowid()").scalar_one()
+        conn.exec_driver_sql(
+            "INSERT INTO report_tasks (task_id, symbol, period, report_type, status, company_id, created_at) "
+            "VALUES ('legacy-unbound', 'AAPL', 'FY2024', 'equity_research', 'queued', NULL, CURRENT_TIMESTAMP)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO report_tasks (task_id, symbol, period, report_type, status, company_id, created_at) "
+            "VALUES ('legacy-new-company', '0700.HK', 'FY2024', 'equity_research', 'queued', NULL, CURRENT_TIMESTAMP)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO documents (company_id, title, content, parse_status, created_at) "
+            "VALUES (?, 'Legacy', '', 'parsed', CURRENT_TIMESTAMP)",
+            (old_id,),
+        )
+
+    init_db(engine=engine)
+
+    with engine.connect() as conn:
+        companies = conn.exec_driver_sql("SELECT id FROM companies WHERE symbol = 'AAPL'").all()
+        task = conn.exec_driver_sql("SELECT workspace_id, company_id FROM report_tasks WHERE task_id = 'legacy-unbound'").one()
+        document_company = conn.exec_driver_sql("SELECT company_id FROM documents WHERE title = 'Legacy'").scalar_one()
+        new_company = conn.exec_driver_sql("SELECT symbol, market FROM companies WHERE symbol = '0700.HK'").one()
+    assert companies == [(canonical_id,)]
+    assert task.workspace_id is not None
+    assert task.company_id == canonical_id
+    assert document_company == canonical_id
+    assert new_company == ("0700.HK", "HK")
+
+
 def test_init_db_migrates_legacy_sqlite_columns(tmp_path):
     db_path = tmp_path / "legacy.db"
     _create_legacy_sqlite(db_path)

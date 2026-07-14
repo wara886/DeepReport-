@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from src.db.models import (
@@ -26,6 +26,7 @@ from src.db.models import (
     ReportClaim,
     ReportTask,
     ReportTaskEvent,
+    ToolRun,
 )
 
 
@@ -53,6 +54,8 @@ OUTPUT_ARTIFACTS = {
     "section_repair.json": "section_repair",
     "evidence_retrieval_attribution.json": "evidence_retrieval_attribution",
     "performance_trace.json": "performance_trace",
+    "agent_collaboration_trace.json": "agent_collaboration_trace",
+    "tool_trace.json": "tool_trace",
 }
 
 
@@ -65,6 +68,7 @@ class ArtifactImportResult:
     claim_evidence_count: int
     financial_fact_count: int
     llm_run_count: int
+    tool_run_count: int
     document_count: int
     document_processing_step_count: int
     warnings: list[str]
@@ -78,6 +82,7 @@ class ArtifactImportResult:
             "claim_evidence_count": self.claim_evidence_count,
             "financial_fact_count": self.financial_fact_count,
             "llm_run_count": self.llm_run_count,
+            "tool_run_count": self.tool_run_count,
             "document_count": self.document_count,
             "document_processing_step_count": self.document_processing_step_count,
             "warnings": list(self.warnings),
@@ -115,6 +120,8 @@ class ArtifactImporter:
                 name=str(metadata.get("company_name") or task.symbol or ""),
                 market=str(metadata.get("market") or ""),
             )
+            if task.company_id is None and company_id is not None:
+                task.company_id = company_id
 
             artifacts = self._import_artifacts(session, task_id, output_dir, report_dir)
             document = self._upsert_task_document(
@@ -157,6 +164,7 @@ class ArtifactImporter:
                 task_id=task_id,
                 output_dir=output_dir,
             )
+            tool_run_count = self._import_tool_runs(session, task_id=task_id, output_dir=output_dir)
             document_step_count = (
                 self._replace_document_processing_steps(
                     session,
@@ -181,6 +189,7 @@ class ArtifactImporter:
                 claim_evidence_count=link_count,
                 financial_fact_count=financial_fact_count,
                 llm_run_count=llm_run_count,
+                tool_run_count=tool_run_count,
                 document_count=1 if document is not None else 0,
                 document_processing_step_count=document_step_count,
                 warnings=warnings,
@@ -415,19 +424,29 @@ class ArtifactImporter:
                 "numeric_check_status": numeric_check_status,
                 "citation_check_status": citation_check_status,
             }
+            review_status, review_policy = _claim_review_status(
+                record,
+                verification_status=verification_status,
+                numeric_check_status=numeric_check_status,
+                citation_check_status=citation_check_status,
+            )
+            metadata["review_policy"] = review_policy
+            is_critical = bool(record.get("is_critical", record.get("critical", False))) or bool(review_policy.get("critical"))
 
             claim = ReportClaim(
                 task_id=task_id,
                 section_name=_string_or_none(record.get("section_name") or record.get("section")),
                 claim_text=_string(record.get("claim_text") or record.get("text") or record.get("claim") or ""),
                 claim_type=_string_or_none(record.get("claim_type") or record.get("type")),
-                is_critical=bool(record.get("is_critical", record.get("critical", False))),
-                critical_claim_type=_string_or_none(record.get("critical_claim_type")),
+                is_critical=is_critical,
+                critical_claim_type=_string_or_none(record.get("critical_claim_type")) or (
+                    _string_or_none(record.get("section_name") or record.get("section")) if is_critical else None
+                ),
                 verification_status=verification_status,
                 numeric_check_status=numeric_check_status,
                 citation_check_status=citation_check_status,
                 confidence=_optional_float(record.get("confidence")),
-                review_status=_string(record.get("review_status") or "pending"),
+                review_status=review_status,
                 metadata_json=metadata,
             )
             session.add(claim)
@@ -581,6 +600,47 @@ class ArtifactImporter:
                         "memory_used": trace_item.get("memory_used"),
                         "quality_feedback_used": trace_item.get("quality_feedback_used"),
                     },
+                )
+            )
+        if rows:
+            session.add_all(rows)
+            session.flush()
+        return len(rows)
+
+    def _import_tool_runs(self, session: Session, *, task_id: str, output_dir: Path) -> int:
+        session.execute(delete(ToolRun).where(ToolRun.task_id == task_id, ToolRun.source.in_(["react", "deterministic", "search_engine"])))
+        trace = _read_json(output_dir / "tool_trace.json", default={})
+        calls = trace.get("calls", []) if isinstance(trace, dict) else []
+        rows: list[ToolRun] = []
+        for index, call in enumerate(calls, start=1):
+            if not isinstance(call, dict):
+                continue
+            tool_name = _string(call.get("tool_name")).strip()
+            if not tool_name:
+                continue
+            source = _string(call.get("source") or "deterministic")
+            if source not in {"react", "deterministic", "search_engine"}:
+                source = "deterministic"
+            success = call.get("success") is not False
+            duration_ms = _duration_to_ms(call.get("duration_sec"))
+            rows.append(
+                ToolRun(
+                    run_id=f"tool_{task_id}_{index:04d}",
+                    task_id=task_id,
+                    langgraph_node=_infer_tool_langgraph_node(call),
+                    agent_name=_string_or_none(call.get("caller_agent")),
+                    tool_name=tool_name,
+                    status="success" if success else "failed",
+                    attempt_count=max(1, int(call.get("attempt_count", 1) or 1)),
+                    duration_ms=duration_ms,
+                    input_json=_dict_or_none(call.get("input_summary")) or {},
+                    output_summary_json=_dict_or_none(call.get("output_summary")) or {},
+                    evidence_ids=[str(item) for item in call.get("evidence_ids", []) if str(item)],
+                    artifact_paths=[str(item) for item in call.get("artifact_paths", []) if str(item)],
+                    error_type=_string_or_none(call.get("error_type")),
+                    error_message=_string_or_none(call.get("failure_reason")),
+                    source=source,
+                    metadata_json={"trace_schema_version": trace.get("schema_version", "tool_trace.v1")},
                 )
             )
         if rows:
@@ -758,6 +818,66 @@ def _claim_citation_check_status(evidence_ids: list[str], linked_evidence: list[
     return "passed" if len(evidence_ids) == len(linked_evidence) else "failed"
 
 
+def _claim_review_status(
+    record: dict[str, Any],
+    *,
+    verification_status: str,
+    numeric_check_status: str | None,
+    citation_check_status: str,
+) -> tuple[str, dict[str, Any]]:
+    explicit = _string_or_none(record.get("review_status"))
+    if explicit and explicit not in {"pending", "unknown"}:
+        return explicit, {"mode": "explicit", "reason": "artifact_review_status"}
+
+    confidence = _optional_float(record.get("confidence"))
+    section_name = _string(record.get("section_name") or record.get("section")).strip().lower()
+    critical_sections = {
+        "executive_summary",
+        "valuation",
+        "valuation_sensitivity",
+        "risks",
+        "risk_assessment",
+        "conclusion",
+        "investment_conclusion",
+    }
+    critical = (
+        bool(record.get("is_critical", record.get("critical", False)))
+        or bool(_string_or_none(record.get("critical_claim_type")))
+        or section_name in critical_sections
+    )
+    checks_passed = (
+        verification_status == "supported"
+        and citation_check_status == "passed"
+        and numeric_check_status in {None, "passed", "not_applicable"}
+    )
+    auto_approved = not critical and checks_passed and confidence is not None and confidence >= 0.75
+    if auto_approved:
+        return "approved", {
+            "mode": "automatic",
+            "reason": "non_critical_machine_verified",
+            "confidence_threshold": 0.75,
+            "critical": False,
+        }
+    reasons: list[str] = []
+    if critical:
+        reasons.append("critical_claim")
+    if verification_status != "supported":
+        reasons.append("verification_not_supported")
+    if citation_check_status != "passed":
+        reasons.append("citation_check_failed")
+    if numeric_check_status not in {None, "passed", "not_applicable"}:
+        reasons.append("numeric_check_failed")
+    if confidence is None or confidence < 0.75:
+        reasons.append("confidence_below_threshold")
+    return "pending", {
+        "mode": "human_required",
+        "reason": reasons[0] if reasons else "policy_default",
+        "reasons": reasons,
+        "confidence_threshold": 0.75,
+        "critical": critical,
+    }
+
+
 def _extract_numeric_values(record: dict[str, Any]) -> dict[str, Any]:
     numeric_values = record.get("numeric_values")
     return numeric_values if isinstance(numeric_values, dict) else {}
@@ -787,12 +907,25 @@ def _numeric_value_appears_in_text(value: Any, text: str) -> bool:
 
 def _metadata(record: dict[str, Any], *, task_id: str, period: str, missing_fields: list[str]) -> dict[str, Any]:
     metadata = dict(record.get("metadata", {})) if isinstance(record.get("metadata"), dict) else {}
-    metadata["raw_artifact_record"] = dict(record)
+    metadata.pop("raw_artifact_record", None)
+    metadata["raw_artifact_record"] = _without_recursive_artifact_payload(record)
     metadata["task_id"] = task_id
     metadata["period"] = period
     if missing_fields:
         metadata["missing_fields"] = missing_fields
     return metadata
+
+
+def _without_recursive_artifact_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _without_recursive_artifact_payload(item)
+            for key, item in value.items()
+            if key != "raw_artifact_record"
+        }
+    if isinstance(value, list):
+        return [_without_recursive_artifact_payload(item) for item in value]
+    return value
 
 
 def _artifact_url(*, path: Path, root: Path, task_id: str, filename: str, artifact_root: str) -> str:
@@ -1137,6 +1270,25 @@ def _optional_upper(value: Any) -> str | None:
     return text.upper() if text else None
 
 
+def _infer_tool_langgraph_node(call: dict[str, Any]) -> str:
+    explicit = _string_or_none(call.get("langgraph_node") or call.get("node") or call.get("phase"))
+    if explicit:
+        return explicit
+    agent = _string(call.get("caller_agent") or call.get("agent_name") or call.get("task_type")).lower()
+    tool = _string(call.get("tool_name")).lower()
+    if any(token in agent for token in ("planning", "planner")):
+        return "planning"
+    if any(token in agent for token in ("search", "research", "browser")) or call.get("source") == "search_engine":
+        return "research"
+    if any(token in agent for token in ("analy", "risk", "peer")) or any(token in tool for token in ("statement", "metric", "valuation", "ratio")):
+        return "analyze"
+    if any(token in agent for token in ("writer", "finalanswer", "final_answer")):
+        return "write_report"
+    if any(token in agent for token in ("verifier", "critic", "quality")):
+        return "verify_report"
+    return "write_report"
+
+
 def _fiscal_year_from_period(period: str) -> int | None:
     text = str(period or "").upper()
     if text.startswith("FY"):
@@ -1151,8 +1303,15 @@ def _get_or_create_company_id(session: Session, *, symbol: str, name: str, marke
     if not normalized_symbol and not normalized_name:
         return None
     if normalized_symbol:
-        company = session.scalar(select(Company).where(Company.symbol == normalized_symbol, Company.market == normalized_market))
+        company = session.scalar(
+            select(Company)
+            .where(func.upper(Company.symbol) == normalized_symbol)
+            .order_by(Company.id.asc())
+            .limit(1)
+        )
         if company is not None:
+            if not company.market and normalized_market:
+                company.market = normalized_market
             return company.id
     company = Company(
         name=normalized_name or normalized_symbol or "未知公司",

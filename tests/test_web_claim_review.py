@@ -35,5 +35,7 @@ def test_workbench_exposes_claim_review_contract(temp_db_engine, tmp_path):
     assert "通过" in html
     assert "驳回" in html
     assert "重生成" in html
+    assert "批量通过有证据支持的主张" in html
+    assert "/claims/approve-supported" in html
     assert claims.status_code == 200
     assert claims.json()["items"][0]["claim_text"] == "A claim for review."

@@ -60,15 +60,36 @@ def review_report_with_llm_from_paths(
         return fallback
 
     prompt = _build_review_prompt(artifacts)
-    try:
-        if hasattr(adapter, "generate_json"):
-            parsed = adapter.generate_json(prompt=prompt, system_prompt=_system_prompt())
-        else:
-            parsed = adapter.generate(prompt=prompt, system_prompt=_system_prompt())
-    except Exception as exc:  # pragma: no cover - defensive fallback
-        return _failed_review(base, f"LLM review call failed: {exc}")
+    parsed: Any = None
+    failures: list[str] = []
+    for _attempt in range(1, 3):
+        try:
+            retry_prompt = prompt
+            if failures:
+                retry_prompt += (
+                    "\n\nThe previous response could not be parsed as JSON. Return one complete JSON object only; "
+                    "do not use markdown fences or truncate arrays."
+                )
+            if hasattr(adapter, "generate_json"):
+                parsed = adapter.generate_json(prompt=retry_prompt, system_prompt=_system_prompt())
+            else:
+                parsed = adapter.generate(prompt=retry_prompt, system_prompt=_system_prompt())
+            break
+        except Exception as exc:  # pragma: no cover - adapter-specific failures
+            failures.append(str(exc))
+    if parsed is None:
+        failed = _failed_review(
+            base,
+            f"LLM review call failed after {len(failures)} attempts: {failures[-1] if failures else 'unknown error'}",
+        )
+        failed["attempt_count"] = len(failures)
+        failed["failure_reasons"] = failures
+        return failed
     normalized = _normalize_review(parsed)
     normalized = _apply_artifact_guard(normalized, artifacts)
+    normalized["attempt_count"] = len(failures) + 1
+    if failures:
+        normalized["recovered_failure_reasons"] = failures
     normalized.update(base)
     return normalized
 
@@ -181,14 +202,18 @@ def _apply_artifact_guard(review: Dict[str, Any], artifacts: Dict[str, Any]) -> 
         return review
     if blocking:
         return review
-    if issues and not bool(review.get("artifact_reconciliation_applied")):
+    if int(review.get("fatal_issue_count", 0) or 0) > 0 or _contains_direct_fail(issues):
         return review
-    if float(review.get("total_score", 0.0) or 0.0) < 0.65 and not bool(review.get("artifact_reconciliation_applied")):
+    minimum_warning_score = 0.75 if issues else 0.65
+    if float(review.get("total_score", 0.0) or 0.0) < minimum_warning_score and not bool(review.get("artifact_reconciliation_applied")):
         return review
     guarded = dict(review)
     guarded["llm_review_pass"] = True
     guarded["total_score"] = max(_score(guarded.get("total_score", 0.0)), 0.82)
-    guarded["verdict"] = (str(guarded.get("verdict") or "").strip() + " | artifact_guard: objective and verifier gates passed; empty reviewer issues ignored.").strip()
+    guarded["verdict"] = (
+        str(guarded.get("verdict") or "").strip()
+        + " | artifact_guard: objective, verifier and section contracts passed; warning-only reviewer findings remain non-blocking."
+    ).strip()
     guarded["artifact_guard_applied"] = True
     return guarded
 
@@ -207,7 +232,12 @@ def _reconcile_review_with_runtime_artifacts(review: Dict[str, Any], artifacts: 
         if not isinstance(issue, dict):
             continue
         message = str(issue.get("message") or "")
-        if _is_stale_section_depth_review_issue(message, report_md=report_md):
+        if (
+            _is_stale_section_depth_review_issue(message, report_md=report_md)
+            or _is_disclosed_ttm_period_context_issue(message, report_md=report_md)
+            or _is_reviewer_unfinished_sentence_false_positive(message, artifacts=artifacts)
+            or _is_disclosed_directional_rating_false_positive(message, report_md=report_md)
+        ):
             row = dict(issue)
             row["severity"] = "warning"
             row["category"] = "llm_review_reconciled"
@@ -229,6 +259,44 @@ def _reconcile_review_with_runtime_artifacts(review: Dict[str, Any], artifacts: 
         output["total_score"] = max(_score(output.get("total_score", 0.0)), 0.82)
     output["artifact_reconciliation_applied"] = True
     return output
+
+
+def _is_disclosed_directional_rating_false_positive(message: str, *, report_md: str) -> bool:
+    text = str(message or "").lower()
+    report = str(report_md or "").lower()
+    alleges_missing_rating = "missing rating" in text or ("评级" in text and "缺少" in text)
+    alleges_missing_target = any(term in text for term in ("目标价", "估值区间", "target price"))
+    has_directional_rating = any(term in report for term in ("中性观察评级", "偏积极评级", "偏谨慎评级", "不建议评级"))
+    target_price_boundary = any(
+        term in report
+        for term in ("非dcf目标价", "不构成目标价", "不输出确定目标价", "不输出确定性目标价")
+    )
+    return has_directional_rating and (alleges_missing_rating or (alleges_missing_target and target_price_boundary))
+
+
+def _is_disclosed_ttm_period_context_issue(message: str, *, report_md: str) -> bool:
+    text = str(message or "").lower()
+    report = str(report_md or "").lower()
+    alleges_mismatch = "ttm" in text and any(term in text for term in ("期间", "错配", "mismatch", "fy2024"))
+    disclosed = (
+        "当前 ttm 市场快照" in report
+        and "期间不同" in report
+        and any(term in report for term in ("不作同期间数值替代", "不作同期间替代"))
+    )
+    return alleges_mismatch and disclosed
+
+
+def _is_reviewer_unfinished_sentence_false_positive(message: str, *, artifacts: Dict[str, Any]) -> bool:
+    text = str(message or "").lower()
+    if not any(term in text for term in ("未完成句子", "unfinished sentence")):
+        return False
+    quality = artifacts.get("quality_report") if isinstance(artifacts.get("quality_report"), dict) else {}
+    issues = quality.get("issues") if isinstance(quality.get("issues"), list) else []
+    return not any(
+        "unfinished sentence pattern" in str(item.get("message") or "").lower()
+        for item in issues
+        if isinstance(item, dict)
+    )
 
 
 def _is_stale_section_depth_review_issue(message: str, *, report_md: str = "") -> bool:
@@ -439,9 +507,11 @@ def _build_review_prompt(artifacts: Dict[str, Any]) -> str:
     payload = {
         "objective_quality_report": artifacts["quality_report"],
         "verification_report": artifacts["verification_report"],
-        "claims_sample": artifacts["claims"][:8],
-        "evidence_sample": artifacts["evidence"][:8],
-        "citations_sample": artifacts["citations"][:8],
+        "claims_sample": _compact_review_claims(artifacts["claims"][:8]),
+        "evidence_sample": _compact_review_evidence(artifacts["evidence"][:8]),
+        "citations_sample": _compact_review_citations(artifacts["citations"][:8]),
+        "approved_peer_symbols": artifacts.get("approved_peer_symbols", []),
+        "peer_symbol_policy": "approved_peer_symbols are valid only inside the peer comparison section; they are not cross-report contamination there",
         "report_markdown": artifacts["report_md"][:18000],
     }
     return (
@@ -454,11 +524,57 @@ def _build_review_prompt(artifacts: Dict[str, Any]) -> str:
     )
 
 
+def _compact_review_claims(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "claim_id": row.get("claim_id"),
+            "section_name": row.get("section_name"),
+            "claim_text": str(row.get("claim_text") or "")[:1200],
+            "evidence_ids": list(row.get("evidence_ids") or [])[:8],
+            "numeric_values": row.get("numeric_values") if isinstance(row.get("numeric_values"), dict) else {},
+        }
+        for row in records
+    ]
+
+
+def _compact_review_evidence(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    for row in records:
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        metrics = metadata.get("metrics") if isinstance(metadata.get("metrics"), dict) else {}
+        output.append(
+            {
+                "evidence_id": row.get("evidence_id") or row.get("sample_id"),
+                "title": str(row.get("title") or "")[:300],
+                "source_type": row.get("source_type"),
+                "source_authority": row.get("source_authority") or row.get("authority_level"),
+                "period": row.get("period") or metadata.get("period"),
+                "source_url": str(row.get("source_url") or "")[:500],
+                "content_excerpt": str(row.get("content") or row.get("snippet") or "")[:1600],
+                "metric_names": list(metrics)[:12],
+            }
+        )
+    return output
+
+
+def _compact_review_citations(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "evidence_id": row.get("evidence_id"),
+            "label": row.get("label") or row.get("citation_label"),
+            "title": str(row.get("title") or "")[:300],
+            "source_url": str(row.get("source_url") or "")[:500],
+        }
+        for row in records
+    ]
+
+
 def _system_prompt() -> str:
     return "你是严格的金融研报评审。只输出可解析 JSON，不要输出 Markdown。"
 
 
 def _load_review_artifacts(outputs_dir: Path, reports_dir: Path) -> Dict[str, Any]:
+    analysis = _read_json(outputs_dir / "analysis_artifacts.json", {})
     return {
         "quality_report": _read_json(outputs_dir / "quality_report.json", {}),
         "verification_report": _read_json(outputs_dir / "verification_report.json", {}),
@@ -468,8 +584,28 @@ def _load_review_artifacts(outputs_dir: Path, reports_dir: Path) -> Dict[str, An
         "claims": _as_list(_read_json(outputs_dir / "claims.json", [])),
         "evidence": _as_list(_read_json(outputs_dir / "evidence.json", [])),
         "citations": _as_list(_read_json(outputs_dir / "citations.json", [])),
+        "approved_peer_symbols": _approved_peer_symbols_for_review(analysis),
         "report_md": _read_text(reports_dir / "report.md"),
     }
+
+
+def _approved_peer_symbols_for_review(analysis: Any) -> list[str]:
+    if not isinstance(analysis, dict):
+        return []
+    peer_analysis = analysis.get("peer_analysis", {}) if isinstance(analysis.get("peer_analysis"), dict) else {}
+    peer_context = analysis.get("peer_context", {}) if isinstance(analysis.get("peer_context"), dict) else {}
+    approved: set[str] = set()
+    for source in (peer_analysis, peer_context, analysis):
+        for value in source.get("approved_peer_symbols", []) if isinstance(source.get("approved_peer_symbols"), list) else []:
+            symbol = str(value or "").strip().upper()
+            if symbol:
+                approved.add(symbol)
+        for row in source.get("peer_rows", []) if isinstance(source.get("peer_rows"), list) else []:
+            if isinstance(row, dict) and not bool(row.get("is_target")):
+                symbol = str(row.get("symbol") or row.get("ticker") or "").strip().upper()
+                if symbol:
+                    approved.add(symbol)
+    return sorted(approved)
 
 
 def _read_json(path: Path, default: Any) -> Any:

@@ -19,3 +19,13 @@ def test_official_source_aliases_satisfy_required_market_sources():
     assert hk_coverage["required_sources"] == ["hkex"]
     assert hk_coverage["missing_sources"] == []
     assert hk_coverage["quality_ready"] is True
+
+    for source_type in ["sec_companyfacts", "sec_filing"]:
+        us_coverage = build_retrieval_coverage(
+            candidates=[{"source_type": source_type}],
+            returned=[{"source_type": source_type}],
+            company="AAPL Apple Inc.",
+        )
+        assert us_coverage["required_sources"] == ["sec_edgar"]
+        assert us_coverage["missing_sources"] == []
+        assert us_coverage["quality_ready"] is True

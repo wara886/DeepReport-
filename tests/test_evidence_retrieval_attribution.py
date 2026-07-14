@@ -137,6 +137,42 @@ def test_attribution_detects_writer_not_using_available_evidence(tmp_path):
     assert artifact["section_results"]["valuation"]["root_cause"] == "writer_not_using_available_evidence"
 
 
+def test_attribution_ignores_resolved_canonical_metric_differences(tmp_path):
+    outputs, reports = _dirs(tmp_path)
+    _write(
+        outputs,
+        "canonical_metrics.json",
+        {
+            "conflict_count": 1,
+            "resolved_conflict_count": 1,
+            "unresolved_conflict_count": 0,
+            "conflicts": [{"metric_name": "revenue", "resolution_status": "resolved"}],
+        },
+    )
+
+    artifact = build_evidence_retrieval_attribution(outputs, reports_dir=reports)
+
+    assert artifact["canonical_metric_conflict_count"] == 0
+
+
+def test_attribution_keeps_unresolved_canonical_metric_conflicts(tmp_path):
+    outputs, reports = _dirs(tmp_path)
+    _write(
+        outputs,
+        "canonical_metrics.json",
+        {
+            "conflict_count": 1,
+            "resolved_conflict_count": 0,
+            "unresolved_conflict_count": 1,
+            "conflicts": [{"metric_name": "revenue", "resolution_status": "unresolved"}],
+        },
+    )
+
+    artifact = build_evidence_retrieval_attribution(outputs, reports_dir=reports)
+
+    assert artifact["canonical_metric_conflict_count"] == 1
+
+
 def test_attribution_records_section_pack_similarity_and_report_usage(tmp_path):
     outputs, reports = _dirs(tmp_path)
     _write(

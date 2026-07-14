@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Tuple
 
 from src.data.source_quality import grade_source
 from src.utils.config import load_config
-from src.utils.model_cache import ensure_model_cache_env
+from src.utils.model_cache import ensure_model_cache_env, resolve_local_model_path
 
 
 _CROSS_ENCODER_CACHE: Dict[str, object] = {}
@@ -56,7 +56,8 @@ def rerank_hits_with_meta(
     local_files_only = bool((ckpt or {}).get("local_files_only", runtime_cfg.get("local_files_only", True)))
 
     if query.strip() and (ckpt or runtime_cfg.get("use_base_model_without_checkpoint")):
-        cross_encoder = _load_cross_encoder(model_name, local_files_only=local_files_only)
+        resolved_model_path = resolve_local_model_path(model_name, category="rerankers")
+        cross_encoder = _load_cross_encoder(resolved_model_path, local_files_only=local_files_only)
         if cross_encoder is not None:
             pairs = [[query, _hit_text(item)] for item in ranked]
             scores = cross_encoder.predict(pairs)
@@ -67,6 +68,7 @@ def rerank_hits_with_meta(
                 "mode": "reranker",
                 "backend": "cross_encoder",
                 "model_name": model_name,
+                "resolved_model_path": resolved_model_path,
                 "checkpoint_path": checkpoint_path,
                 "checkpoint_used": bool(ckpt),
                 "fallback_used": False,
@@ -92,6 +94,7 @@ def rerank_hits_with_meta(
         "mode": mode,
         "backend": backend,
         "model_name": model_name,
+        "resolved_model_path": resolve_local_model_path(model_name, category="rerankers"),
         "checkpoint_path": checkpoint_path,
         "checkpoint_used": bool(ckpt),
         "fallback_used": fallback_used,

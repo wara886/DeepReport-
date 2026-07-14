@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import concurrent.futures
 import hashlib
 import json
 from logging import getLogger
 import re
 import socket
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List
 from urllib import error, parse, request
@@ -18,7 +20,11 @@ import yfinance as yf
 from src.data.company_universe import resolve_company_identifier, resolve_symbol
 from src.data.evidence_intake_gate import evidence_rejection_reason, record_mentions_target_company
 from src.data.independent_sources import fetch_macro_evidence, fetch_sec_companyfacts_evidence
+from src.data.hkex_official_source import fetch_hkex_official_announcements
+from src.data.baostock_source import fetch_baostock_financials
+from src.data.tushare_source import fetch_tushare_financials
 from src.data.source_quality import apply_source_quality
+from src.market.currency_rules import infer_statement_currency
 from src.data.yahoo_finance import yahoo_financials_to_evidence, yahoo_snapshot_to_evidence
 
 logger = getLogger(__name__)
@@ -27,6 +33,7 @@ from src.retrieval.retrieve import retrieve_evidence_with_mode
 from src.report.fact_extractors.cleaning_pipeline import clean_evidence
 from src.utils.config import load_config
 from src.utils.env import load_env_files, resolve_config_value
+from src.utils.money import UNKNOWN_CURRENCY
 
 
 SearchHandler = Callable[..., Dict[str, Any]]
@@ -92,6 +99,8 @@ class SearchManager:
         manager.register_engine("cninfo_announcements", cninfo_announcement_search)
         manager.register_engine("exchange_announcements", exchange_announcement_search)
         manager.register_engine("eastmoney_financials", eastmoney_financials_search)
+        manager.register_engine("baostock_financials", baostock_financials_search)
+        manager.register_engine("tushare_financials", tushare_financials_search)
         manager.register_engine("hkex_announcements", hkex_announcement_search)
         manager.register_engine("hk_financials", hk_financials_search)
         manager.register_engine("serper", serper_search)
@@ -120,18 +129,51 @@ class SearchManager:
         selected = engines or self.engine_names()
         all_hits: List[SearchResult] = []
         engine_meta: Dict[str, Any] = {}
+        search_started = time.perf_counter()
+        budget_seconds = float(kwargs.pop("search_budget_seconds", 0.0) or 0.0)
+        engine_timeout_seconds = float(kwargs.pop("engine_timeout_seconds", 60.0) or 60.0)
+        timeout_by_engine = kwargs.pop("engine_timeout_by_name", {})
+        timeout_by_engine = timeout_by_engine if isinstance(timeout_by_engine, dict) else {}
+        skipped_engines: List[str] = []
 
-        for engine in selected:
+        for index, engine in enumerate(selected):
+            elapsed = time.perf_counter() - search_started
+            if budget_seconds > 0 and elapsed >= budget_seconds:
+                skipped_engines.extend(selected[index:])
+                break
             if engine not in self._engines:
                 engine_meta[engine] = {"error": f"engine not registered: {engine}"}
                 continue
+            engine_started = time.perf_counter()
+            current_timeout = float(timeout_by_engine.get(engine, engine_timeout_seconds) or engine_timeout_seconds)
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             try:
-                payload = self._engines[engine](query=query, topk=topk, **kwargs)
+                future = pool.submit(self._engines[engine], query=query, topk=topk, **kwargs)
+                payload = future.result(timeout=current_timeout)
                 raw_hits = payload.get("hits", [])
-                engine_meta[engine] = payload.get("meta", {})
+                engine_meta[engine] = dict(
+                    payload.get("meta", {}),
+                    duration_ms=round((time.perf_counter() - engine_started) * 1000),
+                    hit_count=len(raw_hits),
+                )
                 all_hits.extend(_normalize_hits(engine, raw_hits))
+            except concurrent.futures.TimeoutError:
+                future.cancel()
+                engine_meta[engine] = {
+                    "error": f"engine exceeded {current_timeout:.0f}s timeout",
+                    "timeout": True,
+                    "duration_ms": round((time.perf_counter() - engine_started) * 1000),
+                    "hit_count": 0,
+                    "timeout_seconds": current_timeout,
+                }
             except Exception as exc:
-                engine_meta[engine] = {"error": str(exc)}
+                engine_meta[engine] = {
+                    "error": str(exc),
+                    "duration_ms": round((time.perf_counter() - engine_started) * 1000),
+                    "hit_count": 0,
+                }
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
 
         # 证据清洗：在去重排序前统一过 cleaning_pipeline
         market = _infer_market_from_kwargs(kwargs)
@@ -154,6 +196,12 @@ class SearchManager:
                 "total_hits_before_dedupe": len(all_hits),
                 "returned_hits": len(hits),
                 "cross_symbol_filtered_count": cross_symbol_filtered_count,
+                "duration_ms": round((time.perf_counter() - search_started) * 1000),
+                "budget_seconds": budget_seconds or None,
+                "engine_timeout_seconds": engine_timeout_seconds,
+                "engine_timeout_by_name": timeout_by_engine,
+                "budget_exhausted": bool(skipped_engines),
+                "skipped_engines": skipped_engines,
             },
         }
 
@@ -340,7 +388,12 @@ def hkex_announcement_search(
     raw_data_root: str = "data/raw/real_data",
     **kwargs: Any,
 ) -> Dict[str, Any]:
-    """Best-effort free HKEX disclosure search via configured public search."""
+    """Search HKEX directly, using Tavily only as a discovery fallback."""
+
+    direct = fetch_hkex_official_announcements(symbol=str(symbol or ""), period=str(period or ""), topk=topk)
+    direct_hits = [apply_source_quality(dict(item)) for item in direct.get("hits", []) if isinstance(item, dict)]
+    if direct_hits:
+        return {"hits": direct_hits[:topk], "meta": dict(direct.get("meta") or {})}
 
     hk_query = f"site:hkexnews.hk {symbol or ''} {period or ''} annual report announcement {query}".strip()
     payload = tavily_search(
@@ -376,6 +429,7 @@ def hkex_announcement_search(
     original_mode = meta.get("mode", "tavily")
     meta["mode"] = "hkex_announcements"
     meta["via"] = original_mode
+    meta["official_direct_failure_reason"] = (direct.get("meta") or {}).get("failure_reason")
     meta["result_count"] = len(hits)
     meta["identity_rejected_count"] = rejected_identity_count
     if _is_annual_period(period) and not hits:
@@ -441,7 +495,7 @@ def hk_financials_search(
                 "rows": rows_list,
                 "financials_raw": tables,
                 "table_id": f"{resolved}_{period or 'latest'}_hk_financials_{table_type}_{digest}",
-                "currency": _hk_currency(info),
+                "currency": _hk_statement_currency(resolved, info),
                 "unit": "raw",
             },
         }
@@ -459,6 +513,15 @@ def _hk_currency(info: Dict[str, Any]) -> str:
     """从 yfinance info 推断港股财报货币（HKD 或 CNY）。"""
     currency = str(info.get("currency") or "HKD").upper()
     return "CNY" if currency in ("CNY", "RMB") else currency
+
+
+def _hk_statement_currency(symbol: str, info: Dict[str, Any]) -> str:
+    """Use issuer rules before Yahoo's trading-currency metadata for HK filings."""
+
+    inferred = infer_statement_currency(symbol=symbol, market="hk")
+    if inferred.statement_currency and inferred.statement_currency != UNKNOWN_CURRENCY:
+        return inferred.statement_currency
+    return _hk_currency(info)
 
 
 def _yf_df_to_rows(df: Any, period: str) -> List[Dict[str, Any]]:
@@ -1319,6 +1382,36 @@ def eastmoney_financials_search(
     }
 
 
+def baostock_financials_search(
+    query: str,
+    topk: int = 6,
+    symbol: str | None = None,
+    period: str | None = None,
+    raw_data_root: str = "data/raw/real_data",
+    enable_remote: bool = True,
+    **_: Any,
+) -> Dict[str, Any]:
+    if not enable_remote:
+        return {"hits": [], "meta": {"mode": "baostock_financials", "failure_reason": "remote_sources_disabled"}}
+    resolved = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or query or "")
+    return fetch_baostock_financials(symbol=resolved, period=str(period or ""), topk=topk)
+
+
+def tushare_financials_search(
+    query: str,
+    topk: int = 4,
+    symbol: str | None = None,
+    period: str | None = None,
+    raw_data_root: str = "data/raw/real_data",
+    enable_remote: bool = True,
+    **_: Any,
+) -> Dict[str, Any]:
+    if not enable_remote:
+        return {"hits": [], "meta": {"mode": "tushare_financials", "failure_reason": "remote_sources_disabled"}}
+    resolved = resolve_symbol(symbol or query, raw_data_root=raw_data_root, default=symbol or query or "")
+    return fetch_tushare_financials(symbol=resolved, period=str(period or ""), topk=topk)
+
+
 def independent_macro_search(
     query: str,
     topk: int = 5,
@@ -1850,19 +1943,37 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
     deduped: Dict[str, SearchResult] = {}
     for hit in hits:
         raw = hit.raw if isinstance(hit.raw, dict) else {}
-        if str(raw.get("source_type") or "") == "eastmoney_financials":
+        if str(raw.get("source_type") or "") in {"eastmoney_financials", "hk_financials"}:
             key = str(hit.result_id)
         else:
             key = str(raw.get("chunk_id") or hit.url or hit.result_id or f"{hit.engine}:{hit.title}:{hit.snippet[:80]}")
         existing = deduped.get(key)
-        if existing is None or (hit.authority_score, hit.score) > (existing.authority_score, existing.score):
+        if existing is None or _dedupe_preference(hit) > _dedupe_preference(existing):
             deduped[key] = hit
     ranked = sorted(deduped.values(), key=lambda item: (item.authority_score, item.score), reverse=True)
     selected: List[SearchResult] = []
     source_counts: Dict[str, int] = {}
     default_diversity_cap = 4
-    source_diversity_caps = {"eastmoney_financials": 3}
+    source_diversity_caps = {"eastmoney_financials": 3, "hk_financials": 3}
+
+    # Valuation depends on Yahoo's supplementary financial record, while the
+    # snapshot and filing engines often have higher authority scores. Reserve
+    # both Yahoo records before global ranking can starve that data source.
+    engine_minimums = {
+        "yahoo_finance": min(2, topk),
+        "sec_edgar": min(1, topk),
+    }
+    for engine, minimum in engine_minimums.items():
+        engine_hits = [hit for hit in ranked if hit.engine == engine]
+        for hit in engine_hits[:minimum]:
+            selected.append(hit)
+            source_counts[hit.source_type or hit.engine] = source_counts.get(hit.source_type or hit.engine, 0) + 1
+    if len(selected) >= topk:
+        return selected[:topk]
+
     for hit in ranked:
+        if hit in selected:
+            continue
         source_key = hit.source_type or hit.engine
         diversity_cap = source_diversity_caps.get(source_key, default_diversity_cap)
         if source_counts.get(source_key, 0) >= diversity_cap:
@@ -1878,6 +1989,13 @@ def _dedupe_and_rank(hits: List[SearchResult], topk: int) -> List[SearchResult]:
         if len(selected) >= topk:
             break
     return selected
+
+
+def _dedupe_preference(hit: SearchResult) -> tuple[float, int, float]:
+    raw = hit.raw if isinstance(hit.raw, dict) else {}
+    metadata = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
+    metrics = metadata.get("metrics") if isinstance(metadata.get("metrics"), dict) else {}
+    return hit.authority_score, len(metrics), hit.score
 
 
 def _safe_float(value: Any) -> float:

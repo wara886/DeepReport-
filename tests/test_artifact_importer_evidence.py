@@ -65,3 +65,47 @@ def test_artifact_importer_imports_evidence_with_missing_field_metadata(temp_db_
         assert rows[1].content == ""
         assert rows[1].metadata_json["legacy_path"] == "old/output"
         assert "content" in rows[1].metadata_json["missing_fields"]
+
+
+def test_artifact_importer_removes_recursive_raw_artifact_payload(temp_db_engine, tmp_path):
+    output_root = tmp_path / "outputs"
+    report_root = tmp_path / "reports"
+    output_dir = output_root / "runs" / "task-recursive-evidence" / "outputs"
+    report_dir = report_root / "runs" / "task-recursive-evidence" / "reports"
+    output_dir.mkdir(parents=True)
+    report_dir.mkdir(parents=True)
+    record = {
+        "evidence_id": "ev_recursive",
+        "title": "Recursive evidence",
+        "content": "Revenue was disclosed.",
+        "metadata": {
+            "provider": "test",
+            "raw_artifact_record": {
+                "evidence_id": "ev_recursive",
+                "metadata": {"raw_artifact_record": {"evidence_id": "ev_recursive"}},
+            },
+        },
+    }
+    (output_dir / "evidence.json").write_text(json.dumps([record]), encoding="utf-8")
+    with Session(temp_db_engine) as session:
+        session.add(
+            ReportTask(
+                task_id="task-recursive-evidence",
+                symbol="MSFT",
+                period="FY2024",
+                metadata_json={"output_dir": str(output_dir), "report_dir": str(report_dir)},
+            )
+        )
+        session.commit()
+
+    ArtifactImporter(
+        session_factory=lambda: Session(temp_db_engine),
+        output_root=output_root,
+        report_root=report_root,
+    ).import_for_task("task-recursive-evidence")
+
+    with Session(temp_db_engine) as session:
+        row = session.scalar(select(EvidenceItem).where(EvidenceItem.evidence_id == "ev_recursive"))
+        raw = row.metadata_json["raw_artifact_record"]
+        assert raw["metadata"]["provider"] == "test"
+        assert "raw_artifact_record" not in raw["metadata"]

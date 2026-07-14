@@ -31,9 +31,17 @@ from src.report.contract_builder import (
     _build_ownership_governance,
     _build_risk_factors,
     _build_strategy_business,
+    _build_three_statement_summary,
     _clip_at_sentence_boundary,
+    _format_billion_value,
 )
+from src.utils.money import build_currency_context
 from src.report.citation_binder import CitationBinder
+
+
+def test_cny_billion_values_render_as_hundred_million_yuan():
+    context = build_currency_context(market="cn_a", statement_currency="CNY", display_currency="CNY")
+    assert _format_billion_value(1513.836, context) == "15138.36 亿元人民币"
 
 
 # ── helpers ─────────────────────────────────────────────────────────────
@@ -66,6 +74,33 @@ def _make_evidence_record(source_type: str, eid: str = "ev_rec_001") -> Dict[str
         "title": f"Test {source_type}",
         "content": "test content",
     }
+
+
+def test_three_statement_summary_caps_representative_citations():
+    contracts = ReportSectionContracts()
+    evidence_ids = [f"ev_{index}" for index in range(20)]
+    tables = [
+        {
+            "rows": [
+                {"metric_name": "revenue", "value": 100_000_000_000, "period": "FY2024", "source_type": "sec_companyfacts"},
+                {"metric_name": "net_income", "value": 20_000_000_000, "period": "FY2024", "source_type": "sec_companyfacts"},
+                {"metric_name": "operating_cash_flow", "value": 25_000_000_000, "period": "FY2024", "source_type": "sec_companyfacts"},
+            ]
+        }
+    ]
+
+    _build_three_statement_summary(
+        contracts,
+        {"revenue": 100_000_000_000, "net_income": 20_000_000_000, "operating_cash_flow": 25_000_000_000},
+        tables,
+        evidence_ids,
+        build_currency_context(symbol="NVDA"),
+    )
+
+    contract = contracts.get("three_statement_summary")
+    assert contract is not None
+    assert len(contract.citation_evidence_ids) <= 6
+    assert contract.citation_evidence_ids == evidence_ids[:6]
 
 
 # ── Tests ───────────────────────────────────────────────────────────────
@@ -248,6 +283,27 @@ class TestContractBuilder:
             for st in fact.source_types:
                 assert st != "cashflow_table", "risk fallback must not bind cashflow"
 
+    def test_risk_uses_official_pdf_record_when_projection_files_are_empty(self):
+        contracts = ReportSectionContracts()
+        evidence_records = [{
+            "evidence_id": "risk_pdf_001",
+            "source_type": "pdf_section",
+            "source_document_type": "cninfo_announcement",
+            "source_authority": "official",
+            "source_url": "https://static.cninfo.com.cn/annual.pdf",
+            "content": "公司面临消费需求变化、渠道库存、批价波动及食品安全合规风险，需要持续跟踪。",
+            "metadata": {"section_type": "risk_factors"},
+        }]
+
+        _build_risk_factors(contracts, [], [], evidence_records, {}, {"symbol": "600519.SS", "period": "FY2024"})
+
+        risk = contracts.get("risk_factors")
+        assert risk is not None
+        assert risk.status == "supported"
+        assert risk.facts[0].evidence_ids == ["risk_pdf_001"]
+        assert "risk_uses_official_pdf" in risk.quality_flags
+        assert "risk_fallback_no_official_pdf" not in risk.quality_flags
+
     def test_governance_missing_has_specific_blocker(self):
         """Governance gap should have specific blocked_reason, not a generic one."""
         contracts = ReportSectionContracts()
@@ -262,6 +318,32 @@ class TestContractBuilder:
         # Must be specific, not vague
         assert reason in {"governance_section_not_found", "governance_chunks_noise_only",
                           "governance_summary_not_injected"}, f"Unexpected reason: {reason}"
+
+    def test_us_governance_consumes_sec_proxy_evidence(self):
+        contracts = ReportSectionContracts()
+        _build_ownership_governance(
+            contracts,
+            [],
+            [],
+            [
+                {
+                    "evidence_id": "sec_proxy_msft_fy2024",
+                    "source_type": "sec_proxy_filing",
+                    "content": (
+                        "The board of directors maintains independent audit, compensation, and nominating committees. "
+                        "The filing also discloses beneficial ownership for directors and named executive officers."
+                    ),
+                }
+            ],
+            {"symbol": "MSFT", "period": "FY2024"},
+        )
+
+        contract = contracts.get("ownership_governance")
+        assert contract is not None
+        assert contract.status in {"partial", "supported"}
+        assert not contract.blocked_reasons
+        assert "governance_uses_sec_proxy" in contract.quality_flags
+        assert "sec_proxy_msft_fy2024" in contract.citation_evidence_ids
 
     def test_strategy_business_no_fragments(self):
         """Strategy section must not contain fragment patterns."""
@@ -453,6 +535,78 @@ class TestContractBuilder:
         assert "valuation_sensitivity_not_available" not in sensitivity.blocked_reasons
         assert "valuation_sensitivity_framework_only" in sensitivity.quality_flags
         assert "敏感性框架" in sensitivity.deterministic_text
+
+    def test_valuation_sensitivity_builds_quantified_earnings_bridge_from_verified_inputs(self):
+        contracts = build_report_section_contracts(
+            state={"symbol": "AAPL", "period": "FY2024"},
+            evidence_records=[],
+            analysis_artifacts={
+                "valuation_model": {
+                    "valuation_status": "rough_observation_only",
+                    "input_summary": {"revenue_billion": 391.035, "net_income_billion": 93.736},
+                }
+            },
+            section_dossiers={},
+            citations=[],
+        )
+
+        sensitivity = contracts.get("valuation_sensitivity")
+
+        assert sensitivity is not None
+        assert sensitivity.status == "partial"
+        assert sensitivity.blocked_reasons == []
+        assert "收入上升或下降1%" in sensitivity.deterministic_text
+        assert "0.94B" in sensitivity.deterministic_text
+        assert "valuation_sensitivity_earnings_bridge_only" in sensitivity.quality_flags
+
+    def test_valuation_sensitivity_keeps_structured_earnings_bridge_partial(self):
+        contracts = build_report_section_contracts(
+            state={"symbol": "MSFT", "period": "FY2024"},
+            evidence_records=[],
+            analysis_artifacts={
+                "valuation_model": {"valuation_status": "rough_observation_only"},
+                "valuation_sensitivity": {
+                    "method": "earnings_bridge",
+                    "metric": "net_income_billion",
+                    "scenario_values": {
+                        "bear": {"value": 87.26},
+                        "base": {"value": 88.14},
+                        "bull": {"value": 89.02},
+                    },
+                },
+            },
+            section_dossiers={},
+            citations=[],
+        )
+
+        sensitivity = contracts.get("valuation_sensitivity")
+        assert sensitivity is not None
+        assert sensitivity.status == "partial"
+        assert "盈利桥接（非DCF目标价）" in sensitivity.deterministic_text
+        assert "valuation_sensitivity_earnings_bridge_only" in sensitivity.quality_flags
+
+    def test_valuation_sensitivity_states_value_and_target_price_units(self):
+        contracts = build_report_section_contracts(
+            state={"symbol": "600519.SS", "period": "FY2024"},
+            evidence_records=[],
+            analysis_artifacts={
+                "valuation_model": {"valuation_status": "available", "currency": "CNY"},
+                "valuation_sensitivity": {
+                    "scenario_values": {
+                        "bear": {"equity_value_billion": 724.31, "target_price": 579.41},
+                        "base": {"equity_value_billion": 893.63, "target_price": 714.85},
+                        "bull": {"equity_value_billion": 1124.29, "target_price": 899.37},
+                    }
+                },
+            },
+            section_dossiers={},
+            citations=[],
+        )
+
+        sensitivity = contracts.get("valuation_sensitivity")
+        assert sensitivity is not None
+        assert "权益价值单位：十亿元人民币" in sensitivity.deterministic_text
+        assert "目标价单位：每股计价货币" in sensitivity.deterministic_text
 
 
 class TestCleanPdfBoilerplate:

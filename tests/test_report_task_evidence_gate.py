@@ -263,6 +263,77 @@ def test_enforced_evidence_gate_allows_generation_with_required_official_source(
     assert gate["status"] == "success"
     assert gate["coverage"]["quality_ready"] is True
     assert gate["coverage"]["returned_sources"] == ["sec_edgar"]
+    curated_path = (
+        tmp_path
+        / "outputs"
+        / "runs"
+        / "task-gate-pass"
+        / "outputs"
+        / "retrieval_curated"
+        / "task_evidence.jsonl"
+    )
+    curated_records = [json.loads(line) for line in curated_path.read_text(encoding="utf-8").splitlines() if line]
+    assert [item["evidence_id"] for item in curated_records] == ["ev_gate_sec_edgar_source"]
+
+
+def test_evidence_gate_excludes_wrong_period_financials_and_dedupes_snapshots(tmp_path):
+    service, client = build_client(tmp_path)
+    with service.session() as session:
+        company = Company(name="Apple Inc.", symbol="AAPL", market="US")
+        session.add(company)
+        session.flush()
+        document = Document(
+            company_id=company.id,
+            batch_id="batch-aapl-history",
+            title="AAPL reusable evidence",
+            doc_type="market_data",
+            report_period="FY2024",
+            source_url="https://finance.yahoo.com/quote/AAPL",
+            parse_status="parsed",
+        )
+        session.add(document)
+        session.flush()
+        for suffix in ["old", "new"]:
+            session.add(
+                EvidenceItem(
+                    evidence_id=f"aapl-snapshot-{suffix}",
+                    company_id=company.id,
+                    document_id=document.id,
+                    source_type="market_api",
+                    trust_level="medium",
+                    title="AAPL Yahoo Finance market snapshot",
+                    content="Current market price context.",
+                    source_url="https://finance.yahoo.com/quote/AAPL",
+                    metadata_json={"period": "FY2024", "context_type": "current_market_snapshot"},
+                )
+            )
+        session.add(
+            EvidenceItem(
+                evidence_id="aapl-wrong-period-financials",
+                company_id=company.id,
+                document_id=document.id,
+                source_type="market_api",
+                trust_level="medium",
+                title="AAPL Yahoo Finance financial data",
+                content="Latest annual financials.",
+                source_url="https://finance.yahoo.com/quote/AAPL/key-statistics",
+                metadata_json={
+                    "period": "FY2024",
+                    "financials": {"income_history": [{"end_date": "2025-09-30", "Total Revenue": 1.0}]},
+                },
+            )
+        )
+        session.commit()
+
+    with client:
+        created = client.post(
+            "/api/report-tasks",
+            json={"task_id": "task-aapl-dedupe", "symbol": "AAPL", "period": "FY2024"},
+        ).json()
+        gate = service.run_evidence_gate(created["task_id"])
+
+    assert gate["coverage"]["candidate_count"] == 1
+    assert gate["coverage"]["returned_sources"] == ["market_api"]
 
 
 def test_task_official_db_evidence_is_merged_into_report_artifacts_before_quality_gate(tmp_path):
@@ -379,7 +450,9 @@ def test_task_report_patch_uses_market_meta_tags_and_avoids_truncated_english_se
         report_md = (report_dir / "report.md").read_text(encoding="utf-8")
 
         assert case["required_source"] in report_md
-        assert "元标签" in report_md
+        assert "元标签" not in report_md
+        assert "适合作为草稿" not in report_md
+        assert "估值输入不足" not in report_md
         assert "收入表现" in report_md
         assert "风险披露" in report_md
         assert "本节暂不展开详细分析" not in report_md
@@ -388,6 +461,36 @@ def test_task_report_patch_uses_market_meta_tags_and_avoids_truncated_english_se
         assert "reported revenue growth" not in report_md
         assert "annual report disclosed" not in report_md
         assert "Kweichow Moutai" not in report_md
+
+
+def test_report_patch_preserves_substantive_writer_section_that_mentions_data_gap():
+    from src.services.report_task_service import _patch_report_markdown_with_official_evidence
+
+    writer_valuation = (
+        "当前滚动市盈率约38.2倍，财务期间为FY2024，行情时点为当前日期。"
+        "该倍数反映市场对服务收入、现金流和品牌壁垒的较高预期。"
+        "若收入或利润率不及预期，估值倍数与盈利可能同步承压。"
+        "完整目标价模型仍待补充长期增长率假设，但不影响当前倍数观察。"
+    )
+    markdown = f"# AAPL报告\n\n## 估值观察\n{writer_valuation}\n"
+
+    updated = _patch_report_markdown_with_official_evidence(
+        markdown,
+        official_records=[
+            {
+                "evidence_id": "sec_aapl",
+                "source_type": "sec_edgar",
+                "source_authority": "official",
+                "title": "AAPL Form 10-K",
+                "content": "Revenue and risk disclosures.",
+            }
+        ],
+        claims=[],
+        metadata={"symbol": "AAPL", "company_name": "Apple Inc.", "period": "FY2024"},
+    )
+
+    assert writer_valuation in updated
+    assert "估值口径：估值应区分" not in updated
 
 
 def test_enforced_evidence_gate_blocks_delivery_when_official_source_is_missing(tmp_path):

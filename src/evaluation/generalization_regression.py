@@ -12,8 +12,8 @@ import re
 from typing import Any, Dict, Iterable, List
 
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
-from src.app.chat_task_parser import latest_completed_period
-from src.app.web_ui import run_delivery_quality_pipeline
+from src.evaluation.delivery_pipeline import run_delivery_quality_pipeline
+from src.utils.periods import latest_completed_period
 from scripts.check_runtime_sources import run_checks
 
 

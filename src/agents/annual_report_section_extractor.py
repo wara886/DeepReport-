@@ -10,8 +10,8 @@ from typing import Any
 
 
 ITEM_PATTERNS: list[tuple[str, list[str]]] = [
-    ("business", [r"\bItem\s+1\.?\s+Business\b"]),
-    ("risk_factors", [r"\bItem\s+1A\.?\s+Risk\s+Factors\b"]),
+    ("business", [r"\bItem\s+1\.?\s+Bus\s*iness\b"]),
+    ("risk_factors", [r"\bItem\s+1A\.?\s+Ris\s*k\s+Factors\b"]),
     ("mda", [r"\bItem\s+7\.?\s+Management'?s\s+Discussion", r"\bItem\s+7\.?\s+MD&A\b"]),
     ("market_risk", [r"\bItem\s+7A\.?\s+Quantitative"]),
     ("financial_statements", [r"\bItem\s+8\.?\s+Financial\s+Statements"]),
@@ -174,7 +174,7 @@ def annual_sections_to_evidence_records(payload: dict[str, Any]) -> list[dict[st
 def _item_heading_ranges(text: str) -> dict[str, tuple[int, int]]:
     heading_re = re.compile(
         r"(?i)\bItem\s+(1A|1B|1C|1|2|3|4|5|6|7A|7|8|9A|9B|9C|9)\.?\s+"
-        r"(?:Business|Risk\s+Factors|Unresolved|Cybersecurity|Properties|Legal|Mine|Market|"
+        r"(?:Bus\s*iness|Ris\s*k\s+Factors|Unresolved|Cybersecurity|Properties|Legal|Mine|Market|"
         r"Selected|Management|Quantitative|Financial|Changes|Controls|Other)",
     )
     raw_matches = list(heading_re.finditer(text))

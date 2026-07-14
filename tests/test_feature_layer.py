@@ -2,8 +2,9 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
-from src.agents.deep_analyze_agent import apply_evidence_gate
+from src.agents.deep_analyze_agent import _attach_metric_lineage_to_claims, apply_evidence_gate
 from src.agents.research_blackboard import (
     apply_pre_write_critic,
     initialize_research_blackboard,
@@ -15,7 +16,7 @@ from src.data.financial_statement_metrics import build_standard_financial_metric
 from src.evaluation.valuation_audit import audit_valuation_model
 from src.evaluation.company_report_scorecard import build_company_report_scorecard
 from src.schemas.claim import ClaimItem
-from src.features.company_valuation import build_peer_comparison, perform_company_valuation
+from src.features.company_valuation import _yahoo_ratio_to_pct, build_peer_comparison, perform_company_valuation
 from src.features.financial_metric_lineage import build_financial_metric_lineage, build_financial_metric_tables
 from src.features.financial_ratios import build_financial_ratios
 from src.features.financial_statements import build_three_statement_view
@@ -201,6 +202,39 @@ def test_numeric_financial_claim_without_metric_lineage_is_rejected():
     assert "missing_metric_lineage" in report["rejected_claims"][0]["reasons"]
 
 
+def test_derived_claim_inherits_source_evidence_from_metric_lineage():
+    claim = ClaimItem(
+        claim_id="cl_0001",
+        section_name="financial_analysis",
+        claim_text="FY2024 ROE约为164.6%，ROA约为25.7%。",
+        evidence_ids=["ev_market"],
+        numeric_values={"roe_pct": 164.6, "roa_pct": 25.7},
+        risk_level="medium",
+        confidence=0.9,
+    )
+    lineage = {
+        "metrics": [
+            {
+                "metric_lineage_id": "lineage_net_income",
+                "metric_name": "net_income",
+                "value": 93.736,
+                "source_evidence_id": "sec_companyfacts_aapl",
+            },
+            {
+                "metric_lineage_id": "lineage_total_assets",
+                "metric_name": "total_assets",
+                "value": 364.98,
+                "source_evidence_id": "sec_companyfacts_aapl",
+            },
+        ]
+    }
+
+    updated = _attach_metric_lineage_to_claims([claim], lineage)[0]
+
+    assert "sec_companyfacts_aapl" in updated.evidence_ids
+    assert updated.evidence_ids.count("sec_companyfacts_aapl") == 1
+
+
 def test_three_statement_view_derives_core_rows():
     records = [
         {
@@ -237,9 +271,16 @@ def test_peer_comparison_and_valuation_use_local_real_data():
     assert "gross_margin_pct" in peer_payload["ranking"]
     assert valuation["valuation_available"] is False
     assert valuation["error"] == "valuation_input_invalid"
+    assert valuation["valuation_sensitivity"]["method"] == "earnings_bridge"
+    assert valuation["valuation_sensitivity"]["directional_check"] is True
+    assert set(valuation["valuation_sensitivity"]["scenario_values"]) == {"bear", "base", "bull"}
     valuation["recommendation"] = "中性观察"
     assert valuation["recommendation"] in {"积极关注", "中性偏积极", "中性观察"}
     assert "annual_or_ttm_free_cash_flow" in valuation["missing_inputs"]
+
+
+def test_yahoo_roe_over_one_is_still_a_decimal_ratio():
+    assert _yahoo_ratio_to_pct(1.1422) == pytest.approx(114.22)
 
 
 def test_valuation_uses_optional_market_context():
@@ -276,6 +317,45 @@ def test_valuation_uses_optional_market_context():
     assert valuation["market_context"]["market_cap_billion"] == 3000.0
     assert valuation["market_gap"]["available"] is True
     assert valuation["valuation_model"]["target_price"] is not None
+
+
+def test_valuation_merges_price_and_market_cap_across_market_records():
+    records = [
+        {
+            "evidence_id": "fin_ev",
+            "symbol": "AAPL",
+            "period": "FY2024",
+            "source_type": "financials",
+            "metadata": {
+                "revenue_billion": 100.0,
+                "net_income_billion": 20.0,
+                "free_cash_flow_billion": 18.0,
+                "free_cash_flow_period_basis": "annual",
+            },
+        },
+        {
+            "evidence_id": "price_ev",
+            "symbol": "AAPL",
+            "period": "FY2024",
+            "source_type": "market_api",
+            "metadata": {"snapshot": {"last_close": 200.0, "currency": "USD"}},
+        },
+        {
+            "evidence_id": "cap_ev",
+            "symbol": "AAPL",
+            "period": "FY2024",
+            "source_type": "market_api",
+            "metadata": {"financials": {"marketCap": 3_000_000_000_000}},
+        },
+    ]
+
+    valuation = perform_company_valuation("AAPL", "FY2024", records=records, raw_data_root="data/raw/does_not_exist")
+
+    assert valuation["valuation_available"] is True
+    assert valuation["market_context"]["market_cap_billion"] == 3000.0
+    assert valuation["market_context"]["shares_outstanding_billion"] == 15.0
+    assert valuation["valuation_sensitivity"]["directional_check"] is True
+    assert valuation["valuation_sensitivity"]["scenario_values"]["base"]["target_price"] is not None
 
 
 def test_valuation_guardrail_blocks_implausible_fcf_scale():

@@ -153,6 +153,7 @@ def build_core_tool_registry() -> ToolRegistry:
                     "symbol": {"type": "string"},
                     "period": {"type": "string"},
                     "raw_data_root": {"type": "string"},
+                    "allow_external_discovery": {"type": "boolean"},
                 },
                 "required": ["symbol", "period"],
             },
@@ -268,8 +269,14 @@ def build_peer_comparison_tool(
     symbol: str,
     period: str,
     raw_data_root: str = "data/raw/real_data",
+    allow_external_discovery: bool = False,
 ) -> Dict[str, Any]:
-    return build_peer_comparison(symbol=symbol, period=period, raw_data_root=raw_data_root)
+    return build_peer_comparison(
+        symbol=symbol,
+        period=period,
+        raw_data_root=raw_data_root,
+        allow_external_discovery=allow_external_discovery,
+    )
 
 
 def perform_company_valuation_tool(

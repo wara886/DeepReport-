@@ -425,6 +425,32 @@ def _create_evidence_item(
         "period": _optional_string(payload.get("report_period")) or _optional_string(payload.get("period")) or batch.period,
         "ingestion_target_type": batch.target_type,
     }
+    from src.schemas.runtime_contracts import normalize_evidence_record
+
+    normalized = normalize_evidence_record(
+        {
+            **payload,
+            "evidence_id": evidence_id,
+            "symbol": metadata["symbol"],
+            "period": metadata["period"],
+            "source_type": source_type,
+            "trust_level": _optional_string(payload.get("trust_level")) or _default_trust_level(batch),
+            "content": content,
+            "source_url": _optional_string(payload.get("source_url")) or (document.source_url if document else ""),
+            "metadata": metadata,
+        },
+        task_id=str(payload.get("task_id") or ""),
+        target_period=str(metadata.get("period") or ""),
+    )
+    metadata.update(
+        {
+            "identity_key": normalized["identity_key"],
+            "document_key": normalized["document_key"],
+            "period_spec": normalized["period_spec"],
+            "authority": normalized["authority"],
+            "provenance": normalized["provenance"],
+        }
+    )
     item = EvidenceItem(
         evidence_id=evidence_id,
         company_id=company.id if company else None,

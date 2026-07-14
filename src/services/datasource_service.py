@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime, timezone
+import os
 from typing import Any
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from src.db.models import DataSource, Workspace
+from src.db.models import DataSource, EvidenceItem, Workspace
 from src.search.search_manager import SearchManager
 
 
@@ -33,10 +34,31 @@ DEFAULT_SOURCE_CATALOG: dict[str, dict[str, Any]] = {
     "cninfo_announcements": {"name": "巨潮资讯公告", "source_type": "official_announcement", "trust_level": "official", "market_scope": ["CN"]},
     "exchange_announcements": {"name": "交易所公告", "source_type": "official_announcement", "trust_level": "official", "market_scope": ["CN", "HK"]},
     "eastmoney_financials": {"name": "东方财富财务", "source_type": "financial_statement", "trust_level": "secondary", "market_scope": ["CN"]},
+    "baostock_financials": {"name": "BaoStock 财务指标", "source_type": "financial_statement", "trust_level": "secondary", "market_scope": ["CN"]},
+    "tushare_financials": {"name": "Tushare Pro 财务", "source_type": "financial_statement", "trust_level": "secondary", "market_scope": ["CN"]},
     "hkex_announcements": {"name": "港交所公告", "source_type": "official_announcement", "trust_level": "official", "market_scope": ["HK"]},
     "hk_financials": {"name": "港股财务数据", "source_type": "financial_statement", "trust_level": "secondary", "market_scope": ["HK"]},
     "serper": {"name": "Serper 搜索", "source_type": "web_search", "trust_level": "secondary", "market_scope": ["US", "CN", "HK"]},
     "tavily": {"name": "Tavily 搜索", "source_type": "web_search", "trust_level": "secondary", "market_scope": ["US", "CN", "HK"]},
+}
+
+EVIDENCE_SOURCE_ALIASES: dict[str, set[str]] = {
+    "local_real_data": {"local_real_data"},
+    "local_evidence": {"local_evidence", "local_index"},
+    "independent_macro": {"independent_macro", "macro_data", "fred", "bls", "bea"},
+    "sec_edgar": {"sec_edgar", "sec_companyfacts", "sec_filing", "sec_10k_filing", "sec_10k_section"},
+    "yahoo_finance": {"yahoo_finance", "yahoo_profile", "yahoo_financials", "market_api", "market_data"},
+    "eastmoney": {"eastmoney", "eastmoney_quote"},
+    "sina_finance": {"sina_finance"},
+    "cninfo_announcements": {"cninfo", "cninfo_announcement", "cninfo_announcements"},
+    "exchange_announcements": {"exchange_announcement", "exchange_announcements"},
+    "eastmoney_financials": {"eastmoney_financials"},
+    "baostock_financials": {"baostock_financials"},
+    "tushare_financials": {"tushare_financials"},
+    "hkex_announcements": {"hkex", "hkex_announcement", "hkex_announcements", "hkex_annual_report"},
+    "hk_financials": {"hk_financials"},
+    "serper": {"serper"},
+    "tavily": {"tavily"},
 }
 
 
@@ -57,6 +79,7 @@ class DataSourceService:
         with self.session_factory() as session:
             workspace = _get_workspace_optional(session, workspace_ref)
             created: list[DataSource] = []
+            reconciled = 0
             for source_key in source_keys:
                 existing = session.scalar(
                     select(DataSource).where(
@@ -65,8 +88,24 @@ class DataSourceService:
                     )
                 )
                 if existing is not None:
+                    credential_status = _credential_status(source_key)
+                    should_enable = _credentials_available(credential_status)
+                    metadata = dict(existing.metadata_json or {})
+                    auto_disabled = metadata.get("auto_disabled_reason") == "missing_credentials"
+                    if existing.credential_status != credential_status or (existing.enabled and not should_enable) or (should_enable and auto_disabled):
+                        existing.credential_status = credential_status
+                        if not should_enable:
+                            if existing.enabled:
+                                metadata["auto_disabled_reason"] = "missing_credentials"
+                            existing.enabled = False
+                        elif auto_disabled:
+                            existing.enabled = True
+                            metadata.pop("auto_disabled_reason", None)
+                        existing.metadata_json = metadata
+                        reconciled += 1
                     continue
                 seed = _catalog_entry(source_key)
+                credential_status = _credential_status(source_key)
                 item = DataSource(
                     workspace_id=workspace.id if workspace else None,
                     name=seed["name"],
@@ -75,15 +114,15 @@ class DataSourceService:
                     market_scope=seed["market_scope"],
                     trust_level=seed["trust_level"],
                     config_json={"registered_by": "SearchManager"},
-                    enabled=True,
-                    credential_status=_credential_status(source_key),
+                    enabled=_credentials_available(credential_status),
+                    credential_status=credential_status,
                     last_status="not_run",
                     metadata_json={"seeded": True},
                 )
                 session.add(item)
                 created.append(item)
             session.commit()
-        return {"created": len(created), "source_keys": source_keys}
+        return {"created": len(created), "reconciled": reconciled, "source_keys": source_keys}
 
     def list_sources(
         self,
@@ -107,12 +146,16 @@ class DataSourceService:
             if enabled is not None:
                 stmt = stmt.where(DataSource.enabled.is_(enabled))
             stmt = _apply_search(stmt, q=q)
-            items = [self.serialize_source(item) for item in session.scalars(stmt).unique().all()]
+            rows = session.scalars(stmt).unique().all()
+            evidence_counts = _evidence_counts_by_source(session, [item.source_key for item in rows])
+            items = [self.serialize_source(item, evidence_count=evidence_counts.get(item.source_key, 0)) for item in rows]
         return {"items": items, "total": len(items)}
 
     def get_source(self, source_ref: int | str) -> dict[str, Any]:
         with self.session_factory() as session:
-            return self.serialize_source(_get_source(session, source_ref))
+            item = _get_source(session, source_ref)
+            counts = _evidence_counts_by_source(session, [item.source_key])
+            return self.serialize_source(item, evidence_count=counts.get(item.source_key, 0))
 
     def create_source(self, payload: dict[str, Any]) -> dict[str, Any]:
         source_key = str(payload.get("source_key") or "").strip()
@@ -122,6 +165,10 @@ class DataSourceService:
         with self.session_factory() as session:
             workspace = _get_workspace_optional(session, workspace_ref)
             seed = _catalog_entry(source_key)
+            credential_status = str(payload.get("credential_status") or _credential_status(source_key))
+            requested_enabled = bool(payload.get("enabled", True))
+            if requested_enabled and not _credentials_available(credential_status):
+                requested_enabled = False
             item = DataSource(
                 workspace_id=workspace.id if workspace else None,
                 name=str(payload.get("name") or seed["name"]),
@@ -130,8 +177,8 @@ class DataSourceService:
                 market_scope=_string_list(payload.get("market_scope")) or seed["market_scope"],
                 trust_level=_optional_string(payload.get("trust_level")) or seed["trust_level"],
                 config_json=_dict_or_none(payload.get("config")) or {},
-                enabled=bool(payload.get("enabled", True)),
-                credential_status=str(payload.get("credential_status") or _credential_status(source_key)),
+                enabled=requested_enabled,
+                credential_status=credential_status,
                 last_status=_optional_string(payload.get("last_status")) or "not_run",
                 last_error=_optional_string(payload.get("last_error")),
                 metadata_json=_dict_or_none(payload.get("metadata")),
@@ -147,6 +194,10 @@ class DataSourceService:
     def set_enabled(self, source_ref: int | str, enabled: bool) -> dict[str, Any]:
         with self.session_factory() as session:
             item = _get_source(session, source_ref)
+            if enabled and not _credentials_available(item.credential_status):
+                raise DataSourceConflict(
+                    f"Datasource {item.source_key} cannot be enabled until its credentials are configured"
+                )
             item.enabled = bool(enabled)
             session.commit()
             return self.serialize_source(item)
@@ -154,14 +205,74 @@ class DataSourceService:
     def mark_health(self, source_ref: int | str, payload: dict[str, Any]) -> dict[str, Any]:
         with self.session_factory() as session:
             item = _get_source(session, source_ref)
+            requested_status = _optional_string(payload.get("last_status")) or ("success" if not payload.get("last_error") else "failed")
+            if requested_status == "success" and payload.get("verified") is not True:
+                raise DataSourceConflict("Healthy status must come from a verified datasource probe or sync run")
             item.last_sync_at = _utc_now()
-            item.last_status = _optional_string(payload.get("last_status")) or ("success" if not payload.get("last_error") else "failed")
+            item.last_status = requested_status
             item.last_error = _optional_string(payload.get("last_error"))
             item.credential_status = _optional_string(payload.get("credential_status")) or item.credential_status
             session.commit()
             return self.serialize_source(item)
 
-    def serialize_source(self, item: DataSource) -> dict[str, Any]:
+    def record_search_run(
+        self,
+        *,
+        search_meta: dict[str, Any],
+        task_id: str,
+        workspace_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Persist verified per-engine runtime health from a report search run."""
+
+        engine_meta = search_meta.get("engine_meta") if isinstance(search_meta.get("engine_meta"), dict) else {}
+        if not engine_meta:
+            return {"updated": 0, "sources": []}
+        source_keys = [str(key) for key in engine_meta if str(key)]
+        with self.session_factory() as session:
+            workspace_condition = (
+                or_(DataSource.workspace_id.is_(None), DataSource.workspace_id == workspace_id)
+                if workspace_id is not None
+                else DataSource.workspace_id.is_(None)
+            )
+            rows = list(
+                session.scalars(
+                    select(DataSource).where(
+                        DataSource.source_key.in_(source_keys),
+                        workspace_condition,
+                    )
+                ).all()
+            )
+            updated: list[dict[str, Any]] = []
+            for item in rows:
+                runtime = engine_meta.get(item.source_key)
+                if not isinstance(runtime, dict):
+                    continue
+                hit_count = _runtime_hit_count(runtime)
+                failure_reason = str(runtime.get("failure_reason") or runtime.get("error") or "").strip()
+                if hit_count > 0 and failure_reason:
+                    status = "partial"
+                elif hit_count > 0 or runtime.get("retrieval_available") is True:
+                    status = "success"
+                else:
+                    status = "failed"
+                    failure_reason = failure_reason or "no_records_returned"
+                metadata = dict(item.metadata_json or {})
+                metadata["last_verified_run"] = {
+                    "task_id": task_id,
+                    "status": status,
+                    "hit_count": hit_count,
+                    "duration_ms": runtime.get("duration_ms"),
+                    "mode": runtime.get("mode") or runtime.get("mode_effective"),
+                }
+                item.metadata_json = metadata
+                item.last_sync_at = _utc_now()
+                item.last_status = status
+                item.last_error = failure_reason or None
+                updated.append({"source_key": item.source_key, "status": status, "hit_count": hit_count})
+            session.commit()
+        return {"updated": len(updated), "sources": updated}
+
+    def serialize_source(self, item: DataSource, *, evidence_count: int | None = None) -> dict[str, Any]:
         return {
             "id": item.id,
             "workspace_id": item.workspace_id,
@@ -174,6 +285,9 @@ class DataSourceService:
             "config": item.config_json or {},
             "enabled": item.enabled,
             "credential_status": item.credential_status,
+            "configured": _credentials_available(item.credential_status),
+            "operational": bool(item.enabled and _credentials_available(item.credential_status) and item.last_status == "success"),
+            "evidence_count": int(evidence_count or 0),
             "last_sync_at": _dt(item.last_sync_at),
             "last_status": item.last_status,
             "last_error": item.last_error,
@@ -188,7 +302,36 @@ def _catalog_entry(source_key: str) -> dict[str, Any]:
 
 
 def _credential_status(source_key: str) -> str:
-    return "required" if source_key in {"tavily", "serper"} else "not_required"
+    env_name = {"tavily": "TAVILY_API_KEY", "serper": "SERPER_API_KEY", "tushare_financials": "TUSHARE_TOKEN"}.get(source_key)
+    if env_name is None:
+        return "not_required"
+    return "configured" if str(os.getenv(env_name) or "").strip() else "missing"
+
+
+def _credentials_available(status: str | None) -> bool:
+    return str(status or "").strip().lower() in {"not_required", "configured", "valid"}
+
+
+def _runtime_hit_count(runtime: dict[str, Any]) -> int:
+    for key in ("hit_count", "returned_hit_count", "record_count", "result_count"):
+        value = runtime.get(key)
+        if isinstance(value, (int, float)):
+            return max(0, int(value))
+    return 0
+
+
+def _evidence_counts_by_source(session: Session, source_keys: list[str]) -> dict[str, int]:
+    raw_counts = {
+        str(source_type or "").strip().lower(): int(count or 0)
+        for source_type, count in session.execute(
+            select(EvidenceItem.source_type, func.count(EvidenceItem.id)).group_by(EvidenceItem.source_type)
+        ).all()
+        if str(source_type or "").strip()
+    }
+    return {
+        source_key: sum(raw_counts.get(alias, 0) for alias in EVIDENCE_SOURCE_ALIASES.get(source_key, {source_key}))
+        for source_key in source_keys
+    }
 
 
 def _get_workspace_optional(session: Session, workspace_ref: int | str | None) -> Workspace | None:

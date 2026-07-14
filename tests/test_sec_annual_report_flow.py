@@ -3,7 +3,7 @@ from __future__ import annotations
 from src.agents.annual_report_section_extractor import AnnualReportSectionExtractor, annual_sections_to_evidence_records
 from src.agents.multi_agent_orchestrator import attach_annual_report_sections_to_state
 from src.agents.section_dossier_builder import SectionDossierBuilder
-from src.data.sec_filing_resolver import resolve_sec_annual_filing
+from src.data.sec_filing_resolver import resolve_sec_annual_filing, resolve_sec_proxy_filing
 from src.report.chart_generator import sanitize_chart_payloads
 from src.report.deterministic_section_renderer import render_all_deterministic_blocks
 
@@ -26,6 +26,17 @@ marketable securities, operating cash flow, and capital allocation priorities.</
 <p>Market risk includes interest rate and foreign currency exposure.</p>
 <h1>Item 8. Financial Statements and Supplementary Data</h1>
 <p>Consolidated financial statements follow.</p>
+</body></html>
+"""
+
+SPLIT_HEADING_10K = """
+<html><body>
+<h1>INDEX</h1><p>Item 1A. Risk Factors 20 Item 1B. Unresolved Staff Comments 34</p>
+<h1>PART I</h1><p>Item 1A</p><h2>ITEM 1A. RIS K FACTORS</h2>
+<p>Our operations and financial results are subject to competition, cybersecurity,
+regulatory, supply-chain, and foreign-currency risks that could adversely affect
+revenue, margins, cash flow, liquidity, and the trading price of our common stock.</p>
+<h1>Item 1B. Unresolved Staff Comments</h1><p>None.</p>
 </body></html>
 """
 
@@ -77,6 +88,62 @@ def test_sec_resolver_prefers_original_10k_over_later_amendment(monkeypatch):
     assert payload.meta["filing"]["primary_document"] == "original10k.htm"
 
 
+def test_sec_annual_resolver_never_selects_newer_proxy(monkeypatch):
+    monkeypatch.setattr(
+        "src.data.sec_filing_resolver._get_json",
+        lambda *args, **kwargs: {
+            "filings": {
+                "recent": {
+                    "form": ["DEF 14A", "10-K"],
+                    "accessionNumber": ["0001193125-24-242883", "0000950170-24-087843"],
+                    "filingDate": ["2024-10-24", "2024-07-30"],
+                    "reportDate": ["2024-12-10", "2024-06-30"],
+                    "primaryDocument": ["proxy.htm", "annual.htm"],
+                }
+            }
+        },
+    )
+    monkeypatch.setattr("src.data.sec_filing_resolver._get_text", lambda *args, **kwargs: MINIMAL_10K)
+
+    payload = resolve_sec_annual_filing("MSFT", "FY2024")
+
+    assert payload.meta["filing"]["form"] == "10-K"
+    assert payload.meta["filing"]["primary_document"] == "annual.htm"
+
+
+def test_sec_proxy_resolver_extracts_bounded_governance_evidence(monkeypatch):
+    monkeypatch.setattr(
+        "src.data.sec_filing_resolver._get_json",
+        lambda *args, **kwargs: {
+            "filings": {
+                "recent": {
+                    "form": ["DEF 14A", "10-K"],
+                    "accessionNumber": ["0001045810-25-000030", "0001045810-25-000023"],
+                    "filingDate": ["2025-05-10", "2025-02-26"],
+                    "reportDate": ["2025-01-26", "2025-01-26"],
+                    "primaryDocument": ["nvda-proxy.htm", "nvda-10k.htm"],
+                }
+            }
+        },
+    )
+    monkeypatch.setattr(
+        "src.data.sec_filing_resolver._get_text",
+        lambda *args, **kwargs: (
+            "<html><body><h1>Corporate Governance</h1>"
+            "<p>The board of directors has independent audit, compensation, and nominating committees.</p>"
+            "<h2>Security Ownership</h2><p>Beneficial ownership is disclosed for directors and named officers.</p>"
+            "</body></html>"
+        ),
+    )
+
+    payload = resolve_sec_proxy_filing("NVDA", "FY2025")
+
+    assert payload.meta["status"] == "resolved"
+    assert payload.evidence_records[0]["source_type"] == "sec_proxy_filing"
+    assert "board of directors" in payload.evidence_records[0]["content"].lower()
+    assert len(payload.evidence_records[0]["content"]) <= 6000
+
+
 def test_annual_report_extractor_emits_sections_and_evidence_records():
     payload = AnnualReportSectionExtractor(html_text=MINIMAL_10K).extract(
         symbol="NVDA",
@@ -90,6 +157,20 @@ def test_annual_report_extractor_emits_sections_and_evidence_records():
     records = annual_sections_to_evidence_records(payload)
     assert any(record["source_type"] == "sec_10k_section" for record in records)
     assert any("Item 1A" in record["title"] for record in records)
+
+
+def test_annual_report_extractor_handles_split_xbrl_risk_heading():
+    payload = AnnualReportSectionExtractor(html_text=SPLIT_HEADING_10K).extract(
+        symbol="MSFT",
+        period="FY2024",
+        filing_url="https://www.sec.gov/Archives/test/msft.htm",
+        filing_evidence_id="sec_10k_msft_fy2024",
+    )
+
+    assert payload["coverage"]["risk_factors"] is True
+    risk_text = " ".join(item["text"] for item in payload["sections"]["risk_factors"])
+    assert "cybersecurity" in risk_text
+    assert "Unresolved Staff Comments" not in risk_text
 
 
 def test_attach_annual_report_sections_merges_10k_evidence(monkeypatch, tmp_path):
@@ -116,6 +197,7 @@ def test_attach_annual_report_sections_merges_10k_evidence(monkeypatch, tmp_path
             }
 
     monkeypatch.setattr("src.agents.multi_agent_orchestrator.resolve_sec_annual_filing", lambda **kwargs: FakePayload())
+    monkeypatch.setattr("src.agents.multi_agent_orchestrator.resolve_sec_proxy_filing", lambda **kwargs: FakePayload())
     state = {
         "symbol": "NVDA",
         "period": "FY2025",

@@ -175,7 +175,7 @@ def _section_result(
         causes.append("retrieval_no_candidates")
     elif retrieval.get("local_returned_count", 0) <= 0 and retrieval.get("local_candidate_count", 0) > 0 and not section_evidence:
         causes.append("retrieval_no_hits")
-    if retrieval.get("similarity_status") in {"unavailable", "low", "bm25_only"}:
+    if retrieval.get("similarity_status") in {"unavailable", "low", "bm25_only", "hash_fallback"}:
         causes.append(f"similarity_{retrieval['similarity_status']}")
     if metadata_quality.get("status") == "poor" and (section_evidence or retrieval.get("chunking_enabled")):
         causes.append("chunk_metadata_missing")
@@ -280,8 +280,11 @@ def _retrieval_summary(search_meta: Any) -> dict[str, Any]:
     local_candidate_count = _safe_int(local.get("candidate_count", local_source_record_count))
     local_returned_count = _safe_int(local.get("returned_hit_count", local.get("record_count", 0)))
     vector_hit_count = _safe_int(local.get("vector_hit_count", _as_dict(local.get("dense")).get("hit_count", 0)))
+    embedding_backend = str(local.get("embedding_backend") or _as_dict(local.get("dense")).get("embedding_backend") or "")
     similarity_status = "unavailable"
-    if vector_score_max is not None:
+    if embedding_backend == "hash_fallback":
+        similarity_status = "hash_fallback"
+    elif vector_score_max is not None:
         similarity_status = "low" if vector_score_max < 0.10 and local_candidate_count > 0 else "ok"
     elif local_returned_count > 0 and local_candidate_count > 0:
         similarity_status = "bm25_only"
@@ -300,6 +303,8 @@ def _retrieval_summary(search_meta: Any) -> dict[str, Any]:
         "chunking_enabled": bool(local.get("chunking_enabled", False)),
         "chunk_count": _safe_int(local.get("chunk_count", 0)),
         "vector_backend": str(local.get("vector_backend") or _as_dict(local.get("dense")).get("backend") or ""),
+        "embedding_backend": embedding_backend,
+        "semantic_vector_available": embedding_backend == "sentence_transformers",
         "vector_hit_count": vector_hit_count,
         "vector_score_min": _safe_float(local.get("vector_score_min")),
         "vector_score_max": vector_score_max,
@@ -402,7 +407,10 @@ def _section_verification_status(section_verification: dict[str, Any], section_k
 
 
 def _canonical_conflict_count(canonical_metrics: dict[str, Any], llm_review: dict[str, Any]) -> int:
-    count = _safe_int(canonical_metrics.get("conflict_count", 0))
+    if "unresolved_conflict_count" in canonical_metrics:
+        count = _safe_int(canonical_metrics.get("unresolved_conflict_count", 0))
+    else:
+        count = _safe_int(canonical_metrics.get("conflict_count", 0))
     numeric_issue_count = sum(
         1
         for issue in _as_list(llm_review.get("issues"))
@@ -418,6 +426,7 @@ def _primary_cause(causes: list[str]) -> str:
         "retrieval_no_candidates",
         "retrieval_no_hits",
         "similarity_low",
+        "similarity_hash_fallback",
         "similarity_bm25_only",
         "similarity_unavailable",
         "chunk_metadata_missing",
@@ -441,6 +450,7 @@ def _cause_label(cause: str) -> str:
         "retrieval_no_candidates": "向量/本地证据库没有候选材料",
         "retrieval_no_hits": "有候选材料但检索未命中",
         "similarity_low": "向量相似度偏低",
+        "similarity_hash_fallback": "向量检索使用哈希降级",
         "similarity_bm25_only": "仅记录关键词召回分数",
         "similarity_unavailable": "未记录向量相似度",
         "chunk_metadata_missing": "chunk 元数据不足",
@@ -460,6 +470,7 @@ def _recommended_action(cause: str) -> str:
         "retrieval_no_candidates": "检查 PDF/表格是否已切分并写入本地证据库或向量库，确认 symbol/period 过滤条件。",
         "retrieval_no_hits": "检查查询扩展、metadata filter、section_type 和 period 过滤是否过窄。",
         "similarity_low": "检查 embedding 模型、query 改写、chunk 粒度和元标签；不要用 RRF 分数替代 cosine/vector 相似度。",
+        "similarity_hash_fallback": "安装并加载真实 embedding 模型后重建任务隔离索引；哈希分数只能用于降级检索，不能证明语义相似度正常。",
         "similarity_bm25_only": "当前已有本地候选和关键词召回结果；下一步应启用按任务隔离的向量索引并记录 vector_score，而不是继续补数据源。",
         "similarity_unavailable": "补充 vector_score_max/vector_score_mean 记录，确认当前是否退化到 BM25 或纯规则召回。",
         "chunk_metadata_missing": "补齐 chunk_id、section_type、symbol、period、page/table_id 等元数据后重建索引。",

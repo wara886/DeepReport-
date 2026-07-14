@@ -6,7 +6,7 @@ from collections.abc import Callable
 import re
 from typing import Any
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -390,7 +390,7 @@ def _evidence_for_task(session: Session, task_id: str) -> list[EvidenceItem]:
         )
         .where(
             or_(
-                EvidenceItem.metadata_json["task_id"].as_string() == task_id,
+                _safe_metadata_task_clause(session, task_id),
                 EvidenceItem.claim_links.any(ClaimEvidence.claim.has(ReportClaim.task_id == task_id)),
                 EvidenceItem.document.has(Document.batch_id == task_id),
             )
@@ -399,6 +399,16 @@ def _evidence_for_task(session: Session, task_id: str) -> list[EvidenceItem]:
         .limit(300)
     )
     return list(session.scalars(stmt).unique().all())
+
+
+def _safe_metadata_task_clause(session: Session, task_id: str) -> Any:
+    if session.bind is not None and session.bind.dialect.name == "sqlite":
+        safe_task_id = case(
+            (func.json_valid(EvidenceItem.metadata_json) == 1, func.json_extract(EvidenceItem.metadata_json, "$.task_id")),
+            else_=None,
+        )
+        return safe_task_id == task_id
+    return EvidenceItem.metadata_json["task_id"].as_string() == task_id
 
 
 def _entity_payloads_from_evidence(evidence: EvidenceItem) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

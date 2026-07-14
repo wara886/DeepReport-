@@ -25,6 +25,8 @@ class EvidenceRecord:
     source_url: str
     trust_level: str
     evidence_id: str = ""
+    identity_key: str = ""
+    document_key: str = ""
     source_timestamp: str = ""
     data_cutoff: str = ""
     freshness_days: int | None = None
@@ -47,6 +49,10 @@ class EvidenceRecord:
     metric_name: str = ""
     meta_tags: List[str] | None = None
     metadata: Dict[str, Any] | None = None
+    task_id: str = ""
+    run_id: str = ""
+    company_id: str = ""
+    evidence_role: str = "target"
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "EvidenceRecord":
@@ -62,6 +68,8 @@ class EvidenceRecord:
             source_url=str(annotated.get("source_url", "")),
             trust_level=str(annotated.get("trust_level", "")),
             evidence_id=str(annotated.get("evidence_id", annotated.get("sample_id", ""))),
+            identity_key=str(annotated.get("identity_key") or ""),
+            document_key=str(annotated.get("document_key") or ""),
             source_timestamp=str(annotated.get("source_timestamp", "")),
             data_cutoff=str(annotated.get("data_cutoff", "")),
             freshness_days=annotated.get("freshness_days") if isinstance(annotated.get("freshness_days"), int) else None,
@@ -84,11 +92,17 @@ class EvidenceRecord:
             metric_name=str(annotated.get("metric_name") or ""),
             meta_tags=_str_list(annotated.get("meta_tags") or annotated.get("tags") or annotated.get("section_tags")),
             metadata=annotated.get("metadata") if isinstance(annotated.get("metadata"), dict) else {},
+            task_id=str((annotated.get("provenance") or {}).get("task_id") or (annotated.get("metadata") or {}).get("task_id") or annotated.get("task_id") or ""),
+            run_id=str((annotated.get("provenance") or {}).get("run_id") or annotated.get("run_id") or ""),
+            company_id=str((annotated.get("company_identity") or {}).get("company_id") or annotated.get("company_id") or ""),
+            evidence_role=str(annotated.get("evidence_role") or (annotated.get("metadata") or {}).get("evidence_role") or "target"),
         )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "evidence_id": self.evidence_id or self.sample_id,
+            "identity_key": self.identity_key,
+            "document_key": self.document_key,
             "sample_id": self.sample_id,
             "source_type": self.source_type,
             "symbol": self.symbol,
@@ -120,6 +134,10 @@ class EvidenceRecord:
             "metric_name": self.metric_name,
             "meta_tags": list(self.meta_tags or []),
             "metadata": dict(self.metadata or {}),
+            "task_id": self.task_id,
+            "run_id": self.run_id,
+            "company_id": self.company_id,
+            "evidence_role": self.evidence_role,
         }
 
     @property
@@ -207,12 +225,29 @@ class EvidenceStore:
             },
         )
 
-    def filter(self, symbol: str | None = None, period: str | None = None) -> List[EvidenceRecord]:
+    def filter(
+        self,
+        symbol: str | None = None,
+        period: str | None = None,
+        *,
+        task_id: str | None = None,
+        run_id: str | None = None,
+        company_id: str | int | None = None,
+        evidence_role: str | None = None,
+    ) -> List[EvidenceRecord]:
         output = self.records
         if symbol:
             output = [r for r in output if r.symbol == symbol]
         if period:
             output = [r for r in output if r.period == period]
+        if task_id:
+            output = [r for r in output if r.task_id == str(task_id)]
+        if run_id:
+            output = [r for r in output if r.run_id == str(run_id)]
+        if company_id not in (None, ""):
+            output = [r for r in output if r.company_id == str(company_id)]
+        if evidence_role:
+            output = [r for r in output if r.evidence_role == str(evidence_role)]
         return output
 
 

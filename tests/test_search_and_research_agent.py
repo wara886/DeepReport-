@@ -1,9 +1,12 @@
 import json
+import time
+import pandas as pd
 
 import pytest
 
 from src.agents import AgentStatus, AgentTask, DeepResearcherAgent
 from src.search import SearchManager
+from src.features.trend_analysis import build_trend_features
 from src.search.search_manager import (
     adapt_financial_query,
     cninfo_announcement_search,
@@ -14,7 +17,39 @@ from src.search.search_manager import (
     serper_search,
     tavily_search,
     yahoo_finance_search,
+    _hk_statement_currency,
 )
+
+
+def test_hk_financial_statement_currency_uses_issuer_override():
+    assert _hk_statement_currency("0700.HK", {"currency": "HKD"}) == "CNY"
+
+
+def test_search_manager_keeps_three_hk_financial_tables_with_shared_url():
+    manager = SearchManager()
+
+    def hk_tables(query, topk=5, **kwargs):
+        return {
+            "hits": [
+                {
+                    "evidence_id": f"hk_{table_type}",
+                    "title": f"0700.HK {table_type}",
+                    "content": f"0700.HK {table_type}",
+                    "source_url": "https://finance.yahoo.com/quote/0700.HK",
+                    "source_type": "hk_financials",
+                    "symbol": "0700.HK",
+                    "score": 7.0,
+                    "metadata": {"table_type": table_type},
+                }
+                for table_type in ("income", "balance", "cashflow")
+            ]
+        }
+
+    manager.register_engine("hk_financials", hk_tables)
+    payload = manager.search("Tencent FY2024", topk=5, engines=["hk_financials"], symbol="0700.HK")
+
+    assert len(payload["hits"]) == 3
+    assert {hit["raw"]["metadata"]["table_type"] for hit in payload["hits"]} == {"income", "balance", "cashflow"}
 
 
 def _engine_a(query, topk=5, **kwargs):
@@ -69,6 +104,171 @@ def test_search_manager_dedupes_and_ranks_hits():
     assert payload["hits"][0]["result_id"] == "ev_1_duplicate"
     assert payload["hits"][0]["source_authority"] == "official"
     assert payload["hits"][1]["result_id"] == "ev_2"
+
+
+def test_search_manager_prefers_richer_live_structured_record_over_stale_local_copy():
+    manager = SearchManager()
+
+    def stale_local(query, topk=5, **kwargs):
+        return {
+            "hits": [
+                {
+                    "evidence_id": "stale-sec-copy",
+                    "source_type": "sec_companyfacts",
+                    "source_url": "https://data.sec.gov/companyfacts/NVDA.json",
+                    "content": "Assets only.",
+                    "score": 0.9,
+                    "metadata": {"parent_metadata": {"metrics": {"Assets": {"value": 1}}}},
+                },
+                {
+                    "evidence_id": "stale-sec-chunk",
+                    "chunk_id": "stale-sec-chunk",
+                    "source_type": "sec_companyfacts",
+                    "source_url": "https://data.sec.gov/companyfacts/NVDA.json",
+                    "content": "Old vector chunk.",
+                    "score": 1.0,
+                },
+            ],
+            "meta": {},
+        }
+
+    def live_sec(query, topk=5, **kwargs):
+        return {
+            "hits": [
+                {
+                    "evidence_id": "live-sec-copy",
+                    "source_type": "sec_companyfacts",
+                    "source_url": "https://data.sec.gov/companyfacts/NVDA.json",
+                    "content": "Current complete company facts.",
+                    "score": 0.0,
+                    "metadata": {
+                        "metrics": {
+                            "Assets": {"value": 1},
+                            "Liabilities": {"value": 2},
+                            "StockholdersEquity": {"value": 3},
+                        }
+                    },
+                }
+            ],
+            "meta": {},
+        }
+
+    manager.register_engine("local_evidence", stale_local)
+    manager.register_engine("sec_edgar", live_sec)
+
+    payload = manager.search("NVDA FY2024", engines=["local_evidence", "sec_edgar"], topk=1, symbol="NVDA")
+
+    assert len(payload["hits"]) == 1
+    assert payload["hits"][0]["result_id"] == "live-sec-copy"
+    assert len(payload["hits"][0]["raw"]["metadata"]["metrics"]) == 3
+
+
+def test_search_manager_records_engine_duration_and_stops_after_budget():
+    manager = SearchManager()
+
+    def slow_engine(query, topk=5, **kwargs):
+        time.sleep(0.02)
+        return {"hits": [], "meta": {"source": "slow"}}
+
+    manager.register_engine("slow", slow_engine)
+    manager.register_engine("never_started", _engine_a)
+
+    payload = manager.search(
+        "AAPL revenue",
+        engines=["slow", "never_started"],
+        search_budget_seconds=0.005,
+    )
+
+    assert payload["meta"]["budget_exhausted"] is True
+    assert payload["meta"]["skipped_engines"] == ["never_started"]
+    assert payload["meta"]["engine_meta"]["slow"]["duration_ms"] >= 15
+
+
+def test_search_manager_times_out_one_engine_and_continues():
+    manager = SearchManager()
+
+    def blocked_engine(query, topk=5, **kwargs):
+        time.sleep(0.05)
+        return {"hits": [], "meta": {}}
+
+    manager.register_engine("blocked", blocked_engine)
+    manager.register_engine("healthy", _engine_a)
+
+    payload = manager.search(
+        "AAPL revenue",
+        engines=["blocked", "healthy"],
+        engine_timeout_seconds=1.0,
+        engine_timeout_by_name={"blocked": 0.005},
+    )
+
+    assert payload["meta"]["engine_meta"]["blocked"]["timeout"] is True
+    assert payload["meta"]["engine_meta"]["blocked"]["timeout_seconds"] == 0.005
+    assert payload["meta"]["engine_meta"]["healthy"]["hit_count"] > 0
+    assert payload["hits"]
+
+
+def test_trend_features_accept_mixed_missing_publish_times():
+    features = build_trend_features(
+        pd.DataFrame(
+            [
+                {"symbol": "MSFT", "period": "FY2024", "source_type": "sec", "publish_time": None, "sample_id": "a"},
+                {"symbol": "MSFT", "period": "FY2024", "source_type": "web", "publish_time": "2024-07-30", "sample_id": "b"},
+            ]
+        )
+    )
+
+    assert features.iloc[0]["latest_publish_time"] == "2024-07-30"
+
+
+def test_search_manager_reserves_yahoo_valuation_records():
+    manager = SearchManager()
+
+    def sec_engine(query, topk=5, **kwargs):
+        return {
+            "hits": [
+                {
+                    "sample_id": f"sec_{idx}",
+                    "title": "Official filing",
+                    "content": "Official revenue evidence.",
+                    "source_url": f"https://sec.example/{idx}",
+                    "source_type": "filing",
+                    "score": 10.0 - idx,
+                }
+                for idx in range(4)
+            ],
+            "meta": {},
+        }
+
+    def yahoo_engine(query, topk=5, **kwargs):
+        return {
+            "hits": [
+                {
+                    "sample_id": "yahoo_snapshot",
+                    "title": "Yahoo market snapshot",
+                    "content": "Current price context.",
+                    "source_url": "https://finance.yahoo.com/quote/AAPL",
+                    "source_type": "market_api",
+                    "score": 0.2,
+                },
+                {
+                    "sample_id": "yahoo_financials",
+                    "title": "Yahoo financial supplement",
+                    "content": "marketCap=1000 trailingPE=20",
+                    "source_url": "https://finance.yahoo.com/quote/AAPL/key-statistics",
+                    "source_type": "market_api",
+                    "score": 0.1,
+                },
+            ],
+            "meta": {},
+        }
+
+    manager.register_engine("sec_edgar", sec_engine)
+    manager.register_engine("yahoo_finance", yahoo_engine)
+    payload = manager.search("AAPL FY2024 valuation", topk=4, symbol="AAPL", period="FY2024")
+
+    result_ids = [item["result_id"] for item in payload["hits"]]
+    assert "yahoo_snapshot" in result_ids
+    assert "yahoo_financials" in result_ids
 
 
 def test_deep_researcher_agent_uses_search_manager():
@@ -226,6 +426,10 @@ search:
 
 
 def test_hkex_announcement_search_rejects_wrong_company_tavily_pdf(monkeypatch):
+    monkeypatch.setattr(
+        "src.search.search_manager.fetch_hkex_official_announcements",
+        lambda **_kwargs: {"hits": [], "meta": {"failure_reason": "no_match"}},
+    )
     def fake_tavily_search(**_kwargs):
         return {
             "hits": [
@@ -251,6 +455,22 @@ def test_hkex_announcement_search_rejects_wrong_company_tavily_pdf(monkeypatch):
 
     assert [item["sample_id"] for item in payload["hits"]] == ["tencent_pdf"]
     assert payload["meta"]["identity_rejected_count"] == 1
+
+
+def test_hkex_announcement_search_prefers_direct_official_source(monkeypatch):
+    monkeypatch.setattr(
+        "src.search.search_manager.fetch_hkex_official_announcements",
+        lambda **_kwargs: {
+            "hits": [{"evidence_id": "hk1", "sample_id": "hk1", "symbol": "0700.HK", "period": "FY2025", "title": "ANNUAL REPORT 2025", "content": "Official", "source_url": "https://www1.hkexnews.hk/a.pdf", "source_type": "hkex_announcement", "source_authority": "official"}],
+            "meta": {"mode": "hkex_official", "result_count": 1},
+        },
+    )
+    monkeypatch.setattr("src.search.search_manager.tavily_search", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("fallback should not run")))
+
+    payload = hkex_announcement_search(query="Tencent annual report", symbol="0700.HK", period="FY2025")
+
+    assert payload["meta"]["mode"] == "hkex_official"
+    assert payload["hits"][0]["evidence_id"] == "hk1"
 
 
 def test_serper_search_normalizes_response(monkeypatch, tmp_path):

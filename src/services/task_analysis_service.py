@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from src.db.models import (
@@ -266,7 +266,7 @@ def _evidence_candidates_for_task(
 ) -> list[EvidenceItem]:
     clauses: list[Any] = [
         EvidenceItem.claim_links.any(ClaimEvidence.claim.has(ReportClaim.task_id == task_id)),
-        EvidenceItem.metadata_json["task_id"].as_string() == task_id,
+        _safe_metadata_task_clause(session, task_id),
     ]
     if company_id:
         clauses.append(EvidenceItem.company_id == company_id)
@@ -284,6 +284,18 @@ def _evidence_candidates_for_task(
         .limit(200)
     )
     return list(session.scalars(stmt).unique().all())
+
+
+def _safe_metadata_task_clause(session: Session, task_id: str) -> Any:
+    """Avoid one legacy malformed SQLite JSON row breaking every task analysis."""
+
+    if session.bind is not None and session.bind.dialect.name == "sqlite":
+        safe_task_id = case(
+            (func.json_valid(EvidenceItem.metadata_json) == 1, func.json_extract(EvidenceItem.metadata_json, "$.task_id")),
+            else_=None,
+        )
+        return safe_task_id == task_id
+    return EvidenceItem.metadata_json["task_id"].as_string() == task_id
 
 
 def _filter_evidence_by_period(items: list[EvidenceItem], *, period: str) -> list[EvidenceItem]:

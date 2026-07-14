@@ -309,7 +309,7 @@ def _build_business_overview(
             c.add_quality_flag("business_overview_gap_summary_skipped")
             continue
         if text_contains_pdf_boilerplate(text):
-            c.add_quality_flag("business_overview_boilerplate_in_summary")
+            c.add_quality_flag("business_overview_boilerplate_cleaned")
             text = clean_pdf_boilerplate(text)
         _append_candidate(text, eid, SRC_ANNUAL_REPORT_PDF_SUMMARY)
 
@@ -478,7 +478,30 @@ def _build_ownership_governance(
                 c.add_quality_flag("governance_uses_sec_10k")
                 break
 
-    if len(c.facts) >= 1:
+    if c.status == "gap":
+        proxy_records = [
+            record
+            for record in evidence_records
+            if isinstance(record, dict) and str(record.get("source_type") or "").lower() == "sec_proxy_filing"
+        ]
+        for record in proxy_records:
+            text = _clip_at_sentence_boundary(str(record.get("content") or ""), 900)
+            evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
+            if len(text.strip()) < 80:
+                continue
+            c.add_fact(
+                "governance_proxy_disclosure",
+                text,
+                evidence_ids=[evidence_id] if evidence_id else [],
+                source_types=["sec_proxy_filing"],
+            )
+            if evidence_id:
+                evidence_ids_used.append(evidence_id)
+            c.status = "supported"
+            c.add_quality_flag("governance_uses_sec_proxy")
+            break
+
+    if len(c.facts) >= 1 and c.status == "gap":
         c.status = "partial"
     if len(c.facts) >= 2 and evidence_ids_used:
         c.status = "supported"
@@ -663,7 +686,7 @@ def _build_three_statement_summary(
     table_md = _render_three_statement_table_markdown(tables, currency_context)
     if table_md:
         c.deterministic_text = table_md
-        for eid in financial_evidence_ids:
+        for eid in financial_evidence_ids[:6]:
             if eid not in c.citation_evidence_ids:
                 c.citation_evidence_ids.append(eid)
     else:
@@ -744,6 +767,8 @@ def _build_peer_compare(
                 "本轮未取得足够可比公司量化表，因此同行对比仅作为口径边界："
                 "需要按同市场、同业务结构、相近利润率和现金流质量筛选可比公司；"
                 "正式交付前应补齐可比公司的收入增速、毛利率、P/E、P/S 或 P/B 等指标。"
+                "在统一财年、币种和会计口径前，本报告不输出缺乏证据支持的同行排名或估值折溢价，"
+                "以免把业务结构差异误判为经营优劣；当前结论仅用于说明比较方法和数据边界。"
             )
             c.add_quality_flag("peer_compare_boundary_only")
         return
@@ -758,6 +783,7 @@ def _build_peer_compare(
     cross_market: List[str] = []
 
     valid_peer_rows: List[Dict[str, Any]] = []
+    non_target_rows_seen = False
     target_upper = str(target_symbol or "").strip().upper()
     for row in peer_rows:
         if not isinstance(row, dict):
@@ -767,6 +793,7 @@ def _build_peer_compare(
             continue
         if sym == target_upper:
             continue
+        non_target_rows_seen = True
         if not _peer_row_has_metrics(row):
             c.add_quality_flag(f"peer_metrics_missing:{sym}")
             continue
@@ -811,13 +838,19 @@ def _build_peer_compare(
     elif cross_market:
         c.status = "partial"
         c.add_blocked_reason("peer_only_cross_market_reference")
-    else:
+    elif non_target_rows_seen:
         c.status = "fallback"
+        c.add_blocked_reason("peer_no_metric_rows")
+        c.add_quality_flag("peer_compare_boundary_only")
+    else:
+        c.status = "gap"
+        c.add_blocked_reason("peer_only_target_row")
         c.add_quality_flag("peer_compare_boundary_only")
     if not direct_peers and not cross_market:
-        c.add_quality_flag("peer_only_target_row")
-        if peer_rows:
+        if non_target_rows_seen:
             c.add_quality_flag("peer_no_metric_rows")
+        else:
+            c.add_quality_flag("peer_only_target_row")
     if not valid_peer_rows and direct_peers:
         direct_peers.clear()
         c.status = "fallback"
@@ -828,7 +861,7 @@ def _build_peer_compare(
         table_md = _render_peer_table_markdown(peer_rows, direct_peers, cross_market, target_symbol)
         if table_md:
             c.deterministic_text = table_md
-    elif c.status == "fallback" and not c.deterministic_text:
+    elif c.status in {"fallback", "gap"} and not c.deterministic_text:
         c.deterministic_text = (
             "本轮同行对比未取得可验证的非目标公司量化指标，因此不将同业表作为正式估值依据。"
             "正式交付前需要补齐至少两家可比公司的收入增速、毛利率、净利率、ROE 或现金流指标，"
@@ -967,13 +1000,28 @@ def _build_valuation_sensitivity(
     if not valuation_sensitivity:
         vm_status = str(valuation_model.get("valuation_status", "") or "") if valuation_model else ""
         if vm_status in ("rough_observation_only", "blocked_due_to_incomplete_inputs"):
-            c.add_blocked_reason(f"valuation_sensitivity_blocked:{vm_status}")
-            c.status = "fallback"
-            c.deterministic_text = (
-                "估值敏感性暂不输出DCF情景数值。本轮只保留变量边界：收入增速、毛利率、"
-                "经营现金流转换率、折现率和终值增长率是后续正式模型必须复核的关键输入。"
-            )
-            c.add_quality_flag("valuation_sensitivity_boundary_only")
+            inputs = valuation_model.get("input_summary") if isinstance(valuation_model.get("input_summary"), dict) else {}
+            revenue = _safe_number(inputs.get("revenue_billion"))
+            net_income = _safe_number(inputs.get("net_income_billion"))
+            if revenue and net_income and revenue > 0:
+                margin = net_income / revenue
+                income_delta = revenue * 0.01 * margin
+                c.status = "partial"
+                c.deterministic_text = (
+                    f"估值敏感性采用盈利桥接而非虚构DCF目标价：基准收入约{revenue:.2f}B、"
+                    f"净利润约{net_income:.2f}B，对应净利率约{margin * 100:.1f}%。"
+                    f"在净利率保持不变的简化假设下，收入上升或下降1%将使净利润约增加或减少{income_delta:.2f}B；"
+                    "若市场估值倍数同时收缩，股权价值的下行幅度可能大于盈利变化。"
+                    "该情景用于识别收入与利润弹性，不替代包含折现率、终值增长率和完整预测期的DCF模型。"
+                )
+                c.add_quality_flag("valuation_sensitivity_earnings_bridge_only")
+            else:
+                c.status = "fallback"
+                c.deterministic_text = (
+                    "估值敏感性暂不输出DCF情景数值。本轮只保留变量边界：收入增速、毛利率、"
+                    "经营现金流转换率、折现率和终值增长率是后续正式模型必须复核的关键输入。"
+                )
+                c.add_quality_flag("valuation_sensitivity_boundary_only")
         else:
             c.status = "fallback"
             c.deterministic_text = (
@@ -985,8 +1033,19 @@ def _build_valuation_sensitivity(
 
     rows = _normalize_sensitivity_rows(valuation_sensitivity)
     if rows:
-        c.deterministic_text = _render_sensitivity_text(rows)
-        c.status = "supported"
+        sensitivity_currency = str(
+            valuation_sensitivity.get("currency")
+            or valuation_model.get("valuation_currency")
+            or valuation_model.get("currency")
+            or ""
+        ).replace("_billion", "").upper()
+        c.deterministic_text = _render_sensitivity_text(rows, currency=sensitivity_currency)
+        if str(valuation_sensitivity.get("method") or "") == "earnings_bridge":
+            c.deterministic_text = "盈利桥接（非DCF目标价）：\n" + c.deterministic_text
+            c.status = "partial"
+            c.add_quality_flag("valuation_sensitivity_earnings_bridge_only")
+        else:
+            c.status = "supported"
     else:
         c.add_blocked_reason("valuation_sensitivity_empty")
 
@@ -1054,6 +1113,37 @@ def _build_risk_factors(
             if c.status == "gap":
                 c.status = "partial"
 
+    # Some production paths persist official PDF sections directly in the
+    # normalized evidence list without duplicating them into the summary/chunk
+    # artifacts. Preserve that official risk evidence before using an industry
+    # fallback.
+    if c.status == "gap":
+        for record in evidence_records:
+            if not isinstance(record, dict) or str(record.get("source_type") or "").lower() != "pdf_section":
+                continue
+            metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+            section_type = str(metadata.get("section_type") or record.get("section_type") or "").lower()
+            if section_type not in {"risk_factors", "risks"}:
+                continue
+            document_type = str(record.get("source_document_type") or "").lower()
+            authority = str(record.get("source_authority") or "").lower()
+            source_url = str(record.get("source_url") or "").lower()
+            if authority != "official" and document_type not in {"cninfo_announcement", "exchange_announcement", "hkex_announcement", "official_filing"} and not any(domain in source_url for domain in ("cninfo.com.cn", "sse.com.cn", "szse.cn", "hkexnews.hk")):
+                continue
+            text = str(record.get("content") or "").strip()
+            if len(text) < 30 or _is_pdf_gap_summary(text):
+                continue
+            eid = str(record.get("evidence_id") or record.get("sample_id") or "")
+            c.add_fact(
+                "official_risk_detail",
+                _clip_at_sentence_boundary(text, 700),
+                evidence_ids=[eid] if eid else [],
+                source_types=[SRC_ANNUAL_REPORT_PDF_CHUNK],
+            )
+            c.status = "supported"
+            c.add_quality_flag("risk_uses_official_pdf")
+            break
+
     # SEC 10-K Item 1A Risk Factors (US market)
     if c.status == "gap":
         sec_risk = _get_annual_report_text_by_sec_item(annual_report_sections, {"risk_factors"})
@@ -1120,7 +1210,7 @@ def _build_investment_conclusion(
         c.deterministic_text = (
             f"维持{direction}，结论基于财务质量、估值约束、同行可比性和风险边界。"
             f"{reasons}{risks}"
-            "正式交付前仍需确认所有核心数值来自 canonical metrics，并确保结论与引用证据一致。"
+            "结论仅基于本报告列示的已验证财务、估值与风险证据，不构成确定性收益承诺。"
         )
         c.status = "partial"
     else:
@@ -1418,7 +1508,7 @@ def _render_three_statement_table_markdown(tables: List[Dict[str, Any]], currenc
             continue
         seen.add(label)
         row_context = _row_currency_context(found, currency_context)
-        rows_out.append([label, format_amount_for_context(value, row_context), period, source])
+        rows_out.append([label, _format_statement_amount(value, found, row_context), period, source])
     if len(rows_out) < 3:
         return ""
     lines = [
@@ -1601,7 +1691,7 @@ def _currency_context(state: Dict[str, Any], analysis_artifacts: Dict[str, Any])
 
 
 def _row_currency_context(row: Dict[str, Any], fallback: CurrencyContext) -> CurrencyContext:
-    currency = str(row.get("currency") or row.get("unit") or "")
+    currency = str(row.get("currency") or row.get("unit") or "").split("_", 1)[0]
     if currency.upper() not in {"USD", "CNY", "HKD"}:
         return fallback
     return build_currency_context(
@@ -1611,13 +1701,33 @@ def _row_currency_context(row: Dict[str, Any], fallback: CurrencyContext) -> Cur
     )
 
 
+def _format_statement_amount(value: float, row: Dict[str, Any], context: CurrencyContext) -> str:
+    """Convert unit/million/billion statement rows to base currency before display."""
+
+    unit = str(row.get("unit") or "").lower()
+    scale = str(row.get("scale") or "").lower()
+    multiplier = 1.0
+    if unit.endswith("_trillion") or scale == "trillion":
+        multiplier = 1_000_000_000_000.0
+    elif unit.endswith("_billion") or scale == "billion":
+        multiplier = 1_000_000_000.0
+    elif unit.endswith("_million") or scale == "million":
+        multiplier = 1_000_000.0
+    elif unit.endswith("_thousand") or scale == "thousand":
+        multiplier = 1_000.0
+    return format_amount_for_context(float(value) * multiplier, context)
+
+
 def _format_billion_value(value: Any, context: CurrencyContext) -> str:
     number = _safe_number(value)
     if number is None:
         return ""
     currency = context.display_currency
-    names = {"USD": "十亿美元", "HKD": "十亿港元", "CNY": "十亿元人民币"}
-    return f"{number:.2f} {names.get(currency, f'十亿{currency}')}"
+    if currency == "CNY":
+        return f"{number * 10:.2f} 亿元人民币"
+    if currency == "HKD":
+        return f"{number * 10:.2f} 亿港元"
+    return f"{number:.2f} {'十亿美元' if currency == 'USD' else f'十亿{currency}'}"
 
 
 def _normalize_sensitivity_rows(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1806,7 +1916,8 @@ def _get_approved_peer_symbols(
 ) -> Set[str]:
     approved: Set[str] = set()
     peer_data = _safe_dict(analysis_artifacts, "peer_analysis")
-    for source in [peer_data, analysis_artifacts, blackboard]:
+    peer_context = _safe_dict(analysis_artifacts, "peer_context")
+    for source in [peer_data, peer_context, analysis_artifacts, blackboard]:
         if not isinstance(source, dict):
             continue
         for key in ["approved_peer_symbols", "peer_symbols"]:
@@ -1816,6 +1927,11 @@ def _get_approved_peer_symbols(
                     sym = str(v or "").strip().upper()
                     if sym:
                         approved.add(sym)
+        for row in source.get("peer_rows", []) if isinstance(source.get("peer_rows"), list) else []:
+            if isinstance(row, dict):
+                sym = str(row.get("symbol") or row.get("ticker") or "").strip().upper()
+                if sym and not bool(row.get("is_target")):
+                    approved.add(sym)
     return approved
 
 
@@ -1829,7 +1945,10 @@ def _render_peer_table_markdown(
     table_symbols = set(direct_peers) | {str(target_symbol or "").strip().upper()}
     if not table_symbols:
         return ""
-    lines = ["| 公司 | 代码 | 收入增速 | 毛利率 | 净利率 | ROE | 说明 |"]
+    lines = [
+        "> 注：下表为当前 TTM 市场快照；财务分析章节的 FY2024 指标来自年度披露，二者期间不同，不作同期间数值替代。",
+        "| 公司 | 代码 | 收入增速 | 毛利率 | 净利率 | ROE | 说明 |",
+    ]
     lines.append("|------|------|---------|--------|--------|-----|------|")
     for row in peer_rows:
         if not isinstance(row, dict):
@@ -1851,10 +1970,12 @@ def _render_peer_table_markdown(
     return "\n".join(lines)
 
 
-def _render_sensitivity_text(rows: List[Any]) -> str:
+def _render_sensitivity_text(rows: List[Any], currency: str = "") -> str:
     if not rows:
         return ""
-    parts = ["估值敏感性分析："]
+    currency_labels = {"CNY": "十亿元人民币", "HKD": "十亿港元", "USD": "十亿美元"}
+    value_unit = currency_labels.get(str(currency or "").upper(), "十亿计价货币")
+    parts = [f"估值敏感性分析（权益价值单位：{value_unit}；目标价单位：每股计价货币）："]
     for row in rows[:5]:
         if isinstance(row, dict):
             label = str(row.get("label") or row.get("scenario") or row.get("variable") or "")

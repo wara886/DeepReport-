@@ -1,4 +1,4 @@
-"""Small .env loader shared by model and search adapters."""
+"""Deterministic project-local .env loader shared by runtime adapters."""
 
 from __future__ import annotations
 
@@ -8,16 +8,20 @@ from typing import Any, Dict, List
 
 
 def load_env_files(config_path: str | Path | None = None, env_path: str | Path | None = None) -> None:
+    """Load explicit and project-local env files without crossing repository boundaries.
+
+    Existing process variables always win.  This lets tests and deployments
+    explicitly disable a credential by setting it to an empty string.
+    """
+
     candidates: List[Path] = []
     if env_path:
         candidates.append(Path(env_path))
-    candidates.append(Path.cwd() / ".env")
     if config_path:
         path = Path(config_path).resolve()
         if path.parent.name == "configs":
             candidates.append(path.parent.parent / ".env")
-            sibling_legacy = path.parent.parent.parent / "DeepReport-wara886" / ".env"
-            candidates.append(sibling_legacy)
+    candidates.append(Path.cwd() / ".env")
 
     seen: set[Path] = set()
     for candidate in candidates:

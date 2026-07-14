@@ -398,6 +398,8 @@ def build_data_source_plan(symbol: str, market: str, exchange: str = "") -> Dict
             "cninfo_announcements",
             "exchange_announcements",
             "eastmoney_financials",
+            "baostock_financials",
+            "tushare_financials",
             "sina_finance",
             "yahoo_finance",
             "eastmoney",
@@ -405,8 +407,17 @@ def build_data_source_plan(symbol: str, market: str, exchange: str = "") -> Dict
         ]
         primary = ["cninfo_announcements", "exchange_announcements", "eastmoney_financials"]
     elif market == "hk":
-        engines = ["local_real_data", "sina_finance", "hkex_announcements", "yahoo_finance", "tavily", "serper", "local_evidence"]
-        primary = ["hkex_announcements", "yahoo_finance", "tavily", "serper"]
+        engines = [
+            "local_real_data",
+            "hkex_announcements",
+            "hk_financials",
+            "yahoo_finance",
+            "sina_finance",
+            "tavily",
+            "serper",
+            "local_evidence",
+        ]
+        primary = ["hkex_announcements", "hk_financials", "yahoo_finance"]
     elif market == "us":
         engines = ["local_real_data", "sec_edgar", "yahoo_finance", "independent_macro", "tavily", "local_evidence"]
         primary = ["sec_edgar", "yahoo_finance"]

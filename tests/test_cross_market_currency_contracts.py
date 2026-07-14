@@ -11,6 +11,36 @@ def test_us_currency_context_formats_tsla_in_billions():
     assert format_amount_for_context(22_387_000_000, context) == "22.39 十亿美元"
 
 
+def test_hk_statement_contract_respects_million_and_billion_row_scales():
+    contracts = build_report_section_contracts(
+        state={"symbol": "0700.HK", "period": "FY2024", "research_blackboard": {}},
+        evidence_records=[],
+        analysis_artifacts={
+            "currency_audit": {
+                "symbol": "0700.HK",
+                "market": "hk",
+                "statement_currency": "CNY",
+                "trading_currency": "HKD",
+                "display_currency": "CNY",
+            },
+            "financial_metrics": {"metrics": []},
+            "tables": [
+                {"table_type": "income_statement", "rows": [{"line_item": "revenue", "value": 660.257, "unit": "CNY_billion", "period": "FY2024"}]},
+                {"table_type": "balance_sheet", "rows": [{"line_item": "total_assets", "value": 1333425.0, "unit": "CNY_million", "period": "FY2024"}]},
+                {"table_type": "cash_flow_statement", "rows": [{"line_item": "operating_cash_flow", "value": 258521000000.0, "unit": "CNY", "period": "FY2024"}]},
+            ],
+        },
+        section_dossiers={},
+        citations=[],
+    )
+
+    statements = contracts.get("three_statement_summary")
+    assert statements is not None
+    assert "6602.57 亿元人民币" in statements.deterministic_text
+    assert "13334.25 亿元人民币" in statements.deterministic_text
+    assert "2585.21 亿元人民币" in statements.deterministic_text
+
+
 def test_us_charts_use_usd_and_support_scenario_values(tmp_path):
     charts = generate_report_charts(
         claims=[

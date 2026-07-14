@@ -13,8 +13,13 @@ from src.data.company_universe import infer_market_from_symbol
 from src.data.evidence_intake_gate import evidence_ids, filter_evidence_records, rejection_record
 
 OFFICIAL_SOURCE_TYPES = {
+    "sec_edgar",
     "sec_companyfacts",
     "sec_filing",
+    "official_filing",
+    "official_10k",
+    "official_10q",
+    "filing",
     "cninfo_announcement",
     "exchange_announcement",
     "hkex_announcement",
@@ -282,11 +287,9 @@ def _manifest_entry(record: Dict[str, Any], *, symbol: str, period: str, market:
 
 def _is_official_record(record: Dict[str, Any]) -> bool:
     source_type = str(record.get("source_type") or "").lower()
-    authority = str(record.get("source_authority") or "").lower()
     url = str(record.get("source_url") or "").lower()
     return (
         source_type in OFFICIAL_SOURCE_TYPES
-        or authority in {"official", "official_statistics"}
         or any(domain in url for domain in ("sec.gov", "cninfo.com.cn", "sse.com.cn", "szse.cn", "hkexnews.hk"))
     )
 

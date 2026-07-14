@@ -43,16 +43,22 @@ from src.agents.research_blackboard import (
 )
 from src.agents.verifier_agent import VerifierAgent
 from src.data.canonical_metrics import build_canonical_metrics_artifact, canonical_metrics_as_financial_metrics
-from src.data.company_universe import resolve_company_identifier, resolve_company_identifier_with_diagnostics
+from src.data.company_universe import (
+    build_data_source_plan,
+    infer_market_from_symbol,
+    resolve_company_identifier,
+    resolve_company_identifier_with_diagnostics,
+)
 from src.data.official_evidence_archive import archive_official_evidence_manifest, build_official_evidence_artifacts
 from src.data.pdf_artifacts import build_pdf_artifacts
 from src.data.pdf_rag_pipeline import build_pdf_rag_artifacts
-from src.data.sec_filing_resolver import resolve_sec_annual_filing
+from src.data.sec_filing_resolver import resolve_sec_annual_filing, resolve_sec_proxy_filing
 from src.evaluation.company_report_scorecard import build_company_report_scorecard
 from src.evaluation.delivery_gate import build_delivery_gate_from_outputs, write_delivery_gate_for_outputs
 from src.evaluation.multimodal_consistency import audit_multimodal_consistency
 from src.evaluation.quality_remediation import build_quality_remediation_plan_from_outputs, write_quality_remediation_plan_for_outputs
 from src.evaluation.report_quality import evaluate_report_quality_from_paths
+from src.evaluation.section_evidence_pack import build_section_evidence_packs
 from src.models import ModelAdapter
 from src.report import (
     append_compliance_disclosures,
@@ -91,6 +97,10 @@ FAST_PROFILE = {
     "research_topk": 6,
     "research_use_react": False,
     "research_react_max_steps": 2,
+    "research_merge_standard_search_after_react": True,
+    "react_max_tool_calls": 8,
+    "react_tool_timeout_seconds": 45.0,
+    "react_tool_max_attempts": 2,
     "research_use_chunks": True,
     "browser_skip_llm_extract": True,
     "browser_use_reader": False,
@@ -143,6 +153,10 @@ DEFAULT_PROFILE = {
     "research_topk": 12,
     "research_use_react": True,
     "research_react_max_steps": 3,
+    "research_merge_standard_search_after_react": True,
+    "react_max_tool_calls": 8,
+    "react_tool_timeout_seconds": 45.0,
+    "react_tool_max_attempts": 2,
     "research_use_chunks": True,
     "browser_skip_llm_extract": False,
     "browser_use_reader": True,
@@ -191,12 +205,14 @@ class MultiAgentOrchestrator:
         skill_registry: SkillRegistry | None = None,
         skill_registry_config_path: str | None = "configs/skill_registry.yaml",
         execution_tier: str = "delivery",
+        stage_callback: Callable[[Dict[str, Any]], None] | None = None,
     ):
         self.output_dir = Path(output_dir)
         self.report_dir = Path(report_dir)
         self.config_path = config_path
         self.raw_data_root = raw_data_root
         self.app_config_path = app_config_path
+        self.stage_callback = stage_callback
         _tier = str(execution_tier or "delivery").lower()
         FAST_TIERS = {"user_fast", "developer_fast"}
         if _tier in FAST_TIERS:
@@ -271,6 +287,8 @@ class MultiAgentOrchestrator:
         claim_contract: str = "",
         allow_document_enrichment: bool = True,
         execution_deadline: float | None = None,
+        stop_after_phase: str = "",
+        resume_from_phase_artifacts: bool = False,
     ) -> Dict[str, str]:
         quality_remediation_plan = quality_remediation_plan or _read_existing_quality_remediation_plan(self.output_dir)
         entity_resolution = _resolve_run_identity(research_topic=research_topic, symbol=symbol, raw_data_root=self.raw_data_root)
@@ -341,6 +359,8 @@ class MultiAgentOrchestrator:
                 data_source_config_path=data_source_config_path,
                 entity_resolution=entity_resolution,
                 quality_remediation_plan=quality_remediation_plan,
+                stop_after_phase=stop_after_phase,
+                resume_from_phase_artifacts=resume_from_phase_artifacts,
             )
         raise ValueError(f"Unsupported execution_mode: {execution_mode}")
 
@@ -485,6 +505,18 @@ class MultiAgentOrchestrator:
         state["section_dossiers"] = dossiers
         return dossiers
 
+    def _prepare_prewrite_section_evidence_packs(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Materialize the current state so the writer consumes section packs before drafting."""
+        self._write_json("evidence.json", list(state.get("evidence_records", [])))
+        self._write_json("claims.json", list(state.get("claims", [])))
+        analysis = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
+        self._write_json("analysis_artifacts.json", analysis)
+        self._write_json("financial_metrics.json", analysis.get("financial_metrics", {}))
+        self._write_json("canonical_metrics.json", analysis.get("canonical_metrics", {}))
+        self._write_json("tables.json", analysis.get("tables", []))
+        self._write_json("section_dossiers.json", state.get("section_dossiers", {}))
+        return build_section_evidence_packs(self.output_dir)
+
     def _inject_pdf_facts_into_dossiers(self, state: Dict[str, Any], dossiers: Dict[str, Any], *, path: str) -> Dict[str, Any]:
         """Enrich section dossiers with structured PDF facts and write an audit artifact."""
         pdf_sections = (
@@ -571,6 +603,7 @@ class MultiAgentOrchestrator:
             evidence_records = list(state.get("evidence_records", []))
             analysis_artifacts = self._apply_canonical_metrics(
                 state.get("analysis_artifacts", {}),
+                evidence_records=evidence_records,
                 symbol=symbol,
                 period=str(state.get("period", "") or ""),
             )
@@ -676,8 +709,20 @@ class MultiAgentOrchestrator:
             logging.getLogger(__name__).exception("Failed to build contracts and bind citations")
             return None, None
 
-    def _apply_canonical_metrics(self, analysis_artifacts: Any, *, symbol: str, period: str) -> Dict[str, Any]:
-        return _apply_canonical_metrics_to_artifacts(analysis_artifacts, symbol=symbol, period=period)
+    def _apply_canonical_metrics(
+        self,
+        analysis_artifacts: Any,
+        *,
+        evidence_records: Any = None,
+        symbol: str,
+        period: str,
+    ) -> Dict[str, Any]:
+        return _apply_canonical_metrics_to_artifacts(
+            analysis_artifacts,
+            evidence_records=evidence_records,
+            symbol=symbol,
+            period=period,
+        )
 
     def _run_static(
         self,
@@ -692,8 +737,12 @@ class MultiAgentOrchestrator:
         data_source_config_path: str = "configs/data_sources.yaml",
         entity_resolution: Dict[str, Any] | None = None,
         quality_remediation_plan: Dict[str, Any] | None = None,
+        stop_after_phase: str = "",
+        resume_from_phase_artifacts: bool = False,
     ) -> Dict[str, str]:
-        self.trace = []
+        stored_trace = self._read_json("static_phase_trace.json", []) if resume_from_phase_artifacts else []
+        self.trace = [dict(item) for item in stored_trace if isinstance(item, dict)]
+        profile = self._resolve_profile(fast)
         run_started_at = time.perf_counter()
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.report_dir.mkdir(parents=True, exist_ok=True)
@@ -742,9 +791,11 @@ class MultiAgentOrchestrator:
             task_type="planning",
         )
 
-        planning_result = self._execute(
-            "planning",
-            AgentTask(
+        plan = self._read_json("task_plan.json", {}) if resume_from_phase_artifacts else {}
+        if not plan:
+            planning_result = self._execute(
+                "planning",
+                AgentTask(
                 task_id="task_000_planning",
                 task_type="planning",
                 description=research_topic,
@@ -757,10 +808,12 @@ class MultiAgentOrchestrator:
                     "skill_brief": planning_skill_brief,
                 },
                 priority=5,
-            ),
-        )
-        plan = planning_result.output.get("plan", {})
-        self._write_json("task_plan.json", plan)
+                ),
+            )
+            plan = planning_result.output.get("plan", {})
+            self._write_json("task_plan.json", plan)
+        if stop_after_phase == "planning":
+            return self._static_phase_result("planning", ["task_plan.json"])
         research_blackboard = initialize_research_blackboard(
             symbol=symbol,
             period=period,
@@ -770,9 +823,13 @@ class MultiAgentOrchestrator:
         )
 
         research_query = _query_from_plan(plan=plan, research_topic=research_topic, symbol=symbol, period=period)
-        research_result = self._execute(
-            "research",
-            AgentTask(
+        research_checkpoint = self._read_json("research_phase.json", {}) if resume_from_phase_artifacts else {}
+        if research_checkpoint:
+            research_output = dict(research_checkpoint.get("output") or {})
+        else:
+            research_result = self._execute(
+                "research",
+                AgentTask(
                 task_id="task_001_research",
                 task_type="deep_researcher",
                 description="Collect local and searchable evidence for the report.",
@@ -783,64 +840,114 @@ class MultiAgentOrchestrator:
                     "topk": 12,
                     "engines": search_engines or _market_engines(symbol),
                     "raw_data_root": self.raw_data_root,
+                    "curated_dir": _retrieval_curated_dir(self.output_dir),
                     "ranking_mode": retrieval_ranking_mode,
                     "data_source_config_path": data_source_config_path,
                     "enable_remote": bool(enable_remote_data),
+                    "search_budget_seconds": 240.0,
+                    "engine_timeout_seconds": 60.0,
+                    "engine_timeout_by_name": _research_engine_timeouts(),
                     "skill_brief": self._skill_brief(research_query, "deep_researcher", max_items=2),
+                    "use_react": bool(profile.get("research_use_react", False)),
+                    "react_max_steps": int(profile.get("research_react_max_steps", 3)),
+                    "react_max_tool_calls": int(profile.get("react_max_tool_calls", 8)),
+                    "react_tool_timeout_seconds": float(profile.get("react_tool_timeout_seconds", 45.0)),
+                    "react_tool_max_attempts": int(profile.get("react_tool_max_attempts", 2)),
+                    "merge_standard_search_after_react": bool(profile.get("research_merge_standard_search_after_react", True)),
                 },
                 dependencies=["task_000_planning"],
                 priority=5,
-            ),
-        )
-        evidence_candidates = research_result.output.get("evidence_candidates", [])
+                ),
+            )
+            research_output = dict(research_result.output or {})
+            self._write_json(
+                "research_phase.json",
+                {"phase": "research", "output": _compact_research_phase_output(research_output)},
+            )
+        evidence_candidates = research_output.get("evidence_candidates", [])
         static_state: Dict[str, Any] = {
             "research_topic": research_topic,
             "symbol": symbol,
             "period": period,
             "entity_resolution": entity_resolution,
             "search_engines": search_engines or [],
-            "search_meta": research_result.output.get("search_meta", {}),
+            "search_meta": research_output.get("search_meta", {}),
             "evidence_candidates": evidence_candidates,
             "evidence_records": [],
             "claims": [],
             "analysis_artifacts": {},
             "enable_remote_data": bool(enable_remote_data),
+            "data_source_config_path": data_source_config_path,
+            "chart_output_dir": str(self.output_dir / "charts"),
+            "performance_profile": "fast" if fast else "default",
         }
         self.state = static_state  # P0.5: expose for _execute deadline enforcement
         research_blackboard = update_blackboard_for_task(
             research_blackboard,
             "deep_researcher",
             static_state,
-            research_result.output,
+            research_output,
         )
+        self._write_json("research_blackboard.json", research_blackboard)
+        self._write_json("search_meta.json", static_state["search_meta"])
+        if stop_after_phase == "research":
+            return self._static_phase_result("research", ["task_plan.json", "research_phase.json", "search_meta.json"])
 
-        browser_result = self._execute(
-            "browser",
-            AgentTask(
+        normalize_phase = self._read_json("normalize_evidence_phase.json", {}) if resume_from_phase_artifacts else {}
+        gate_evidence_records = self._read_json("evidence.json", [])
+        if normalize_phase:
+            evidence_records = gate_evidence_records
+            browser_output = {"evidence_records": evidence_records}
+        else:
+            browser_result = self._execute(
+                "browser",
+                AgentTask(
                 task_id="task_002_browser",
                 task_type="browser",
                 description="Normalize evidence candidates into citation-ready records.",
-                parameters={"evidence_candidates": evidence_candidates},
+                parameters={"evidence_candidates": evidence_candidates, "symbol": symbol},
                 dependencies=["task_001_research"],
                 priority=4,
-            ),
-        )
-        evidence_records = browser_result.output.get("evidence_records", [])
-        self._write_json("evidence.json", evidence_records)
+                ),
+            )
+            browser_output = dict(browser_result.output or {})
+            evidence_records = _merge_records(
+                gate_evidence_records,
+                browser_output.get("evidence_records", []),
+                ["evidence_id", "sample_id", "identity_key", "source_url"],
+            )
+            browser_output["evidence_records"] = evidence_records
+            self._write_json("evidence.json", evidence_records)
+            self._write_json(
+                "normalize_evidence_phase.json",
+                {"phase": "normalize_evidence", "evidence_count": len(evidence_records)},
+            )
         static_state["evidence_records"] = evidence_records
         attach_annual_report_sections_to_state(static_state, raw_data_root=self.raw_data_root)
         attach_pdf_artifacts_to_state(state=static_state)
         evidence_records = static_state.get("evidence_records", [])
+        # PDF extraction enriches evidence in memory. Persist the enriched set
+        # before LangGraph checkpoints so later agent phases reload the same IDs.
+        self._write_json("evidence.json", evidence_records)
         research_blackboard = update_blackboard_for_task(
             research_blackboard,
             "browser",
             static_state,
-            browser_result.output,
+            browser_output,
         )
+        self._write_json("research_blackboard.json", research_blackboard)
+        if stop_after_phase == "normalize_evidence":
+            return self._static_phase_result("normalize_evidence", ["evidence.json", "research_blackboard.json"])
 
-        analyze_result = self._execute(
-            "analyze",
-            AgentTask(
+        analyze_phase = self._read_json("analyze_phase.json", {}) if resume_from_phase_artifacts else {}
+        analysis_checkpoint = self._read_json("analysis_artifacts.json", {}) if analyze_phase else {}
+        claims_checkpoint = self._read_json("claims.json", []) if analyze_phase else []
+        if analyze_phase:
+            analysis_output = {"claims": claims_checkpoint, "analysis_artifacts": analysis_checkpoint}
+        else:
+            analyze_result = self._execute(
+                "analyze",
+                AgentTask(
                 task_id="task_003_analyze",
                 task_type="deep_analyze",
                 description="Generate financial claims from evidence records.",
@@ -850,21 +957,32 @@ class MultiAgentOrchestrator:
                     "period": period,
                     "raw_data_root": self.raw_data_root,
                     "skill_brief": self._skill_brief("financial analysis valuation peer trend", "deep_analyze", max_items=2),
+                    "use_react": bool(profile.get("analyze_use_react", False)),
+                    "react_max_steps": int(profile.get("analyze_react_max_steps", 3)),
+                    "react_max_tool_calls": int(profile.get("react_max_tool_calls", 8)),
+                    "react_tool_timeout_seconds": float(profile.get("react_tool_timeout_seconds", 45.0)),
+                    "react_tool_max_attempts": int(profile.get("react_tool_max_attempts", 2)),
                 },
                 dependencies=["task_002_browser"],
                 priority=5,
-            ),
+                ),
+            )
+            analysis_output = dict(analyze_result.output or {})
+        claims = analysis_output.get("claims", [])
+        analysis_artifacts = analysis_output.get("analysis_artifacts", {})
+        analysis_artifacts = self._apply_canonical_metrics(
+            analysis_artifacts,
+            evidence_records=evidence_records,
+            symbol=symbol,
+            period=period,
         )
-        claims = analyze_result.output.get("claims", [])
-        analysis_artifacts = analyze_result.output.get("analysis_artifacts", {})
-        analysis_artifacts = self._apply_canonical_metrics(analysis_artifacts, symbol=symbol, period=period)
         static_state["claims"] = claims
         static_state["analysis_artifacts"] = analysis_artifacts
         research_blackboard = update_blackboard_for_task(
             research_blackboard,
             "deep_analyze",
             static_state,
-            analyze_result.output,
+            analysis_output,
         )
         self._write_json("claims.json", claims)
         self._write_json("analysis_artifacts.json", analysis_artifacts)
@@ -906,6 +1024,16 @@ class MultiAgentOrchestrator:
             "valuation_sensitivity.json",
             analysis_artifacts.get("valuation_sensitivity", {}) if isinstance(analysis_artifacts, dict) else {},
         )
+        self._write_json("research_blackboard.json", research_blackboard)
+        self._write_json(
+            "analyze_phase.json",
+            {"phase": "analyze", "claim_count": len(claims), "metric_artifact_ready": bool(analysis_artifacts)},
+        )
+        if stop_after_phase == "analyze":
+            return self._static_phase_result(
+                "analyze",
+                ["claims.json", "analysis_artifacts.json", "financial_metrics.json", "canonical_metrics.json", "tables.json"],
+            )
         tables = analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else []
         official_artifacts = build_official_evidence_artifacts(
             evidence_records if isinstance(evidence_records, list) else [],
@@ -974,6 +1102,7 @@ class MultiAgentOrchestrator:
 
         # Build contract-first generation artifacts
         static_contracts, static_binder = self._build_contracts_and_bind(static_state)
+        static_section_packs = self._prepare_prewrite_section_evidence_packs(static_state)
 
         final_result = self._execute(
             "final_answer",
@@ -990,6 +1119,7 @@ class MultiAgentOrchestrator:
                     "evidence_records": evidence_records,
                     "claim_evidence_bundles": static_bundles,
                     "section_dossiers": static_dossiers,
+                    "section_evidence_packs": static_section_packs,
                     "conversation_brief": conversation_brief,
                     "skill_brief": self._skill_brief("report markdown citations charts", "final_answer", max_items=2),
                     "tables": tables,
@@ -1131,6 +1261,52 @@ class MultiAgentOrchestrator:
         report_md_path.write_text(markdown, encoding="utf-8")
         report_html_path.write_text(html, encoding="utf-8")
         report_json_path.write_text(json.dumps(report_json, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+
+        self._write_json(
+            "final_answer_phase.json",
+            {
+                "phase": "final_answer",
+                "report_markdown_chars": len(markdown),
+                "claim_count": len(claims) if isinstance(claims, list) else 0,
+                "evidence_count": len(evidence_records) if isinstance(evidence_records, list) else 0,
+            },
+        )
+        if stop_after_phase == "final_answer":
+            run_summary = self._read_json("run_summary.json", {})
+            if not isinstance(run_summary, dict):
+                run_summary = {}
+            run_summary.update(
+                {
+                    "research_topic": research_topic,
+                    "symbol": symbol,
+                    "period": period,
+                    "execution_mode": "static",
+                    "execution_tier": self.execution_tier,
+                    "verification_passed": False,
+                    "entity_resolution": entity_resolution,
+                }
+            )
+            run_summary.update(self._runtime_execution_summary())
+            self._write_json("run_summary.json", repair_known_mojibake_obj(run_summary))
+            trace_path = self.output_dir / "task_trace.jsonl"
+            trace_path.write_text(
+                "\n".join(json.dumps(item, ensure_ascii=False, default=str) for item in self.trace) + "\n",
+                encoding="utf-8",
+            )
+            return self._static_phase_result(
+                "final_answer",
+                [
+                    "claims.json",
+                    "evidence.json",
+                    "citations.json",
+                    "charts.json",
+                    "section_dossiers.json",
+                    "report_section_contracts.json",
+                    "section_evidence_packs.json",
+                    "final_answer_phase.json",
+                    "task_trace.jsonl",
+                ],
+            )
 
         verifier_result = self._execute(
             "verifier",
@@ -1451,6 +1627,7 @@ class MultiAgentOrchestrator:
             retrieval_ranking_mode=retrieval_ranking_mode,
             enable_remote_data=enable_remote_data,
             data_source_config_path=data_source_config_path,
+            curated_dir=_retrieval_curated_dir(self.output_dir),
             skill_registry=self.skill_registry,
             router_memory_brief=durable_memory_brief
             if _use_durable_memory_for_planner_router(self.memory_config.context_scope)
@@ -1512,6 +1689,8 @@ class MultiAgentOrchestrator:
                     summary_records + top_chunk_records,
                     key_names=["evidence_id", "sample_id", "source_url"],
                 )
+        evidence_records = list(state.get("evidence_records", [])) if isinstance(state.get("evidence_records"), list) else []
+        self._write_json("evidence.json", evidence_records)
         if not isinstance(pdf_artifacts, dict):
             pdf_artifacts = {
                 "pdf_manifest": [],
@@ -1846,6 +2025,19 @@ class MultiAgentOrchestrator:
                         priority=enriched.priority,
                         metadata=dict(enriched.metadata),
                     )
+            if enriched.task_type == "final_answer":
+                section_packs = self._prepare_prewrite_section_evidence_packs(state)
+                params = dict(enriched.parameters)
+                params["section_evidence_packs"] = section_packs
+                enriched = AgentTask(
+                    task_id=enriched.task_id,
+                    task_type=enriched.task_type,
+                    description=enriched.description,
+                    parameters=params,
+                    dependencies=list(enriched.dependencies),
+                    priority=enriched.priority,
+                    metadata=dict(enriched.metadata),
+                )
             result = self._execute(agent_key_for_task(enriched.task_type), enriched)
             results[enriched.task_id] = result
             merge_task_result(state=state, task_type=enriched.task_type, result=result)
@@ -1966,6 +2158,18 @@ class MultiAgentOrchestrator:
     def _execute(self, agent_key: str, task: AgentTask) -> TaskResult:
         agent = self.agents[agent_key]
         model_usage = self._model_usage_for_agent(agent_key)
+        self._emit_stage(
+            {
+                "phase": "started",
+                "agent_key": agent_key,
+                "agent_name": agent.name,
+                "task_id": task.task_id,
+                "task_type": task.task_type,
+                "model_name": model_usage.get("model_name", ""),
+                "provider": model_usage.get("provider", ""),
+                "route_profile": model_usage.get("route_profile", ""),
+            }
+        )
         logger.info(
             "agent_trace_start | agent_key=%s | agent=%s | task_id=%s | task_type=%s | route_profile=%s | provider=%s | model=%s | endpoint=%s | api_key_env=%s | api_key_present=%s",
             agent_key,
@@ -2013,7 +2217,7 @@ class MultiAgentOrchestrator:
         trace_item = {
             "agent": agent.name,
             "agent_key": agent_key,
-            "task": task.to_dict(),
+            "task": _compact_trace_task(task),
             "status": result.status.value,
             "error": result.error,
             "output_keys": sorted(result.output.keys()),
@@ -2022,6 +2226,22 @@ class MultiAgentOrchestrator:
             "model_usage": model_usage,
         }
         self.trace.append(trace_item)
+        self._emit_stage(
+            {
+                "phase": "finished",
+                "agent_key": agent_key,
+                "agent_name": agent.name,
+                "task_id": task.task_id,
+                "task_type": task.task_type,
+                "status": result.status.value,
+                "duration_ms": round(duration_sec * 1000),
+                "error": result.error,
+                "model_name": model_usage.get("model_name", ""),
+                "provider": model_usage.get("provider", ""),
+                "route_profile": model_usage.get("route_profile", ""),
+                "react_used": bool(result.metadata.get("react_used")) if isinstance(result.metadata, dict) else False,
+            }
+        )
         logger.info(
             "agent_trace_finish | agent_key=%s | agent=%s | task_id=%s | status=%s | duration_sec=%.3f | route_profile=%s | provider=%s | model=%s | fallback=%s | error=%s",
             agent_key,
@@ -2041,6 +2261,14 @@ class MultiAgentOrchestrator:
         if result.status != AgentStatus.COMPLETED:
             raise RuntimeError(f"{agent.name} failed: {result.error}")
         return result
+
+    def _emit_stage(self, payload: Dict[str, Any]) -> None:
+        if self.stage_callback is None:
+            return
+        try:
+            self.stage_callback(dict(payload))
+        except Exception as exc:
+            logger.warning("agent stage callback failed: %s", exc)
 
     def _durable_memory_brief(self, symbol: str, period: str, report_type: str = "company_stock_report") -> str:
         if not self.memory_config.enabled:
@@ -2232,6 +2460,7 @@ class MultiAgentOrchestrator:
         analysis = dict(state.get("analysis_artifacts", {})) if isinstance(state.get("analysis_artifacts"), dict) else {}
         analysis = self._apply_canonical_metrics(
             analysis,
+            evidence_records=list(state.get("evidence_records", [])),
             symbol=str(state.get("symbol", "") or ""),
             period=str(state.get("period", "") or ""),
         )
@@ -2266,6 +2495,34 @@ class MultiAgentOrchestrator:
             return json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return default
+
+    def _static_phase_result(self, phase: str, artifact_names: List[str]) -> Dict[str, str]:
+        self._write_json("static_phase_trace.json", self.trace)
+        tool_trace = build_tool_trace(
+            agents=self.agents,
+            trace=self.trace,
+            state=dict(getattr(self, "state", None) or {}),
+        )
+        self._write_json("tool_trace.json", tool_trace)
+        artifact_names = list(dict.fromkeys(list(artifact_names) + ["tool_trace.json"]))
+        manifest = {
+            "schema_version": "static_agent_phase.v1",
+            "phase": phase,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "artifacts": {
+                name: str(self.output_dir / name)
+                for name in artifact_names
+                if (self.output_dir / name).is_file()
+            },
+            "runtime": self._runtime_execution_summary(),
+            "trace_count": len(self.trace),
+        }
+        self._write_json("static_phase_checkpoint.json", manifest)
+        return {
+            "phase": phase,
+            "checkpoint": str(self.output_dir / "static_phase_checkpoint.json"),
+            **manifest["artifacts"],
+        }
 
     def _persist_quality_feedback(self, state: Dict[str, Any], remediation: Dict[str, Any]) -> None:
         """Add quality remediation feedback to conversation state so agents see it."""
@@ -2356,8 +2613,10 @@ class MultiAgentOrchestrator:
                 repair_params["topk"] = int(profile.get("research_topk", 6))
                 repair_params["engines"] = _market_engines(str(state.get("symbol", "")))
                 repair_params["raw_data_root"] = self.raw_data_root
+                repair_params["curated_dir"] = _retrieval_curated_dir(self.output_dir)
                 repair_params["ranking_mode"] = str(state.get("retrieval_ranking_mode", "hybrid_rerank"))
                 repair_params["enable_remote"] = bool(state.get("enable_remote_data", True))
+                repair_params["merge_standard_search_after_react"] = True
             elif agent_key == "browser":
                 repair_params["evidence_candidates"] = list(state.get("evidence_candidates", []))
                 repair_params["skip_llm_extract"] = bool(profile.get("browser_skip_llm_extract", False))
@@ -2742,11 +3001,20 @@ def build_tool_trace(agents: Dict[str, Any], trace: List[Dict[str, Any]], state:
                     "caller_agent": agent_name,
                     "tool_name": tool_name,
                     "input_summary": _shorten(react_item.get("arguments") or react_item.get("input") or {}),
-                    "output_summary": _shorten(react_item.get("observation") or react_item.get("output") or {}),
+                    "output_summary": _shorten(
+                        react_item.get("output_summary")
+                        or react_item.get("observation")
+                        or react_item.get("output")
+                        or {}
+                    ),
                     "success": not bool(react_item.get("error")),
                     "failure_reason": str(react_item.get("error") or ""),
-                    "duration_sec": react_item.get("duration_sec", 0),
-                    "evidence_ids": [],
+                    "error_type": str(react_item.get("error_type") or ""),
+                    "attempt_count": int(react_item.get("attempts", 1) or 1),
+                    "duration_sec": react_item.get("duration_sec")
+                    if react_item.get("duration_sec") is not None
+                    else round(float(react_item.get("duration_ms", 0) or 0) / 1000, 6),
+                    "evidence_ids": list(react_item.get("evidence_ids") or []),
                     "artifact_paths": [],
                     "source": "react",
                 }
@@ -2856,6 +3124,7 @@ def prepare_dynamic_tasks(
     retrieval_ranking_mode: str = "hybrid_rerank",
     enable_remote_data: bool = False,
     data_source_config_path: str = "configs/data_sources.yaml",
+    curated_dir: str = "data/curated",
     skill_registry: SkillRegistry | None = None,
     router_memory_brief: str = "",
     router_context_max_chars: int = 1600,
@@ -2916,9 +3185,13 @@ def prepare_dynamic_tasks(
             params.setdefault("topk", int(profile["research_topk"]))
             params["engines"] = search_engines or _market_engines(symbol)
             params.setdefault("raw_data_root", raw_data_root)
+            params.setdefault("curated_dir", curated_dir)
             params.setdefault("ranking_mode", retrieval_ranking_mode)
             params.setdefault("data_source_config_path", data_source_config_path)
             params.setdefault("enable_remote", bool(enable_remote_data))
+            params.setdefault("search_budget_seconds", 240.0)
+            params.setdefault("engine_timeout_seconds", 60.0)
+            params.setdefault("engine_timeout_by_name", _research_engine_timeouts())
         cleaned.append(
             AgentTask(
                 task_id=task.task_id,
@@ -2931,6 +3204,88 @@ def prepare_dynamic_tasks(
             )
         )
     return cleaned
+
+
+def _retrieval_curated_dir(output_dir: Path) -> str:
+    task_dir = Path(output_dir) / "retrieval_curated"
+    if task_dir.is_dir() and any(task_dir.glob("*.jsonl")):
+        return str(task_dir)
+    return "data/curated"
+
+
+def _compact_research_phase_output(output: Dict[str, Any]) -> Dict[str, Any]:
+    payload = dict(output or {})
+    payload["evidence_candidates"] = [
+        _compact_checkpoint_value(item)
+        for item in list(payload.get("evidence_candidates") or [])[:20]
+        if isinstance(item, dict)
+    ]
+    search_meta = dict(payload.get("search_meta") or {}) if isinstance(payload.get("search_meta"), dict) else {}
+    returned_hits = search_meta.pop("returned_hits", None)
+    if isinstance(returned_hits, list):
+        search_meta["returned_hit_count"] = len(returned_hits)
+        search_meta["returned_hit_ids"] = [
+            str(item.get("result_id") or item.get("evidence_id") or "")
+            for item in returned_hits[:20]
+            if isinstance(item, dict)
+        ]
+    payload["search_meta"] = _compact_checkpoint_value(search_meta)
+    return payload
+
+
+def _compact_checkpoint_value(value: Any, *, depth: int = 0) -> Any:
+    if isinstance(value, str):
+        return value if len(value) <= 20_000 else value[:20_000]
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        return [_compact_checkpoint_value(item, depth=depth + 1) for item in value[:50]]
+    if isinstance(value, dict):
+        return {
+            str(key): _compact_checkpoint_value(item, depth=depth + 1)
+            for key, item in list(value.items())[:80]
+            if key != "raw_artifact_record"
+        }
+    return str(value)[:2_000]
+
+
+def _compact_trace_task(task: AgentTask) -> Dict[str, Any]:
+    return {
+        "task_id": task.task_id,
+        "task_type": task.task_type,
+        "description": _compact_trace_value(task.description),
+        "parameters": _compact_trace_value(task.parameters),
+        "dependencies": list(task.dependencies),
+        "priority": task.priority,
+        "metadata": _compact_trace_value(task.metadata),
+    }
+
+
+def _compact_trace_value(value: Any, *, depth: int = 0) -> Any:
+    if isinstance(value, str):
+        return value if len(value) <= 2_000 else value[:2_000] + "..."
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        if len(value) <= 10 and all(isinstance(item, (str, int, float, bool)) or item is None for item in value):
+            return list(value)
+        return {
+            "type": "list",
+            "count": len(value),
+            "sample_ids": [
+                str(item.get("evidence_id") or item.get("claim_id") or item.get("result_id") or "")
+                for item in value[:5]
+                if isinstance(item, dict)
+            ],
+        }
+    if isinstance(value, dict):
+        if depth >= 2:
+            return {"type": "dict", "keys": sorted(str(key) for key in value)[:30]}
+        return {
+            str(key): _compact_trace_value(item, depth=depth + 1)
+            for key, item in list(value.items())[:40]
+        }
+    return str(value)[:500]
 
 
 def build_task_route_context(tasks: List[AgentTask]) -> Dict[str, Any]:
@@ -3120,6 +3475,13 @@ def enrich_task_parameters(
         params.setdefault("topk", int(profile["research_topk"]))
         params.setdefault("use_react", bool(profile.get("research_use_react", False)))
         params.setdefault("react_max_steps", int(profile.get("research_react_max_steps", 3)))
+        params.setdefault(
+            "merge_standard_search_after_react",
+            bool(profile.get("research_merge_standard_search_after_react", True)),
+        )
+        params.setdefault("react_max_tool_calls", int(profile.get("react_max_tool_calls", 8)))
+        params.setdefault("react_tool_timeout_seconds", float(profile.get("react_tool_timeout_seconds", 45.0)))
+        params.setdefault("react_tool_max_attempts", int(profile.get("react_tool_max_attempts", 2)))
         params.setdefault("use_chunks", bool(profile.get("research_use_chunks", True)))
         params["engines"] = _market_engines(state["symbol"])
         params.setdefault("raw_data_root", raw_data_root)
@@ -3135,6 +3497,7 @@ def enrich_task_parameters(
         params.setdefault("reader_max_records", int(profile["browser_reader_max_records"]))
         params.setdefault("reader_max_chars", int(profile["browser_reader_max_chars"]))
         params.setdefault("max_llm_records", int(profile["browser_max_llm_records"]))
+        params.setdefault("symbol", state["symbol"])
         if not bool(state.get("allow_document_enrichment", True)):
             params["use_reader"] = False
             params["use_pdf_reader"] = False
@@ -3149,6 +3512,9 @@ def enrich_task_parameters(
         params.setdefault("max_tokens", int(profile["analyze_max_tokens"]))
         params.setdefault("use_react", bool(profile.get("analyze_use_react", False)))
         params.setdefault("react_max_steps", int(profile.get("analyze_react_max_steps", 3)))
+        params.setdefault("react_max_tool_calls", int(profile.get("react_max_tool_calls", 8)))
+        params.setdefault("react_tool_timeout_seconds", float(profile.get("react_tool_timeout_seconds", 45.0)))
+        params.setdefault("react_tool_max_attempts", int(profile.get("react_tool_max_attempts", 2)))
         params.setdefault("claim_contract", str(state.get("claim_contract", "")))
     elif task.task_type in {
         "identity_profile",
@@ -3510,6 +3876,17 @@ def attach_annual_report_sections_to_state(state: Dict[str, Any], raw_data_root:
     if filing_records:
         records = _merge_records(records, filing_records, key_names=["evidence_id", "sample_id", "source_url"])
 
+    proxy_payload = resolve_sec_proxy_filing(
+        symbol=symbol,
+        period=period,
+        config_path=str(state.get("data_source_config_path") or "configs/data_sources.yaml"),
+        raw_data_root=raw_data_root,
+    ).to_dict()
+    proxy_records = proxy_payload.get("evidence_records", []) if isinstance(proxy_payload.get("evidence_records"), list) else []
+    if proxy_records:
+        records = _merge_records(records, proxy_records, key_names=["evidence_id", "sample_id", "source_url"])
+    state["sec_proxy_resolver"] = dict(proxy_payload.get("meta", {}))
+
     sections_input = data.get("sections_input", {}) if isinstance(data.get("sections_input"), dict) else {}
     extractor = AnnualReportSectionExtractor(
         html_text=str(sections_input.get("html_text") or ""),
@@ -3535,6 +3912,7 @@ def attach_annual_report_sections_to_state(state: Dict[str, Any], raw_data_root:
     analysis["annual_report_sections"] = annual_sections
     analysis["annual_report_section_count"] = int(annual_sections.get("section_count") or 0)
     analysis["sec_filing_resolver"] = resolver_meta
+    analysis["sec_proxy_resolver"] = state["sec_proxy_resolver"]
     if not section_records:
         state["collaborative_degraded_report"] = True
         reason = str(resolver_meta.get("failure_reason") or resolver_meta.get("status") or "annual_report_sections_missing")
@@ -3619,28 +3997,21 @@ def _write_facts_extraction_audit_from_state(state: Dict[str, Any], audit: Dict[
 
 
 def _market_engines(symbol: str) -> list[str]:
-    """根据股票代码推断市场，返回该市场默认的搜索引擎列表。
+    """Return the canonical market-aware source plan."""
 
-    NOTE: web_ui.py 中的 A_SHARE_ENGINES / US_ENGINES / HK_ENGINES
-    是官方定义，修改引擎列表时两边需要同步更新。
-    """
-    upper = symbol.upper().strip()
-    if upper.endswith(".SS") or upper.endswith(".SZ"):
-        return [
-            "local_real_data", "cninfo_announcements", "exchange_announcements",
-            "eastmoney_financials", "sina_finance", "yahoo_finance", "eastmoney",
-            "local_evidence",
-        ]
-    if upper.endswith(".HK"):
-        return [
-            "local_real_data", "sina_finance", "yahoo_finance",
-            "tavily", "hkex_announcements", "hk_financials", "local_evidence",
-        ]
-    # US / default
-    return [
-        "local_real_data", "sec_edgar", "yahoo_finance",
-        "independent_macro", "local_evidence",
-    ]
+    market = infer_market_from_symbol(symbol)
+    return list(build_data_source_plan(symbol, market["market"], market["exchange"])["engines"])
+
+
+def _research_engine_timeouts() -> Dict[str, float]:
+    return {
+        "sec_edgar": 120.0,
+        "local_evidence": 90.0,
+        "independent_macro": 60.0,
+        "yahoo_finance": 30.0,
+        "tavily": 20.0,
+        "serper": 20.0,
+    }
 
 
 def _requires_sec_annual_report(symbol: str, period: str) -> bool:
@@ -3650,11 +4021,19 @@ def _requires_sec_annual_report(symbol: str, period: str) -> bool:
     return "." not in symbol
 
 
-def _pdf_sections_as_evidence_records(sections: Any, symbol: str, period: str) -> List[Dict[str, Any]]:
+def _pdf_sections_as_evidence_records(
+    sections: Any,
+    symbol: str,
+    period: str,
+    *,
+    max_records: int = 24,
+) -> List[Dict[str, Any]]:
     output: List[Dict[str, Any]] = []
     if not isinstance(sections, list):
         return output
     for section in sections:
+        if len(output) >= max(1, int(max_records)):
+            break
         if not isinstance(section, dict):
             continue
         section_id = str(section.get("section_id") or "")
@@ -3948,13 +4327,20 @@ def agent_key_for_task(task_type: str) -> str:
     return mapping[task_type]
 
 
-def _apply_canonical_metrics_to_artifacts(analysis_artifacts: Any, *, symbol: str, period: str) -> Dict[str, Any]:
+def _apply_canonical_metrics_to_artifacts(
+    analysis_artifacts: Any,
+    *,
+    evidence_records: Any = None,
+    symbol: str,
+    period: str,
+) -> Dict[str, Any]:
     artifacts = dict(analysis_artifacts) if isinstance(analysis_artifacts, dict) else {}
     raw_financial_metrics = artifacts.get("raw_financial_metrics", artifacts.get("financial_metrics", {}))
     tables = artifacts.get("tables", []) if isinstance(artifacts.get("tables"), list) else []
     canonical = build_canonical_metrics_artifact(
         financial_metrics=raw_financial_metrics,
         tables=tables,
+        evidence_records=evidence_records,
         symbol=symbol,
         period=period,
     )

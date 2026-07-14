@@ -20,11 +20,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator  # noqa: E402
-from src.app.web_ui import run_delivery_quality_pipeline, run_delivery_rework_loop  # noqa: E402
 from src.evaluation.benchmark_metrics import (  # noqa: E402
     ARTIFACT_DERIVED_TRACE_LABEL,
     evaluate_existing_run,
 )
+from src.evaluation.delivery_pipeline import run_delivery_quality_pipeline, run_delivery_rework_loop  # noqa: E402
 from src.utils.config import load_config  # noqa: E402
 
 

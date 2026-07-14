@@ -6,7 +6,10 @@ from src.search.search_manager import SearchManager
 from src.services.datasource_service import DataSourceService
 
 
-def test_searchmanager_registered_engines_seed_datasource_rows(temp_db_engine):
+def test_searchmanager_registered_engines_seed_datasource_rows(temp_db_engine, monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "")
+    monkeypatch.setenv("SERPER_API_KEY", "")
+    monkeypatch.setenv("TUSHARE_TOKEN", "")
     service = DataSourceService(
         session_factory=lambda: Session(temp_db_engine),
         search_manager_factory=SearchManager.with_local_sources,
@@ -25,9 +28,42 @@ def test_searchmanager_registered_engines_seed_datasource_rows(temp_db_engine):
 
     assert [row.source_key for row in rows] == engine_names
     assert all(row.config_json["registered_by"] == "SearchManager" for row in rows)
-    assert all(row.enabled for row in rows)
+    missing_credentials = {row.source_key for row in rows if not row.enabled}
+    assert missing_credentials == {"serper", "tavily", "tushare_financials"}
+    assert all(row.credential_status == "missing" for row in rows if row.source_key in missing_credentials)
     assert {row.source_key: row.trust_level for row in rows}["sec_edgar"] == "official"
     assert {row.source_key: row.source_type for row in rows}["yahoo_finance"] == "market_data"
+
+
+def test_seed_reconciles_stale_configured_credentials(temp_db_engine, monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "")
+    monkeypatch.setenv("SERPER_API_KEY", "")
+    monkeypatch.setenv("TUSHARE_TOKEN", "")
+    service = DataSourceService(
+        session_factory=lambda: Session(temp_db_engine),
+        search_manager_factory=SearchManager.with_local_sources,
+    )
+    service.seed_registered_sources()
+    with Session(temp_db_engine) as session:
+        tavily = session.scalar(select(DataSource).where(DataSource.source_key == "tavily"))
+        tavily.credential_status = "configured"
+        tavily.enabled = True
+        session.commit()
+
+    result = service.seed_registered_sources()
+
+    with Session(temp_db_engine) as session:
+        tavily = session.scalar(select(DataSource).where(DataSource.source_key == "tavily"))
+        assert tavily.credential_status == "missing"
+        assert tavily.enabled is False
+    assert result["reconciled"] >= 1
+
+    monkeypatch.setenv("TAVILY_API_KEY", "configured-now")
+    service.seed_registered_sources()
+    with Session(temp_db_engine) as session:
+        tavily = session.scalar(select(DataSource).where(DataSource.source_key == "tavily"))
+        assert tavily.credential_status == "configured"
+        assert tavily.enabled is True
 
 
 def test_searchmanager_registered_engines_seed_workspace_scoped_sources(temp_db_engine):

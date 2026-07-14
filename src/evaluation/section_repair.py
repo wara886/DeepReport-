@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, Dict
 
 from src.agents.final_answer_agent import (
@@ -15,7 +16,7 @@ from src.agents.final_answer_agent import (
     remove_template_phrases,
 )
 from src.data.canonical_metrics import canonical_metrics_as_financial_metrics
-from src.evaluation.section_verification import write_section_verification
+from src.evaluation.section_verification import build_section_verification, write_section_verification
 from src.report.html_report_generator import render_professional_html_report
 
 
@@ -25,12 +26,26 @@ SECTION_REPAIR_ALIASES = {
     "business_overview": "business_profile",
 }
 
+PACK_SECTION_KEYS = {
+    "risk": "risks",
+    "business_profile": "business_overview",
+    "investment_conclusion": "conclusion",
+}
+
+CONTRACT_SECTION_KEYS = {
+    "risk": "risk_factors",
+    "risks": "risk_factors",
+    "business_profile": "business_overview",
+    "investment_conclusion": "conclusion",
+}
+
 
 def repair_failed_sections_for_outputs(
     *,
     output_dir: str | Path,
     report_dir: str | Path,
     section_verification: Dict[str, Any] | None = None,
+    repair_callback: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """Repair failed core sections and re-run deterministic section verification."""
 
@@ -71,6 +86,7 @@ def repair_failed_sections_for_outputs(
     canonical_metrics = _read_json(outputs / "canonical_metrics.json", {})
     financial_metrics = canonical_metrics_as_financial_metrics(canonical_metrics, fallback=raw_financial_metrics)
     contracts = _read_json(outputs / "report_section_contracts.json", {})
+    evidence_packs = _read_json(outputs / "section_evidence_packs.json", {})
 
     repair_plan = {
         "schema_version": "section_repair_plan.v1",
@@ -92,13 +108,33 @@ def repair_failed_sections_for_outputs(
             "无法验证的数据必须说明证据边界，不能写成确定事实。",
         ],
     }
-    repaired_md = auto_rewrite_core_sections(
-        original,
-        claims=claims,
-        evidence_records=evidence,
-        financial_metrics=financial_metrics,
-        quality_remediation_plan=repair_plan,
-    )
+    targets = set(_repair_target_sections(failed_sections))
+    attempts: list[dict[str, Any]] = []
+    repaired_md = original
+    if repair_callback is not None:
+        repaired_md, attempts = _apply_callback_repairs(
+            repaired_md,
+            targets=targets,
+            callback=repair_callback,
+            contracts=contracts,
+            evidence_packs=evidence_packs,
+            verification=before,
+        )
+    callback_changed = repaired_md != original
+    if not callback_changed:
+        candidate = auto_rewrite_core_sections(
+            original,
+            claims=claims,
+            evidence_records=evidence,
+            financial_metrics=financial_metrics,
+            quality_remediation_plan=repair_plan,
+        )
+        repaired_md = _restore_non_target_sections(original, candidate, targets)
+        attempts.append({
+            "strategy": "deterministic_section_rewrite",
+            "status": "changed" if repaired_md != original else "no_change",
+            "target_sections": sorted(targets),
+        })
     repaired_md = remove_broken_or_half_sentences(repaired_md)
     repaired_md = remove_debug_leakage(repaired_md)
     repaired_md = remove_internal_ids(repaired_md)
@@ -113,6 +149,7 @@ def repair_failed_sections_for_outputs(
         markdown=repaired_md,
         report_section_contracts=contracts,
         quality_remediation_plan={},
+        section_evidence_packs=evidence_packs,
     )
     summary = {
         "schema_version": "section_repair.v1",
@@ -126,6 +163,10 @@ def repair_failed_sections_for_outputs(
         "report_markdown_chars_before": len(original),
         "report_markdown_chars_after": len(repaired_md),
         "repair_plan": repair_plan,
+        "repair_strategy": "llm_section_rewrite" if callback_changed else "deterministic_section_rewrite",
+        "model_status": "used" if callback_changed else ("failed_or_no_change" if repair_callback else "unavailable"),
+        "attempts": attempts,
+        "evidence_ids_consumed": _consumed_evidence_ids(after, targets),
     }
     path = outputs / "section_repair.json"
     path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
@@ -227,3 +268,164 @@ def _dedupe(items: list[str]) -> list[str]:
             seen.add(item)
             output.append(item)
     return output
+
+
+SECTION_TITLES = {
+    "executive_summary": "执行摘要",
+    "business_overview": "业务概览",
+    "business_profile": "业务概览",
+    "financial_analysis": "财务分析",
+    "valuation": "估值观察",
+    "risks": "风险评估",
+    "risk": "风险评估",
+    "conclusion": "投资结论",
+    "investment_conclusion": "投资结论",
+}
+
+
+def _apply_callback_repairs(
+    markdown: str,
+    *,
+    targets: set[str],
+    callback: Callable[[dict[str, Any]], dict[str, Any]],
+    contracts: dict[str, Any],
+    evidence_packs: dict[str, Any],
+    verification: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]]]:
+    output = markdown
+    attempts: list[dict[str, Any]] = []
+    processed_titles: set[str] = set()
+    contract_map = contracts.get("contracts") if isinstance(contracts.get("contracts"), dict) else {}
+    pack_map = evidence_packs.get("packs") if isinstance(evidence_packs.get("packs"), dict) else {}
+    results = verification.get("section_results") if isinstance(verification.get("section_results"), dict) else {}
+    for section in sorted(targets):
+        title = SECTION_TITLES.get(section)
+        if not title or title in processed_titles or _section_body(output, title) is None:
+            continue
+        processed_titles.add(title)
+        pack_key = PACK_SECTION_KEYS.get(section, section)
+        contract_key = CONTRACT_SECTION_KEYS.get(section, section)
+        evidence_pack = pack_map.get(pack_key) if isinstance(pack_map.get(pack_key), dict) else {}
+        payload = {
+            "section_key": section,
+            "title": title,
+            "original_section": _section_body(output, title),
+            "contract": contract_map.get(contract_key) or {},
+            "evidence_pack": evidence_pack,
+            "verification": results.get(pack_key) or results.get(section) or {},
+        }
+        for attempt_number in range(1, 3):
+            payload["attempt_number"] = attempt_number
+            payload["original_section"] = _section_body(output, title)
+            try:
+                response = callback(payload)
+                body = str(response.get("section_markdown") or response.get("body") or "").strip() if isinstance(response, dict) else ""
+                if not body:
+                    attempts.append({
+                        "section": section,
+                        "attempt_number": attempt_number,
+                        "strategy": "llm_section_rewrite",
+                        "status": "empty_response",
+                    })
+                    continue
+                body = _ensure_must_use_citation(body, evidence_pack)
+                candidate = _replace_section_body(output, title, body)
+                immediate = build_section_verification(
+                    markdown=candidate,
+                    report_section_contracts=contracts,
+                    quality_remediation_plan={},
+                    section_evidence_packs=evidence_packs,
+                )
+                section_result = _verification_result(immediate, pack_key, section)
+                output = candidate
+                attempt = {
+                    "section": section,
+                    "attempt_number": attempt_number,
+                    "strategy": "llm_section_rewrite",
+                    "status": "passed" if section_result.get("status") == "passed" else "contract_failed",
+                    "verification_reasons": list(section_result.get("reasons") or []),
+                    "missing_citation_evidence_ids": list(section_result.get("missing_citation_evidence_ids") or []),
+                }
+                if response.get("llm_run_id"):
+                    attempt["llm_run_id"] = str(response["llm_run_id"])
+                attempts.append(attempt)
+                if section_result.get("status") == "passed":
+                    break
+                payload["verification"] = section_result
+            except Exception as exc:
+                attempts.append({
+                    "section": section,
+                    "attempt_number": attempt_number,
+                    "strategy": "llm_section_rewrite",
+                    "status": "failed",
+                    "failure_reason": str(exc),
+                })
+    return output, attempts
+
+
+def _verification_result(verification: dict[str, Any], pack_key: str, section: str) -> dict[str, Any]:
+    results = verification.get("section_results") if isinstance(verification.get("section_results"), dict) else {}
+    row = results.get(pack_key) or results.get(section)
+    return row if isinstance(row, dict) else {"status": "failed", "reasons": ["section_verification_missing"]}
+
+
+def _ensure_must_use_citation(body: str, evidence_pack: dict[str, Any]) -> str:
+    must_use = [str(item) for item in evidence_pack.get("must_use_evidence_ids") or [] if str(item)]
+    if not must_use:
+        return body
+    rows = evidence_pack.get("must_use_evidence") if isinstance(evidence_pack.get("must_use_evidence"), list) else []
+    labels = [
+        str(label)
+        for row in rows
+        if isinstance(row, dict) and str(row.get("evidence_id") or "") in must_use
+        for label in row.get("citation_labels") or []
+        if str(label)
+    ]
+    if any(f"[{evidence_id}]" in body or f"【{evidence_id}】" in body for evidence_id in must_use):
+        return body
+    if any(f"[{label}]" in body or f"【{label}】" in body for label in labels):
+        return body
+    return body.rstrip() + f" [{must_use[0]}]"
+
+
+def _restore_non_target_sections(original: str, candidate: str, targets: set[str]) -> str:
+    output = candidate
+    target_titles = {SECTION_TITLES[key] for key in targets if key in SECTION_TITLES}
+    for title in set(SECTION_TITLES.values()) - target_titles:
+        body = _section_body(original, title)
+        if body is not None and _section_body(output, title) is not None:
+            output = _replace_section_body(output, title, body)
+    return output
+
+
+def _section_body(markdown: str, title: str) -> str | None:
+    import re
+    match = re.search(rf"^##\s+{re.escape(title)}\s*$", markdown, re.MULTILINE)
+    if not match:
+        return None
+    start = match.end()
+    next_heading = re.search(r"^##\s+", markdown[start:], re.MULTILINE)
+    end = start + next_heading.start() if next_heading else len(markdown)
+    return markdown[start:end].strip()
+
+
+def _replace_section_body(markdown: str, title: str, body: str) -> str:
+    import re
+    match = re.search(rf"^##\s+{re.escape(title)}\s*$", markdown, re.MULTILINE)
+    if not match:
+        return markdown
+    start = match.end()
+    next_heading = re.search(r"^##\s+", markdown[start:], re.MULTILINE)
+    end = start + next_heading.start() if next_heading else len(markdown)
+    suffix = markdown[end:]
+    separator = "\n\n" if suffix else "\n"
+    return markdown[:start] + "\n" + body.strip() + separator + suffix.lstrip("\n")
+
+
+def _consumed_evidence_ids(verification: dict[str, Any], targets: set[str]) -> list[str]:
+    results = verification.get("section_results") if isinstance(verification.get("section_results"), dict) else {}
+    values = []
+    for section in targets:
+        row = results.get(section) if isinstance(results.get(section), dict) else {}
+        values.extend(_dedupe([str(item) for item in row.get("consumed_evidence_ids") or []]))
+    return _dedupe(values)

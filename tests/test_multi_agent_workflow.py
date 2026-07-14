@@ -2,7 +2,7 @@ import json
 import re
 import sys
 
-from src.agents import AgentStatus, AgentTask, BrowserAgent, DeepAnalyzeAgent, FinalAnswerAgent, VerifierAgent
+from src.agents import AgentStatus, AgentTask, BrowserAgent, DeepAnalyzeAgent, FinalAnswerAgent, TaskResult, VerifierAgent
 from src.agents.analysis_role_agents import IdentityAgent, PeerAgent, RiskAgent, StatementAgent, ValuationAgent
 from src.agents.browser_agent import enrich_records_with_reader, read_pdf_content, read_url_content
 from src.agents.deep_analyze_agent import build_role_outputs, compact_records
@@ -17,7 +17,14 @@ from src.agents.final_answer_agent import (
     insert_missing_sections_from_claims,
     normalize_report_headings,
 )
-from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator, enrich_task_parameters, prepare_dynamic_tasks
+from src.agents.multi_agent_orchestrator import (
+    MultiAgentOrchestrator,
+    _compact_research_phase_output,
+    _compact_trace_task,
+    _pdf_sections_as_evidence_records,
+    enrich_task_parameters,
+    prepare_dynamic_tasks,
+)
 from src.agents.research_blackboard import build_pre_write_critic, initialize_research_blackboard, validate_role_output_write
 from src.agents.verifier import Verifier
 from src.schemas.claim import ClaimItem
@@ -135,6 +142,70 @@ class FakeJsonModel:
                 "final_outputs": ["report.md", "report.html"],
             }
         return {}
+
+
+def test_orchestrator_emits_agent_stage_callbacks(tmp_path):
+    stages = []
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        model=FakeJsonModel(),
+        stage_callback=stages.append,
+    )
+
+    class CompletedAgent:
+        name = "CompletedAgent"
+
+        def execute_task(self, task):
+            return TaskResult(
+                task_id=task.task_id,
+                agent_name=self.name,
+                status=AgentStatus.COMPLETED,
+                output={"ok": True},
+                metadata={"react_used": True},
+            )
+
+    orchestrator.agents["research"] = CompletedAgent()
+    result = orchestrator._execute(
+        "research",
+        AgentTask(task_id="stage-task", task_type="deep_researcher", description="stage callback"),
+    )
+
+    assert result.status == AgentStatus.COMPLETED
+    assert [item["phase"] for item in stages] == ["started", "finished"]
+    assert stages[0]["agent_key"] == "research"
+    assert stages[1]["duration_ms"] >= 0
+    assert stages[1]["react_used"] is True
+
+
+def test_phase_checkpoint_and_trace_payloads_are_bounded():
+    huge = "x" * 500_000
+    research = _compact_research_phase_output(
+        {
+            "evidence_candidates": [
+                {
+                    "result_id": "ev-large",
+                    "title": "Large evidence",
+                    "snippet": huge,
+                    "raw": {"content": huge, "metadata": {"raw_artifact_record": {"content": huge}}},
+                }
+            ],
+            "search_meta": {"returned_hits": [{"result_id": "ev-large", "raw": huge}]},
+        }
+    )
+    trace_task = _compact_trace_task(
+        AgentTask(
+            task_id="large-task",
+            task_type="browser",
+            description="large payload",
+            parameters={"evidence_candidates": research["evidence_candidates"]},
+        )
+    )
+
+    assert len(json.dumps(research)) < 50_000
+    assert research["search_meta"]["returned_hit_count"] == 1
+    assert "returned_hits" not in research["search_meta"]
+    assert trace_task["parameters"]["evidence_candidates"]["count"] == 1
 
 
 class RevisionFakeModel(FakeJsonModel):
@@ -464,11 +535,27 @@ def test_prepare_dynamic_tasks_adds_implicit_dependencies():
         raw_data_root="data/raw/real_data",
     )
     deps = {task.task_id: task.dependencies for task in tasks}
+    research = next(task for task in tasks if task.task_type == "deep_researcher")
 
     assert deps["task_002"] == ["task_001"]
     assert deps["task_003"] == ["task_002"]
     assert deps["task_004"] == ["task_003"]
     assert deps["task_005"] == ["task_004"]
+    assert research.parameters["curated_dir"] == "data/curated"
+
+
+def test_prepare_dynamic_tasks_uses_task_scoped_curated_dir():
+    tasks = prepare_dynamic_tasks(
+        plan={"tasks": [{"task_id": "research", "task_type": "deep_researcher", "parameters": {}}]},
+        research_topic="AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        raw_data_root="data/raw/real_data",
+        curated_dir="/tmp/task/retrieval_curated",
+    )
+
+    research = next(task for task in tasks if task.task_type == "deep_researcher")
+    assert research.parameters["curated_dir"] == "/tmp/task/retrieval_curated"
 
 
 def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
@@ -568,6 +655,239 @@ def test_multi_agent_orchestrator_runs_dynamic_task_graph(tmp_path):
     assert tool_trace["tool_call_count"] >= 1
     assert any(call["tool_name"] == "build_three_statement_view" for call in tool_trace["calls"])
     assert "gap_count" in repair_summary
+
+
+def test_static_production_path_builds_section_packs_before_writer(tmp_path):
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        model=FakeJsonModel(),
+    )
+
+    orchestrator.run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+    )
+
+    packs = json.loads((tmp_path / "outputs" / "section_evidence_packs.json").read_text(encoding="utf-8"))
+    trace = [
+        json.loads(line)
+        for line in (tmp_path / "outputs" / "task_trace.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    writer = next(item for item in trace if item.get("agent_key") == "final_answer")
+    writer_packs = writer["task"]["parameters"]["section_evidence_packs"]
+
+    assert packs["status"] == "ready"
+    assert packs["section_count"] > 0
+    assert writer_packs["section_count"] == packs["section_count"]
+    assert writer_packs["packs"]["type"] == "dict"
+    assert writer_packs["packs"]["keys"] == sorted(packs["packs"])
+
+
+def test_static_delivery_path_enables_bounded_react_for_research_and_analyze(tmp_path):
+    output_dir = tmp_path / "outputs"
+    report_dir = tmp_path / "reports"
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(output_dir),
+        report_dir=str(report_dir),
+        model=FakeJsonModel(),
+        execution_tier="delivery",
+    )
+
+    orchestrator.run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="analyze",
+        resume_from_phase_artifacts=True,
+    )
+
+    trace = json.loads((output_dir / "static_phase_trace.json").read_text(encoding="utf-8"))
+    research = next(row for row in trace if row.get("agent_key") == "research")
+    analyze = next(row for row in trace if row.get("agent_key") == "analyze")
+    assert research["task"]["parameters"]["use_react"] is True
+    assert research["task"]["parameters"]["react_max_steps"] == 3
+    assert research["task"]["parameters"]["react_max_tool_calls"] == 8
+    assert analyze["task"]["parameters"]["use_react"] is True
+    assert analyze["task"]["parameters"]["react_max_steps"] == 3
+
+
+def test_static_checkpoint_persists_react_tool_trace(tmp_path):
+    (tmp_path / "outputs").mkdir()
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        model=FakeJsonModel(),
+    )
+    orchestrator.trace = [{
+        "agent": "DeepResearcherAgent",
+        "agent_key": "research",
+        "metadata": {
+            "react_used": True,
+            "react_trace": [{
+                "step": 1,
+                "tool_name": "retrieve_local_evidence",
+                "arguments": {"query": "AAPL revenue"},
+                "attempts": 1,
+                "duration_ms": 12.0,
+                "evidence_ids": ["ev1"],
+                "error": "",
+            }],
+        },
+    }]
+    orchestrator.state = {"search_meta": {}}
+
+    orchestrator._static_phase_result("research", [])
+
+    tool_trace = json.loads((tmp_path / "outputs" / "tool_trace.json").read_text(encoding="utf-8"))
+    react_call = next(row for row in tool_trace["calls"] if row.get("source") == "react")
+    assert react_call["tool_name"] == "retrieve_local_evidence"
+    assert react_call["success"] is True
+    assert react_call["evidence_ids"] == ["ev1"]
+
+
+def test_static_agent_phases_resume_without_replaying_completed_agents(tmp_path):
+    output_dir = tmp_path / "outputs"
+    report_dir = tmp_path / "reports"
+    first_stages = []
+    first = MultiAgentOrchestrator(
+        output_dir=str(output_dir),
+        report_dir=str(report_dir),
+        model=FakeJsonModel(),
+        stage_callback=first_stages.append,
+    )
+
+    normalized = first.run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="normalize_evidence",
+        resume_from_phase_artifacts=True,
+    )
+
+    assert normalized["phase"] == "normalize_evidence"
+    assert [item["agent_key"] for item in first_stages if item["phase"] == "started"] == [
+        "planning",
+        "research",
+        "browser",
+    ]
+
+    resumed_stages = []
+    resumed = MultiAgentOrchestrator(
+        output_dir=str(output_dir),
+        report_dir=str(report_dir),
+        model=FakeJsonModel(),
+        stage_callback=resumed_stages.append,
+    ).run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="analyze",
+        resume_from_phase_artifacts=True,
+    )
+
+    assert resumed["phase"] == "analyze"
+    assert [item["agent_key"] for item in resumed_stages if item["phase"] == "started"] == ["analyze"]
+    checkpoint = json.loads((output_dir / "static_phase_checkpoint.json").read_text(encoding="utf-8"))
+    assert checkpoint["phase"] == "analyze"
+    assert checkpoint["runtime"]["executed_agents"] == ["planning", "research", "browser", "analyze"]
+    assert (output_dir / "canonical_metrics.json").is_file()
+
+
+def test_static_normalize_phase_preserves_evidence_gate_records(tmp_path):
+    output_dir = tmp_path / "outputs"
+    report_dir = tmp_path / "reports"
+    output_dir.mkdir()
+    (output_dir / "evidence.json").write_text(
+        json.dumps(
+            [
+                {
+                    "evidence_id": "gate-sec-evidence",
+                    "title": "AAPL FY2024 10-K",
+                    "content": "Official revenue and cash flow disclosure.",
+                    "source_type": "sec_filing",
+                    "source_url": "https://www.sec.gov/aapl",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(output_dir),
+        report_dir=str(report_dir),
+        model=FakeJsonModel(),
+    )
+
+    orchestrator.run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="normalize_evidence",
+        resume_from_phase_artifacts=True,
+    )
+
+    evidence = json.loads((output_dir / "evidence.json").read_text(encoding="utf-8"))
+    evidence_ids = {item["evidence_id"] for item in evidence}
+    assert "gate-sec-evidence" in evidence_ids
+    assert len(evidence_ids) > 1
+
+
+def test_static_normalize_checkpoint_persists_pdf_section_evidence(monkeypatch, tmp_path):
+    output_dir = tmp_path / "outputs"
+    report_dir = tmp_path / "reports"
+    observed_chart_dirs = []
+
+    def attach_pdf(state):
+        observed_chart_dirs.append(state.get("chart_output_dir"))
+        state["evidence_records"] = list(state.get("evidence_records") or []) + [
+            {
+                "evidence_id": "pdf_section_checkpointed",
+                "sample_id": "pdf_section_checkpointed",
+                "source_type": "pdf_section",
+                "content": "Persisted PDF section evidence.",
+                "symbol": "AAPL",
+                "period": "FY2024",
+            }
+        ]
+
+    monkeypatch.setattr("src.agents.multi_agent_orchestrator.attach_pdf_artifacts_to_state", attach_pdf)
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(output_dir),
+        report_dir=str(report_dir),
+        model=FakeJsonModel(),
+    )
+
+    orchestrator.run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="normalize_evidence",
+        resume_from_phase_artifacts=True,
+    )
+
+    evidence = json.loads((output_dir / "evidence.json").read_text(encoding="utf-8"))
+    assert any(row.get("evidence_id") == "pdf_section_checkpointed" for row in evidence)
+    assert observed_chart_dirs == [str(output_dir / "charts")]
+
+
+def test_pdf_section_evidence_is_bounded_to_representative_records():
+    sections = [
+        {"section_id": f"section-{index}", "snippet": f"Evidence section {index}", "section_type": "financial_statements"}
+        for index in range(40)
+    ]
+
+    records = _pdf_sections_as_evidence_records(sections, "NVDA", "FY2024", max_records=24)
+
+    assert len(records) == 24
+    assert records[0]["evidence_id"] == "pdf_section_section-0"
+    assert records[-1]["evidence_id"] == "pdf_section_section-23"
 
 
 def test_multi_agent_orchestrator_runs_compact_collaborative_by_default(tmp_path):
@@ -943,6 +1263,29 @@ def test_final_answer_filters_diagnostic_and_unlineaged_valuation_claims():
     filtered = _filter_reportable_claims(claims, {"metric_count": 0, "metrics": []})
 
     assert [item["section_name"] for item in filtered] == ["risk_factors"]
+
+
+def test_final_answer_keeps_evidence_backed_cautious_conclusion_without_metrics():
+    claims = [
+        {
+            "section_name": "conclusion",
+            "claim_text": "基于增长驱动和竞争风险，维持中性观察。[ev_conclusion]",
+            "numeric_values": {},
+            "evidence_ids": ["ev_conclusion"],
+        },
+        {
+            "section_name": "conclusion",
+            "claim_text": "Model conclusion: recommendation is neutral.",
+            "numeric_values": {},
+            "evidence_ids": ["ev_model"],
+        },
+    ]
+
+    filtered = _filter_reportable_claims(claims, {"metric_count": 0, "metrics": []})
+
+    assert [item["claim_text"] for item in filtered] == [
+        "基于增长驱动和竞争风险，维持中性观察。[ev_conclusion]"
+    ]
 
 
 def test_final_answer_overwrites_financial_sections_with_verified_lineage():
@@ -1448,6 +1791,189 @@ def test_rule_verifier_fails_missing_evidence_id():
 
     assert report["passed"] is False
     assert any("missing evidence ids" in error for error in report["errors"])
+
+
+def test_rule_verifier_only_requires_explicit_citation_evidence_ids_in_markdown():
+    verifier = Verifier()
+    claims = [
+        ClaimItem(
+            claim_id="cl_1",
+            section_name="financial_analysis",
+            claim_text="AAPL revenue was 126.3B.",
+            evidence_ids=["ev_primary", "ev_supporting"],
+            citation_evidence_ids=["ev_primary"],
+            numeric_values={"revenue_billion": 126.3},
+            confidence=0.82,
+        )
+    ]
+    evidence_records = [
+        {
+            "evidence_id": "ev_primary",
+            "content": "Revenue 126.3B.",
+            "metadata": {"revenue_billion": 126.3},
+        },
+        {"evidence_id": "ev_supporting", "content": "Supporting context."},
+    ]
+
+    report = verifier.verify(
+        claims=claims,
+        markdown="# Report\n\n## 执行摘要\n\n## 财务分析\n\nAAPL revenue [ev_primary]\n\n## 风险评估\n",
+        evidence_records=evidence_records,
+    )
+
+    assert report["passed"] is True
+
+    missing_required_citation = verifier.verify(
+        claims=claims,
+        markdown="# Report\n\n## 执行摘要\n\n## 财务分析\n\nAAPL revenue\n\n## 风险评估\n",
+        evidence_records=evidence_records,
+    )
+    assert missing_required_citation["passed"] is False
+    assert any("ev_primary" in error for error in missing_required_citation["errors"])
+
+
+def test_rule_verifier_accepts_canonical_citation_for_recursive_chunk_id():
+    verifier = Verifier()
+    recursive_id = (
+        "sec_10k_msft_fy2024"
+        "__paragraph_1_chunk_f76c50aa7b"
+        "__paragraph_1_chunk_18b23bd23f"
+    )
+    report = verifier.verify(
+        claims=[
+            ClaimItem(
+                claim_id="cl_chunk",
+                section_name="financial_analysis",
+                claim_text="MSFT revenue was 245.1B.",
+                evidence_ids=[recursive_id],
+                citation_evidence_ids=[recursive_id],
+                numeric_values={"revenue_billion": 245.1},
+                confidence=0.9,
+            )
+        ],
+        markdown=(
+            "# Report\n\n## Executive Summary\n\nMSFT overview.\n\n"
+            "## Financial Analysis\n\nRevenue was 245.1B [sec_10k_msft_fy2024].\n\n"
+            "## Risk Assessment\n\nRisk discussion.\n"
+        ),
+        evidence_records=[{"evidence_id": recursive_id, "content": "Revenue 245.1B."}],
+        expected_symbol="MSFT",
+    )
+
+    assert report["passed"] is True
+    assert not any("not cited" in error for error in report["errors"])
+
+
+def test_rule_verifier_ignores_financial_domain_acronyms_as_tickers():
+    verifier = Verifier()
+    report = verifier.verify(
+        claims=[
+            ClaimItem(
+                claim_id="cl_acronyms",
+                section_name="financial_analysis",
+                claim_text="MSFT discusses AI, ERM, ESG, and ESPP in a DEF 14A filed through SEC EDGAR.",
+                evidence_ids=["ev_msft"],
+                confidence=0.9,
+            )
+        ],
+        markdown=(
+            "# MSFT Report\n\n## Executive Summary\n\nAI platform overview.\n\n"
+            "## Financial Analysis\n\nSEC EDGAR DEF 14A, ERM, ESG, ESPP, MD&A, and EX-99.1 context [ev_msft].\n\n"
+            "## Risk Assessment\n\nRisk discussion.\n"
+        ),
+        evidence_records=[{"evidence_id": "ev_msft", "symbol": "MSFT", "content": "MSFT filing."}],
+        expected_symbol="MSFT",
+    )
+
+    assert report["passed"] is True
+    assert not any("ticker-like tokens" in warning for warning in report["warnings"])
+
+
+def test_rule_verifier_ignores_macro_provider_and_series_acronyms_as_tickers():
+    verifier = Verifier()
+    report = verifier.verify(
+        claims=[
+            ClaimItem(
+                claim_id="cl_macro",
+                section_name="financial_analysis",
+                claim_text="MSFT analysis uses BEA NIPA, BLS, and FRED UNRATE context.",
+                evidence_ids=["ev_msft"],
+                confidence=0.9,
+            )
+        ],
+        markdown=(
+            "# MSFT Report\n\n## Executive Summary\n\nMSFT overview.\n\n"
+            "## Financial Analysis\n\nBEA NIPA and FRED UNRATE provide macro context [ev_msft].\n\n"
+            "## Risk Assessment\n\nRisk discussion.\n"
+        ),
+        evidence_records=[{"evidence_id": "ev_msft", "symbol": "MSFT", "content": "MSFT filing."}],
+        expected_symbol="MSFT",
+    )
+
+    assert report["passed"] is True
+    assert not any("ticker-like tokens" in warning for warning in report["warnings"])
+
+
+def test_rule_verifier_allows_contextual_competitor_when_target_is_explicit():
+    verifier = Verifier()
+    report = verifier.verify(
+        claims=[
+            ClaimItem(
+                claim_id="cl_competition",
+                section_name="financial_analysis",
+                claim_text="NVDA retains leadership while AMD remains a competitor.",
+                evidence_ids=["ev_nvda"],
+                confidence=0.9,
+            )
+        ],
+        markdown=(
+            "# NVDA Report\n\n## Executive Summary\n\nNVDA remains the target company.\n\n"
+            "## Financial Analysis\n\nNVIDIA competes with AMD in accelerators [ev_nvda].\n\n"
+            "## Risk Assessment\n\nCompetition is a risk.\n"
+        ),
+        evidence_records=[{"evidence_id": "ev_nvda", "symbol": "NVDA", "content": "NVIDIA competition."}],
+        expected_symbol="NVDA",
+    )
+
+    assert report["passed"] is True
+    assert not any("report appears to discuss AMD" in error for error in report["errors"])
+
+
+def test_rule_verifier_requires_numeric_support_for_untraced_derived_claim():
+    verifier = Verifier()
+    claim = ClaimItem(
+        claim_id="cl_derived",
+        section_name="valuation",
+        claim_text="MSFT estimated valuation multiple is 99.9x.",
+        evidence_ids=["ev_msft"],
+        numeric_values={"estimated_multiple": 99.9},
+        confidence=0.8,
+    )
+    report = verifier.verify(
+        claims=[claim],
+        markdown=(
+            "# MSFT Report\n\n## Executive Summary\n\nOverview.\n\n"
+            "## Financial Analysis\n\nFinancial review [ev_msft].\n\n"
+            "## Risk Assessment\n\nRisk review.\n\n## Valuation\n\nEstimated valuation 99.9x [ev_msft].\n"
+        ),
+        evidence_records=[{"evidence_id": "ev_msft", "symbol": "MSFT", "content": "Revenue was 245.1B."}],
+        expected_symbol="MSFT",
+    )
+
+    assert any("numeric value estimated_multiple=99.9" in warning for warning in report["warnings"])
+
+    claim.metric_lineage_ids = ["lineage_estimated_multiple"]
+    traced = verifier.verify(
+        claims=[claim],
+        markdown=(
+            "# MSFT Report\n\n## Executive Summary\n\nOverview.\n\n"
+            "## Financial Analysis\n\nFinancial review [ev_msft].\n\n"
+            "## Risk Assessment\n\nRisk review.\n\n## Valuation\n\nEstimated valuation 99.9x [ev_msft].\n"
+        ),
+        evidence_records=[{"evidence_id": "ev_msft", "symbol": "MSFT", "content": "Revenue was 245.1B."}],
+        expected_symbol="MSFT",
+    )
+    assert not any("numeric value estimated_multiple=99.9" in warning for warning in traced["warnings"])
 
 
 def test_rule_verifier_fails_target_symbol_mismatch():

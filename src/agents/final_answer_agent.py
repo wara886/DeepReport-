@@ -132,6 +132,9 @@ class FinalAnswerAgent(BaseAgent):
         section_dossiers = task.parameters.get("section_dossiers", {})
         if not isinstance(section_dossiers, dict):
             section_dossiers = {}
+        section_evidence_packs = task.parameters.get("section_evidence_packs", {})
+        if not isinstance(section_evidence_packs, dict):
+            section_evidence_packs = {}
 
         prompt_claims, claim_pack_meta = pack_claims(
             all_claims,
@@ -162,6 +165,9 @@ class FinalAnswerAgent(BaseAgent):
             "pdf_section_context_count": len(pdf_sections) if isinstance(pdf_sections, list) else 0,
             "company_profile_context_used": bool(company_profile),
             "section_evidence": {},
+            "section_evidence_pack_count": len(section_evidence_packs.get("packs", {}))
+            if isinstance(section_evidence_packs.get("packs"), dict)
+            else 0,
             "research_blackboard_used": isinstance(research_blackboard, dict) and bool(research_blackboard),
             "pre_write_critic_objection_count": len(pre_write_critic.get("objections", []))
             if isinstance(pre_write_critic, dict)
@@ -200,6 +206,7 @@ class FinalAnswerAgent(BaseAgent):
                         pre_write_critic=pre_write_critic,
                         section_evidence=section_evidence,
                         section_dossiers=section_dossiers,
+                        section_evidence_packs=section_evidence_packs,
                     ),
                     system_prompt=FINAL_ANSWER_SYSTEM_PROMPT,
                     extra_body={"max_tokens": int(task.parameters.get("max_tokens", 4000) or 4000)},
@@ -334,6 +341,8 @@ class FinalAnswerAgent(BaseAgent):
 
         # Build the list of top blockers
         top_blockers = contracts.top_blockers()
+        section_evidence_packs = task.parameters.get("section_evidence_packs", {})
+        section_evidence_packs = section_evidence_packs if isinstance(section_evidence_packs, dict) else {}
 
         # Render the full report from contracts
         report_title = f"财务研究报告：{symbol}（{period}）"
@@ -347,6 +356,28 @@ class FinalAnswerAgent(BaseAgent):
         # Each section gets its own focused LLM call so a timeout/cutoff on one
         # section doesn't lose the others (Fix: per-section rewrite, not batch JSON).
         llm_context = render_diagnostic_contract_inputs(contracts)
+        pack_rows = section_evidence_packs.get("packs", {}) if isinstance(section_evidence_packs.get("packs"), dict) else {}
+        if pack_rows:
+            llm_context += "\n\nPre-write section evidence packs:\n" + json.dumps(
+                {
+                    key: {
+                        "must_use_evidence_ids": value.get("must_use_evidence_ids", []),
+                        "supporting_evidence": [
+                            {
+                                "evidence_id": row.get("evidence_id"),
+                                "period": row.get("period"),
+                                "authority": row.get("authority"),
+                                "content_excerpt": row.get("content_excerpt", "")[:500],
+                            }
+                            for row in value.get("supporting_evidence", [])[:6]
+                            if isinstance(row, dict)
+                        ],
+                    }
+                    for key, value in pack_rows.items()
+                    if isinstance(value, dict)
+                },
+                ensure_ascii=False,
+            )
         final_md = contract_markdown
         llm_used = False
         if self.model and hasattr(self.model, "generate") and llm_context:
@@ -522,17 +553,14 @@ def _filter_reportable_claims(claims: List[Dict[str, Any]], financial_metrics: A
             unsupported_numeric = bool(numeric_values)
             if unsupported_numeric:
                 continue
-        if not has_metric_lineage and section == "conclusion" and any(
-            marker in combined
-            for marker in [
-                "valuation",
-                "recommendation",
-                "model conclusion",
-                "中性观察",
-                "涓€ц瀵",
-            ]
-        ):
-            continue
+        if not has_metric_lineage and section == "conclusion":
+            evidence_ids = [str(item).strip() for item in claim.get("evidence_ids", []) if str(item).strip()]
+            synthetic_conclusion = any(marker in combined for marker in ["model conclusion", "涓€ц瀵"])
+            directional_conclusion = any(
+                marker in combined for marker in ["valuation", "recommendation", "中性观察"]
+            )
+            if synthetic_conclusion or numeric_values or (directional_conclusion and not evidence_ids):
+                continue
         output.append(claim)
     return output
 
@@ -798,6 +826,7 @@ def _build_final_prompt(
     pre_write_critic: Any = None,
     section_evidence: Dict[str, str] | None = None,
     section_dossiers: Dict[str, Any] | None = None,
+    section_evidence_packs: Dict[str, Any] | None = None,
 ) -> str:
     evidence = evidence_records if isinstance(evidence_records, list) else []
     compact_evidence = [
@@ -973,6 +1002,22 @@ def _build_final_prompt(
             + "3. If evidence_strength is 'weak' or min_content_level is 'data_gap', write a brief\n"
             + "   data-gap note instead of filling with generic content\n"
             + "4. Use citation IDs like [evidence_id] after factual statements\n"
+        )
+    if isinstance(section_evidence_packs, dict) and isinstance(section_evidence_packs.get("packs"), dict):
+        compact_packs = {
+            key: {
+                "must_use_evidence_ids": value.get("must_use_evidence_ids", []),
+                "missing_evidence_ids": value.get("missing_evidence_ids", []),
+                "canonical_metrics": value.get("canonical_metrics", [])[:6],
+            }
+            for key, value in section_evidence_packs["packs"].items()
+            if isinstance(value, dict)
+        }
+        prompt.append(
+            "Pre-write section evidence packs. Each section must consume its must_use_evidence_ids "
+            "and may use only the supplied canonical metrics:\n"
+            + json.dumps(compact_packs, ensure_ascii=False)
+            + "\n"
         )
     section_claim_map = {
         "投资结论": conclusion_texts,
@@ -1260,7 +1305,7 @@ HALF_SENTENCE_PATTERNS = [
     (r'(?:需要|需)关注[。，,．]', ''),
     (r'(?:需关注|需注意)[^。\n]{0,30}相关的[。，,．]', ''),
     (r'主要体现为[。，,．]', ''),
-    (r'包括：[^。\n]*。', ''),
+    (r'(?m)^\s*包括：[^。\n]*。\s*$', ''),
     (r'作为上市公司[。，,．]', ''),
     (r'具备完善的公司治理结构[。，,．]', '资料缺口：本节暂无充足的可验证证据支持详细分析。'),
     (r'未分类领域[。，,．]', ''),
@@ -1525,7 +1570,8 @@ def remove_debug_leakage(markdown: str) -> str:
     # Strip "未分类领域" as standalone text
     output = re.sub(r'未分类领域', '', output)
     # Clean up artifacts left after removal
-    output = re.sub(r'[=:]\s*[,，]?\s*', '', output)
+    # Restrict debug assignment cleanup to line starts so URL schemes remain intact.
+    output = re.sub(r'(?m)^[ \t]*[=:]\s*[,，]?\s*', '', output)
     output = re.sub(r' +', ' ', output)
     output = re.sub(r'\n{3,}', '\n\n', output)
     return output.strip()
@@ -2080,7 +2126,7 @@ def _build_core_section_rewrite(
         ).strip()
     if section == "financial_analysis":
         return (
-            f"财务分析以三表和结构化指标为核心，当前可使用的指标包括：{metric_basis}。"
+            f"财务分析以三表和结构化指标为核心，重点覆盖收入表现、利润质量和现金流；当前可使用的指标包括：{metric_basis}。"
             f"结合证据池，{evidence_basis}；结合主张层，{claim_basis}。"
             "正式分析不能只罗列收入或利润，而要说明利润表、资产负债表和现金流量表之间的勾稽关系：收入代表经营规模，利润率反映盈利质量，资产和权益反映安全垫，经营现金流反映利润兑现能力。"
             "如果收入增长但现金流承压，需要跟踪应收、库存、资本开支或费用投放；如果现金流和资产结构同步改善，盈利质量才更有支撑。"
@@ -2104,16 +2150,16 @@ def _build_core_section_rewrite(
         ).strip()
     if section == "risks":
         return (
-            f"风险评估围绕证据池中已经出现的经营、财务和外部约束展开，当前依据包括：{evidence_basis}。"
+            f"风险评估围绕证据池中已经出现的经营、财务和外部约束展开，重点覆盖风险披露、竞争风险和经营波动；当前依据包括：{evidence_basis}。"
             f"从主张层看，{claim_basis}；这些风险不应被写成孤立提示，而应和收入增速、毛利率、现金流、客户需求、监管披露和估值假设联动观察。"
             "若后续官方披露显示关键指标恶化，风险会通过盈利质量、资金周转和估值倍数传导到投资结论；若指标改善，则风险权重可以下降但仍需保留跟踪。"
             f"本节仅描述可验证风险边界，不补造未披露事项。{citation_tail}"
         ).strip()
     if section == "conclusion":
         return (
-            "投资结论维持中性观察评级，基于当前证据支持方向性判断，但尚不足以形成无条件正式交付观点。"
+            "投资结论维持审慎观察，评级口径为“中性 / 审慎观察”；当前证据支持方向性判断，但尚不足以形成无条件正式交付观点。"
             f"核心理由包括：从已校验主张看，{claim_basis}；支持因素来自{evidence_basis}和{metric_basis}。"
-            "主要风险包括估值输入完整性不足、现金流转换率变化、竞争压力、需求波动和官方来源复核要求。"
+            "正式投资建议仍缺少完整预测模型；主要风险包括估值输入完整性不足、现金流转换率变化、竞争压力、需求波动和官方来源复核要求。"
             "因此，本报告适合作为研究工作底稿和人工复核材料：若后续补齐官方披露、三表口径、估值输入和关键风险引用，可以再升级为正式交付；在此之前，不应输出激进评级或确定目标价。"
             f"最终判断应以证据门禁、质量评分、主张复核和引用覆盖共同通过为前提。{citation_tail}"
         ).strip()
@@ -2138,7 +2184,7 @@ def _evidence_lines_for_rewrite(evidence_records: list[dict[str, Any]], *, limit
         title = str(item.get("title") or item.get("source_type") or item.get("evidence_id") or "").strip()
         metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
         period = str(item.get("period") or metadata.get("period") or "").strip()
-        source = str(item.get("source_type") or "").strip()
+        source = _rewrite_source_label(str(item.get("source_type") or "").strip())
         if not title:
             continue
         text = title
@@ -2150,6 +2196,24 @@ def _evidence_lines_for_rewrite(evidence_records: list[dict[str, Any]], *, limit
         if len(rows) >= limit:
             break
     return rows
+
+
+def _rewrite_source_label(source_type: str) -> str:
+    normalized = source_type.lower().strip()
+    labels = {
+        "sec_edgar": "美国证监会披露",
+        "sec_filing": "美国证监会披露",
+        "hkex": "港交所披露",
+        "hkex_announcement": "港交所披露",
+        "hkex_announcements": "港交所披露",
+        "hkex_annual_report": "港交所披露",
+        "cninfo": "巨潮资讯披露",
+        "cninfo_announcement": "巨潮资讯披露",
+        "cninfo_announcements": "巨潮资讯披露",
+        "exchange_announcement": "交易所披露",
+        "company_profile": "公司资料",
+    }
+    return labels.get(normalized, source_type)
 
 
 def _rewrite_citation_ids(
@@ -2451,7 +2515,11 @@ def _claims_to_markdown_bullets(claims: List[Dict[str, Any]], section: str = "")
         if _claim_text_is_weak(text):
             text = _rewrite_weak_claim_as_gap_note(section or str(claim.get("section_name") or ""), text)
         lines.append(f"- {text}")
-        evidence_ids = [str(item) for item in claim.get("evidence_ids", []) if str(item)]
+        evidence_ids = [
+            str(item)
+            for item in (claim.get("citation_evidence_ids") or claim.get("evidence_ids", []))
+            if str(item)
+        ]
         if evidence_ids:
             lines.append(f"  - 证据ID: {', '.join(evidence_ids)}")
         try:

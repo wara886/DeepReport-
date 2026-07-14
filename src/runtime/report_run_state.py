@@ -12,6 +12,8 @@ from collections import Counter
 from datetime import datetime
 from typing import Any, Literal, TypedDict
 
+from src.schemas.runtime_contracts import build_company_identity, build_period_spec
+
 
 ReportLifecycleStatus = Literal[
     "queued",
@@ -29,11 +31,19 @@ ReportLifecycleStatus = Literal[
 
 
 class DeliveryReadiness(TypedDict):
+    schema_version: str
     status: str
+    machine_status: str
+    review_status: str
+    formal_status: str
     can_generate_draft: bool
+    draft_generated: bool
     can_enter_human_review: bool
     can_deliver_formal_report: bool
     can_export_formal_package: bool
+    machine_quality_pass: bool
+    human_review_status: str
+    formal_delivery_pass: bool
     blocking_reasons: list[str]
     warnings: list[str]
     required_actions: list[str]
@@ -42,8 +52,11 @@ class DeliveryReadiness(TypedDict):
 class ReportRunState(TypedDict):
     schema_version: str
     task_id: str
+    run_id: str
     symbol: str
     period: str
+    company_identity: dict[str, Any]
+    period_spec: dict[str, Any]
     report_type: str
     run_mode: str
     lifecycle_status: ReportLifecycleStatus
@@ -215,10 +228,18 @@ def build_report_run_state(task: Any) -> ReportRunState:
         artifact_state=artifact_state,
     )
     return {
-        "schema_version": "report_run_state.v1",
+        "schema_version": "report_run_state.v2",
         "task_id": _text(getattr(task, "task_id", None)),
+        "run_id": _text(metadata.get("run_id")) or _text(getattr(task, "task_id", None)),
         "symbol": _text(getattr(task, "symbol", None)),
         "period": _text(getattr(task, "period", None)),
+        "company_identity": build_company_identity(
+            _text(getattr(task, "symbol", None)),
+            company_name=_text(metadata.get("company_name")),
+            company_id=getattr(task, "company_id", None),
+            market=_text(metadata.get("market")),
+        ),
+        "period_spec": build_period_spec(_text(getattr(task, "period", None))),
         "report_type": _text(getattr(task, "report_type", None)) or "equity_research",
         "run_mode": _text(metadata.get("run_mode")) or "queue_only",
         "lifecycle_status": lifecycle,
@@ -334,7 +355,8 @@ def _delivery_readiness(
 ) -> DeliveryReadiness:
     blockers: list[str] = []
     warnings: list[str] = []
-    if lifecycle != "generation_completed":
+    draft_generated = bool(artifact_state["report_available"])
+    if lifecycle not in {"generation_completed", "quality_blocked"} and not draft_generated:
         blockers.append("report_task_not_completed")
     if claim_state["rejected_count"]:
         blockers.append("rejected_claims_present")
@@ -361,9 +383,35 @@ def _delivery_readiness(
     if quality_state.get("inferred_from_legacy_status"):
         warnings.append("legacy_quality_state_inferred")
     blockers = _dedupe(blockers)
+    machine_blockers = {
+        "report_task_not_completed",
+        "evidence_check_pending",
+        "evidence_not_delivery_ready",
+        "quality_check_pending",
+        "quality_gate_failed",
+        "unsupported_claims_present",
+        "claims_missing",
+        "report_artifact_missing",
+    }
+    machine_quality_pass = quality_state["delivery_pass"] is True and not machine_blockers.intersection(blockers)
+    if lifecycle in {"evidence_checking", "generating", "quality_checking"}:
+        machine_status = "running"
+    elif not quality_state["checked"]:
+        machine_status = "not_run"
+    else:
+        machine_status = "passed" if machine_quality_pass else "failed"
+    if claim_state["total_count"] == 0:
+        review_status = "not_required"
+    elif claim_state["rejected_count"]:
+        review_status = "rejected"
+    elif claim_state["review_complete"]:
+        review_status = "completed"
+    else:
+        review_status = "pending"
     review_blockers = {"pending_claim_review", "rejected_claims_present", "approved_claims_missing"}
-    can_review = artifact_state["report_available"] and bool(review_blockers.intersection(blockers))
-    can_deliver = not blockers
+    can_review = machine_quality_pass and artifact_state["report_available"] and bool(review_blockers.intersection(blockers))
+    can_deliver = machine_quality_pass and review_status in {"completed", "not_required"} and not blockers
+    formal_status = "ready" if can_deliver else ("review_required" if machine_quality_pass and review_status == "pending" else "blocked")
     if can_deliver:
         status = "export_ready"
     elif can_review:
@@ -377,11 +425,19 @@ def _delivery_readiness(
     else:
         status = "blocked"
     return {
+        "schema_version": "delivery_readiness.v3",
         "status": status,
-        "can_generate_draft": lifecycle == "queued",
+        "machine_status": machine_status,
+        "review_status": review_status,
+        "formal_status": formal_status,
+        "can_generate_draft": lifecycle in {"queued", "evidence_blocked", "quality_blocked", "failed", "timeout", "cancelled"},
+        "draft_generated": draft_generated,
         "can_enter_human_review": can_review,
         "can_deliver_formal_report": can_deliver,
         "can_export_formal_package": can_deliver,
+        "machine_quality_pass": machine_quality_pass,
+        "human_review_status": review_status,
+        "formal_delivery_pass": can_deliver,
         "blocking_reasons": blockers,
         "warnings": warnings,
         "required_actions": _required_actions(blockers),

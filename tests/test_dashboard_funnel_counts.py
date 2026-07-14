@@ -31,6 +31,7 @@ def test_dashboard_funnel_counts_database_steps(temp_db_engine, tmp_path):
         )
         session.add_all([ReportTask(task_id="task-funnel", symbol="AAPL", period="FY2024"), document, evidence, claim, signal])
         session.flush()
+        evidence.document_id = document.id
         session.add_all(
             [
                 DocumentProcessingStep(document_id=document.id, step_name="table_extract", status="success"),
@@ -51,15 +52,14 @@ def test_dashboard_funnel_counts_database_steps(temp_db_engine, tmp_path):
         response = client.get("/api/dashboard/funnel")
 
     assert response.status_code == 200
-    steps = {item["key"]: item["count"] for item in response.json()["steps"]}
-    assert steps == {
-        "document_ingested": 1,
-        "parse_success": 1,
-        "table_extract_success": 1,
-        "chunk_vectorized": 1,
-        "financial_fact_extracted": 1,
-        "investment_signal_generated": 1,
-        "report_claim_generated": 2,
-        "claim_verified": 1,
-        "pending_review": 2,
+    body = response.json()
+    assert body["schema_version"] == "dashboard_status_groups.v1"
+    groups = {
+        group["key"]: {metric["key"]: metric["count"] for metric in group["metrics"]}
+        for group in body["groups"]
+    }
+    assert groups == {
+        "documents": {"ingested": 1, "parsed": 1, "table_extracted": 1, "chunked": 1, "evidenced": 1},
+        "tasks": {"queued": 1, "running": 0, "evidence_blocked": 0, "machine_pass": 0, "review_pending": 1, "delivered": 0},
+        "claims": {"generated": 2, "supported": 1, "pending": 2, "approved": 0, "rejected": 0},
     }

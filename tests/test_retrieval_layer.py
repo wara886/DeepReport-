@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.retrieval.bm25_index import BM25Index
+from src.retrieval.chroma_index import ChromaIndex
 from src.retrieval.evidence_store import EvidenceRecord, EvidenceStore
 from src.retrieval.retrieve import retrieve_evidence, retrieve_evidence_with_mode
 
@@ -92,6 +93,42 @@ def test_evidence_store_filter(tmp_path: Path):
     assert store.load_meta["loaded_file_count"] == 1
 
 
+def test_evidence_store_filters_runtime_identity_and_role():
+    records = [
+        EvidenceRecord.from_dict(
+            {
+                "evidence_id": "target_ev",
+                "symbol": "MSFT",
+                "period": "FY2024",
+                "source_type": "sec_filing",
+                "title": "MSFT filing",
+                "content": "Microsoft filing",
+                "provenance": {"task_id": "task-msft", "run_id": "run-msft"},
+                "company_identity": {"company_id": 15},
+                "metadata": {"evidence_role": "target"},
+            }
+        ),
+        EvidenceRecord.from_dict(
+            {
+                "evidence_id": "peer_ev",
+                "symbol": "NVDA",
+                "period": "FY2024",
+                "source_type": "market_data",
+                "title": "NVDA peer snapshot",
+                "content": "NVIDIA peer data",
+                "provenance": {"task_id": "task-msft", "run_id": "run-msft"},
+                "company_identity": {"company_id": 17},
+                "metadata": {"evidence_role": "peer"},
+            }
+        ),
+    ]
+    store = EvidenceStore(records)
+
+    selected = store.filter(task_id="task-msft", run_id="run-msft", company_id=15, evidence_role="target")
+
+    assert [row.evidence_id for row in selected] == ["target_ev"]
+
+
 def test_retrieve_evidence_skips_corrupt_parquet_file(tmp_path: Path):
     curated = tmp_path / "curated"
     _write_curated_inputs(curated)
@@ -169,6 +206,47 @@ def test_retrieve_evidence_vector_mode_from_curated_dir(tmp_path: Path):
     assert hits[0]["symbol"] == "AAPL"
     assert meta["mode"] == "vector"
     assert meta["vector_backend"] in {"memory", "chromadb"}
+
+
+def test_retrieve_evidence_isolated_vector_index_ignores_global_collection(tmp_path: Path):
+    global_vector_path = tmp_path / "global_vector_db"
+    global_index = ChromaIndex(persistent_path=str(global_vector_path))
+    global_index.add_records(
+        [
+            EvidenceRecord.from_dict(
+                {
+                    "sample_id": "global_pollution",
+                    "source_type": "news",
+                    "symbol": "POLLUTE",
+                    "period": "FY2024",
+                    "title": "Unrelated global record",
+                    "publish_time": "2026-01-01",
+                    "content": "revenue profit cash flow risk valuation official annual report",
+                    "source_url": "https://example.com/global",
+                    "trust_level": "low",
+                }
+            )
+        ]
+    )
+
+    curated = tmp_path / "curated"
+    _write_curated_inputs(curated)
+    hits, meta = retrieve_evidence_with_mode(
+        query="revenue profit cash flow risk valuation official annual report",
+        topk=5,
+        curated_dir=str(curated),
+        symbol="AAPL",
+        period="2025Q4",
+        ranking_mode="hybrid",
+        vector_persistent_path=None,
+        log=False,
+    )
+
+    assert hits
+    assert {hit["symbol"] for hit in hits} == {"AAPL"}
+    assert "global_pollution" not in {hit.get("sample_id") for hit in hits}
+    assert meta["vector_backend"] in {"memory", "chromadb"}
+    assert meta["vector_score_max"] is not None
 
 
 def test_retrieve_evidence_hybrid_rerank_mode_from_curated_dir(tmp_path: Path):

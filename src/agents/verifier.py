@@ -186,7 +186,8 @@ def _check_evidence_support(
         missing = [evidence_id for evidence_id in claim.evidence_ids if evidence_id not in available_ids]
         if missing:
             errors.append(f"Claim {claim.claim_id} references missing evidence ids: {', '.join(missing)}")
-        uncited = [evidence_id for evidence_id in claim.evidence_ids if evidence_id not in markdown]
+        citation_ids = claim.citation_evidence_ids or claim.evidence_ids
+        uncited = [evidence_id for evidence_id in citation_ids if not _evidence_id_is_cited(evidence_id, markdown)]
         if uncited:
             errors.append(f"Claim {claim.claim_id} evidence ids are not cited in markdown: {', '.join(uncited)}")
         _check_numeric_support(claim=claim, evidence_by_id=evidence_by_id, warnings=warnings)
@@ -199,7 +200,7 @@ def _check_numeric_support(
 ) -> None:
     if not claim.numeric_values:
         return
-    if _is_derived_numeric_claim(claim):
+    if _is_derived_numeric_claim(claim) and (claim.metric_lineage_ids or claim.input_metric_lineage_ids):
         return
     evidence_numbers: List[float] = []
     for evidence_id in claim.evidence_ids:
@@ -267,10 +268,57 @@ def _check_pdf_page_support(
             record = evidence_by_id.get(str(evidence_id), {})
             if str(record.get("source_type") or "").lower() not in {"pdf_section", "pdf_statement_table"}:
                 continue
-            metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
-            page = metadata.get("page") or metadata.get("page_number") or record.get("page") or record.get("page_number")
-            if page in (None, ""):
+            if not _has_pdf_page_anchor(str(evidence_id), evidence_by_id):
                 errors.append(f"Claim {claim.claim_id} relies on official PDF evidence without a page anchor: {evidence_id}")
+
+
+def _has_pdf_page_anchor(
+    evidence_id: str,
+    evidence_by_id: Dict[str, Dict[str, Any]],
+    *,
+    max_depth: int = 8,
+) -> bool:
+    """Resolve a page anchor through explicit lineage and canonical chunk parents."""
+
+    current_id = str(evidence_id or "")
+    visited: set[str] = set()
+    for _ in range(max_depth):
+        if not current_id or current_id in visited:
+            return False
+        visited.add(current_id)
+        record = evidence_by_id.get(current_id)
+        if not isinstance(record, dict):
+            return False
+        metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+        page = metadata.get("page") or metadata.get("page_number") or record.get("page") or record.get("page_number") or record.get("page_no")
+        if page not in (None, ""):
+            return True
+        parent_candidates = [
+            record.get("source_evidence_id"),
+            metadata.get("source_evidence_id"),
+            record.get("parent_evidence_id"),
+            metadata.get("parent_evidence_id"),
+        ]
+        canonical_parent = re.split(
+            r"__(?:paragraph|section|page|table)_\d+_chunk_[0-9a-f]+",
+            current_id,
+            maxsplit=1,
+            flags=re.I,
+        )[0]
+        if canonical_parent != current_id:
+            parent_candidates.append(canonical_parent)
+        current_id = next(
+            (
+                str(candidate)
+                for candidate in parent_candidates
+                if str(candidate or "")
+                and str(candidate) != current_id
+                and str(candidate) not in visited
+                and str(candidate) in evidence_by_id
+            ),
+            "",
+        )
+    return False
 
 
 def _requires_pdf_page_support(claim: ClaimItem) -> bool:
@@ -490,34 +538,60 @@ def _numbers_from_text(text: str) -> List[float]:
 def _ticker_mentions(text: str) -> set[str]:
     stop_words = {
         "API",
+        "AI",
+        "ANNUAL",
         "ARPU",
         "B",
+        "BEA",
+        "BLS",
         "CAGR",
+        "CICC",
         "CPI",
+        "CNY",
+        "CPU",
+        "CUDA",
         "DCF",
+        "DEF",
+        "EDGAR",
         "EBIT",
         "EBITDA",
         "EPS",
+        "ERM",
+        "ESG",
+        "ESPP",
         "EV",
+        "EX",
         "FCF",
         "FRED",
         "GAAP",
         "GDP",
+        "GPU",
         "HKD",
+        "HK",
+        "HKEX",
+        "HKG",
         "HTML",
         "ID",
         "IFRS",
         "JSON",
         "LLM",
+        "MD",
+        "MDA",
         "NASDAQ",
+        "NCG",
+        "NIPA",
+        "NOTE",
+        "NVIDIA",
         "NYSE",
         "PB",
         "PCE",
         "PDF",
         "PE",
         "PS",
+        "PUBG",
         "Q",
         "REUTERS",
+        "REPORT",
         "RMB",
         "ROA",
         "ROE",
@@ -525,15 +599,38 @@ def _ticker_mentions(text: str) -> set[str]:
         "SH",
         "SS",
         "SZ",
+        "TC",
         "US",
         "USD",
+        "UNRATE",
+        "VAS",
         "WSJ",
+        "XBRL",
     }
     return {
         token
         for token in re.findall(r"\b[A-Z]{2,6}\b", text)
         if token not in stop_words and not re.fullmatch(r"Q[1-4]", token)
     }
+
+
+def _canonical_evidence_id(evidence_id: str) -> str:
+    """Collapse recursively generated chunk suffixes to the business evidence identity."""
+
+    value = str(evidence_id or "").strip()
+    if not value:
+        return ""
+    return re.split(r"__(?:paragraph|section|page|table)_\d+_chunk_[0-9a-f]+", value, maxsplit=1, flags=re.I)[0]
+
+
+def _evidence_id_is_cited(evidence_id: str, markdown: str) -> bool:
+    value = str(evidence_id or "").strip()
+    if not value:
+        return False
+    if value in markdown:
+        return True
+    canonical = _canonical_evidence_id(value)
+    return bool(canonical and canonical != value and canonical in markdown)
 
 
 def _conflicting_company_mentions(symbol: str, text: str) -> List[str]:
@@ -550,9 +647,39 @@ def _conflicting_company_mentions(symbol: str, text: str) -> List[str]:
     for ticker, names in aliases.items():
         if ticker == target:
             continue
-        if any(name in checked_text for name in names):
+        if any(_has_non_contextual_company_mention(checked_text, name) for name in names):
             conflicts.append(ticker)
     return conflicts
+
+
+def _has_non_contextual_company_mention(text: str, name: str) -> bool:
+    pattern = re.compile(rf"(?<![a-z0-9]){re.escape(name.strip())}(?![a-z0-9])", re.I)
+    competition_markers = (
+        "competitor",
+        "competition",
+        "compete",
+        "comparable",
+        "peer",
+        "versus",
+        "rival",
+        "同行",
+        "同业",
+        "可比",
+        "竞争",
+        "对手",
+        "替代",
+        "追赶",
+    )
+    matches = list(pattern.finditer(text))
+    if not matches:
+        return False
+    for match in matches:
+        context = text[max(0, match.start() - 120) : min(len(text), match.end() + 120)]
+        if any(marker in context for marker in ("leak", "串线", "误入", "非同行", "non-peer")):
+            return True
+        if not any(marker in context for marker in competition_markers):
+            return True
+    return False
 
 
 def _non_peer_report_text(text: str) -> str:

@@ -40,12 +40,14 @@ def build_section_verification(
     markdown: str,
     report_section_contracts: Any = None,
     quality_remediation_plan: Any = None,
+    section_evidence_packs: Any = None,
 ) -> Dict[str, Any]:
     """Build a deterministic section verification artifact."""
 
     text = str(markdown or "")
     contracts = _contracts(report_section_contracts)
     remediation = quality_remediation_plan if isinstance(quality_remediation_plan, dict) else {}
+    packs = _packs(section_evidence_packs)
     issues: List[Dict[str, Any]] = []
     section_results: Dict[str, Dict[str, Any]] = {}
 
@@ -86,6 +88,31 @@ def build_section_verification(
         if hard_blocked_reasons or hard_quality_flags or contract.get("status") == "gap":
             status = "failed"
             reasons.append("contract_blocked")
+        pack = packs.get(section_key) if isinstance(packs.get(section_key), dict) else {}
+        must_use_ids = _string_list(pack.get("must_use_evidence_ids"))
+        must_use_rows = pack.get("must_use_evidence") if isinstance(pack.get("must_use_evidence"), list) else []
+        row_by_id = {str(row.get("evidence_id") or ""): row for row in must_use_rows if isinstance(row, dict)}
+        consumed_ids = [
+            evidence_id
+            for evidence_id in must_use_ids
+            if _citation_present(body or "", evidence_id, _string_list(row_by_id.get(evidence_id, {}).get("citation_labels")))
+        ]
+        missing_citations = [evidence_id for evidence_id in must_use_ids if evidence_id not in consumed_ids]
+        unsupported_claim_ids = _string_list(pack.get("unsupported_claim_ids"))
+        if missing_citations:
+            status = "failed"
+            reasons.append("must_use_evidence_not_fully_consumed")
+        if unsupported_claim_ids:
+            status = "failed"
+            reasons.append("unsupported_claims")
+        period_conflicts = _period_conflicts(pack.get("must_use_evidence"))
+        if period_conflicts:
+            status = "failed"
+            reasons.append("evidence_period_conflict")
+        authority_failures = _authority_failures(pack.get("must_use_evidence"))
+        if authority_failures:
+            status = "failed"
+            reasons.append("evidence_authority_rejected")
         section_results[section_key] = {
             "title": title,
             "status": status,
@@ -95,6 +122,14 @@ def build_section_verification(
             "min_paragraphs": int(spec["min_paragraphs"]),
             "reasons": sorted(set(reasons)),
             "placeholder_markers": markers,
+            "must_use_evidence_ids": must_use_ids,
+            "consumed_evidence_ids": consumed_ids,
+            "missing_citation_evidence_ids": missing_citations,
+            "citation_present": bool(consumed_ids),
+            "claim_supported": not unsupported_claim_ids,
+            "unsupported_claim_ids": unsupported_claim_ids,
+            "period_conflicts": period_conflicts,
+            "authority_failures": authority_failures,
         }
         for reason in sorted(set(reasons)):
             issues.append(
@@ -145,11 +180,13 @@ def write_section_verification(
     markdown: str,
     report_section_contracts: Any = None,
     quality_remediation_plan: Any = None,
+    section_evidence_packs: Any = None,
 ) -> Dict[str, Any]:
     artifact = build_section_verification(
         markdown=markdown,
         report_section_contracts=report_section_contracts,
         quality_remediation_plan=quality_remediation_plan,
+        section_evidence_packs=section_evidence_packs,
     )
     path = Path(output_dir) / "section_verification.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -164,6 +201,36 @@ def _contracts(payload: Any) -> Dict[str, Any]:
     return contracts if isinstance(contracts, dict) else {}
 
 
+def _packs(payload: Any) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    packs = payload.get("packs")
+    return packs if isinstance(packs, dict) else {}
+
+
+def _citation_present(body: str, evidence_id: str, aliases: list[str] | None = None) -> bool:
+    escaped = re.escape(str(evidence_id))
+    if re.search(rf"(?:\[|【|\()\s*{escaped}\s*(?:\]|】|\))", body):
+        return True
+    for alias in aliases or []:
+        if re.search(rf"\[[^\]]*(?<!\d){re.escape(alias)}(?!\d)[^\]]*\]", body):
+            return True
+    return False
+
+
+def _period_conflicts(value: Any) -> list[str]:
+    rows = [row for row in value or [] if isinstance(row, dict)] if isinstance(value, list) else []
+    periods = sorted({str(row.get("period") or "").upper() for row in rows if row.get("period")})
+    fiscal = [period for period in periods if period.startswith(("FY", "Q", "H"))]
+    return fiscal if len(fiscal) > 1 else []
+
+
+def _authority_failures(value: Any) -> list[str]:
+    rows = [row for row in value or [] if isinstance(row, dict)] if isinstance(value, list) else []
+    rejected = {"untrusted", "rejected", "invalid", "low"}
+    return [str(row.get("evidence_id") or "") for row in rows if str(row.get("authority") or "").lower() in rejected]
+
+
 def _section_body(markdown: str, title: str) -> str | None:
     pattern = re.compile(rf"^##\s+{re.escape(title)}\s*$", re.MULTILINE)
     match = pattern.search(markdown)
@@ -176,7 +243,7 @@ def _section_body(markdown: str, title: str) -> str | None:
 
 
 def _count_chars(text: str) -> int:
-    return len(re.sub(r"\s+", "", str(text or "")))
+    return len(re.sub(r"[\s\n\r#\-*:：，、。）（\[\]【】\"''a-zA-Z0-9]", "", str(text or "")))
 
 
 def _paragraph_count(text: str) -> int:
@@ -206,8 +273,12 @@ def _nonblocking_contract_reason(reason: str) -> bool:
 def _nonblocking_contract_flag(flag: str) -> bool:
     return (
         flag.endswith("_uses_section_evidence_pack")
+        or "_uses_sec_10k" in flag
+        or flag.endswith("_gap_summary_skipped")
         or flag.endswith("_evidence_fallback")
         or flag == "valuation_directional_only"
         or flag.endswith("_pdf_summary_fallback")
         or flag.endswith("_pdf_chunk_fallback")
+        or flag.endswith("_uses_official_pdf")
+        or flag.endswith("_boilerplate_cleaned")
     )

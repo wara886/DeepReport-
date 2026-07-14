@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import date
 import json
 from pathlib import Path
 import re
-import threading
 from typing import Any, Optional
-from urllib import error, request as urlrequest
 import uuid
 
 from fastapi import BackgroundTasks
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from src.app.web_ui import DEFAULT_OUTPUT_DIR, DEFAULT_REPORT_DIR, run_ui_server
 from src.app.workbench_frontend import render_workbench_html
 from src.services.claim_review_service import ClaimNotFound, ClaimReviewService
 from src.services.dashboard_service import DashboardService
@@ -41,6 +39,7 @@ from src.services.report_task_service import (
     ReportTaskNotFound,
     ReportTaskService,
 )
+from src.services.report_period_service import report_period_options
 from src.services.task_analysis_service import TaskAnalysisService
 from src.services.workspace_service import (
     WorkspaceCompanyNotFound,
@@ -63,12 +62,11 @@ def create_fastapi_app(
     config_path: str = "configs/model_backends.yaml",
     memory_root: str = "memory/chat",
     mode: str = "user",
-    frontend_port: Optional[int] = None,
     database_url: Optional[str] = None,
     report_task_service: Optional[ReportTaskService] = None,
     orchestrator_factory: Any = None,
 ) -> FastAPI:
-    """Expose the legacy-stable UI contract behind a deployable ASGI server."""
+    """Expose the FinSight workbench and API as one ASGI application."""
 
     # Apply mode-aware defaults
     if output_dir is None:
@@ -78,28 +76,18 @@ def create_fastapi_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        server, base_url = run_ui_server(
-            host="127.0.0.1",
-            port=0,
-            mode=mode,
-            output_dir=output_dir,
-            report_dir=report_dir,
-            config_path=config_path,
-            memory_root=memory_root,
-            frontend_port=frontend_port,
-        )
-        thread = threading.Thread(target=server.serve_forever, name="finsight-legacy-http", daemon=True)
-        thread.start()
-        app.state.legacy_base_url = base_url
         try:
+            datasource_service = getattr(app.state, "datasource_service", None)
+            if datasource_service is not None:
+                datasource_service.seed_registered_sources()
+            task_service = getattr(app.state, "report_task_service", None)
+            if task_service is not None:
+                task_service.recover_stale_running_tasks()
             yield
         finally:
             task_service = getattr(app.state, "report_task_service", None)
             if task_service is not None:
                 task_service.close()
-            server.shutdown()
-            server.server_close()
-            thread.join(timeout=5)
 
     app = FastAPI(
         title="FinSight DeepReport++ API",
@@ -151,12 +139,21 @@ def create_fastapi_app(
         return response
 
     @app.get("/health")
+    @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "finsight-deepreport"}
 
+    @app.get("/api/report-periods")
+    def get_report_periods(symbol: str = "", period: str = "", as_of: str = "") -> Response:
+        try:
+            as_of_date = date.fromisoformat(as_of) if as_of else None
+        except ValueError:
+            return JSONResponse(status_code=422, content={"error": "as_of must use YYYY-MM-DD"})
+        return JSONResponse(content=report_period_options(symbol=symbol, period=period, as_of=as_of_date))
+
     @app.get("/")
     def index() -> Response:
-        return _forward(app, "/", method="GET")
+        return Response(content=render_workbench_html(), media_type="text/html")
 
     @app.get("/workbench")
     def workbench() -> Response:
@@ -165,19 +162,6 @@ def create_fastapi_app(
     @app.get("/favicon.ico")
     def favicon() -> Response:
         return Response(status_code=204)
-
-    @app.get("/api/latest")
-    def latest(incoming: Request) -> Response:
-        suffix = f"?{incoming.url.query}" if incoming.url.query else ""
-        return _forward(app, f"/api/latest{suffix}", method="GET")
-
-    @app.post("/api/chat")
-    async def chat(incoming: Request) -> Response:
-        return _forward(app, "/api/chat", method="POST", body=await incoming.body())
-
-    @app.post("/api/run")
-    async def run(incoming: Request) -> Response:
-        return _forward(app, "/api/run", method="POST", body=await incoming.body())
 
     @app.post("/api/report-tasks")
     async def create_report_task(incoming: Request, background_tasks: BackgroundTasks) -> Response:
@@ -198,6 +182,8 @@ def create_fastapi_app(
             return JSONResponse(status_code=status_code, content=task)
         except ReportTaskConflict as exc:
             return JSONResponse(status_code=409, content={"error": str(exc)})
+        except ValueError as exc:
+            return JSONResponse(status_code=422, content={"error": str(exc)})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -205,6 +191,19 @@ def create_fastapi_app(
     def list_report_tasks(status: str | None = None, symbol: str | None = None, limit: int = 50) -> Response:
         try:
             return JSONResponse(content=_report_task_service(app).list_tasks(status=status, symbol=symbol, limit=limit))
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/report-tasks/bulk-archive-failed")
+    async def bulk_archive_failed_report_tasks(incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        task_ids = payload.get("task_ids")
+        if task_ids is not None and not isinstance(task_ids, list):
+            return JSONResponse(status_code=422, content={"error": "task_ids must be a list"})
+        try:
+            return JSONResponse(content=_report_task_service(app).bulk_archive_failed_tasks(task_ids))
+        except ReportTaskConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -221,6 +220,15 @@ def create_fastapi_app(
     def get_report_task_artifacts(task_id: str) -> Response:
         try:
             return JSONResponse(content=_report_task_service(app).get_artifacts(task_id))
+        except ReportTaskNotFound:
+            return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.get("/api/report-tasks/{task_id}/tool-runs")
+    def get_report_task_tool_runs(task_id: str, limit: int = 200) -> Response:
+        try:
+            return JSONResponse(content=_report_task_service(app).get_tool_runs(task_id, limit=limit))
         except ReportTaskNotFound:
             return JSONResponse(status_code=404, content={"error": f"Report task not found: {task_id}"})
         except Exception as exc:
@@ -505,6 +513,8 @@ def create_fastapi_app(
             return JSONResponse(content=_datasource_service(app).set_enabled(source_ref, bool(payload.get("enabled", True))))
         except DataSourceNotFound:
             return JSONResponse(status_code=404, content={"error": f"Datasource not found: {source_ref}"})
+        except DataSourceConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -515,6 +525,8 @@ def create_fastapi_app(
             return JSONResponse(content=_datasource_service(app).mark_health(source_ref, payload))
         except DataSourceNotFound:
             return JSONResponse(status_code=404, content={"error": f"Datasource not found: {source_ref}"})
+        except DataSourceConflict as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -625,6 +637,16 @@ def create_fastapi_app(
         payload = await _json_payload(incoming)
         try:
             result = _manual_import_service(app).import_document(payload)
+            document = result.get("document") if isinstance(result.get("document"), dict) else {}
+            document_id = document.get("id")
+            if document_id and document.get("parse_status") == "parsed":
+                processed = _document_service(app).process_document(int(document_id))
+                result["document"] = processed
+                result["processing_status"] = "evidence_ready"
+                result["message"] = "文档已解析、切分并进入证据库。"
+            else:
+                result["processing_status"] = "awaiting_content"
+                result["message"] = "文档记录已创建，补充可解析内容后才能进入证据库。"
             return JSONResponse(status_code=200 if result.get("duplicate") else 201, content=result)
         except ManualImportConflict as exc:
             return JSONResponse(status_code=409, content={"error": str(exc)})
@@ -1083,13 +1105,19 @@ def create_fastapi_app(
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
     @app.post("/api/exports/{task_id}/package/files")
-    def write_export_package_files(task_id: str) -> Response:
+    async def write_export_package_files(task_id: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        formats = payload.get("formats")
+        if formats is not None and not isinstance(formats, list):
+            return JSONResponse(status_code=422, content={"error": "formats must be a list"})
         try:
-            return JSONResponse(content=_export_service(app).write_export_package(task_id))
+            return JSONResponse(content=_export_service(app).write_export_package(task_id, formats=formats))
         except ExportTaskNotFound:
             return JSONResponse(status_code=404, content={"error": f"Export entry not found: {task_id}"})
         except ExportNotReady as exc:
             return JSONResponse(status_code=409, content={"error": str(exc), "blocked_reasons": exc.blocked_reasons})
+        except ValueError as exc:
+            return JSONResponse(status_code=422, content={"error": str(exc)})
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -1118,6 +1146,20 @@ def create_fastapi_app(
             )
         except ClaimNotFound:
             return JSONResponse(status_code=404, content={"error": f"Claim not found: {claim_id}"})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    @app.post("/api/report-tasks/{task_id}/claims/approve-supported")
+    async def approve_supported_task_claims(task_id: str, incoming: Request) -> Response:
+        payload = await _json_payload(incoming)
+        try:
+            return JSONResponse(
+                content=_claim_review_service(app).approve_supported_for_task(
+                    task_id,
+                    reviewer=_optional_string(payload.get("reviewer")),
+                    comment=_optional_string(payload.get("comment")),
+                )
+            )
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
@@ -1233,20 +1275,14 @@ def create_fastapi_app(
             return JSONResponse(status_code=500, content={"error": str(exc)})
 
     @app.get("/artifacts/{artifact_path:path}")
-    def artifacts(artifact_path: str, incoming: Request) -> Response:
+    def artifacts(artifact_path: str) -> Response:
         local_artifact = _resolve_artifact_path(app, artifact_path)
         if local_artifact is not None:
             guarded = _guard_report_html_delivery_label(app, local_artifact)
             if guarded is not None:
                 return guarded
             return FileResponse(local_artifact)
-        suffix = f"?{incoming.url.query}" if incoming.url.query else ""
-        return _forward(app, f"/artifacts/{artifact_path}{suffix}", method="GET")
-
-    @app.get("/api/job_status")
-    def job_status(incoming: Request) -> Response:
-        suffix = f"?{incoming.url.query}" if incoming.url.query else ""
-        return _forward(app, f"/api/job_status{suffix}", method="GET")
+        return JSONResponse(status_code=404, content={"error": f"Artifact not found: {artifact_path}"})
 
     return app
 
@@ -1335,24 +1371,6 @@ def _optional_string(value: Any) -> str | None:
     if value in (None, ""):
         return None
     return str(value)
-
-
-def _forward(app: FastAPI, path: str, *, method: str, body: bytes | None = None) -> Response:
-    target = f"{app.state.legacy_base_url}{path}"
-    headers = {"Content-Type": "application/json"} if body is not None else {}
-    outgoing = urlrequest.Request(target, data=body, headers=headers, method=method)
-    try:
-        with urlrequest.urlopen(outgoing, timeout=120) as response:
-            content = response.read()
-            status_code = int(response.status)
-            content_type = response.headers.get("Content-Type", "application/octet-stream")
-    except error.HTTPError as exc:
-        content = exc.read()
-        status_code = int(exc.code)
-        content_type = exc.headers.get("Content-Type", "application/json")
-    except Exception as exc:
-        return JSONResponse(status_code=502, content={"error": f"upstream request failed: {exc}"})
-    return Response(content=content, status_code=status_code, media_type=content_type.split(";", 1)[0])
 
 
 def _artifact_roots(

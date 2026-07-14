@@ -15,6 +15,7 @@ from src.db.models import (
     ReportTask,
     ReportTaskEvent,
     ReviewRecord,
+    ToolRun,
 )
 from src.db.session import SessionLocal, configure_session, create_engine_for_url, get_database_url, get_session
 
@@ -32,6 +33,7 @@ __all__ = [
     "ReportTask",
     "ReportTaskEvent",
     "ReviewRecord",
+    "ToolRun",
     "SessionLocal",
     "configure_session",
     "create_engine_for_url",

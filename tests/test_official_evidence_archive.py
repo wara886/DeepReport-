@@ -5,6 +5,29 @@ from src.agents.verifier import Verifier
 from src.schemas.claim import ClaimItem
 
 
+def test_company_profile_cannot_satisfy_us_official_filing_gate():
+    payload = build_official_evidence_artifacts(
+        [
+            {
+                "evidence_id": "profile-only",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "source_type": "company_profile",
+                "source_authority": "official",
+                "source_url": "https://example.com/company/aapl",
+                "content": "Apple designs consumer devices.",
+            }
+        ],
+        symbol="AAPL",
+        period="FY2024",
+    )
+
+    coverage = payload["evidence_coverage"]
+    assert coverage["official_record_count"] == 0
+    assert coverage["formal_delivery_allowed"] is False
+    assert "period_matched_official_filing" in coverage["missing_requirements"]
+
+
 def test_hk_official_evidence_requires_page_anchored_three_statements():
     payload = build_official_evidence_artifacts(
         [
@@ -349,3 +372,38 @@ def test_governance_pdf_claim_requires_page_anchor_and_accepts_page_number():
     record["metadata"]["page_number"] = 18
     accepted = Verifier().verify(claims=[claim], markdown=markdown, evidence_records=[record])
     assert not any("without a page anchor" in error for error in accepted["errors"])
+
+
+def test_pdf_chunk_inherits_page_anchor_from_canonical_parent():
+    chunk_id = "pdf_section_abc123__paragraph_1_chunk_deadbeef"
+    claim = ClaimItem(
+        claim_id="cl_governance_chunk",
+        section_name="ownership_governance",
+        claim_text="The annual report discloses the board structure.",
+        evidence_ids=[chunk_id],
+        confidence=0.8,
+    )
+    markdown = (
+        "## Executive Summary\n## Financial Analysis\n## Risk Assessment\n"
+        "## Ownership and Governance\nThe annual report discloses the board structure."
+    )
+    records = [
+        {
+            "evidence_id": chunk_id,
+            "source_type": "pdf_section",
+            "source_url": "https://www1.hkexnews.hk/report.pdf",
+            "content": "Board structure",
+            "metadata": {"source_evidence_id": chunk_id},
+        },
+        {
+            "evidence_id": "pdf_section_abc123",
+            "source_type": "pdf_section",
+            "source_url": "https://www1.hkexnews.hk/report.pdf",
+            "content": "Board structure",
+            "metadata": {"page": 18},
+        },
+    ]
+
+    report = Verifier().verify(claims=[claim], markdown=markdown, evidence_records=records)
+
+    assert not any("without a page anchor" in error for error in report["errors"])

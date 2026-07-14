@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from src.agents.base_agent import AgentTask, BaseAgent, TaskResult
 from src.agents.react_loop import run_react_tool_loop
+from src.data.company_universe import infer_market_from_symbol
 from src.features.financial_metric_lineage import build_financial_metric_lineage, build_financial_metric_tables
 from src.evaluation.financial_currency_audit import build_currency_audit
 from src.models import ModelAdapter
@@ -64,6 +65,12 @@ FORMAL_CRITICAL_CLAIM_TYPES = {
 }
 
 
+def _allow_external_peer_discovery(symbol: str) -> bool:
+    market = infer_market_from_symbol(symbol)
+    market_name = str(market.get("market") or "") if isinstance(market, dict) else str(market)
+    return market_name in {"us", "cn_a"}
+
+
 class DeepAnalyzeAgent(BaseAgent):
     """Convert evidence records into evidence-backed financial claims."""
 
@@ -116,7 +123,11 @@ class DeepAnalyzeAgent(BaseAgent):
         trend_rows = trend_payload["rows"]
         statement_view = observed.get("build_three_statement_view") or self.call_tool("build_three_statement_view", records=records)
         peer_context = observed.get("build_peer_comparison") or self.call_tool(
-            "build_peer_comparison", symbol=symbol, period=period, raw_data_root=raw_data_root
+            "build_peer_comparison",
+            symbol=symbol,
+            period=period,
+            raw_data_root=raw_data_root,
+            allow_external_discovery=_allow_external_peer_discovery(symbol),
         )
         valuation = observed.get("perform_company_valuation") or self.call_tool(
                 "perform_company_valuation",
@@ -310,6 +321,26 @@ class DeepAnalyzeAgent(BaseAgent):
             tool_schemas=schemas,
             handlers=handlers,
             max_steps=int(task.parameters.get("react_max_steps", 3) or 3),
+            max_tool_calls=int(task.parameters.get("react_max_tool_calls", 8) or 8),
+            tool_timeout_seconds=float(task.parameters.get("react_tool_timeout_seconds", 45.0) or 45.0),
+            tool_max_attempts=int(task.parameters.get("react_tool_max_attempts", 2) or 2),
+            bound_arguments={
+                "calculate_financial_ratios": {"records": records},
+                "build_trend_features": {"records": records},
+                "build_three_statement_view": {"records": records},
+                "build_peer_comparison": {
+                    "symbol": symbol,
+                    "period": period,
+                    "raw_data_root": raw_data_root,
+                    "allow_external_discovery": _allow_external_peer_discovery(symbol),
+                },
+                "perform_company_valuation": {
+                    "symbol": symbol,
+                    "period": period,
+                    "records": records,
+                    "raw_data_root": raw_data_root,
+                },
+            },
         )
 
 def build_rule_claims(
@@ -680,12 +711,16 @@ def build_rule_claims(
             ClaimItem(
                 claim_id=f"cl_{claim_index:04d}",
                 section_name="peer_compare",
-                claim_text=f"{target_symbol} 已完成本地同行对比：" + "；".join(parts) + "。",
+                claim_text=(
+                    f"{target_symbol} 已完成量化同行对比（同行指标为当前 TTM 市场快照）："
+                    + "；".join(parts)
+                    + "。"
+                ),
                 evidence_ids=financial_evidence_ids,
                 numeric_values=numeric_values,
                 risk_level="low",
                 confidence=0.78,
-                notes="由同行比较工具生成。",
+                notes=f"由同行比较工具生成；来源={peer_context.get('source') or 'local'}，同行数据口径为当前 TTM 快照。",
             )
         )
         claim_index += 1
@@ -846,6 +881,7 @@ def build_rule_claims(
                 section_name="business_overview",
                 claim_text=biz_text,
                 evidence_ids=[item for item in sample_ids if item],
+                citation_evidence_ids=(profile_evidence_ids[:1] or [item for item in sample_ids if item][:1]),
                 numeric_values={},
                 risk_level="low",
                 confidence=0.76,
@@ -1002,19 +1038,38 @@ def build_role_outputs(
                 else "Financial analysis must disclose missing statement coverage and avoid full three-statement conclusions."
             ),
         ),
-        "peer_analysis": _role_output(
-            status="complete" if peer_count > 0 else "missing",
-            confidence=0.78 if peer_count > 0 else 0.3,
-            source="peer_comparison_tool",
-            evidence_ids=peer_evidence[:8],
-            findings=peer_findings,
-            missing_inputs=[] if peer_count > 0 else ["peer_universe", "peer_financial_metrics"],
-            impact_on_report=(
-                "同行对比可基于可比公司数据判断相对市场地位。"
-                if peer_count > 0
-                else "同行对比需在数据约束范围内进行定性分析。"
+        "peer_analysis": {
+            **_role_output(
+                status="complete" if peer_count > 0 else "missing",
+                confidence=0.78 if peer_count > 0 else 0.3,
+                source="peer_comparison_tool",
+                evidence_ids=peer_evidence[:8],
+                findings=peer_findings,
+                missing_inputs=[] if peer_count > 0 else ["peer_universe", "peer_financial_metrics"],
+                impact_on_report=(
+                    "同行对比可基于可比公司数据判断相对市场地位。"
+                    if peer_count > 0
+                    else "同行对比需在数据约束范围内进行定性分析。"
+                ),
             ),
-        ),
+            "approved_peer_symbols": [
+                str(row.get("symbol") or row.get("ticker") or "").strip().upper()
+                for row in peer_context.get("peer_rows", [])
+                if isinstance(row, dict)
+                and str(row.get("symbol") or row.get("ticker") or "").strip()
+                and str(row.get("symbol") or row.get("ticker") or "").strip().upper() != str(symbol).strip().upper()
+            ],
+            "peer_rows": [
+                row for row in peer_context.get("peer_rows", [])
+                if isinstance(row, dict)
+                and str(row.get("symbol") or row.get("ticker") or "").strip().upper() != str(symbol).strip().upper()
+            ],
+            "rows": [
+                row for row in peer_context.get("peer_rows", [])
+                if isinstance(row, dict)
+                and str(row.get("symbol") or row.get("ticker") or "").strip().upper() != str(symbol).strip().upper()
+            ],
+        },
         "valuation_analysis": _role_output(
             status="complete" if valuation_available else "partial" if (market_evidence or financial_evidence) else "missing",
             confidence=0.8 if valuation_available else 0.5 if (market_evidence or financial_evidence) else 0.25,
@@ -1370,15 +1425,27 @@ def _minimum_valuation_claims(
     if equity is None:
         equity = _statement_value(rows, "balance_sheet", "shareholder_equity")
     market_cap, market_unit, market_source = _market_cap_from_records(records)
+    trailing_pe, trailing_pe_source = _market_multiple_from_records(records, "trailingPE")
     evidence_ids = list(dict.fromkeys(financial_evidence_ids + market_evidence_ids + ([market_source] if market_source else [])))
+    valuation_citation_ids = list(
+        dict.fromkeys(
+            financial_evidence_ids[:3]
+            + ([trailing_pe_source] if trailing_pe_source else [])
+            + ([market_source] if market_source else market_evidence_ids[:1])
+        )
+    )
     output: List[ClaimItem] = []
     claim_index = start_index
 
     multiples: List[str] = []
     numeric_values: Dict[str, float] = {}
-    if market_cap and net_income and net_income > 0:
+    if trailing_pe and trailing_pe > 0:
+        pe = trailing_pe
+        multiples.append(f"当前市场滚动 P/E 约为 {pe:.1f}x")
+        numeric_values["pe"] = pe
+    elif market_cap and net_income and net_income > 0:
         pe = market_cap / _align_market_denominator(net_income)
-        multiples.append(f"P/E 约为 {pe:.1f}x")
+        multiples.append(f"当前市值/FY净利润倍数约为 {pe:.1f}x（混合当前市值与{period}利润口径）")
         numeric_values["pe"] = pe
     if market_cap and equity and equity > 0:
         pb = market_cap / _align_market_denominator(equity)
@@ -1401,10 +1468,11 @@ def _minimum_valuation_claims(
                     + "；该结果仅用于相对估值校验，不构成目标价。"
                 ),
                 evidence_ids=evidence_ids,
+                citation_evidence_ids=valuation_citation_ids,
                 numeric_values=numeric_values,
                 risk_level="medium",
                 confidence=0.7,
-                notes="最小估值模型：market cap + net income/equity/revenue。",
+                notes="最小估值模型：优先采用市场源 trailing P/E；P/B、P/S 使用当前市值与目标财期三表口径。",
             )
         )
         claim_index += 1
@@ -1428,6 +1496,7 @@ def _minimum_valuation_claims(
                     + "，因此不能正式计算 P/E、P/B、P/S；报告应把这些缺口列为下一轮检索任务。"
                 ),
                 evidence_ids=evidence_ids,
+                citation_evidence_ids=valuation_citation_ids,
                 numeric_values={},
                 risk_level="medium",
                 confidence=0.68,
@@ -1449,6 +1518,7 @@ def _minimum_valuation_claims(
                     "对消费品公司，后续敏感性观察重点在收入增速、净利率、渠道价格和消费需求变化。"
                 ),
                 evidence_ids=financial_evidence_ids,
+                citation_evidence_ids=financial_evidence_ids[:4],
                 numeric_values={"net_margin": net_margin, "net_income_delta_1pct": delta},
                 risk_level="medium",
                 confidence=0.7,
@@ -1480,6 +1550,24 @@ def _market_cap_from_records(records: List[Dict[str, Any]]) -> tuple[float | Non
         if value:
             return float(value), unit, str(record.get("evidence_id") or record.get("sample_id") or "")
     return None, "", ""
+
+
+def _market_multiple_from_records(records: List[Dict[str, Any]], key: str) -> tuple[float | None, str]:
+    for record in records:
+        source_type = str(record.get("source_type") or "").lower()
+        if source_type not in {"market", "market_api", "eastmoney_quote"}:
+            continue
+        metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+        sources = [
+            metadata.get("financials") if isinstance(metadata.get("financials"), dict) else {},
+            metadata.get("snapshot") if isinstance(metadata.get("snapshot"), dict) else {},
+            metadata,
+        ]
+        for source in sources:
+            value = _safe_float(source.get(key))
+            if value is not None and value > 0:
+                return value, str(record.get("evidence_id") or record.get("sample_id") or "")
+    return None, ""
 
 
 def _minimum_executive_summary_claim(
@@ -1519,6 +1607,7 @@ def _minimum_executive_summary_claim(
             f"{valuation_text}；模型结论为“{recommendation}”。"
         ),
         evidence_ids=list(dict.fromkeys(financial_evidence_ids + market_evidence_ids))[:6],
+        citation_evidence_ids=list(dict.fromkeys(financial_evidence_ids[:3] + market_evidence_ids[:1])),
         numeric_values=numeric_values,
         risk_level="medium",
         confidence=0.76,
@@ -2039,9 +2128,13 @@ def _attach_metric_lineage_to_claims(claims: List[ClaimItem], financial_metric_l
     if not isinstance(metrics, list):
         return claims
     by_metric: Dict[str, List[Dict[str, Any]]] = {}
+    lineage_by_id: Dict[str, Dict[str, Any]] = {}
     for row in metrics:
         if isinstance(row, dict):
             by_metric.setdefault(str(row.get("metric_name") or ""), []).append(row)
+            lineage_id = str(row.get("metric_lineage_id") or "")
+            if lineage_id:
+                lineage_by_id[lineage_id] = row
     for claim in claims:
         if not claim.numeric_values:
             continue
@@ -2065,6 +2158,13 @@ def _attach_metric_lineage_to_claims(claims: List[ClaimItem], financial_metric_l
                         input_ids.append(lineage_id)
         claim.metric_lineage_ids = lineage_ids
         claim.input_metric_lineage_ids = input_ids
+        evidence_ids = list(claim.evidence_ids or [])
+        for lineage_id in dict.fromkeys([*lineage_ids, *input_ids]):
+            row = lineage_by_id.get(lineage_id, {})
+            source_evidence_id = str(row.get("source_evidence_id") or "").strip()
+            if source_evidence_id and source_evidence_id not in evidence_ids:
+                evidence_ids.append(source_evidence_id)
+        claim.evidence_ids = evidence_ids
     return claims
 
 

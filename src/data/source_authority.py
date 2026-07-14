@@ -10,8 +10,6 @@ from urllib.parse import urlparse
 PRIMARY_SOURCE_TYPES = {
     "filing",
     "financials",
-    "company_profile",
-    "company_page",
     "earnings_release",
     "sec_companyfacts",
     "cninfo_announcement",
@@ -127,6 +125,17 @@ class SourceAuthorityPolicy:
         doc_type = infer_document_type(source_type=source_type, url=url, title=title)
         joined = f"{source_type} {url} {title}".lower()
 
+        if "baostock" in joined or "tushare" in joined:
+            return SourceAuthorityGrade(
+                source_authority="third_party_structured",
+                authority_level="secondary",
+                authority_score=0.72,
+                trust_level="medium",
+                source_document_type=doc_type,
+                allowed_claim_types=tuple(sorted(CORE_FINANCIAL_CLAIMS | MARKET_CLAIMS)),
+                reason="BaoStock or Tushare is third-party structured data and cannot replace official filings",
+            )
+
         if "eastmoney" in joined or "东方财富" in joined:
             return SourceAuthorityGrade(
                 source_authority="third_party_structured",
@@ -136,6 +145,27 @@ class SourceAuthorityPolicy:
                 source_document_type=doc_type,
                 allowed_claim_types=tuple(sorted(CORE_FINANCIAL_CLAIMS | MARKET_CLAIMS)),
                 reason="Eastmoney is third-party structured data, not an official disclosure source",
+            )
+
+        if source_type in {"company_profile", "company_page"}:
+            if matches_domain(domain, COMPANY_DOMAINS):
+                return SourceAuthorityGrade(
+                    source_authority="company_official",
+                    authority_level="primary",
+                    authority_score=0.92,
+                    trust_level="high",
+                    source_document_type=doc_type,
+                    allowed_claim_types=tuple(sorted(EVENT_CLAIMS)),
+                    reason="company-owned profile or investor-relations context",
+                )
+            return SourceAuthorityGrade(
+                source_authority="profile_context",
+                authority_level="secondary",
+                authority_score=0.55,
+                trust_level="medium",
+                source_document_type=doc_type,
+                allowed_claim_types=tuple(sorted(EVENT_CLAIMS)),
+                reason="company profile context without a verified official disclosure domain",
             )
 
         if source_type in PRIMARY_SOURCE_TYPES or matches_domain(domain, PRIMARY_DOMAINS):

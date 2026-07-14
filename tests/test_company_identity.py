@@ -3,7 +3,6 @@ from src.data.company_universe import (
     infer_market_from_symbol,
     resolve_company_identity,
 )
-from src.app.web_ui import default_engines_for_symbol
 
 
 def test_resolve_a_share_identity_from_code():
@@ -14,6 +13,8 @@ def test_resolve_a_share_identity_from_code():
     assert identity.exchange == "SSE"
     assert identity.is_listed is True
     assert "eastmoney_financials" in identity.data_source_plan["engines"]
+    assert "baostock_financials" in identity.data_source_plan["engines"]
+    assert "tushare_financials" in identity.data_source_plan["engines"]
     assert "cninfo_announcements" in identity.data_source_plan["primary_sources"]
 
 
@@ -23,7 +24,9 @@ def test_resolve_hk_identity_from_code():
     assert identity.canonical_symbol == "0700.HK"
     assert identity.market == "hk"
     assert identity.exchange == "HKEX"
+    assert "hk_financials" in identity.data_source_plan["engines"]
     assert "yahoo_finance" in identity.data_source_plan["engines"]
+    assert "serper" not in identity.data_source_plan["primary_sources"]
 
 
 def test_resolve_us_identity_from_ticker_pattern():
@@ -43,9 +46,9 @@ def test_unknown_company_needs_confirmation():
 
 
 def test_default_engines_come_from_identity_plan():
-    assert "eastmoney_financials" in default_engines_for_symbol("600519.SS", realtime=True)
-    assert "sec_edgar" in default_engines_for_symbol("AAPL", realtime=True)
-    assert "sec_edgar" not in default_engines_for_symbol("0700.HK", realtime=True)
+    assert "eastmoney_financials" in build_data_source_plan("600519.SS", "cn_a")["engines"]
+    assert "sec_edgar" in build_data_source_plan("AAPL", "us")["engines"]
+    assert "sec_edgar" not in build_data_source_plan("0700.HK", "hk")["engines"]
 
 
 def test_market_inference_for_other_exchange_suffix():

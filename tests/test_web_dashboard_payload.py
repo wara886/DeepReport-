@@ -38,6 +38,13 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "慧研投研工作台" in html
     assert "投研首页" in html
     assert "投研空间" in html
+    assert 'id="topWorkspaceSelect"' in html
+    assert "数据与文档" in html
+    assert "证据与复核" in html
+    assert "运营与配置" in html
+    assert html.count('class="nav-group"') == 3
+    assert "loadTopWorkspaces" in html
+    assert "activeState.workspaceId" in html
     assert "股票池管理" in html
     assert "创建投研空间" in html
     assert "添加股票池公司" in html
@@ -46,7 +53,8 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "查询期间" in html
     assert "报告类型" in html
     assert "运行方式" in html
-    assert "任务操作" in html
+    assert "查看详情" in html
+    assert "更多" in html
     assert "研究问题" in html
     assert "质量诊断" in html
     assert "交付门禁" in html
@@ -68,15 +76,13 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert "最近研报任务" in html
     assert "数据源分布" in html
     assert "主张状态分布" in html
-    assert "处理链路" in html
-    assert "当前暂无真实处理数据" in html
-    assert "当前真实统计尚未形成完整累计漏斗" in html
-    assert "请切换到“处理链路”查看真实阶段计数" in html
-    assert "isValidFunnelSeries" in html
-    assert "最大流失步骤" in html
-    assert "funnel-layer" in html
-    assert "funnelVisual" in html
-    assert "funnelLoss" in html
+    assert "真实运营指标" in html
+    assert "operationalMetrics" in html
+    assert "文档处理" in html
+    assert "研报任务" in html
+    assert "主张复核" in html
+    assert "funnelDemoSteps" not in html
+    assert "示意漏斗" not in html
     assert "dataSourceHealth" in html
     assert "dataSourceChart" in html
     assert "claimStatusChart" in html
@@ -85,6 +91,11 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert 'getJson("/api/dashboard/summary")' in html
     assert 'getJson("/api/dashboard/funnel")' in html
     assert 'getJson("/api/report-tasks?limit=6")' in html
+    assert 'getJson("/api/data-sources")' in html
+    assert "datasourceRuntimeState" in html
+    assert "权限或额度不足" in html
+    assert "配置 / 启用" in html
+    assert 'const state = count > 0 ? "已入库" : "待配置"' not in html
     assert 'getJson("/api/workspaces")' in html
     assert "/api/workspaces/${encodeURIComponent(workspaceId)}/companies" in html
     assert "resolveCompanyForTask" in html
@@ -98,11 +109,13 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert 'chunk_vectorize: "切分向量化"' in html
     assert 'report_artifact: "研报任务产物"' in html
     assert 'medium: "中可信"' in html
+    assert 'missing: "缺少凭证"' in html
     assert "stepMetadataText" in html
     assert "产物类型：" in html
     assert "证据绑定" in html
     assert "shortTaskId" in html
-    assert "确认${labels[action]}该研报任务" in html
+    assert "再次点击确认操作" in html
+    assert "confirm(`" not in html
     assert "/api/report-tasks" in html
     assert "/api/latest" not in html
 
@@ -110,4 +123,5 @@ def test_web_dashboard_payload_and_page_contract(temp_db_engine, tmp_path):
     assert summary.json()["evidence_count"] == 1
     assert summary.json()["review_pending_claim_count"] == 1
     assert funnel.status_code == 200
-    assert any(step["key"] == "report_claim_generated" for step in funnel.json()["steps"])
+    assert funnel.json()["schema_version"] == "dashboard_status_groups.v1"
+    assert {group["key"] for group in funnel.json()["groups"]} == {"documents", "tasks", "claims"}

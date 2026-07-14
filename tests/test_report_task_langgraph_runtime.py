@@ -2,8 +2,10 @@ import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from src.app.api_fastapi import create_fastapi_app
+from src.db.models import LLMRun
 from src.services.report_task_service import ReportTaskService
 
 
@@ -98,6 +100,46 @@ class ReviewArtifactOrchestrator:
             ),
             encoding="utf-8",
         )
+        (self.output_dir / "run_summary.json").write_text(
+            json.dumps(
+                {
+                    "symbol": "NVDA",
+                    "period": "FY2024",
+                    "executed_agents": ["research", "final_answer"],
+                    "model_usage_by_agent": {
+                        "research": {"provider": "test", "model_name": "fixture"},
+                        "final_answer": {"provider": "test", "model_name": "fixture"},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.output_dir / "agent_collaboration_trace.json").write_text(
+            json.dumps(
+                {
+                    "agents": [
+                        {"agent": "research", "task_type": "research", "status": "completed", "error": ""},
+                        {"agent": "final_answer", "task_type": "writing", "status": "completed", "error": ""},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.output_dir / "tool_trace.json").write_text(
+            json.dumps(
+                {
+                    "calls": [
+                        {
+                            "caller_agent": "research",
+                            "tool_name": "local_evidence",
+                            "success": True,
+                            "failure_reason": "",
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         return {"verification_passed": True}
 
 
@@ -148,6 +190,65 @@ def make_client(tmp_path, orchestrator_factory, *, runtime_enabled=True):
     return TestClient(app)
 
 
+def test_section_repair_callback_uses_observable_llm_harness(monkeypatch, tmp_path):
+    class FakeRepairAdapter:
+        api_key = "test-key"
+        timeout = 5
+        route_profile = "user_fast"
+        model_name = "fake-repair-model"
+        max_tokens = 1000
+
+        def generate_json(self, prompt, system_prompt=None, **kwargs):
+            assert "Section repair input" in prompt
+            assert "valid JSON only" in system_prompt
+            return {"section_markdown": "基于正式证据维持中性判断。[ev1]"}
+
+    monkeypatch.setattr(
+        "src.services.report_task_service._build_role_model_adapter",
+        lambda **kwargs: FakeRepairAdapter(),
+    )
+    service = ReportTaskService(
+        database_url=f"sqlite:///{tmp_path / 'tasks.db'}",
+        output_root=tmp_path / "outputs",
+        report_root=tmp_path / "reports",
+        memory_root=tmp_path / "memory",
+    )
+    service.create_task(
+        {
+            "task_id": "task-section-repair-harness",
+            "symbol": "AAPL",
+            "period": "FY2024",
+            "execution_tier": "user_fast",
+        }
+    )
+    metadata = service._task_metadata("task-section-repair-harness")
+    callback = service._build_section_repair_callback(
+        task_id="task-section-repair-harness",
+        metadata=metadata,
+    )
+
+    assert callback is not None
+    result = callback(
+        {
+            "section_key": "conclusion",
+            "title": "投资结论",
+            "original_section": "短。",
+            "contract": {},
+            "evidence_pack": {"must_use_evidence_ids": ["ev1"]},
+            "verification": {"reasons": ["too_short"]},
+        }
+    )
+
+    assert result["section_markdown"].endswith("[ev1]")
+    assert result["llm_run_id"].startswith("llm_")
+    with service.session() as session:
+        run = session.scalar(select(LLMRun).where(LLMRun.run_id == result["llm_run_id"]))
+        assert run is not None
+        assert run.task_id == "task-section-repair-harness"
+        assert run.model_role == "section_repair"
+        assert run.status == "success"
+
+
 def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
     with make_client(tmp_path, ReviewArtifactOrchestrator) as client:
         created = client.post(
@@ -157,6 +258,7 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
                 "symbol": "NVDA",
                 "period": "FY2024",
                 "request_id": "request-runtime-review",
+                "enable_remote_data": False,
                 "run_immediately": True,
             },
         )
@@ -190,10 +292,16 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
     assert observability["checkpoint_status"] == "completed"
     assert set(observability["node_latency_ms"]) == {
         "evidence",
-        "official_evidence_backfill",
-        "build_canonical_metrics",
+            "official_evidence_backfill",
+            "planning",
+            "research",
+            "normalize_evidence",
+            "analyze",
+            "build_canonical_metrics",
         "build_section_evidence_packs",
-        "generation",
+        "write_report",
+        "verify_report",
+        "inspect_agent_execution",
         "verify_sections",
         "repair_failed_sections",
         "quality",
@@ -201,6 +309,11 @@ def test_report_task_pauses_and_resumes_at_claim_review_checkpoint(tmp_path):
         "human_review",
     }
     assert body["task"]["metadata"]["report_runtime"]["canonical_metrics"]["status"] == "ready"
+    assert body["task"]["metadata"]["report_runtime"]["run_manifest"]["status"] == "ready"
+    generation_execution = body["task"]["metadata"]["report_runtime"]["generation_execution"]
+    assert generation_execution["status"] == "ready"
+    assert generation_execution["agent_count"] == 2
+    assert generation_execution["failed_agent_count"] == 0
     assert body["task"]["metadata"]["report_runtime"]["official_evidence_backfill"]["status"] in {"not_required", "remote_disabled"}
     assert body["task"]["metadata"]["report_runtime"]["retrieval_attribution"]["status"] == "ready"
     assert body["task"]["metadata"]["report_runtime"]["retrieval_attribution"]["similarity_status"] == "ok"
@@ -228,6 +341,7 @@ def test_report_task_retries_failed_generation_node_from_checkpoint(tmp_path):
                 "task_id": "task-runtime-retry",
                 "symbol": "NVDA",
                 "period": "FY2024",
+                "enable_remote_data": False,
                 "run_immediately": True,
             },
         )
@@ -238,14 +352,14 @@ def test_report_task_retries_failed_generation_node_from_checkpoint(tmp_path):
     assert failed.json()["status"] == "failed"
     assert failed.json()["metadata"]["runtime_failure"]["checkpoint_available"] is True
     assert checkpoint.status_code == 200
-    assert checkpoint.json()["next"] == ["generation"]
+    assert checkpoint.json()["next"] == ["write_report"]
     assert retried.status_code == 200
     body = retried.json()
     assert body["task"]["status"] == "completed"
     assert body["checkpoint"]["next"] == []
     assert FailingOnceOrchestrator.calls == 2
     evidence_events = [event for event in body["task"]["events"] if event["stage"] == "evidence_gate"]
-    assert len(evidence_events) == 2
+    assert len(evidence_events) == 1
 
 
 def test_report_task_remote_runtime_executes_official_backfill(monkeypatch, tmp_path):
@@ -278,13 +392,72 @@ def test_report_task_remote_runtime_executes_official_backfill(monkeypatch, tmp_
         )
 
     assert created.status_code == 201
-    assert calls
+    assert len(calls) == 1
     assert calls[0]["symbol"] == "AAPL"
     assert calls[0]["period"] == "FY2024"
     backfill = created.json()["metadata"]["report_runtime"]["official_evidence_backfill"]
     assert backfill["status"] == "completed"
     assert backfill["acquired_record_count"] == 2
     assert backfill["formal_delivery_allowed"] is True
+
+
+def test_official_backfill_is_imported_before_enforced_evidence_gate(monkeypatch, tmp_path):
+    def fake_backfill(**kwargs):
+        output_dir = Path(kwargs["output_dir"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "evidence.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "evidence_id": "aapl-fy2024-official",
+                        "title": "Apple FY2024 Form 10-K",
+                        "content": "Apple FY2024 official annual filing.",
+                        "source_type": "sec_edgar",
+                        "source_url": "https://www.sec.gov/Archives/aapl-fy2024",
+                        "trust_level": "official",
+                        "symbol": "AAPL",
+                        "period": "FY2024",
+                        "metadata": {"symbol": "AAPL", "period": "FY2024"},
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "acquired_record_count": 1,
+            "merged_record_count": 1,
+            "pdf_record_count": 1,
+            "table_count": 0,
+            "attempts": [{"source_key": "sec_edgar", "status": "success", "record_count": 1}],
+            "coverage": {"formal_delivery_allowed": True, "missing_requirements": []},
+            "backfill_remaining": {"tasks": []},
+        }
+
+    monkeypatch.setattr("src.services.report_task_service.execute_official_evidence_backfill", fake_backfill)
+
+    with make_client(tmp_path, ReviewArtifactOrchestrator) as client:
+        created = client.post(
+            "/api/report-tasks",
+            json={
+                "task_id": "task-backfill-before-gate",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "enable_remote_data": True,
+                "enforce_evidence_gate": True,
+                "run_immediately": True,
+            },
+        )
+
+    body = created.json()
+    assert created.status_code == 201
+    assert body["status"] == "completed"
+    assert body["metadata"]["pre_generation_evidence_gate"]["blocked"] is False
+    completed_stages = [
+        event["stage"]
+        for event in body["events"]
+        if event["stage"] != "runtime_start"
+    ]
+    assert completed_stages.index("official_evidence_backfill") < completed_stages.index("evidence_gate")
 
 
 def test_report_task_can_use_legacy_pipeline_compatibility_switch(tmp_path):

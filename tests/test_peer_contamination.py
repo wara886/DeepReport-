@@ -1,4 +1,16 @@
 from src.agents.section_dossier_builder import sanitize_peer_rows_for_report
+from src.agents.verifier import _ticker_mentions
+from src.agents.deep_analyze_agent import _allow_external_peer_discovery
+
+
+def test_external_peer_discovery_is_market_scoped_for_a_shares():
+    assert _allow_external_peer_discovery("600519.SS") is True
+    assert _allow_external_peer_discovery("AAPL") is True
+    assert _allow_external_peer_discovery("0700.HK") is False
+
+
+def test_currency_codes_are_not_ticker_mentions():
+    assert not ({"CNY", "HKD", "USD"} & _ticker_mentions("报表货币 CNY，交易货币 HKD，对照货币 USD"))
 from src.agents.deep_analyze_agent import build_role_outputs
 from src.evaluation.report_quality import evaluate_report_quality
 from src.features.company_valuation import build_peer_comparison
@@ -138,6 +150,23 @@ def test_role_outputs_sanitize_a_share_peer_and_risk_contamination():
     assert "收入 1720.54亿元" in statement
     assert "净利润 823.20亿元" in statement
     assert "经营现金流 615.22亿元" in statement
+
+
+def test_role_outputs_project_peer_context_into_peer_analysis():
+    peer_context = {
+        "peer_count": 2,
+        "peer_rows": [
+            {"symbol": "600519.SS", "is_target": True, "industry": "Distillers", "revenue_growth_pct": 6.5},
+            {"symbol": "002304.SZ", "is_target": False, "industry": "Distillers", "revenue_growth_pct": -26.0},
+            {"symbol": "600197.SS", "is_target": False, "industry": "Distillers", "revenue_growth_pct": -23.8},
+        ],
+    }
+
+    outputs = build_role_outputs([], [], "600519.SS", "FY2024", peer_context=peer_context)
+    peer_analysis = outputs["peer_analysis"]
+
+    assert peer_analysis["approved_peer_symbols"] == ["002304.SZ", "600197.SS"]
+    assert [row["symbol"] for row in peer_analysis["peer_rows"]] == ["002304.SZ", "600197.SS"]
 
 
 def test_a_share_peer_builder_does_not_fallback_to_us_yahoo_when_local_missing(tmp_path):

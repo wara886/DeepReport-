@@ -93,6 +93,23 @@ def test_categorize_separates_scale_and_ratios():
     assert "经营现金流" in cf_labels
 
 
+def test_market_cap_trillion_is_normalized_to_chart_base_units(tmp_path):
+    claims = [
+        {
+            "claim_id": "cl_market",
+            "numeric_values": {"market_cap_trillion": 4.631, "revenue": 391_035_000_000.0},
+            "evidence_ids": ["market"],
+        }
+    ]
+
+    charts = generate_report_charts(claims=claims, evidence_records=[], output_dir=str(tmp_path))
+    chart = next(item for item in charts if item["chart_id"] == "financial_scale_bar")
+    values = dict(zip(chart["chart_js"]["labels"], chart["chart_js"]["data"]))
+
+    assert values["市值"] == 4631.0
+    assert values["收入"] == 391.035
+
+
 def test_generate_report_charts_no_internal_ids(tmp_path):
     """Generated chart payloads should not contain internal IDs in labels."""
     claims = [

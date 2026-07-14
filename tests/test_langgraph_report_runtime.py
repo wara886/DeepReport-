@@ -110,11 +110,17 @@ def test_langgraph_runtime_runs_typed_nodes_and_interrupts_for_claim_review():
     assert completed["export_readiness"]["can_export_formal_package"] is True
     assert completed["review_decision"]["approved"] is True
     assert [item["node"] for item in completed["runtime_events"]] == [
-        "evidence",
         "official_evidence_backfill",
+        "evidence",
+        "planning",
+        "research",
+        "normalize_evidence",
+        "analyze",
         "build_canonical_metrics",
         "build_section_evidence_packs",
-        "generation",
+        "write_report",
+        "verify_report",
+        "inspect_agent_execution",
         "verify_sections",
         "repair_failed_sections",
         "quality",
@@ -172,7 +178,7 @@ def test_failed_node_can_retry_from_checkpoint_without_repeating_completed_nodes
         runtime.invoke(initial_state(), thread_id="task-retry")
 
     snapshot = runtime.snapshot(thread_id="task-retry")
-    assert snapshot["next"] == ["generation"]
+    assert snapshot["next"] == ["write_report"]
     assert calls == ["evidence"]
 
     completed = runtime.retry_from_checkpoint(thread_id="task-retry")
@@ -214,6 +220,66 @@ def test_failed_canonical_metrics_node_has_own_checkpoint():
 
     assert canonical_calls == 2
     assert calls == ["evidence", "generation", "quality", "finalize"]
+    assert completed["delivery_readiness"]["can_deliver_formal_report"] is True
+
+
+def test_runtime_nodes_run_once_in_dependency_order():
+    calls = []
+    post_generation = []
+    base = successful_handlers(calls, pending_review=False)
+    handlers = CallbackReportGraphHandlers(
+        base.evidence,
+        base.generation,
+        base.quality,
+        base.finalize,
+        official_evidence_backfill_callback=lambda _state: post_generation.append("official") or {},
+        build_canonical_metrics_callback=lambda _state: post_generation.append("canonical") or {},
+        build_section_evidence_packs_callback=lambda _state: post_generation.append("packs") or {},
+        inspect_agent_execution_callback=lambda _state: post_generation.append("inspect") or {},
+        verify_sections_callback=lambda _state: post_generation.append("verify") or {},
+        repair_failed_sections_callback=lambda _state: post_generation.append("repair") or {},
+    )
+
+    result = LangGraphReportRuntime(handlers).invoke(initial_state(), thread_id="task-node-order")
+
+    assert calls == ["evidence", "generation", "quality", "finalize"]
+    assert post_generation == ["official", "canonical", "packs", "inspect", "verify", "repair"]
+    assert result["delivery_readiness"]["can_deliver_formal_report"] is True
+
+
+def test_generation_receives_prewrite_canonical_metrics_and_section_packs():
+    calls = []
+    base = successful_handlers(calls, pending_review=False)
+
+    def canonical(state):
+        assert state["evidence_state"]["status"] == "success"
+        return {"artifact_state": {"canonical_metrics_ready": True}}
+
+    def packs(state):
+        assert state["artifact_state"]["canonical_metrics_ready"] is True
+        return {
+            "artifact_state": {
+                **state["artifact_state"],
+                "section_evidence_packs_ready": True,
+            }
+        }
+
+    def generation(state):
+        assert state["artifact_state"]["canonical_metrics_ready"] is True
+        assert state["artifact_state"]["section_evidence_packs_ready"] is True
+        return base.generation(state)
+
+    handlers = CallbackReportGraphHandlers(
+        base.evidence,
+        generation,
+        base.quality,
+        base.finalize,
+        build_canonical_metrics_callback=canonical,
+        build_section_evidence_packs_callback=packs,
+    )
+
+    completed = LangGraphReportRuntime(handlers).invoke(initial_state(), thread_id="task-prewrite-inputs")
+
     assert completed["delivery_readiness"]["can_deliver_formal_report"] is True
 
 

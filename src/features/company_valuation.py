@@ -380,10 +380,10 @@ def _discover_peers_via_search(
                 "industry": industry,
                 "is_target": False,
                 "revenue_billion": rev,
-                "revenue_growth_pct": _ratio_to_pct(rev_growth) if rev_growth is not None else None,
-                "gross_margin_pct": _ratio_to_pct(gross_margin) if gross_margin is not None else None,
-                "net_margin_pct": _ratio_to_pct(net_margin) if net_margin is not None else None,
-                "roe_pct": _ratio_to_pct(roe_val) if roe_val is not None else None,
+                "revenue_growth_pct": _yahoo_ratio_to_pct(rev_growth) if rev_growth is not None else None,
+                "gross_margin_pct": _yahoo_ratio_to_pct(gross_margin) if gross_margin is not None else None,
+                "net_margin_pct": _yahoo_ratio_to_pct(net_margin) if net_margin is not None else None,
+                "roe_pct": _yahoo_ratio_to_pct(roe_val) if roe_val is not None else None,
                 "free_cash_flow_billion": fcf_val,
                 "net_income_billion": ni,
                 "adjusted_net_income_billion": ni,
@@ -393,6 +393,9 @@ def _discover_peers_via_search(
                 "valuation_input_usable": True,
                 "valuation_input_rejection_reason": "",
                 "free_cash_flow_period_basis": "annual",
+                "data_period": "current_ttm",
+                "source_type": "yahoo_finance",
+                "source_url": f"https://finance.yahoo.com/quote/{ps}",
             })
         except Exception as exc:
             logger.warning("Failed to fetch Yahoo data for peer %s: %s", ps, exc)
@@ -412,10 +415,10 @@ def _discover_peers_via_search(
             "industry": industry,
             "is_target": True,
             "revenue_billion": _to_billion(t_rev) if t_rev is not None else None,
-            "revenue_growth_pct": _ratio_to_pct(_safe_float(ti.get("revenueGrowth")) or 0.0),
-            "gross_margin_pct": _ratio_to_pct(_safe_float(ti.get("grossMargins")) or 0.0),
-            "net_margin_pct": _ratio_to_pct(_safe_float(ti.get("profitMargins")) or 0.0),
-            "roe_pct": _ratio_to_pct(_safe_float(ti.get("returnOnEquity")) or 0.0),
+            "revenue_growth_pct": _yahoo_ratio_to_pct(_safe_float(ti.get("revenueGrowth")) or 0.0),
+            "gross_margin_pct": _yahoo_ratio_to_pct(_safe_float(ti.get("grossMargins")) or 0.0),
+            "net_margin_pct": _yahoo_ratio_to_pct(_safe_float(ti.get("profitMargins")) or 0.0),
+            "roe_pct": _yahoo_ratio_to_pct(_safe_float(ti.get("returnOnEquity")) or 0.0),
             "free_cash_flow_billion": _to_billion(t_fcf) if t_fcf is not None else None,
             "net_income_billion": _to_billion(t_ni) if t_ni is not None else None,
             "adjusted_net_income_billion": _to_billion(t_ni) if t_ni is not None else None,
@@ -425,6 +428,9 @@ def _discover_peers_via_search(
             "valuation_input_usable": True,
             "valuation_input_rejection_reason": "",
             "free_cash_flow_period_basis": "annual",
+            "data_period": "current_ttm",
+            "source_type": "yahoo_finance",
+            "source_url": f"https://finance.yahoo.com/quote/{symbol}",
         }
     except Exception as exc:
         logger.warning("Failed to fetch Yahoo target data for %s: %s", symbol, exc)
@@ -876,6 +882,7 @@ def _target_from_records(records: List[Dict[str, Any]], symbol: str, period: str
 
 
 def _market_context_from_records(records: List[Dict[str, Any]], symbol: str, period: str) -> Dict[str, Any]:
+    context: Dict[str, Any] = {}
     for record in records:
         if str(record.get("symbol", "")).upper() != symbol:
             continue
@@ -911,18 +918,33 @@ def _market_context_from_records(records: List[Dict[str, Any]], symbol: str, per
             shares = market_cap / current_price
         if not market_cap and last_close and shares:
             market_cap = last_close * shares
-        return {
-            "symbol": symbol,
-            "period": period,
-            "last_close": last_close or current_price,
-            "market_cap_billion": market_cap,
-            "currency": str(snapshot.get("currency") or infer_trading_currency(symbol, infer_market_from_symbol(symbol).get("market", ""))),
-            "trading_currency": infer_trading_currency(symbol, infer_market_from_symbol(symbol).get("market", "")),
-            "shares_outstanding_billion": shares,
-            "source_evidence_id": str(record.get("evidence_id") or record.get("sample_id") or ""),
-            "source_url": str(record.get("source_url") or ""),
-        }
-    return {}
+        context.setdefault("symbol", symbol)
+        context.setdefault("period", period)
+        if context.get("last_close") is None and (last_close is not None or current_price is not None):
+            context["last_close"] = last_close if last_close is not None else current_price
+        if context.get("market_cap_billion") is None and market_cap is not None:
+            context["market_cap_billion"] = market_cap
+        if context.get("shares_outstanding_billion") is None and shares is not None:
+            context["shares_outstanding_billion"] = shares
+        if not context.get("currency"):
+            context["currency"] = str(snapshot.get("currency") or infer_trading_currency(symbol, infer_market_from_symbol(symbol).get("market", "")))
+        context.setdefault("trading_currency", infer_trading_currency(symbol, infer_market_from_symbol(symbol).get("market", "")))
+        evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
+        if evidence_id:
+            context.setdefault("source_evidence_ids", []).append(evidence_id)
+            context["source_evidence_id"] = evidence_id
+        if record.get("source_url"):
+            context["source_url"] = str(record.get("source_url"))
+    market_cap = _safe_float(context.get("market_cap_billion"))
+    shares = _safe_float(context.get("shares_outstanding_billion"))
+    price = _safe_float(context.get("last_close"))
+    if shares is None and market_cap is not None and price:
+        context["shares_outstanding_billion"] = market_cap / price
+    elif market_cap is None and shares is not None and price:
+        context["market_cap_billion"] = shares * price
+    if isinstance(context.get("source_evidence_ids"), list):
+        context["source_evidence_ids"] = list(dict.fromkeys(context["source_evidence_ids"]))
+    return context
 
 
 def _normalize_record_financials(record: Dict[str, Any]) -> Dict[str, Any]:
@@ -1004,7 +1026,7 @@ def _valuation_unavailable(
     missing_inputs: List[str],
     valuation_status: str = "",
 ) -> Dict[str, Any]:
-    return {
+    payload = {
         "symbol": symbol,
         "period": period,
         "valuation_available": False,
@@ -1015,6 +1037,43 @@ def _valuation_unavailable(
         "valuation_input_usable": False,
         "valuation_input_rejection_reason": error,
         "valuation_status": valuation_status or error,
+    }
+    bridge = _earnings_bridge_sensitivity(input_summary)
+    if bridge:
+        payload["valuation_sensitivity"] = bridge
+    return payload
+
+
+def _earnings_bridge_sensitivity(input_summary: Dict[str, Any]) -> Dict[str, Any]:
+    revenue = _safe_float(input_summary.get("revenue_billion"))
+    net_income = _safe_float(input_summary.get("net_income_billion"))
+    if revenue is None or net_income is None or revenue <= 0 or net_income <= 0:
+        return {}
+    margin = net_income / revenue
+    scenarios: Dict[str, Dict[str, Any]] = {}
+    for name, revenue_change_pct in (("bear", -1.0), ("base", 0.0), ("bull", 1.0)):
+        scenario_revenue = revenue * (1 + revenue_change_pct / 100)
+        scenario_income = scenario_revenue * margin
+        scenarios[name] = {
+            "revenue_change_pct": revenue_change_pct,
+            "revenue_billion": round(scenario_revenue, 2),
+            "net_income_billion": round(scenario_income, 2),
+            "value": round(scenario_income, 2),
+        }
+    return {
+        "method": "earnings_bridge",
+        "metric": "net_income_billion",
+        "unit": "billion",
+        "scenario_values": scenarios,
+        "directional_check": (
+            scenarios["bull"]["net_income_billion"]
+            >= scenarios["base"]["net_income_billion"]
+            >= scenarios["bear"]["net_income_billion"]
+        ),
+        "limitations": [
+            "This is an earnings bridge, not a DCF target-price model.",
+            "Net margin is held constant across scenarios.",
+        ],
     }
 
 
@@ -1123,6 +1182,12 @@ def _to_billion(value: float) -> float:
 def _ratio_to_pct(value: float) -> float:
     value = float(value)
     return value * 100.0 if abs(value) <= 1.0 else value
+
+
+def _yahoo_ratio_to_pct(value: float) -> float:
+    """Yahoo ratio fields are decimal ratios even when ROE exceeds 100%."""
+
+    return float(value) * 100.0
 
 
 def _market_gap(blended_value: float, market_context: Dict[str, Any]) -> Dict[str, Any]:

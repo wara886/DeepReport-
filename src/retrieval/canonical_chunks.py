@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.schemas.runtime_contracts import normalize_evidence_record
+
 
 SECTION_META_TAGS = {
     "business_overview": ["业务结构", "产品结构", "收入表现"],
@@ -65,7 +67,7 @@ def normalize_retrieval_record(record: dict[str, Any]) -> dict[str, Any]:
         if data.get(key) not in (None, "", []):
             metadata.setdefault(key, data.get(key))
     data["metadata"] = metadata
-    return data
+    return normalize_evidence_record(data)
 
 
 def normalize_retrieval_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -1,6 +1,6 @@
 import json
 
-from src.evaluation.llm_report_review import review_report_with_llm, write_llm_review_outputs
+from src.evaluation.llm_report_review import _build_review_prompt, review_report_with_llm, write_llm_review_outputs
 
 
 class FakeReviewModel:
@@ -12,6 +12,44 @@ class FakeReviewModel:
 
     def generate_json(self, **kwargs):
         return self.payload
+
+
+class FlakyReviewModel(FakeReviewModel):
+    def __init__(self, payload):
+        super().__init__(payload)
+        self.calls = 0
+        self.prompts = []
+
+    def generate_json(self, **kwargs):
+        self.calls += 1
+        self.prompts.append(kwargs["prompt"])
+        if self.calls == 1:
+            raise json.JSONDecodeError("truncated", "{", 1)
+        return self.payload
+
+
+def test_llm_review_retries_truncated_json_once(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    model = FlakyReviewModel({
+        "total_score": 0.9,
+        "verdict": "pass",
+        "dimension_scores": {key: 0.9 for key in (
+            "professional_report_likeness",
+            "investment_insight",
+            "fact_period_consistency",
+            "company_report_requirement_fit",
+            "chart_usefulness",
+            "language_quality",
+        )},
+        "issues": [],
+    })
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["attempt_count"] == 2
+    assert len(review["recovered_failure_reasons"]) == 1
+    assert "previous response could not be parsed" in model.prompts[1]
 
 
 def test_llm_review_missing_api_key_fails_explicitly(tmp_path):
@@ -60,6 +98,28 @@ def test_llm_review_normalizes_passing_model_json(tmp_path):
     assert review["llm_review_pass"] is True
     assert review["total_score"] == 0.86
     assert review["model"] == "fake-reviewer"
+
+
+def test_llm_review_reconciles_warning_only_borderline_score(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    model = FakeReviewModel(
+        {
+            "total_score": 0.78,
+            "dimension_scores": {},
+            "verdict": "整体可交付，但图表说明仍可增强。",
+            "issues": [
+                {"severity": "warning", "category": "chart", "message": "图表文字解读可以更深入。"},
+                {"severity": "warning", "category": "citation", "message": "一项派生指标建议补充公式说明。"},
+            ],
+        }
+    )
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["total_score"] >= 0.82
+    assert review["artifact_guard_applied"] is True
+    assert all(issue["severity"] == "warning" for issue in review["issues"])
 
 
 def test_llm_review_direct_fail_terms_force_failure(tmp_path):
@@ -128,6 +188,40 @@ def test_llm_review_reconciles_stale_section_depth_issues_after_section_verifica
     assert review["issues"][0]["severity"] == "warning"
 
 
+def test_llm_review_accepts_disclosed_directional_rating_without_target_price(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    outputs = run_dir / "company" / "outputs"
+    reports = run_dir / "company" / "reports"
+    (outputs / "section_verification.json").write_text(
+        json.dumps({"status": "passed", "formal_delivery_allowed": True}), encoding="utf-8"
+    )
+    (reports / "report.md").write_text(
+        "## 估值观察\n估值输入尚不完整，本报告不输出确定目标价。\n\n"
+        "## 投资结论\n维持中性观察评级，理由包括现金流质量、估值约束和主要风险。",
+        encoding="utf-8",
+    )
+    model = FakeReviewModel(
+        {
+            "total_score": 0.78,
+            "dimension_scores": {},
+            "verdict": "评级边界需要说明。",
+            "issues": [
+                {
+                    "severity": "blocker",
+                    "category": "llm_review",
+                    "message": "投资建议缺少明确评级及目标价或估值区间",
+                }
+            ],
+        }
+    )
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["artifact_reconciliation_applied"] is True
+    assert review["issues"][0]["severity"] == "warning"
+
+
 def test_llm_review_reconciles_low_score_stale_english_review_after_repair(tmp_path):
     run_dir = _write_review_run(tmp_path)
     outputs = run_dir / "company" / "outputs"
@@ -169,6 +263,62 @@ def test_llm_review_reconciles_low_score_stale_english_review_after_repair(tmp_p
     assert review["total_score"] >= 0.82
     assert review["artifact_reconciliation_applied"] is True
     assert all(issue["severity"] == "warning" for issue in review["issues"])
+
+
+def test_llm_review_reconciles_disclosed_ttm_and_fiscal_period_context(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    outputs = run_dir / "company" / "outputs"
+    reports = run_dir / "company" / "reports"
+    (outputs / "section_verification.json").write_text(
+        json.dumps({"status": "passed", "formal_delivery_allowed": True}),
+        encoding="utf-8",
+    )
+    (reports / "report.md").write_text(
+        "## 执行摘要\n报告采用FY2024年度财务口径。\n\n"
+        "## 同行对比\n> 注：下表为当前 TTM 市场快照；财务分析章节的 FY2024 指标来自年度披露，"
+        "二者期间不同，不作同期间数值替代。\n\n"
+        "## 财务分析\nFY2024收入和现金流已核验。\n\n"
+        "## 风险评估\n竞争和监管风险已有官方依据。\n\n"
+        "## 投资结论\n维持中性观察评级，基于估值和风险约束。",
+        encoding="utf-8",
+    )
+    model = FakeReviewModel(
+        {
+            "total_score": 0.9,
+            "dimension_scores": {},
+            "verdict": "同行期间错配。",
+            "issues": [
+                {
+                    "severity": "fatal",
+                    "category": "period",
+                    "message": "同行对比表格使用TTM市场快照数据，与研报主题FY2024期间不一致，构成期间错配。",
+                }
+            ],
+        }
+    )
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["issues"][0]["severity"] == "warning"
+    assert review["issues"][0]["category"] == "llm_review_reconciled"
+
+
+def test_review_prompt_compacts_large_evidence_payloads():
+    huge = "financial filing text " * 200000
+    prompt = _build_review_prompt(
+        {
+            "quality_report": {"objective_pass": True},
+            "verification_report": {"passed": True},
+            "claims": [{"claim_id": "cl_1", "claim_text": huge, "evidence_ids": ["ev_1"]}],
+            "evidence": [{"evidence_id": "ev_1", "content": huge, "metadata": {"raw": huge}}],
+            "citations": [{"evidence_id": "ev_1", "title": huge, "source_url": "https://example.com"}],
+            "report_md": "## 执行摘要\n" + huge,
+        }
+    )
+
+    assert len(prompt) < 30000
+    assert huge not in prompt
 
 
 def _write_review_run(tmp_path):

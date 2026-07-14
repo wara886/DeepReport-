@@ -403,6 +403,38 @@ def test_yahoo_financials_evidence_describes_target_quarter_not_latest(monkeypat
     assert "revenue=24000000000.0" not in evidence["content"]
 
 
+def test_yahoo_financials_evidence_filters_annual_history_to_target_year(monkeypatch):
+    def fake_financials(symbol):
+        return {
+            "totalRevenue": 416161000000.0,
+            "currentPrice": 210.0,
+            "income_history": [
+                {"end_date": "2025-09-30", "Total Revenue": 416161000000.0},
+                {"end_date": "2024-09-28", "Total Revenue": 391035000000.0},
+            ],
+            "balance_history": [
+                {"end_date": "2025-09-30", "Total Assets": 359241000000.0},
+                {"end_date": "2024-09-28", "Total Assets": 364980000000.0},
+            ],
+            "cashflow_history": [
+                {"end_date": "2025-09-30", "Operating Cash Flow": 111443000000.0},
+                {"end_date": "2024-09-28", "Operating Cash Flow": 118254000000.0},
+            ],
+        }
+
+    monkeypatch.setattr("src.data.yahoo_finance.fetch_yahoo_financials", fake_financials)
+
+    evidence = yahoo_financials_to_evidence("AAPL", "FY2024")
+
+    assert evidence is not None
+    assert "end_date=2024-09-28" in evidence["content"]
+    assert "end_date=2025-09-30" not in evidence["content"]
+    assert "totalRevenue=416161000000.0" not in evidence["content"]
+    assert evidence["metadata"]["financials"]["income_history"] == [
+        {"end_date": "2024-09-28", "Total Revenue": 391035000000.0}
+    ]
+
+
 def test_market_api_wrong_annual_end_date_is_rejected_for_fiscal_year():
     record = {
         "evidence_id": "aapl_yahoo_fy2024",
@@ -586,10 +618,40 @@ def test_minimum_valuation_claims_compute_multiples_and_sensitivity():
     )
     text = "\n".join(claim.claim_text for claim in claims)
 
-    assert "P/E 约为 100.0x" in text
+    assert "当前市值/FY净利润倍数约为 100.0x" in text
+    assert "混合当前市值与2026Q1利润口径" in text
     assert "P/B 约为 4.0x" in text
     assert "P/S 约为 10.0x" in text
     assert "敏感性分析显示" in text
+
+
+def test_minimum_valuation_claim_prefers_provider_trailing_pe_over_mixed_period_multiple():
+    claims = build_rule_claims(
+        records=[
+            {
+                "evidence_id": "market_aapl",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "source_type": "market_api",
+                "metadata": {"financials": {"marketCap": 4_631_217_307_648.0, "trailingPE": 38.174335}},
+            }
+        ],
+        ratio_rows=[],
+        trend_rows=[],
+        statement_view={
+            "rows": [
+                {"symbol": "AAPL", "period": "FY2024", "statement": "income_statement", "line_item": "revenue", "value": 391_035_000_000.0},
+                {"symbol": "AAPL", "period": "FY2024", "statement": "income_statement", "line_item": "net_income", "value": 93_736_000_000.0},
+            ]
+        },
+    )
+
+    valuation = next(claim for claim in claims if claim.section_name == "valuation" and "P/E" in claim.claim_text)
+
+    assert "当前市场滚动 P/E 约为 38.2x" in valuation.claim_text
+    assert "49.4" not in valuation.claim_text
+    assert valuation.numeric_values["pe"] == 38.174335
+    assert "market_aapl" in valuation.citation_evidence_ids
 
 
 def test_eastmoney_claims_use_professional_units_not_scientific_notation():
@@ -693,6 +755,60 @@ def test_pdf_statement_table_record_builds_standard_metrics_and_rows():
     assert all(item["source_table_id"] == "tbl_pdf_income" for item in metrics["metrics"])
     assert rows[0]["source_type"] == "pdf_statement_table"
     assert rows[0]["unit"] == "USD_million"
+
+
+def test_pdf_statement_table_infers_million_scale_from_raw_header():
+    records = [
+        {
+            "evidence_id": "pdf_table_hk_balance",
+            "symbol": "0700.HK",
+            "period": "FY2024",
+            "source_type": "pdf_statement_table",
+            "metadata": {
+                "table_id": "tbl_pdf_balance",
+                "table_type": "balance_sheet",
+                "currency": "CNY",
+                "unit": "raw",
+                "raw_rows": [["CONSOLIDATED STATEMENT OF FINANCIAL POSITION", "RMB’Million"]],
+                "rows": [
+                    {"line_item": "total_assets", "value": 1333425.0},
+                    {"line_item": "total_liabilities", "value": 555382.0},
+                ],
+            },
+        }
+    ]
+
+    metrics = build_standard_financial_metrics(records)
+    rows = build_standard_statement_rows(records)
+
+    by_name = {item["metric_name"]: item for item in metrics["metrics"]}
+    assert by_name["total_assets"]["unit"] == "CNY_million"
+    assert by_name["total_liabilities"]["scale"] == "million"
+    assert {row["unit"] for row in rows} == {"CNY_million"}
+
+
+def test_hk_financial_rows_use_issuer_currency_and_keep_table_lineage():
+    record = {
+        "evidence_id": "hk_income_0700",
+        "symbol": "0700.HK",
+        "period": "FY2024",
+        "source_type": "hk_financials",
+        "metadata": {
+            "table_id": "hk_income_table",
+            "table_type": "income",
+            "currency": "HKD",
+            "rows": [{"line_item": "Total Revenue", "value": 660257000000, "end_date": "2024-12-31"}],
+        },
+    }
+
+    metrics = build_standard_financial_metrics([record])
+    rows = build_standard_statement_rows([record])
+
+    assert metrics["metrics"][0]["unit"] == "CNY"
+    assert metrics["metrics"][0]["source_type"] == "hk_financials"
+    assert rows[0]["currency"] == "CNY"
+    assert rows[0]["source_evidence_id"] == "hk_income_0700"
+    assert rows[0]["source_table_id"] == "hk_income_table"
 
 
 def test_pdf_tables_artifacts_become_statement_table_evidence_records():

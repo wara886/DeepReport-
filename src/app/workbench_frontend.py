@@ -49,6 +49,14 @@ def render_workbench_html() -> str:
     .brand-title { font-size: 16px; font-weight: 700; color: #fff; }
     .brand-sub { font-size: 12px; color: #92a4b7; margin-top: 4px; }
     .nav { display: grid; gap: 4px; }
+    .nav-group { border-radius: 8px; }
+    .nav-group > summary { list-style: none; min-height: 38px; padding: 9px 10px; border-radius: 8px; cursor: pointer; color: #c5d1dd; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+    .nav-group > summary::-webkit-details-marker { display: none; }
+    .nav-group > summary::after { content: "▾"; color: #7f93a8; font-size: 11px; }
+    .nav-group:not([open]) > summary::after { content: "▸"; }
+    .nav-group.active > summary, .nav-group > summary:hover { background: rgba(255,255,255,.06); color: #fff; }
+    .nav-secondary { display: grid; gap: 2px; margin: 3px 0 7px; padding-left: 9px; border-left: 1px solid rgba(255,255,255,.12); }
+    .nav-secondary button { min-height: 31px; padding: 6px 9px; font-size: 12px; }
     .nav button {
       width: 100%;
       border: 0;
@@ -141,55 +149,19 @@ def render_workbench_html() -> str:
     .dashboard-charts { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; }
     .dashboard-bottom { margin-top: 14px; }
     .work-layout { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; }
-    .tab-switch { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: #f7f9fb; }
-    .tab-switch button { border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; padding: 6px 10px; }
-    .tab-switch button.active { background: #fff; color: var(--text); box-shadow: 0 1px 4px rgba(16,24,32,.08); }
-    .funnel-view { display: none; }
-    .funnel-view.active { display: block; }
-    .funnel-demo-note { border: 1px solid #f4d39b; background: #fff8ea; color: #8a5300; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; line-height: 1.5; }
-    .funnel-visual { display: grid; gap: 8px; margin-bottom: 14px; }
-    .funnel-layer {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
-      align-items: center;
-      gap: 12px;
-      min-height: 48px;
-      margin: 0 auto;
-      padding: 0 16px;
-      border: 1px solid #b8d5ee;
-      background: linear-gradient(90deg, #e9f6ff 0%, #f7fbff 100%);
-      border-radius: 10px;
-      clip-path: polygon(4% 0, 96% 0, 100% 100%, 0% 100%);
-      color: var(--text);
-      cursor: pointer;
-      font: inherit;
-      font-size: 13px;
-      text-align: left;
-      width: 100%;
+    .work-layout > * { min-width: 0; }
+    .task-work-layout { grid-template-columns: minmax(0, 1fr); }
+    .task-work-layout .task-detail { position: static; max-height: none; }
+    @media (min-width: 1680px) {
+      .task-work-layout { grid-template-columns: minmax(0, 1fr) 420px; }
+      .task-work-layout .task-detail { position: sticky; max-height: calc(100vh - 104px); }
     }
-    .funnel-layer:hover { border-color: var(--accent); background: #eef8ff; }
-    .funnel-layer span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-    .funnel-layer strong { font-size: 16px; }
-    .funnel-layer .rate { color: var(--muted); min-width: 58px; text-align: right; white-space: nowrap; }
-    .funnel-loss-card { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 12px; margin-top: 12px; display: grid; gap: 7px; font-size: 13px; }
-    .funnel-loss-card h3 { margin: 0; font-size: 14px; }
-    .funnel-stage {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 92px;
-      align-items: center;
-      gap: 12px;
-      min-height: 42px;
-      margin: 0 auto;
-      padding: 9px 12px;
-      border: 1px solid #cfe2f3;
-      background: linear-gradient(90deg, #eef8ff 0%, #f8fbfd 100%);
-      border-radius: 8px;
-      font-size: 13px;
-    }
-    .funnel-stage strong { text-align: right; font-size: 15px; }
-    .funnel-arrow { color: var(--muted); text-align: center; font-size: 12px; margin-top: -2px; }
-    .funnel { display: grid; gap: 8px; }
-    .funnel-row { display: grid; grid-template-columns: 150px 1fr 56px; align-items: center; gap: 10px; font-size: 13px; }
+    .status-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .status-group { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbfcfd; min-width: 0; }
+    .status-group h3 { margin: 0 0 10px; }
+    .status-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; }
+    .status-metric { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 9px; cursor: pointer; font: inherit; color: inherit; text-align: left; }
+    .status-metric strong { display: block; font-size: 20px; margin-top: 4px; }
     .bar { height: 10px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
     .bar span { display: block; height: 100%; background: var(--accent-2); min-width: 2px; }
     .dist { display: grid; gap: 8px; }
@@ -230,8 +202,10 @@ def render_workbench_html() -> str:
     .filters { display: flex; gap: 8px; flex-wrap: wrap; }
     .filters input { width: 210px; }
     .filters select { width: 150px; }
+    .table-scroll { width: 100%; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 10px 8px; vertical-align: top; }
+    .task-table { min-width: 900px; }
+    th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 8px; vertical-align: middle; line-height: 1.35; }
     th { color: var(--muted); font-weight: 600; background: #fbfcfd; }
     tr[data-selectable="true"] { cursor: pointer; }
     tr[data-selectable="true"]:hover td { background: #f8fbff; }
@@ -243,7 +217,26 @@ def render_workbench_html() -> str:
     .status.neutral, .status.low, .status.in_context, .status.ready { color: var(--muted); background: #eef2f5; }
     .status.cancelled, .status.archived, .status.disabled, .status.not_configured, .status.market_mismatch { color: var(--muted); background: #eef2f5; }
     .links { display: flex; gap: 6px; flex-wrap: wrap; }
+    .task-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .task-title { display: grid; gap: 3px; min-width: 150px; }
+    .task-title .label { line-height: 1.25; }
+    .task-filter-summary { color: var(--muted); font-size: 12px; margin: -4px 0 10px; }
+    .format-options { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+    .format-option { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fff; cursor: pointer; }
+    .format-option input { width: auto; margin: 0; }
+    .action-menu { position: relative; }
+    .action-menu > summary { list-style: none; }
+    .action-menu > summary::-webkit-details-marker { display: none; }
+    .action-menu[open] > summary { border-color: var(--accent); color: var(--accent); }
+    .action-menu-popover { position: absolute; right: 0; z-index: 8; min-width: 190px; margin-top: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 12px 28px rgba(16,24,32,.16); display: grid; gap: 4px; }
+    .action-menu-popover .btn { width: 100%; justify-content: flex-start; }
     .detail { position: sticky; top: 82px; max-height: calc(100vh - 104px); overflow-y: auto; }
+    .task-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+    .task-detail-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); margin: 0 -16px 14px; padding: 0 16px; }
+    .task-detail-tabs button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; padding: 10px 12px; white-space: nowrap; }
+    .task-detail-tabs button.active { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .task-tab-panel { display: none; }
+    .task-tab-panel.active { display: block; }
     .detail-section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
     .kv { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 8px; font-size: 13px; margin: 7px 0; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; }
@@ -289,12 +282,13 @@ def render_workbench_html() -> str:
     .error { color: var(--bad); }
     .modal-backdrop { position: fixed; inset: 0; background: rgba(16,24,32,.48); display: none; place-items: center; padding: 18px; z-index: 20; }
     .modal-backdrop.active { display: grid; }
-    .modal { width: min(720px, 100%); max-height: calc(100vh - 36px); overflow-y: auto; background: #fff; border-radius: 8px; border: 1px solid var(--line); box-shadow: 0 24px 70px rgba(16,24,32,.22); }
+    .modal { width: min(760px, 100%); max-height: calc(100vh - 36px); overflow-y: auto; background: #fff; border-radius: 10px; border: 1px solid var(--line); box-shadow: 0 24px 70px rgba(16,24,32,.22); }
     .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
     .modal-head h2 { margin: 0; font-size: 16px; }
-    .modal-body { padding: 18px; display: grid; gap: 14px; }
-    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .field { display: grid; gap: 6px; }
+    .modal-body { padding: 16px 18px; display: grid; gap: 12px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; align-items: start; }
+    .field { display: grid; align-content: start; gap: 6px; min-width: 0; }
+    .field > input, .field > select, .field > textarea { width: 100%; min-height: 38px; box-sizing: border-box; }
     .field label { color: var(--muted); font-size: 12px; }
     .field.full { grid-column: 1 / -1; }
     .choice-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -309,6 +303,7 @@ def render_workbench_html() -> str:
       .sidebar { position: static; height: auto; display: block; }
       .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .work-layout, .dashboard-layout, .dashboard-charts, .cards, .placeholder-grid { grid-template-columns: 1fr; }
+      .status-groups { grid-template-columns: 1fr; }
       .logic-flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .detail { position: static; max-height: none; }
     }
@@ -320,7 +315,6 @@ def render_workbench_html() -> str:
       .logic-flow { grid-template-columns: 1fr; }
       .filters input, .filters select { width: 100%; }
       table { min-width: 820px; }
-      .table-scroll { overflow-x: auto; }
     }
   </style>
 </head>
@@ -333,23 +327,38 @@ def render_workbench_html() -> str:
       </div>
       <nav class="nav" aria-label="工作台导航">
         <button class="active" data-view="dashboard"><span>投研首页</span><span class="tag available">可用</span></button>
-	        <button data-view="workspace"><span>投研空间</span><span class="tag available">可用</span></button>
-	        <button data-view="stockpool"><span>股票池管理</span><span class="tag available">可用</span></button>
-	        <button data-view="datasources"><span>数据源管理</span><span class="tag available">可用</span></button>
-	        <button data-view="ingestion"><span>采集任务</span><span class="tag available">可用</span></button>
-	        <button data-view="manual"><span>手动导入</span><span class="tag available">可用</span></button>
-	        <button data-view="documents"><span>文档处理中心</span><span class="tag available">可用</span></button>
-        <button data-view="evidence"><span>证据库</span><span class="tag available">可用</span></button>
-	        <button data-view="facts"><span>财务事实中心</span><span class="tag available">可用</span></button>
-        <button data-view="signals"><span>投资线索</span><span class="tag enhancing">增强中</span></button>
         <button data-view="tasks"><span>研报任务</span><span class="tag available">可用</span></button>
-        <button data-view="claims"><span>主张复核</span><span class="tag available">可用</span></button>
-	        <button data-view="dictionary"><span>金融词典</span><span class="tag available">可用</span></button>
-	        <button data-view="promptops"><span>提示词运营</span><span class="tag available">可用</span></button>
-        <button data-view="entities"><span>实体库</span><span class="tag enhancing">增强中</span></button>
-        <button data-view="graph"><span>关系图谱</span><span class="tag enhancing">增强中</span></button>
-	        <button data-view="evaluation"><span>评测中心</span><span class="tag available">可用</span></button>
-	        <button data-view="export"><span>导出中心</span><span class="tag available">可用</span></button>
+        <details class="nav-group" data-nav-workspace="data">
+          <summary>数据与文档</summary>
+          <div class="nav-secondary">
+            <button data-view="workspace"><span>投研空间</span></button>
+            <button data-view="stockpool"><span>股票池</span></button>
+            <button data-view="datasources"><span>数据源</span></button>
+            <button data-view="ingestion"><span>采集任务</span></button>
+            <button data-view="manual"><span>手动导入</span></button>
+            <button data-view="documents"><span>文档处理</span></button>
+            <button data-view="facts"><span>财务事实</span></button>
+          </div>
+        </details>
+        <details class="nav-group" data-nav-workspace="evidence">
+          <summary>证据与复核</summary>
+          <div class="nav-secondary">
+            <button data-view="evidence"><span>证据库</span></button>
+            <button data-view="signals"><span>投资线索</span></button>
+            <button data-view="claims"><span>主张复核</span></button>
+          </div>
+        </details>
+        <details class="nav-group" data-nav-workspace="operations">
+          <summary>运营与配置</summary>
+          <div class="nav-secondary">
+            <button data-view="dictionary"><span>金融词典</span></button>
+            <button data-view="promptops"><span>提示词运营</span></button>
+            <button data-view="entities"><span>实体库</span></button>
+            <button data-view="graph"><span>关系图谱</span></button>
+            <button data-view="evaluation"><span>评测中心</span></button>
+          </div>
+        </details>
+        <button data-view="export"><span>导出中心</span><span class="tag available">可用</span></button>
       </nav>
     </aside>
 
@@ -357,15 +366,16 @@ def render_workbench_html() -> str:
       <header class="topbar">
         <div class="title">
           <h1 id="viewTitle">投研首页</h1>
-          <div class="sub" id="viewSubtitle">任务、证据、主张与处理漏斗</div>
+          <div class="sub" id="viewSubtitle">任务、文档、主张与数据源真实状态</div>
         </div>
         <div class="top-actions">
-          <select class="select" aria-label="投研空间">
-            <option>默认投研空间</option>
+          <select class="select" id="topWorkspaceSelect" aria-label="投研空间">
+            <option value="">加载投研空间…</option>
           </select>
           <button class="btn primary" data-open-create-task>创建研报任务</button>
-          <button class="btn ghost" data-jump="manual">导入文档</button>
+          <button class="btn ghost" data-jump="claims">主张复核</button>
           <button class="btn ghost" data-jump="export">查看最新报告</button>
+          <a class="btn ghost" href="/">返回对话首页</a>
           <button class="btn" id="refreshView">刷新</button>
         </div>
       </header>
@@ -377,21 +387,10 @@ def render_workbench_html() -> str:
           <section class="grid dashboard-layout">
             <div class="panel">
               <div class="panel-head">
-                <h2>处理漏斗</h2>
+                <h2>真实运营指标</h2>
                 <button class="btn" data-jump="documents">失败步骤</button>
               </div>
-	              <div class="tab-switch" role="tablist" aria-label="处理漏斗视图">
-	                <button class="active" data-funnel-tab="chain">真实处理链路</button>
-	                <button data-funnel-tab="funnel">示意漏斗</button>
-	              </div>
-	              <div class="funnel-view" id="funnelTab">
-	                <div id="funnelDemoNote"></div>
-	                <div class="funnel-visual" id="funnelVisual"></div>
-	                <div id="funnelLoss"></div>
-	              </div>
-	              <div class="funnel-view active" id="chainTab">
-	                <div class="funnel" id="funnel"></div>
-	              </div>
+              <div class="status-groups" id="operationalMetrics"></div>
             </div>
             <div class="grid">
               <div class="panel">
@@ -450,17 +449,29 @@ def render_workbench_html() -> str:
         </section>
 
         <section id="tasks" class="view">
-          <div class="grid work-layout">
+          <div class="grid work-layout task-work-layout">
             <section class="panel">
               <div class="toolbar">
                 <h2 style="margin:0">研报任务</h2>
                 <div class="filters">
-                  <input id="symbolFilter" placeholder="筛选股票代码，如 600519" />
+                  <input id="symbolFilter" placeholder="搜索公司、代码或期间" />
+                  <select id="taskOutcomeFilter">
+                    <option value="active">当前任务</option>
+                    <option value="all">全部任务</option>
+                    <option value="queued">待启动</option>
+                    <option value="running">运行中</option>
+                    <option value="success">成功研报</option>
+                    <option value="review">待人工审核</option>
+                    <option value="failed">失败任务</option>
+                    <option value="archived">已归档</option>
+                  </select>
                   <button class="btn" id="refreshTasks">刷新</button>
+                  <button class="btn danger" id="archiveFailedTasks">批量移除失败任务</button>
                 </div>
               </div>
+              <div class="task-filter-summary" id="taskFilterSummary">正在加载任务…</div>
               <div class="table-scroll">
-                <table>
+                <table class="task-table">
                   <thead>
                     <tr><th>任务</th><th>公司</th><th>状态</th><th>阶段</th><th>创建时间</th><th>产物</th><th>操作</th></tr>
                   </thead>
@@ -468,7 +479,7 @@ def render_workbench_html() -> str:
                 </table>
               </div>
             </section>
-            <aside class="panel detail" id="taskDetail">
+            <aside class="panel detail task-detail" id="taskDetail">
               <h2>任务详情</h2>
               <div class="empty">选择一个任务查看时间线和产物。</div>
             </aside>
@@ -582,8 +593,10 @@ def render_workbench_html() -> str:
                     <option value="pending">待处理</option>
                   </select>
                   <button class="btn" id="refreshClaims">刷新</button>
+                  <button class="btn primary" id="approveSupportedClaims">批量通过有证据支持的主张</button>
                 </div>
               </div>
+              <div id="claimBulkMessage"></div>
               <div class="table-scroll">
                 <table>
                   <thead>
@@ -719,7 +732,7 @@ def render_workbench_html() -> str:
               <div class="table-scroll">
                 <table>
                   <thead>
-                    <tr><th>数据源</th><th>类型</th><th>市场</th><th>可信度</th><th>凭证</th><th>最近状态</th><th>操作</th></tr>
+                    <tr><th>数据源</th><th>类型</th><th>市场</th><th>配置 / 启用</th><th>运行状态</th><th>证据</th><th>最近运行</th><th>操作</th></tr>
                   </thead>
                   <tbody id="datasourceRows"></tbody>
                 </table>
@@ -867,6 +880,7 @@ def render_workbench_html() -> str:
                 <div class="field"><label for="factEvidenceId">关联证据</label><input id="factEvidenceId" placeholder="可选，填写证据编号或记录 ID" /></div>
                 <div class="field full"><label for="factSourceUrl">来源链接</label><input id="factSourceUrl" placeholder="https://..." /></div>
               </div>
+              <div class="form-note">手工事实默认仅作研究草稿输入。只有绑定可追溯证据、通过期间校验并确认来源权威等级后，才可进入正式研报口径。</div>
               <div class="modal-actions"><button class="btn primary" id="createFinancialFact">导入事实</button></div>
               <div id="factMessage"></div>
             </aside>
@@ -899,6 +913,7 @@ def render_workbench_html() -> str:
                   <button class="btn" id="refreshSignals">刷新</button>
                 </div>
               </div>
+              <div class="form-note">增强能力：线索必须绑定证据并经人工复核后，才可进入正式研报。</div>
               <div id="signalScopeNotice"></div>
               <div class="table-scroll">
                 <table>
@@ -1050,6 +1065,7 @@ def render_workbench_html() -> str:
                   <button class="btn" id="refreshEntities">刷新</button>
                 </div>
               </div>
+              <div class="form-note">增强能力：实体仅用于辅助组织证据，不代表已核验的正式结论。</div>
               <div class="table-scroll">
                 <table>
                   <thead><tr><th>实体</th><th>类型</th><th>市场/代码</th><th>来源证据</th><th>置信度</th></tr></thead>
@@ -1084,6 +1100,7 @@ def render_workbench_html() -> str:
                   <button class="btn" id="refreshRelations">刷新</button>
                 </div>
               </div>
+              <div class="form-note">增强能力：关系图谱仅展示已沉淀关系，不能替代主张与引用校验。</div>
               <div id="graphStats" class="dist" style="margin-bottom:12px"></div>
               <div class="table-scroll">
                 <table>
@@ -1200,18 +1217,15 @@ def render_workbench_html() -> str:
               <label for="taskCompanyInput">公司或股票代码</label>
               <input id="taskCompanyInput" list="companyCandidates" placeholder="输入苹果、腾讯、贵州茅台、AAPL、0700.HK、600519" required />
               <datalist id="companyCandidates"></datalist>
-              <div class="form-note" id="companyResolveNote">支持公司中文名、英文名或股票代码。当前使用内置候选解析，后续接入股票池和实体库。</div>
+              <div class="form-note" id="companyResolveNote">支持公司中文名、英文名或股票代码；优先解析当前投研空间股票池，未命中时使用本地公司候选。</div>
             </div>
             <div class="field">
               <label for="taskPeriodInput">查询期间</label>
               <select id="taskPeriodInput">
-                <option value="FY2024">FY2024</option>
-                <option value="FY2023">FY2023</option>
-                <option value="2025Q1">2025Q1</option>
-                <option value="2024Q4">2024Q4</option>
-                <option value="2024Q3">2024Q3</option>
-                <option value="最近一年">最近一年</option>
+                <option value="">正在加载期间…</option>
               </select>
+              <input id="taskCustomPeriodInput" placeholder="自定义期间，如 FY2025 或 2026Q2" hidden />
+              <div class="form-note" id="taskPeriodReadiness">选择公司后检查目标分析期和官方披露可用性。</div>
             </div>
             <div class="field">
               <label for="taskReportTypeInput">报告类型</label>
@@ -1241,8 +1255,8 @@ def render_workbench_html() -> str:
             <div class="field">
               <label for="taskRunModeInput">运行方式</label>
               <select id="taskRunModeInput">
-                <option value="queue">只创建任务</option>
-                <option value="async">后台异步运行</option>
+                <option value="async">创建后立即在后台运行</option>
+                <option value="queue">只创建，稍后手动启动</option>
               </select>
             </div>
             <div class="field full">
@@ -1266,18 +1280,31 @@ def render_workbench_html() -> str:
     const $ = (id) => document.getElementById(id);
     const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[m]));
     const fmt = (v) => v == null || v === "" ? "-" : String(v);
+    let taskPeriodOptionsPayload = null;
+    let taskPeriodRefreshTimer = null;
     const number = (v) => Number.isFinite(Number(v)) ? Number(v).toLocaleString() : "0";
     const pct = (v) => Math.round((Number(v) || 0) * 100) + "%";
-    const activeState = { view: "dashboard" };
+    const durationMinutes = (ms) => {
+      if (ms == null || !Number.isFinite(Number(ms))) return "-";
+      const minutes = Number(ms) / 60000;
+      return minutes < 0.1 ? "< 0.1 分钟" : `${minutes.toFixed(minutes < 10 ? 1 : 0)} 分钟`;
+    };
+    const dateTimeText = (value) => {
+      if (!value) return "-";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("zh-CN", { hour12: false });
+    };
+    const activeState = { view: "dashboard", workspaceId: "" };
     const terminalTaskStatuses = new Set(["completed", "failed", "timeout", "cancelled", "archived", "quality_failed"]);
     let taskPoller = null;
+    let visibleFailedTaskIds = [];
     let evidenceSearchContext = new Map();
     let entityContext = new Map();
     let relationContext = new Map();
     let activeSignalTaskScope = null;
 
     const viewMeta = {
-      dashboard: ["投研首页", "任务、证据、主张与处理漏斗"],
+      dashboard: ["投研首页", "任务、文档、主张与数据源真实状态"],
       workspace: ["投研空间", "市场、股票池、指标、风险和默认数据源配置"],
       stockpool: ["股票池管理", "维护空间内公司、代码、市场、行业和别名"],
       datasources: ["数据源管理", "配置来源启停、凭证状态、最近同步与错误"],
@@ -1358,7 +1385,7 @@ def render_workbench_html() -> str:
       sec_edgar: "美国证监会年报", cninfo: "巨潮资讯", cninfo_announcements: "巨潮资讯公告",
       exchange_announcements: "交易所公告", hkex: "港交所公告", hkex_announcements: "港交所公告",
       eastmoney: "东方财富行情", eastmoney_financials: "东方财富财务", sina_finance: "新浪财经行情",
-      hk_financials: "港股财务数据", serper: "Serper 搜索", tavily: "Tavily 搜索",
+      hk_financials: "港股财务数据", baostock_financials: "BaoStock 财务指标", tushare_financials: "Tushare Pro 财务", serper: "Serper 搜索", tavily: "Tavily 搜索",
       yahoo_finance: "雅虎财经",
       sec_filing: "SEC 披露文件", cninfo_announcement: "巨潮公告", hkex_announcement: "港交所公告",
       hkex_annual_report: "港交所年报", yahoo_profile: "雅虎公司画像", yahoo_financials: "雅虎财务数据",
@@ -1371,8 +1398,23 @@ def render_workbench_html() -> str:
       ingest: "入库", parse: "解析", table_extract: "表格抽取", chunk: "切分", chunk_vectorize: "切分向量化",
       evidence: "证据化", claim_bind: "绑定主张", verify: "校验",
       evidence_gate: "生成前证据检查", evidence_gate_failed: "证据不足，已暂停生成",
-      orchestrator: "多智能体执行", artifact_import: "产物导入", quality_gate: "质量门禁", completed: "完成",
-      queued: "待启动", retry: "重试", failed: "失败", quality_failed: "质量未通过", cancelled: "已取消", archived: "已归档", claim_review: "主张复核",
+      orchestrator: "多智能体执行", write_report: "撰写并保存研报", verify_report: "独立校验研报",
+      inspect_agent_execution: "检查智能体执行", verify_sections: "校验章节合同",
+      repair_failed_sections: "返工未通过章节", build_canonical_metrics: "统一正式指标",
+      build_section_evidence_packs: "构建章节证据包", normalize_evidence: "清洗并统一证据",
+      official_evidence_backfill: "补齐官方证据", finalize: "汇总交付状态", human_review: "人工复核",
+      artifact_import: "产物导入", quality_gate: "质量门禁", quality: "质量门禁", completed: "完成",
+      agent_planning: "规划研究任务", "agent.planning": "规划研究任务",
+      agent_research: "检索研究资料", "agent.research": "检索研究资料",
+      agent_browser: "读取与整理资料", "agent.browser": "读取与整理资料",
+      agent_analyze: "财务与估值分析", "agent.analyze": "财务与估值分析",
+      agent_final_answer: "撰写研报章节", "agent.final_answer": "撰写研报章节",
+      agent_verifier: "校验主张与引用", "agent.verifier": "校验主张与引用",
+      agent_gap_resolver: "补齐交付缺口", "agent.gap_resolver": "补齐交付缺口",
+      agent_identity: "核对公司身份", "agent.identity": "核对公司身份",
+      agent_peer: "分析同行公司", "agent.peer": "分析同行公司",
+      agent_critic: "检查研究完整性", "agent.critic": "检查研究完整性",
+      queued: "待启动", retry: "重试", failed: "失败", timeout: "超时", quality_failed: "质量未通过", cancelled: "已取消", archived: "已归档", claim_review: "主张复核",
       manual_import: "手动导入",
     };
     const docTypeMap = {
@@ -1397,42 +1439,18 @@ def render_workbench_html() -> str:
       local_only: "仅本地文档",
     };
     const chartColors = ["#1677ff", "#0f8f7a", "#b56a00", "#7c3aed", "#d92d20", "#475467"];
-    const funnelDemoSteps = [
-      { key: "raw_document_ingested", label: "原始资料入库", count: 1280 },
-      { key: "parsed_success", label: "解析成功", count: 1146 },
-      { key: "table_extracted", label: "表格抽取成功", count: 823 },
-      { key: "chunk_vectorized", label: "切分向量化", count: 790 },
-      { key: "financial_fact_extracted", label: "财务事实提取", count: 356 },
-      { key: "investment_signal_generated", label: "投资线索生成", count: 126 },
-      { key: "report_claim_generated", label: "研报主张生成", count: 72 },
-      { key: "claim_verified", label: "主张校验通过", count: 58 },
-      { key: "manual_review_pending", label: "待人工复核", count: 14 },
-    ];
-    const funnelTargets = {
-      document_ingested: { view: "documents", documentStep: "ingest" },
-      raw_document_ingested: { view: "documents", documentStep: "ingest" },
-      parse_success: { view: "documents", documentStep: "parse" },
-      parsed_success: { view: "documents", documentStep: "parse" },
-      table_extract_success: { view: "documents", documentStep: "table_extract" },
-      table_extracted: { view: "documents", documentStep: "table_extract" },
-      chunk_vectorized: { view: "documents", documentStep: "chunk" },
-      financial_fact_extracted: { view: "facts" },
-      investment_signal_generated: { view: "signals" },
-      report_claim_generated: { view: "claims" },
-      claim_verified: { view: "claims", claimVerification: "supported" },
-      pending_review: { view: "claims", claimStatus: "pending" },
-      manual_review_pending: { view: "claims", claimStatus: "pending" },
-    };
     const companyCandidates = [
       { name: "苹果", aliases: ["苹果", "苹果公司", "Apple", "AAPL"], symbol: "AAPL" },
       { name: "英伟达", aliases: ["英伟达", "NVIDIA", "NVDA"], symbol: "NVDA" },
       { name: "特斯拉", aliases: ["特斯拉", "Tesla", "TSLA"], symbol: "TSLA" },
       { name: "微软", aliases: ["微软", "Microsoft", "MSFT"], symbol: "MSFT" },
       { name: "腾讯控股", aliases: ["腾讯", "腾讯控股", "Tencent", "0700.HK"], symbol: "0700.HK" },
-      { name: "阿里巴巴", aliases: ["阿里", "阿里巴巴", "Alibaba", "BABA", "9988.HK"], symbol: "BABA" },
-      { name: "贵州茅台", aliases: ["贵州茅台", "茅台", "600519"], symbol: "600519" },
-      { name: "宁德时代", aliases: ["宁德时代", "CATL", "300750"], symbol: "300750" },
-      { name: "比亚迪", aliases: ["比亚迪", "BYD", "002594", "1211.HK"], symbol: "002594" },
+	      { name: "阿里巴巴（港股）", aliases: ["阿里", "阿里巴巴", "Alibaba", "9988.HK"], symbol: "9988.HK" },
+	      { name: "阿里巴巴（美股）", aliases: ["BABA"], symbol: "BABA" },
+	      { name: "贵州茅台", aliases: ["贵州茅台", "茅台", "600519", "600519.SS"], symbol: "600519.SS" },
+	      { name: "宁德时代", aliases: ["宁德时代", "CATL", "300750", "300750.SZ"], symbol: "300750.SZ" },
+	      { name: "比亚迪（A股）", aliases: ["比亚迪", "BYD", "002594", "002594.SZ"], symbol: "002594.SZ" },
+	      { name: "比亚迪（港股）", aliases: ["1211.HK"], symbol: "1211.HK" },
     ];
     const textOf = (map, value) => map[String(value || "")] || fmt(value);
     const statusText = (value) => textOf(statusMap, value);
@@ -1664,6 +1682,7 @@ def render_workbench_html() -> str:
       const map = {
         not_required: "无需配置",
         required: "需要配置密钥",
+        missing: "缺少凭证",
         configured: "已配置",
         expired: "已过期",
       };
@@ -1847,16 +1866,7 @@ def render_workbench_html() -> str:
       btn.addEventListener("click", () => activateView(btn.dataset.view));
     });
     bindJumpHandlers();
-    document.querySelectorAll("[data-funnel-tab]").forEach((btn) => {
-      btn.addEventListener("click", () => activateFunnelTab(btn.dataset.funnelTab));
-    });
     initCreateTaskModal();
-
-    function activateFunnelTab(tab) {
-      document.querySelectorAll("[data-funnel-tab]").forEach((item) => item.classList.toggle("active", item.dataset.funnelTab === tab));
-      $("funnelTab").classList.toggle("active", tab === "funnel");
-      $("chainTab").classList.toggle("active", tab === "chain");
-    }
 
     function bindJumpHandlers(root = document) {
       root.querySelectorAll("[data-jump]").forEach((btn) => {
@@ -1913,7 +1923,20 @@ def render_workbench_html() -> str:
     function activateView(view) {
       activeState.view = view;
       document.querySelectorAll(".nav button").forEach((item) => item.classList.toggle("active", item.dataset.view === view));
-      document.querySelectorAll(".view").forEach((item) => item.classList.toggle("active", item.id === view));
+      document.querySelectorAll(".nav-group").forEach((group) => {
+        const active = Boolean(group.querySelector(`[data-view="${view}"]`));
+        group.classList.toggle("active", active);
+        if (active) group.open = true;
+      });
+      document.querySelectorAll(".view").forEach((item) => {
+        const active = item.id === view;
+        item.classList.toggle("active", active);
+        item.hidden = !active;
+        item.setAttribute("aria-hidden", active ? "false" : "true");
+        if (active) item.removeAttribute("inert");
+        else item.setAttribute("inert", "");
+        setFormLabelsActive(item, active);
+      });
       const meta = viewMeta[view] || [view, ""];
       $("viewTitle").textContent = meta[0];
       $("viewSubtitle").textContent = meta[1];
@@ -1936,6 +1959,17 @@ def render_workbench_html() -> str:
       else if (view === "evaluation") loadEvaluation();
       else if (view === "export") loadExports();
       else renderPlaceholder(view);
+    }
+
+    function setFormLabelsActive(container, active) {
+      container.querySelectorAll("label").forEach((label) => {
+        if (active && label.dataset.labelFor) {
+          label.setAttribute("for", label.dataset.labelFor);
+        } else if (!active && label.hasAttribute("for")) {
+          label.dataset.labelFor = label.getAttribute("for");
+          label.removeAttribute("for");
+        }
+      });
     }
 
     async function openDocumentsForBatch(batchId, documentId = null) {
@@ -1979,30 +2013,50 @@ def render_workbench_html() -> str:
     function initCreateTaskModal() {
       bindCreateTaskButtons();
       $("companyCandidates").innerHTML = companyCandidates.flatMap((item) => item.aliases.map((alias) => `<option value="${esc(alias)}">${esc(item.name)} · ${esc(item.symbol)}</option>`)).join("");
-      $("companyQuickChoices").innerHTML = companyCandidates.slice(0, 6).map((item) => `<button class="choice" type="button" data-company-choice="${esc(item.symbol)}">${esc(item.name)} · ${esc(item.symbol)}</button>`).join("");
+      const quickSymbols = ["AAPL", "0700.HK", "600519", "NVDA", "9988.HK", "300750"];
+      const quickCandidates = quickSymbols.map((symbol) => companyCandidates.find((item) => item.symbol === symbol || item.aliases.includes(symbol))).filter(Boolean);
+      $("companyQuickChoices").innerHTML = quickCandidates.map((item) => `<button class="choice" type="button" data-company-choice="${esc(item.symbol)}">${esc(item.name)} · ${esc(item.symbol)}</button>`).join("");
       document.querySelectorAll("[data-company-choice]").forEach((btn) => {
         btn.addEventListener("click", () => {
           $("taskCompanyInput").value = btn.dataset.companyChoice;
           updateCompanyResolveNote();
+          refreshTaskPeriods();
         });
       });
       document.querySelectorAll("[data-close-create-task]").forEach((btn) => btn.addEventListener("click", closeCreateTaskModal));
       $("createTaskModal").addEventListener("click", (event) => {
         if (event.target === $("createTaskModal")) closeCreateTaskModal();
       });
-      $("taskCompanyInput").addEventListener("input", updateCompanyResolveNote);
+      $("taskCompanyInput").addEventListener("input", () => {
+        updateCompanyResolveNote();
+        clearTimeout(taskPeriodRefreshTimer);
+        taskPeriodRefreshTimer = setTimeout(refreshTaskPeriods, 250);
+      });
+      $("taskPeriodInput").addEventListener("change", () => {
+        $("taskCustomPeriodInput").hidden = $("taskPeriodInput").value !== "__custom__";
+        updateTaskPeriodReadiness();
+      });
+      $("taskCustomPeriodInput").addEventListener("input", () => {
+        clearTimeout(taskPeriodRefreshTimer);
+        taskPeriodRefreshTimer = setTimeout(() => updateTaskPeriodReadiness(true), 300);
+      });
       $("createTaskForm").addEventListener("submit", submitCreateTask);
       updateCompanyResolveNote();
+      refreshTaskPeriods();
+      setFormLabelsActive($("createTaskModal"), false);
     }
 
     function openCreateTaskModal() {
       $("createTaskModal").classList.add("active");
+      setFormLabelsActive($("createTaskModal"), true);
       $("createTaskMessage").innerHTML = "";
+      refreshTaskPeriods();
       setTimeout(() => $("taskCompanyInput").focus(), 0);
     }
 
     function closeCreateTaskModal() {
       $("createTaskModal").classList.remove("active");
+      setFormLabelsActive($("createTaskModal"), false);
     }
 
     function resolveCompany(input) {
@@ -2018,7 +2072,54 @@ def render_workbench_html() -> str:
       const resolved = resolveCompany($("taskCompanyInput").value);
       $("companyResolveNote").textContent = resolved
         ? `将按 ${resolved.name} · ${resolved.symbol} 创建任务。`
-        : "支持公司中文名、英文名或股票代码。当前使用内置候选解析，后续接入股票池和实体库。";
+        : "支持公司中文名、英文名或股票代码；优先解析当前投研空间股票池，未命中时使用本地公司候选。";
+    }
+
+    function selectedTaskPeriod() {
+      return $("taskPeriodInput").value === "__custom__"
+        ? $("taskCustomPeriodInput").value.trim().toUpperCase()
+        : $("taskPeriodInput").value;
+    }
+
+    async function refreshTaskPeriods() {
+      const resolved = resolveCompany($("taskCompanyInput").value);
+      const symbol = resolved?.symbol || "";
+      const current = selectedTaskPeriod();
+      try {
+        const payload = await getJson(`/api/report-periods?symbol=${encodeURIComponent(symbol)}${current ? `&period=${encodeURIComponent(current)}` : ""}`);
+        taskPeriodOptionsPayload = payload;
+        const quarterOptions = (payload.options || []).filter((item) => item.kind === "quarter");
+        const annualOptions = (payload.options || []).filter((item) => item.kind === "fiscal_year");
+        const optionHtml = (item) => `<option value="${esc(item.value)}">${esc(item.label)} · ${item.readiness?.official_disclosure_available ? "官方披露可用" : "待披露/非标准"}</option>`;
+        $("taskPeriodInput").innerHTML = `<optgroup label="最近 8 个完整季度">${quarterOptions.map(optionHtml).join("")}</optgroup>
+          <optgroup label="最近 5 个财年">${annualOptions.map(optionHtml).join("")}</optgroup>
+          <option value="__custom__">自定义期间…</option>`;
+        const known = (payload.options || []).some((item) => item.value === current);
+        $("taskPeriodInput").value = known ? current : (current ? "__custom__" : payload.latest_completed_quarter);
+        if (current && !known) $("taskCustomPeriodInput").value = current;
+        $("taskCustomPeriodInput").hidden = $("taskPeriodInput").value !== "__custom__";
+        updateTaskPeriodReadiness();
+      } catch (error) {
+        $("taskPeriodReadiness").textContent = "期间选项加载失败，可输入自定义期间后重试。";
+      }
+    }
+
+    async function updateTaskPeriodReadiness(fetchCustom = false) {
+      const period = selectedTaskPeriod();
+      if (!period) return;
+      let payload = taskPeriodOptionsPayload;
+      let readiness = (payload?.options || []).find((item) => item.value === period)?.readiness;
+      if (fetchCustom || !readiness) {
+        const resolved = resolveCompany($("taskCompanyInput").value);
+        try {
+          payload = await getJson(`/api/report-periods?symbol=${encodeURIComponent(resolved?.symbol || "")}&period=${encodeURIComponent(period)}`);
+          readiness = payload.selected?.readiness;
+        } catch (error) {
+          readiness = null;
+        }
+      }
+      const status = readiness?.official_disclosure_available ? "官方披露可用" : (readiness?.status === "invalid" ? "期间格式无效" : "官方披露尚不可用");
+      $("taskPeriodReadiness").textContent = `目标分析期：${period}；行情时点：${payload?.market_data_as_of || "-"}；${status}（${readiness?.expected_official_source || "官方披露渠道"}）。${readiness?.reason || ""}`;
     }
 
     async function submitCreateTask(event) {
@@ -2030,9 +2131,14 @@ def render_workbench_html() -> str:
       }
       const runMode = $("taskRunModeInput").value;
       const evidenceGateMode = $("taskEvidenceGateInput").value;
+      const taskPeriod = selectedTaskPeriod();
+      if (!/^(FY\d{4}|\d{4}Q[1-4])$/i.test(taskPeriod)) {
+        $("createTaskMessage").innerHTML = `<div class="error">期间格式应为 FY2025 或 2026Q2。</div>`;
+        return;
+      }
       const payload = {
         symbol: resolved.symbol,
-        period: $("taskPeriodInput").value,
+        period: taskPeriod,
         report_type: $("taskReportTypeInput").value,
         research_topic: $("taskTopicInput").value.trim(),
         data_source_scope: $("taskDataSourceInput").value,
@@ -2063,9 +2169,14 @@ def render_workbench_html() -> str:
     async function resolveCompanyForTask(input) {
       const raw = String(input || "").trim();
       if (!raw) return null;
+      let workspace = null;
       try {
-        const workspaces = await getJson("/api/workspaces?active_only=true&limit=1");
-        const workspace = (workspaces.items || [])[0];
+        if (activeState.workspaceId) {
+          workspace = await getJson(`/api/workspaces/${encodeURIComponent(activeState.workspaceId)}`);
+        } else {
+          const workspaces = await getJson("/api/workspaces?active_only=true&limit=1");
+          workspace = (workspaces.items || [])[0];
+        }
         if (workspace) {
           const item = await getJson(`/api/workspaces/${encodeURIComponent(workspace.id)}/resolve-company?q=${encodeURIComponent(raw)}`);
           return {
@@ -2076,9 +2187,29 @@ def render_workbench_html() -> str:
           };
         }
       } catch (error) {
-        return resolveCompany(raw);
+        const fallback = resolveCompany(raw);
+        return fallback ? { ...fallback, workspace_id: workspace?.id || null } : null;
       }
-      return resolveCompany(raw);
+      const fallback = resolveCompany(raw);
+      return fallback ? { ...fallback, workspace_id: workspace?.id || null } : null;
+    }
+
+    async function loadTopWorkspaces() {
+      try {
+        const payload = await getJson("/api/workspaces?active_only=true");
+        const rows = payload.items || [];
+        $("topWorkspaceSelect").innerHTML = rows.length
+          ? rows.map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join("")
+          : `<option value="">默认投研空间</option>`;
+        if (activeState.workspaceId && rows.some((item) => String(item.id) === String(activeState.workspaceId))) {
+          $("topWorkspaceSelect").value = activeState.workspaceId;
+        } else {
+          activeState.workspaceId = String(rows[0]?.id || "");
+          $("topWorkspaceSelect").value = activeState.workspaceId;
+        }
+      } catch (error) {
+        $("topWorkspaceSelect").innerHTML = `<option value="">默认投研空间</option>`;
+      }
     }
 
     function csvList(value) {
@@ -2140,6 +2271,7 @@ def render_workbench_html() -> str:
         const created = await postJson("/api/workspaces", payload);
         $("workspaceMessage").innerHTML = `<div class="empty">已创建投研空间：${esc(created.name)}</div>`;
         await loadWorkspaces();
+        await loadTopWorkspaces();
       } catch (error) {
         $("workspaceMessage").innerHTML = `<div class="error">创建失败，空间标识可能已存在。</div>`;
       }
@@ -2226,6 +2358,16 @@ def render_workbench_html() -> str:
       return textOf(map, value);
     }
 
+    function datasourceRuntimeState(item) {
+      if (item.configured === false) return { label: "未配置", cls: "not_configured" };
+      if (!item.enabled) return { label: "已停用", cls: "disabled" };
+      if (item.operational) return { label: "运行正常", cls: "success" };
+      if (item.last_status === "not_run" || !item.last_status) return { label: "尚未运行", cls: "not_run" };
+      if (item.last_error === "permission_or_quota_error") return { label: "权限或额度不足", cls: "failed" };
+      if (item.last_status === "partial") return { label: "部分可用", cls: "warning" };
+      return { label: "运行失败", cls: "failed" };
+    }
+
     async function loadDatasources() {
       const params = new URLSearchParams();
       const q = $("datasourceQuery").value.trim();
@@ -2237,24 +2379,28 @@ def render_workbench_html() -> str:
         const payload = await getJson("/api/data-sources" + suffix);
         const rows = payload.items || [];
         $("datasourceRows").innerHTML = rows.length
-          ? rows.map((item) => `<tr data-selectable="true">
+          ? rows.map((item) => {
+            const runtime = datasourceRuntimeState(item);
+            return `<tr data-selectable="true">
               <td><button class="btn" data-datasource-detail="${esc(item.id)}">${esc(item.name || sourceText(item.source_key))}</button><br><span class="label">${esc(sourcePurposeText(item))}</span></td>
               <td>${esc(datasourceTypeText(item.source_type))}</td>
               <td>${esc(marketScopeText(item.market_scope))}</td>
-              <td><span class="status ${esc(item.trust_level || "secondary")}">${esc(statusText(item.trust_level || "secondary"))}</span></td>
-              <td><span class="status ${esc(item.credential_status)}">${esc(credentialText(item.credential_status))}</span></td>
+              <td><span class="status ${item.configured ? "success" : "not_configured"}">${item.configured ? "已配置" : "未配置"}</span><br><span class="label">${item.enabled ? "已启用" : "已停用"}</span></td>
+              <td><span class="status ${esc(runtime.cls)}">${esc(runtime.label)}</span></td>
+              <td>${esc(number(item.evidence_count || 0))}</td>
               <td><span class="status ${esc(item.last_status || "pending")}">${esc(statusText(item.last_status || "pending"))}</span><br><span class="label">${esc(fmt(item.last_sync_at))}</span></td>
               <td class="links">
-                <button class="btn" data-datasource-toggle="${esc(item.id)}" data-enabled="${item.enabled ? "false" : "true"}">${item.enabled ? "停用" : "启用"}</button>
-                <button class="btn" data-datasource-health="${esc(item.id)}">标记正常</button>
+                <button class="btn" data-datasource-toggle="${esc(item.id)}" data-enabled="${item.enabled ? "false" : "true"}" ${!item.enabled && item.configured === false ? 'disabled title="请先配置凭证"' : ""}>${item.enabled ? "停用" : "启用"}</button>
+                <button class="btn" data-datasource-health="${esc(item.id)}">查看状态说明</button>
               </td>
-            </tr>`).join("")
-          : `<tr><td colspan="7"><div class="empty"><div>暂无数据源</div><div class="empty-actions"><button class="btn primary" id="seedDatasourcesInline">同步注册源</button></div></div></td></tr>`;
+            </tr>`;
+          }).join("")
+          : `<tr><td colspan="8"><div class="empty"><div>暂无数据源</div><div class="empty-actions"><button class="btn primary" id="seedDatasourcesInline">同步注册源</button></div></div></td></tr>`;
         bindDatasourceButtons($("datasourceRows"));
         const inline = $("seedDatasourcesInline");
         if (inline) inline.addEventListener("click", seedDatasources);
       } catch (error) {
-        showLoadError("datasourceRows", 7);
+        showLoadError("datasourceRows", 8);
       }
     }
 
@@ -2272,6 +2418,7 @@ def render_workbench_html() -> str:
       root.querySelectorAll("[data-datasource-health]").forEach((btn) => {
         if (btn.dataset.boundDatasourceHealth === "true") return;
         btn.dataset.boundDatasourceHealth = "true";
+        btn.textContent = "查看状态说明";
         btn.addEventListener("click", () => markDatasourceHealth(btn.dataset.datasourceHealth));
       });
     }
@@ -2286,6 +2433,9 @@ def render_workbench_html() -> str:
           <div class="kv"><span class="label">覆盖市场</span><span>${esc(marketScopeText(item.market_scope))}</span></div>
           <div class="kv"><span class="label">可信度</span><span><span class="status ${esc(item.trust_level || "secondary")}">${esc(statusText(item.trust_level || "secondary"))}</span></span></div>
           <div class="kv"><span class="label">启用</span><span>${item.enabled ? "是" : "否"}</span></div>
+          <div class="kv"><span class="label">已配置</span><span>${item.configured ? "是" : "否"}</span></div>
+          <div class="kv"><span class="label">可运行</span><span>${item.operational ? "是" : "否"}</span></div>
+          <div class="kv"><span class="label">证据数</span><span>${esc(number(item.evidence_count || 0))}</span></div>
           <div class="kv"><span class="label">凭证</span><span><span class="status ${esc(item.credential_status)}">${esc(credentialText(item.credential_status))}</span></span></div>
           <div class="kv"><span class="label">最近状态</span><span><span class="status ${esc(item.last_status || "pending")}">${esc(statusText(item.last_status || "pending"))}</span></span></div>
           <div class="kv"><span class="label">最近同步</span><span>${esc(fmt(item.last_sync_at))}</span></div>
@@ -2308,15 +2458,18 @@ def render_workbench_html() -> str:
     }
 
     async function toggleDatasource(sourceId, enabled) {
-      await postJson(`/api/data-sources/${encodeURIComponent(sourceId)}/enable`, { enabled });
-      await loadDatasources();
-      await loadDatasourceDetail(sourceId);
+      try {
+        await postJson(`/api/data-sources/${encodeURIComponent(sourceId)}/enable`, { enabled });
+        await loadDatasources();
+        await loadDatasourceDetail(sourceId);
+      } catch (error) {
+        showNotice("数据源未配置凭证，不能启用。请先在环境变量或配置中心填写密钥。", "error");
+      }
     }
 
     async function markDatasourceHealth(sourceId) {
-      await postJson(`/api/data-sources/${encodeURIComponent(sourceId)}/health`, { last_status: "success" });
-      await loadDatasources();
       await loadDatasourceDetail(sourceId);
+      showNotice("健康状态只能由真实采集或同步任务更新，不能手工标记正常。", "empty");
     }
 
     function ingestionActionButtons(batch) {
@@ -2401,7 +2554,7 @@ def render_workbench_html() -> str:
       root.querySelectorAll("[data-ingestion-action]").forEach((btn) => {
         if (btn.dataset.boundIngestionAction === "true") return;
         btn.dataset.boundIngestionAction = "true";
-        btn.addEventListener("click", () => ingestionLifecycleAction(btn.dataset.batchId, btn.dataset.ingestionAction));
+        btn.addEventListener("click", () => ingestionLifecycleAction(btn.dataset.batchId, btn.dataset.ingestionAction, btn));
       });
       root.querySelectorAll("[data-ingestion-documents]").forEach((btn) => {
         if (btn.dataset.boundIngestionDocuments === "true") return;
@@ -2438,9 +2591,25 @@ def render_workbench_html() -> str:
       }
     }
 
-    async function ingestionLifecycleAction(batchId, action) {
+    async function ingestionLifecycleAction(batchId, action, button = null) {
       const labels = { start: "启动", complete: "标记完成", fail: "标记失败", retry: "重试", cancel: "取消" };
-      if (!confirm(`确认${labels[action] || "操作"}该采集批次？`)) return;
+      if (button && button.dataset.confirmAction !== action) {
+        button.dataset.confirmAction = action;
+        button.dataset.originalText = button.textContent;
+        button.textContent = "再次点击确认操作";
+        window.setTimeout(() => {
+          if (button.dataset.confirmAction === action) {
+            button.textContent = button.dataset.originalText || "操作";
+            delete button.dataset.confirmAction;
+          }
+        }, 6000);
+        return;
+      }
+      if (button) {
+        delete button.dataset.confirmAction;
+        button.disabled = true;
+        button.textContent = "处理中…";
+      }
       const payloadByAction = {
         complete: { message: "用户在工作台标记完成" },
         fail: { error_message: "用户在工作台标记失败" },
@@ -2453,6 +2622,11 @@ def render_workbench_html() -> str:
         loadDashboard();
       } catch (error) {
         $("ingestionDetail").insertAdjacentHTML("afterbegin", `<div class="error">${esc(labels[action] || "操作")}失败，请刷新后重试。</div>`);
+      } finally {
+        if (button?.isConnected) {
+          button.disabled = false;
+          button.textContent = button.dataset.originalText || labels[action] || "操作";
+        }
       }
     }
 
@@ -2527,6 +2701,7 @@ def render_workbench_html() -> str:
           <div class="kv"><span class="label">文档</span><span>${esc(doc.title || "-")}</span></div>
           <div class="kv"><span class="label">状态</span><span><span class="status ${esc(doc.parse_status || "pending")}">${esc(statusText(doc.parse_status || "pending"))}</span></span></div>
           <div class="kv"><span class="label">类型</span><span>${esc(docTypeText(doc.doc_type))}</span></div>
+          <div class="kv"><span class="label">证据化状态</span><span>${result.processing_status === "evidence_ready" ? `已生成 ${esc(number(doc.evidence_count || 0))} 条证据` : "等待可解析正文"}</span></div>
           ${doc.source_url ? `<div class="kv"><span class="label">链接</span><a href="${esc(doc.source_url)}" target="_blank">${esc(doc.source_url)}</a></div>` : ""}
           ${systemInfoBlock("系统信息", [["批次编号", result.batch_id], ["文件路径", doc.file_path]])}
           <div class="links" style="margin-top:12px">
@@ -2573,81 +2748,27 @@ def render_workbench_html() -> str:
         : `<div class="empty">暂无数据</div>`;
     }
 
-    function hasRealFunnelCounts(steps) {
-      return steps.some((step) => Number(step.count || 0) > 0);
-    }
-
-    function isValidFunnelSeries(steps) {
-      if (!hasRealFunnelCounts(steps)) return false;
-      for (let index = 1; index < steps.length; index += 1) {
-        const prev = Number(steps[index - 1].count || 0);
-        const current = Number(steps[index].count || 0);
-        if (current > prev) return false;
-      }
-      return true;
-    }
-
-    function funnelNoteHtml(hasRealCounts, hasConsistentFunnel) {
-      if (!hasRealCounts) {
-        return `<div class="funnel-demo-note">当前暂无真实处理数据，以下为流程示意。创建研报任务或导入文档后将展示真实统计；带有黄色提示的图表不计入真实 KPI。</div>`;
-      }
-      if (!hasConsistentFunnel) {
-        return `<div class="funnel-demo-note">当前真实统计尚未形成完整累计漏斗，以下展示流程示意；请切换到“处理链路”查看真实阶段计数。带有黄色提示的图表不计入真实 KPI。</div>`;
-      }
-      return "";
-    }
-
-    function renderFunnel(payload) {
-      const rawSteps = payload.steps || [];
-      const hasRealCounts = hasRealFunnelCounts(rawSteps);
-      const hasConsistentFunnel = isValidFunnelSeries(rawSteps);
-      const visualSteps = hasConsistentFunnel ? rawSteps : funnelDemoSteps;
-      const chainSteps = hasRealCounts ? rawSteps : funnelDemoSteps;
-      const visualMax = Math.max(1, ...visualSteps.map((step) => Number(step.count || 0)));
-      const chainMax = Math.max(1, ...chainSteps.map((step) => Number(step.count || 0)));
-      $("funnelDemoNote").innerHTML = funnelNoteHtml(hasRealCounts, hasConsistentFunnel);
-      $("funnelVisual").innerHTML = visualSteps.map((step, index) => {
-        const count = Number(step.count || 0);
-        const prev = index === 0 ? count : Number(visualSteps[index - 1].count || 0);
-        const width = Math.max(40, Math.round((count / visualMax) * 100));
-        const rate = index === 0 ? "基准" : (prev > 0 ? `${Math.round((count / prev) * 1000) / 10}%` : "-");
-        const target = funnelTargets[step.key] || { view: "documents" };
-        return `<button class="funnel-layer" style="width:${width}%" data-jump="${esc(target.view)}"${target.documentStep ? ` data-document-step="${esc(target.documentStep)}"` : ""}${target.claimStatus ? ` data-claim-status="${esc(target.claimStatus)}"` : ""}${target.claimVerification ? ` data-claim-verification="${esc(target.claimVerification)}"` : ""}>
-          <span>${esc(step.label)}</span>
-          <strong>${esc(number(count))}</strong>
-          <span class="rate">${esc(rate)}</span>
-        </button>`;
-      }).join("");
-      $("funnelLoss").innerHTML = renderFunnelLoss(visualSteps);
-      $("funnel").innerHTML = chainSteps.map((step, index) => {
-            const width = Math.max(2, Math.round((Number(step.count || 0) / chainMax) * 100));
-            return `<div>
-              <div class="funnel-row"><span>${esc(step.label)}</span><div class="bar"><span style="width:${width}%"></span></div><strong>${esc(number(step.count))}</strong></div>
-              ${index < chainSteps.length - 1 ? `<div class="funnel-arrow">↓</div>` : ""}
-            </div>`;
-          }).join("");
-      bindJumpHandlers($("funnelVisual"));
-    }
-
-    function renderFunnelLoss(steps) {
-      if (steps.length < 2) return "";
-      let maxLoss = null;
-      for (let index = 1; index < steps.length; index += 1) {
-        const prev = Number(steps[index - 1].count || 0);
-        const current = Number(steps[index].count || 0);
-        const loss = Math.max(0, prev - current);
-        const rate = prev > 0 ? current / prev : 0;
-        if (!maxLoss || loss > maxLoss.loss) {
-          maxLoss = { from: steps[index - 1], to: steps[index], loss, rate };
-        }
-      }
-      if (!maxLoss) return "";
-      return `<div class="funnel-loss-card">
-        <h3>最大流失步骤</h3>
-        <div><strong>${esc(maxLoss.from.label)} → ${esc(maxLoss.to.label)}</strong></div>
-        <div class="dist-row"><span>流失数量</span><strong>${esc(number(maxLoss.loss))}</strong></div>
-        <div class="dist-row"><span>阶段转化率</span><strong>${esc(Math.round(maxLoss.rate * 1000) / 10)}%</strong></div>
-      </div>`;
+    function renderOperationalMetrics(payload, datasourcePayload) {
+      const groups = [...(payload.groups || [])];
+      const sources = datasourcePayload.items || [];
+      groups.push({
+        key: "datasources",
+        label: "数据源",
+        metrics: [
+          { key: "configured", label: "已配置", count: sources.filter((item) => item.configured).length },
+          { key: "healthy", label: "健康", count: sources.filter((item) => item.operational).length },
+          { key: "failed", label: "失败", count: sources.filter((item) => item.configured && item.last_status === "failed").length },
+          { key: "not_run", label: "尚未运行", count: sources.filter((item) => item.configured && !item.last_status).length },
+        ],
+      });
+      const groupView = { documents: "documents", tasks: "tasks", claims: "claims", datasources: "datasources" };
+      $("operationalMetrics").innerHTML = groups.map((group) => `<section class="status-group">
+        <h3>${esc(group.label)}</h3>
+        <div class="status-metrics">${(group.metrics || []).map((metric) => `<button class="status-metric" data-jump="${esc(groupView[group.key] || "dashboard")}">
+          <span class="label">${esc(metric.label)}</span><strong>${esc(number(metric.count || 0))}</strong>
+        </button>`).join("")}</div>
+      </section>`).join("");
+      bindJumpHandlers($("operationalMetrics"));
     }
 
     function renderRecentTaskPanel(payload) {
@@ -2666,30 +2787,18 @@ def render_workbench_html() -> str:
       bindRecentTaskButtons($("recentTasks"));
     }
 
-    function renderDataSourceHealth(summary) {
-      const values = summary.data_source_distribution || {};
-      const sources = [
-        ["sec_edgar", "美国证监会年报"],
-        ["cninfo", "巨潮资讯"],
-        ["hkex", "港交所公告"],
-        ["yahoo_finance", "雅虎财经"],
-        ["company_profile", "公司画像"],
-        ["market_api", "行情接口"],
-        ["local_pdf", "本地文档"],
-      ];
-      const hasAny = Object.values(values).some((value) => Number(value || 0) > 0);
-      $("dataSourceHealth").innerHTML = sources.map(([key, label]) => {
-        const count = Number(values[key] || 0);
-        const state = count > 0 ? "已入库" : "待配置";
-        const cls = count > 0 ? "completed" : "pending";
-        return `<div class="health-row"><span>${esc(label)}</span><strong>${esc(number(count))}</strong><span class="status ${cls}">${state}</span></div>`;
-      }).join("") + (hasAny ? "" : `<div class="empty-actions"><button class="btn primary" data-jump="datasources">配置数据源</button></div>`);
+    function renderDataSourceHealth(payload) {
+      const sources = (payload && payload.items) || [];
+      $("dataSourceHealth").innerHTML = sources.length ? sources.map((item) => {
+        const runtime = datasourceRuntimeState(item);
+        return `<div class="health-row"><span>${esc(item.name || sourceText(item.source_key))}</span><strong>${esc(number(item.evidence_count || 0))}</strong><span class="status ${esc(runtime.cls)}">${esc(runtime.label)}</span></div>`;
+      }).join("") : `<div class="empty-actions"><button class="btn primary" data-jump="datasources">同步数据源</button></div>`;
       bindJumpHandlers($("dataSourceHealth"));
     }
 
     function renderDonutChart(targetId, rows, options = {}) {
       const realRows = rows.filter((row) => Number(row.value || 0) > 0);
-      const displayRows = realRows.length ? realRows : (options.demoRows || []);
+      const displayRows = realRows;
       const total = displayRows.reduce((sum, row) => sum + Number(row.value || 0), 0);
       if (!displayRows.length || total <= 0) {
         $(targetId).innerHTML = emptyBox(options.emptyText || "暂无统计数据", options.actions || []);
@@ -2780,12 +2889,35 @@ def render_workbench_html() -> str:
     }
 
     function reportTypeText(value) {
-      const map = { equity_research: "股票研报", annual_review: "年报深度", earnings_review: "财报点评" };
+      const map = {
+        equity_research: "股票研报",
+        annual_review: "年报深度",
+        annual_deep_dive: "年报深度",
+        earnings_review: "财报点评",
+        quarterly_review: "季度财报点评",
+      };
       return textOf(map, value);
     }
 
     function taskDeliveryStatus(task) {
       const readiness = task?.delivery_readiness || {};
+      const lifecycleStatus = String(task?.status || "unknown");
+      const evidenceGate = task?.metadata?.pre_generation_evidence_gate || {};
+      if (evidenceGate.blocked === true || evidenceGate.status === "failed") {
+        return { key: "failed", label: "证据不足，已阻塞" };
+      }
+      if (readiness.machine_status === "failed") {
+        return { key: "failed", label: "机器质检未通过" };
+      }
+      if (readiness.machine_status === "passed" && readiness.review_status === "pending") {
+        return { key: "pending", label: "机器质检通过，待人工复核" };
+      }
+      if (["failed", "timeout", "cancelled", "archived"].includes(lifecycleStatus)) {
+        return { key: lifecycleStatus, label: statusText(lifecycleStatus) };
+      }
+      if (readiness.formal_status === "ready") {
+        return { key: "completed", label: "可正式交付" };
+      }
       const status = String(readiness.status || "");
       if (status) {
         const classMap = { export_ready: "completed", review_required: "pending", remediation_required: "failed", in_progress: "running", queued: "queued", blocked: "failed" };
@@ -2795,14 +2927,25 @@ def render_workbench_html() -> str:
     }
 
     function renderDeliveryReadiness(task) {
-      const readiness = task?.delivery_readiness || {};
+      let readiness = task?.delivery_readiness || {};
       if (!Object.keys(readiness).length) return "";
+      if (["queued", "pending"].includes(String(task?.status || ""))) {
+        readiness = {
+          ...readiness,
+          can_generate_draft: "可启动",
+          draft_generated: "尚未生成",
+          can_enter_human_review: "待运行检查",
+          can_deliver_formal_report: "待运行检查",
+          can_export_formal_package: "待运行检查",
+        };
+      }
       const blockers = readiness.blocking_reasons || [];
       const actions = readiness.required_actions || [];
       return `<div class="detail-section"><h3>统一交付状态</h3>
         <div class="analysis-stats">
-          <div class="analysis-stat"><span class="label">生成草稿</span><strong>${esc(passText(readiness.can_generate_draft))}</strong></div>
-          <div class="analysis-stat"><span class="label">人工复核</span><strong>${esc(passText(readiness.can_enter_human_review))}</strong></div>
+          <div class="analysis-stat"><span class="label">草稿产物</span><strong>${esc(readiness.draft_generated === true ? "已生成" : "尚未生成")}</strong></div>
+          <div class="analysis-stat"><span class="label">可重新生成</span><strong>${esc(readiness.can_generate_draft === true ? "是" : "否")}</strong></div>
+          <div class="analysis-stat"><span class="label">人工复核</span><strong>${esc(humanReviewText(readiness.human_review_status, readiness.can_enter_human_review))}</strong></div>
           <div class="analysis-stat"><span class="label">正式交付</span><strong>${esc(passText(readiness.can_deliver_formal_report))}</strong></div>
           <div class="analysis-stat"><span class="label">正式导出</span><strong>${esc(passText(readiness.can_export_formal_package))}</strong></div>
         </div>
@@ -2850,7 +2993,7 @@ def render_workbench_html() -> str:
       return `<div class="links">${buttons.join("")}</div>`;
     }
 
-    function taskActionButtons(task) {
+    function taskLifecycleButtons(task) {
       const status = String(task.status || "");
       const runtime = task?.metadata?.report_runtime || {};
       const runtimeFailure = task?.metadata?.runtime_failure || {};
@@ -2878,17 +3021,57 @@ def render_workbench_html() -> str:
       return buttons.length ? `<div class="links">${buttons.join("")}</div>` : `<span class="label">无可用操作</span>`;
     }
 
+    function taskListActions(task) {
+      const lifecycle = taskLifecycleButtons(task);
+      const hasLifecycleAction = lifecycle.includes("data-task-action");
+      const status = String(task.status || "");
+      const delivery = taskDeliveryStatus(task);
+      const links = task.report_links || {};
+      const reportUrl = links.html_web_url || links.markdown_web_url || links.json_web_url;
+      let primary = `<button class="btn primary" data-task-detail="${esc(task.task_id)}">查看详情</button>`;
+      if (status === "queued") primary = `<button class="btn primary" data-task-action="start" data-task-id="${esc(task.task_id)}">立即启动</button>`;
+      else if (reportUrl && delivery.key === "completed") primary = `<a class="btn primary" href="${esc(reportUrl)}" target="_blank">查看研报</a>`;
+      else if (["failed", "quality_failed", "timeout", "cancelled"].includes(status) || delivery.key === "failed") primary = `<button class="btn primary" data-task-detail="${esc(task.task_id)}" data-task-tab-target="quality">查看失败原因</button>`;
+      else if (delivery.key === "pending") primary = `<button class="btn primary" data-task-detail="${esc(task.task_id)}" data-task-tab-target="quality">去复核</button>`;
+      return `<div class="task-actions">
+        ${primary}
+        ${status === "queued" ? `<button class="btn" data-task-detail="${esc(task.task_id)}">详情</button>` : ""}
+        ${hasLifecycleAction ? `<details class="action-menu"><summary class="btn">更多</summary><div class="action-menu-popover">${lifecycle}</div></details>` : ""}
+      </div>`;
+    }
+
     function bindTaskActionButtons(root = document) {
       root.querySelectorAll("[data-task-action]").forEach((btn) => {
         if (btn.dataset.boundTaskAction === "true") return;
         btn.dataset.boundTaskAction = "true";
-        btn.addEventListener("click", () => taskLifecycleAction(btn.dataset.taskId, btn.dataset.taskAction));
+        btn.addEventListener("click", () => {
+          const menu = btn.closest("details.action-menu");
+          taskLifecycleAction(btn.dataset.taskId, btn.dataset.taskAction, btn);
+          if (menu && btn.dataset.confirmAction === btn.dataset.taskAction) menu.open = true;
+        });
       });
     }
 
-    async function taskLifecycleAction(taskId, action) {
+    async function taskLifecycleAction(taskId, action, button = null) {
+      const destructive = new Set(["cancel", "archive"]);
+      if (button && destructive.has(action) && button.dataset.confirmAction !== action) {
+        button.dataset.confirmAction = action;
+        button.dataset.originalText = button.textContent;
+        button.textContent = "再次点击确认操作";
+        window.setTimeout(() => {
+          if (button.dataset.confirmAction === action) {
+            button.textContent = button.dataset.originalText || "操作";
+            delete button.dataset.confirmAction;
+          }
+        }, 6000);
+        return;
+      }
+      if (button) {
+        delete button.dataset.confirmAction;
+        button.disabled = true;
+        button.textContent = "处理中…";
+      }
       const labels = { start: "启动", retry: "完整重试", cancel: "取消", archive: "归档", resume_runtime: "从人工复核断点继续", retry_checkpoint: "从失败节点继续" };
-      if (["start", "retry", "cancel", "archive", "resume_runtime", "retry_checkpoint"].includes(action) && !confirm(`确认${labels[action]}该研报任务？`)) return;
       const payloadByAction = {
         start: { run_immediately: true, run_async: true },
         retry: { run_immediately: true, run_async: true },
@@ -2957,9 +3140,23 @@ def render_workbench_html() -> str:
     }
 
     function renderEvaluation(payload) {
-      const metrics = payload.metrics || {};
+      const metrics = { ...(payload.metrics || {}) };
+      const sampleRequirements = {
+        delivery_pass_rate: "quality_evaluated_task_count",
+        evidence_ready_task_rate: "quality_evaluated_task_count",
+        source_quality_ready_task_rate: "quality_evaluated_task_count",
+        traceable_claim_rate: "claim_count",
+        citation_support_rate: "claim_count",
+        numeric_consistency_rate: "numeric_checked_count",
+        llm_success_rate: "llm_run_count",
+        schema_valid_rate: "schema_checked_count",
+      };
+      Object.entries(sampleRequirements).forEach(([valueKey, countKey]) => {
+        if (Number(metrics[countKey] || 0) <= 0) metrics[valueKey] = null;
+      });
       const cards = [
-        { label: "正式交付通过率", value: percentText(metrics.delivery_pass_rate), note: `${number(metrics.delivery_pass_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务；需同时通过证据、质量和复核门禁`, view: "tasks" },
+        { label: "机器质检通过率", value: percentText(metrics.machine_quality_pass_rate), note: `${number(metrics.machine_quality_pass_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务`, view: "tasks" },
+        { label: "正式交付通过率", value: percentText(metrics.formal_delivery_pass_rate ?? metrics.delivery_pass_rate), note: `${number(metrics.formal_delivery_pass_count ?? metrics.delivery_pass_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务；需完成人工复核`, view: "tasks" },
         { label: "内容完整度评分", value: scoreText(metrics.average_quality_score), note: "仅衡量报告内容完整程度，不等同于正式交付状态", view: "tasks" },
         { label: "可追溯主张率", value: percentText(metrics.traceable_claim_rate), note: `${number(metrics.traceable_claim_count)} / ${number(metrics.claim_count)} 条主张`, view: "claims" },
         { label: "证据召回可用率", value: percentText(metrics.evidence_ready_task_rate), note: `${number(metrics.evidence_ready_task_count)} / ${number(metrics.quality_evaluated_task_count)} 个已质检任务`, view: "evidence" },
@@ -2968,7 +3165,7 @@ def render_workbench_html() -> str:
         { label: "数值一致性", value: percentText(metrics.numeric_consistency_rate), note: `${number(metrics.numeric_checked_count)} 条已检查`, view: "facts" },
         { label: "模型运行成功率", value: percentText(metrics.llm_success_rate), note: `${number(metrics.llm_success_count)} / ${number(metrics.llm_run_count)} 次运行`, view: "promptops" },
         { label: "结构化输出有效率", value: percentText(metrics.schema_valid_rate), note: `${number(metrics.schema_valid_count)} / ${number(metrics.schema_checked_count)} 次校验`, view: "promptops" },
-        { label: "平均耗时", value: metrics.average_llm_latency_ms == null ? "-" : `${number(metrics.average_llm_latency_ms)} ms`, note: `成本 ${costText(metrics.llm_cost_usd, metrics.llm_run_count)}`, view: "promptops" },
+        { label: "平均耗时", value: durationMinutes(metrics.average_llm_latency_ms), note: `成本 ${costText(metrics.llm_cost_usd, metrics.llm_run_count)}`, view: "promptops" },
       ];
       $("evaluationCards").innerHTML = cards.map((card) => `<button class="card metric-card" data-jump="${esc(card.view)}">
         <div class="label"><span>${esc(card.label)}</span><span class="hint">查看</span></div>
@@ -2979,7 +3176,7 @@ def render_workbench_html() -> str:
       renderEvaluationClaimQuality(payload.claim_quality || {});
       renderEvaluationRetrievalQuality(payload.retrieval_quality || {});
       renderEvaluationModelHealth(payload.model_health || {});
-      renderEvaluationFailures(payload.failure_categories || []);
+      renderEvaluationFailures(payload.failure_categories || [], metrics);
       renderEvaluationBenchmarkSuites(payload.benchmark_suites || []);
       renderEvaluationRegressionMatrix(payload.regression_matrix || {});
       renderEvaluationTaskRows(payload.recent_tasks || []);
@@ -3058,14 +3255,18 @@ def render_workbench_html() -> str:
         ["失败运行", number(health.failed_count)],
         ["降级运行", number(health.fallback_count)],
         ["结构化输出", percentText(health.schema_valid_rate)],
-        ["平均耗时", health.average_latency_ms == null ? "-" : `${number(health.average_latency_ms)} ms`],
+        ["平均耗时", durationMinutes(health.average_latency_ms)],
         ["累计成本", costText(health.cost_usd, health.run_count)],
       ];
       $("evaluationModelHealth").innerHTML = rows.map(([label, value]) => `<div class="dist-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join("")
         + ((health.recent_roles || []).length ? `<div class="detail-section"><h3>最近运行角色</h3>${health.recent_roles.map((item) => `<div class="dist-row"><span>${esc(modelRoleText(item.role))}</span><strong>${esc(number(item.count))}</strong></div>`).join("")}</div>` : "");
     }
 
-    function renderEvaluationFailures(items) {
+    function renderEvaluationFailures(items, metrics = {}) {
+	      if (!items.length && Number(metrics.quality_evaluated_task_count || 0) <= 0) {
+	        $("evaluationFailures").innerHTML = emptyBox("尚无可评测样本；请先完成至少一个研报任务。", [{ label: "查看研报任务", view: "tasks", className: "primary" }]);
+	        return;
+	      }
 	      $("evaluationFailures").innerHTML = items.length
 	        ? items.map((item) => `<div class="mini-item">
 	            <div class="mini-title">
@@ -3507,46 +3708,97 @@ def render_workbench_html() -> str:
 
 	    async function loadDashboard() {
       try {
-        const [summary, funnel, recentTasksPayload] = await Promise.all([
+        const [summary, funnel, recentTasksPayload, datasourcePayload] = await Promise.all([
           getJson("/api/dashboard/summary"),
           getJson("/api/dashboard/funnel"),
           getJson("/api/report-tasks?limit=6"),
+          getJson("/api/data-sources"),
         ]);
         renderCards(summary);
         renderRecentTaskPanel(recentTasksPayload);
-        renderDataSourceHealth(summary);
+        renderDataSourceHealth(datasourcePayload);
         renderReviewExceptions(summary);
         renderDashboardCharts(summary);
         renderRecentTaskTable(recentTasksPayload);
-        renderFunnel(funnel);
+        renderOperationalMetrics(funnel, datasourcePayload);
       } catch (error) {
         showLoadError("metricCards");
       }
     }
 
+    function taskMatchesOutcome(task, outcome) {
+      const status = String(task.status || "");
+      const delivery = taskDeliveryStatus(task);
+      if (outcome === "all") return true;
+      if (outcome === "active") return status !== "archived";
+      if (outcome === "queued" || outcome === "running" || outcome === "archived") return status === outcome;
+      if (outcome === "failed") return ["failed", "quality_failed", "timeout", "cancelled"].includes(status) || delivery.key === "failed";
+      if (outcome === "review") return delivery.key === "pending";
+      if (outcome === "success") return delivery.key === "completed" && Boolean(task.report_links && Object.keys(task.report_links).length);
+      return true;
+    }
+
     async function loadTasks() {
-      const symbol = $("symbolFilter").value.trim();
-      const suffix = symbol ? `?symbol=${encodeURIComponent(symbol)}` : "";
+      const query = $("symbolFilter").value.trim().toLowerCase();
+      const outcome = $("taskOutcomeFilter").value || "active";
       try {
-        const payload = await getJson("/api/report-tasks" + suffix);
-        const rows = payload.items || [];
-        $("taskRows").innerHTML = rows.length
-          ? rows.map((task) => { const delivery = taskDeliveryStatus(task); return `<tr data-selectable="true" data-task-id="${esc(task.task_id)}">
-              <td><button class="btn" data-task-detail="${esc(task.task_id)}">${esc(metadataName(task))}</button></td>
+        const requests = [getJson(`/api/report-tasks?limit=200${outcome === "archived" ? "&status=archived" : ""}`)];
+        if (outcome === "all") requests.push(getJson("/api/report-tasks?status=archived&limit=200"));
+        const payloads = await Promise.all(requests);
+        const allRows = payloads.flatMap((payload) => payload.items || []);
+        const rows = allRows.filter((task) => {
+          const haystack = [metadataName(task), task.symbol, task.period, reportTypeText(task.report_type)].join(" ").toLowerCase();
+          return taskMatchesOutcome(task, outcome) && (!query || haystack.includes(query));
+        });
+        visibleFailedTaskIds = rows.filter((task) => taskMatchesOutcome(task, "failed") && task.status !== "archived").map((task) => task.task_id);
+        const displayRows = rows.slice(0, 30);
+        $("taskFilterSummary").textContent = `显示 ${displayRows.length}${rows.length > displayRows.length ? ` / ${rows.length}` : ""} 个任务${query ? ` · 搜索“${$("symbolFilter").value.trim()}”` : ""}${visibleFailedTaskIds.length ? ` · 其中 ${visibleFailedTaskIds.length} 个失败任务可批量移除` : ""}`;
+        $("archiveFailedTasks").disabled = visibleFailedTaskIds.length === 0;
+        $("taskRows").innerHTML = displayRows.length
+          ? displayRows.map((task) => { const delivery = taskDeliveryStatus(task); return `<tr data-selectable="true" data-task-id="${esc(task.task_id)}">
+              <td><div class="task-title"><strong>${esc(metadataName(task))}</strong><span class="label">${esc(reportTypeText(task.report_type))}</span></div></td>
               <td>${esc(task.symbol)}<br><span class="label">${esc(task.period)}</span></td>
               <td><span class="status ${esc(delivery.key)}">${esc(delivery.label)}</span></td>
               <td class="nowrap">${esc(stepText(task.current_stage))}</td>
-              <td>${esc(fmt(task.created_at))}</td>
-              <td>${artifactButtons(task)}</td>
-              <td>${taskActionButtons(task)}</td>
+              <td class="nowrap">${esc(dateTimeText(task.created_at))}</td>
+              <td>${task.report_links && Object.keys(task.report_links).length ? `<span class="status completed">已生成</span>` : `<span class="status neutral">待生成</span>`}</td>
+              <td>${taskListActions(task)}</td>
             </tr>`; }).join("")
-          : `<tr><td colspan="7"><div class="empty">暂无研报任务</div></td></tr>`;
-        document.querySelectorAll("[data-task-detail]").forEach((btn) => {
-          btn.addEventListener("click", () => loadTaskDetail(btn.dataset.taskDetail));
+          : `<tr><td colspan="7"><div class="empty">当前筛选条件下暂无研报任务</div></td></tr>`;
+        $("taskRows").querySelectorAll("[data-task-detail]").forEach((btn) => {
+          btn.addEventListener("click", () => loadTaskDetail(btn.dataset.taskDetail, btn.dataset.taskTabTarget || "overview"));
         });
+        $("taskRows").querySelectorAll("tr[data-task-id]").forEach((row) => row.addEventListener("click", (event) => {
+          if (event.target.closest("button, a, details, summary")) return;
+          loadTaskDetail(row.dataset.taskId);
+        }));
         bindTaskActionButtons($("taskRows"));
       } catch (error) {
         showLoadError("taskRows", 7);
+        $("taskFilterSummary").textContent = "任务加载失败";
+      }
+    }
+
+    async function archiveVisibleFailedTasks(button) {
+      if (!visibleFailedTaskIds.length) return;
+      if (button.dataset.confirmBulk !== "true") {
+        button.dataset.confirmBulk = "true";
+        button.textContent = `确认移除 ${visibleFailedTaskIds.length} 个失败任务`;
+        window.setTimeout(() => { if (button.dataset.confirmBulk === "true") { delete button.dataset.confirmBulk; button.textContent = "批量移除失败任务"; } }, 6000);
+        return;
+      }
+      button.disabled = true;
+      button.textContent = "正在移入归档…";
+      try {
+        const result = await postJson("/api/report-tasks/bulk-archive-failed", { task_ids: visibleFailedTaskIds });
+        showNotice(`已移除 ${result.archived_count || 0} 个失败任务；可在“已归档”筛选中找回。`);
+        delete button.dataset.confirmBulk;
+        button.textContent = "批量移除失败任务";
+        await loadTasks();
+      } catch (error) {
+        showNotice("批量移除失败任务失败，请刷新后重试。", "error");
+        button.disabled = false;
+        button.textContent = "批量移除失败任务";
       }
     }
 
@@ -3590,6 +3842,37 @@ def render_workbench_html() -> str:
       </div>`;
     }
 
+    function renderToolRuns(task) {
+      const runtime = task.runtime_observability || {};
+      const summary = runtime.tools || {};
+      const runs = task.tool_runs || [];
+      if (!runs.length) {
+        return `<div class="detail-section"><h3>工具调用轨迹</h3><div class="empty">暂无工具调用记录。任务生成完成后会展示检索、数据和分析工具的执行情况。</div></div>`;
+      }
+      const recent = runs.slice(0, 12);
+      return `<div class="detail-section"><h3>工具调用轨迹</h3>
+        <div class="analysis-stats">
+          <div class="analysis-stat"><span class="label">当前节点</span><strong>${esc(stepText(runtime.current_node || runtime.last_node || "not_started"))}</strong><span class="score-note">断点：${esc(statusText(runtime.checkpoint_status || "not_started"))}</span></div>
+          <div class="analysis-stat"><span class="label">当前 / 最近工具</span><strong>${esc(productText(summary.current_tool?.tool_name || "未运行"))}</strong><span class="score-note">${esc(productText(summary.current_tool?.agent_name || "系统"))}</span></div>
+          <div class="analysis-stat"><span class="label">工具重试</span><strong>${esc(number(summary.retry_count || 0))}</strong><span class="score-note">累计额外尝试次数</span></div>
+          <div class="analysis-stat"><span class="label">节点总耗时</span><strong>${esc(number(runtime.total_node_latency_ms || 0))} ms</strong><span class="score-note">工具耗时 ${esc(number(summary.latency_ms || 0))} ms</span></div>
+        </div>
+        <div class="diagnostic-meta">
+          <span>调用：${esc(number(summary.run_count || runs.length))}</span>
+          <span>失败：${esc(number(summary.failed_run_count || 0))}</span>
+          <span>总耗时：${esc(number(summary.latency_ms || 0))} ms</span>
+        </div>
+        ${summary.failure_root_cause ? `<div class="error">失败根因：${esc(productText(summary.failure_root_cause.type || "tool_execution_failed"))}${summary.failure_root_cause.tool_name ? ` · ${esc(productText(summary.failure_root_cause.tool_name))}` : ""}${summary.failure_root_cause.message ? `<br>${esc(productText(summary.failure_root_cause.message))}` : ""}</div>` : ""}
+        ${Object.keys(runtime.node_latency_ms || {}).length ? `<div class="reason-list">${Object.entries(runtime.node_latency_ms).map(([node, duration]) => `<span class="reason-pill">${esc(stepText(node))} ${esc(number(duration || 0))} ms</span>`).join("")}</div>` : ""}
+        <div class="timeline">${recent.map((run) => `<div class="event">
+          <strong>${esc(productText(run.tool_name || "工具"))}</strong> · <span class="label">${esc(stepText(run.langgraph_node || "write_report"))}</span>
+          <span class="status ${esc(run.status || "unknown")}">${esc(statusText(run.status || "unknown"))}</span><br>
+          <span class="label">${esc(productText(run.agent_name || "系统"))} · ${esc(number(run.duration_ms || 0))} ms · ${esc(number(run.attempt_count || 1))} 次尝试</span>
+          ${run.error_message ? `<br><span class="error">${esc(productText(run.error_message))}</span>` : ""}
+        </div>`).join("")}</div>
+      </div>`;
+    }
+
     function renderDiagnosticRunCard(label, run) {
       if (!run) {
         return `<div class="diagnostic-card"><div class="diagnostic-head"><strong>${esc(label)}</strong><span class="status not_run">未记录</span></div><div class="diagnostic-empty">暂无可查询的运行记录</div></div>`;
@@ -3618,58 +3901,101 @@ def render_workbench_html() -> str:
       return String(value);
     }
 
+    function humanReviewText(status, canEnterReview) {
+      const key = String(status || "").toLowerCase();
+      if (key === "completed") return "已完成";
+      if (key === "pending") return "待复核";
+      if (key === "not_required") return "无需复核";
+      if (canEnterReview === true) return "可进入复核";
+      return "未开始";
+    }
+
     function metadataName(task) {
       const metadata = task?.metadata || {};
       const company = metadata.company_name || task?.symbol || "研报任务";
       return `${company} · ${task?.period || "-"}`;
     }
 
-    async function loadTaskDetail(taskId) {
+    async function loadTaskDetail(taskId, preferredTab = "overview") {
       try {
-        const analysis = await getJson(`/api/report-tasks/${encodeURIComponent(taskId)}/analysis`);
-        const task = analysis.task || {};
+        const task = await getJson(`/api/report-tasks/${encodeURIComponent(taskId)}`);
+        let analysis = { task };
+        let analysisUnavailable = false;
+        try {
+          analysis = await getJson(`/api/report-tasks/${encodeURIComponent(taskId)}/analysis`);
+          analysis.task = analysis.task || task;
+        } catch (error) {
+          analysisUnavailable = true;
+        }
         const delivery = taskDeliveryStatus(task);
         const events = task.events || [];
         const metadata = task.metadata || {};
-        $("taskDetail").innerHTML = `<h2>任务详情</h2>
+        const overviewPanel = `${analysisUnavailable ? `<div class="error">高级分析暂时不可用，基础任务信息、失败原因和产物仍可查看。</div>` : ""}
           <div class="kv"><span class="label">公司</span><span>${esc(metadata.company_name || task.symbol)} / ${esc(task.symbol)}</span></div>
           <div class="kv"><span class="label">查询期间</span><span>${esc(task.period)}</span></div>
           <div class="kv"><span class="label">报告类型</span><span>${esc(reportTypeText(task.report_type))}</span></div>
           <div class="kv"><span class="label">数据源范围</span><span>${esc(dataSourceScopeText(metadata.data_source_scope))}</span></div>
-          <div class="kv"><span class="label">状态</span><span><span class="status ${esc(delivery.key)}">${esc(delivery.label)}</span></span></div>
           <div class="kv"><span class="label">阶段</span><span>${esc(stepText(task.current_stage))}</span></div>
           <div class="kv"><span class="label">质量分</span><span>${esc(fmt(task.quality_score))}</span></div>
           <div class="detail-section"><h3>研究问题</h3><div class="text-block">${esc(metadata.research_topic || "-")}</div></div>
-          <div class="detail-section"><h3>任务操作</h3>${taskActionButtons(task)}</div>
           ${task.error_message ? `<div class="detail-section"><h3>错误</h3><div class="text-block">${esc(task.error_message)}</div></div>` : ""}
           ${renderDeliveryReadiness(task)}
-          ${renderPreGenerationEvidenceGate(metadata.pre_generation_evidence_gate || {})}
           ${renderTaskLinkageOverview(analysis)}
           ${renderTaskNarrative(analysis)}
           ${renderTaskAnalysisStats(analysis.stats || {})}
           ${renderTaskEntityMemory(analysis.entity_memory || {}, task)}
           ${renderTaskSignalSummary(analysis.signal_summary || {}, task)}
-          ${renderRetrievalCoverage(analysis.retrieval_coverage || analysis.quality_proof?.retrieval_coverage || {})}
-          ${renderRetrievalDiagnostics(analysis.retrieval_diagnostics || {})}
-          ${renderCitationUsage(analysis.citation_usage || {})}
-          ${renderQualityProof(analysis.quality_proof || {}, task)}
           ${renderArgumentChain(analysis.argument_chain || {})}
           ${renderRiskChain(analysis.risk_chain || {})}
-          ${renderRecommendedActions(analysis.recommended_actions || [])}
-          ${renderQualityDiagnostics(task)}
-          <div class="detail-section"><h3>产物</h3>${artifactButtons(task)}</div>
+          ${renderRecommendedActions(analysis.recommended_actions || [])}`;
+        const runtimePanel = `${renderToolRuns(task)}
           ${systemInfoBlock("系统信息", [["任务编号", task.task_id]])}
           <div class="detail-section"><h3>时间线</h3><div class="timeline">${
             events.length ? events.map((event) => `<div class="event"><strong>${esc(stepText(event.stage))}</strong> <span class="status ${esc(event.status)}">${esc(statusText(event.status))}</span><br><span class="label">${esc(fmt(event.created_at))}</span><br>${esc(fmt(event.message))}</div>`).join("") : `<div class="empty">暂无事件</div>`
           }</div></div>`;
-        bindTaskActionButtons($("taskDetail"));
+        const qualityPanel = `${renderQualityProof(analysis.quality_proof || {}, task)}${renderQualityDiagnostics(task)}`;
+        const evidencePanel = `${renderPreGenerationEvidenceGate(metadata.pre_generation_evidence_gate || {})}
+          ${renderRetrievalCoverage(analysis.retrieval_coverage || analysis.quality_proof?.retrieval_coverage || {})}
+          ${renderRetrievalDiagnostics(analysis.retrieval_diagnostics || {})}
+          ${renderCitationUsage(analysis.citation_usage || {})}`;
+        $("taskDetail").innerHTML = `<div class="task-detail-head"><div><h2>任务详情</h2><div class="label">${esc(metadataName(task))}</div></div><span class="status ${esc(delivery.key)}">${esc(delivery.label)}</span></div>
+          <div class="task-detail-tabs" role="tablist" aria-label="任务详情分区">
+            <button class="active" role="tab" aria-selected="true" data-task-tab="overview">概览</button>
+            <button role="tab" aria-selected="false" data-task-tab="runtime">运行节点</button>
+            <button role="tab" aria-selected="false" data-task-tab="quality">质量</button>
+            <button role="tab" aria-selected="false" data-task-tab="evidence">证据</button>
+            <button role="tab" aria-selected="false" data-task-tab="artifacts">产物</button>
+          </div>
+          <div class="task-tab-panel active" data-task-panel="overview">${overviewPanel}</div>
+          <div class="task-tab-panel" data-task-panel="runtime">${runtimePanel}</div>
+          <div class="task-tab-panel" data-task-panel="quality">${qualityPanel}</div>
+          <div class="task-tab-panel" data-task-panel="evidence">${evidencePanel}</div>
+          <div class="task-tab-panel" data-task-panel="artifacts"><div class="detail-section"><h3>研报产物</h3>${artifactButtons(task)}</div></div>`;
+        bindTaskDetailTabs($("taskDetail"));
+        const preferredButton = $("taskDetail").querySelector(`[data-task-tab="${preferredTab}"]`);
+        if (preferredButton) preferredButton.click();
         bindTaskEntityMemoryButtons($("taskDetail"));
         bindTaskSignalButtons($("taskDetail"));
         bindJumpHandlers($("taskDetail"));
         bindCreateTaskButtons($("taskDetail"));
+        $("taskDetail").scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (error) {
         showLoadError("taskDetail");
       }
+    }
+
+    function bindTaskDetailTabs(root) {
+      root.querySelectorAll("[data-task-tab]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const tab = button.dataset.taskTab;
+          root.querySelectorAll("[data-task-tab]").forEach((item) => {
+            const active = item.dataset.taskTab === tab;
+            item.classList.toggle("active", active);
+            item.setAttribute("aria-selected", String(active));
+          });
+          root.querySelectorAll("[data-task-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.taskPanel === tab));
+        });
+      });
     }
 
     function evidenceGateStatusText(gate) {
@@ -3891,6 +4217,9 @@ def render_workbench_html() -> str:
     }
 
     function renderQualityProof(proof, task) {
+      if (["queued", "pending"].includes(String(task?.status || ""))) {
+        return `<div class="detail-section"><h3>研报质量证明</h3><div class="empty">任务尚未运行。主张、数字和引用检查均为待检查，不能视为通过。</div></div>`;
+      }
       const checks = proof.checks || [];
       const issues = proof.top_issues || [];
       const failedClaims = proof.failed_claims || [];
@@ -5191,6 +5520,42 @@ def render_workbench_html() -> str:
       }
     }
 
+    async function approveSupportedClaimsForTask() {
+      const taskId = $("claimTask").value.trim();
+      if (!taskId) {
+        $("claimBulkMessage").innerHTML = `<div class="error">请先输入研报任务编号，批量审核不会跨任务执行。</div>`;
+        return;
+      }
+      const button = $("approveSupportedClaims");
+      if (button.dataset.confirmTask !== taskId) {
+        button.dataset.confirmTask = taskId;
+        button.textContent = "再次点击确认批量通过";
+        setTimeout(() => {
+          if (button.dataset.confirmTask === taskId) {
+            delete button.dataset.confirmTask;
+            button.textContent = "批量通过有证据支持的主张";
+          }
+        }, 6000);
+        return;
+      }
+      delete button.dataset.confirmTask;
+      button.disabled = true;
+      try {
+        const result = await postJson(`/api/report-tasks/${encodeURIComponent(taskId)}/claims/approve-supported`, {
+          reviewer: "workbench_user",
+          comment: "工作台任务级批量复核：仅通过已获证据支持的待复核主张",
+        });
+        $("claimBulkMessage").innerHTML = `<div class="empty">已通过 ${esc(number(result.approved_count))} 条；仍待复核 ${esc(number(result.pending_count))} 条。每条决定均已写入审计记录。</div>`;
+        await loadClaims();
+        loadDashboard();
+      } catch (error) {
+        $("claimBulkMessage").innerHTML = `<div class="error">批量复核失败，请检查任务编号和服务状态。</div>`;
+      } finally {
+        button.disabled = false;
+        button.textContent = "批量通过有证据支持的主张";
+      }
+    }
+
     async function loadDocuments() {
       const params = new URLSearchParams();
       const q = $("documentQuery").value.trim();
@@ -5325,11 +5690,22 @@ def render_workbench_html() -> str:
           <div class="detail-section"><h3>主张</h3>${
             claims.length ? claims.map((claim) => `<div class="event"><strong>主张 ${esc(claim.id)}</strong> <span class="status ${esc(claim.review_status)}">${esc(statusText(claim.review_status))}</span><br>${esc(claim.claim_text)}</div>`).join("") : `<div class="empty">暂无主张</div>`
           }</div>
-          <div class="links" style="margin-top:10px"><button class="btn primary" data-export-package="${esc(item.task_id)}">预览正式导出包</button></div>
+          <div class="detail-section"><h3>选择导出格式</h3>
+            <div class="format-options" data-export-formats>
+              <label class="format-option"><input type="checkbox" value="html" checked />HTML 网页</label>
+              <label class="format-option"><input type="checkbox" value="markdown" checked />Markdown（.md）</label>
+              <label class="format-option"><input type="checkbox" value="pdf" />PDF</label>
+              <label class="format-option"><input type="checkbox" value="docx" />DOCX</label>
+              <label class="format-option"><input type="checkbox" value="csv" />CSV 数据表</label>
+              <label class="format-option"><input type="checkbox" value="json" />JSON 数据</label>
+            </div>
+            <div class="links"><button class="btn primary" data-write-export-package="${esc(item.task_id)}"${item.official_export_ready ? "" : " disabled"}>生成所选格式</button><button class="btn" data-export-package="${esc(item.task_id)}">预览正式导出包</button></div>
+          </div>
           <div id="exportPackagePreview" class="detail-section"><h3>正式导出包</h3><div class="empty">预览后可检查正式包包含的 PDF、DOCX、主张、证据、财务事实和 CSV 表。</div></div>
           ${systemInfoBlock("系统信息", [["任务编号", item.task_id]])}
           <div class="detail-section"><h3>说明</h3><div class="empty">${esc(item.formal_export_note || "正式导出包将在后续阶段接入。")}</div></div>`;
         bindExportPackageButtons($("exportDetail"));
+        bindWriteExportPackageButtons($("exportDetail"));
       } catch (error) {
         showLoadError("exportDetail");
       }
@@ -5374,17 +5750,27 @@ def render_workbench_html() -> str:
       root.querySelectorAll("[data-write-export-package]").forEach((btn) => {
         if (btn.dataset.boundWriteExportPackage === "true") return;
         btn.dataset.boundWriteExportPackage = "true";
-        btn.addEventListener("click", () => writeExportPackageFiles(btn.dataset.writeExportPackage));
+        btn.addEventListener("click", () => writeExportPackageFiles(btn.dataset.writeExportPackage, btn));
       });
     }
 
-    async function writeExportPackageFiles(taskId) {
+    async function writeExportPackageFiles(taskId, button = null) {
       try {
-        const result = await postJson(`/api/exports/${encodeURIComponent(taskId)}/package/files`, {});
+        const formatRoot = button?.closest(".detail-section")?.querySelector("[data-export-formats]") || $("exportDetail").querySelector("[data-export-formats]");
+        const formats = formatRoot ? Array.from(formatRoot.querySelectorAll('input[type="checkbox"]:checked')).map((item) => item.value) : ["html", "markdown"];
+        if (!formats.length) {
+          showNotice("请至少选择一种导出格式。", "error");
+          return;
+        }
+        if (button) { button.disabled = true; button.textContent = "正在生成…"; }
+        const result = await postJson(`/api/exports/${encodeURIComponent(taskId)}/package/files`, { formats });
         const files = result.files || [];
         $("exportPackageFiles").innerHTML = `<h3>下载文件</h3>${files.length ? `<div class="mini-list">${files.map((file) => `<div class="mini-item"><strong>${esc(exportFormatText(file.format))}</strong><br><a href="${esc(file.download_url)}" target="_blank">下载 ${esc(file.filename)}</a><br><span class="label">${esc(number(file.size_bytes))} bytes</span></div>`).join("")}</div>` : `<div class="empty">暂无可下载文件。</div>`}`;
+        showNotice(`已生成 ${formats.map(exportFormatText).join("、")}。`);
+        if (button) { button.disabled = false; button.textContent = "重新生成所选格式"; }
       } catch (error) {
         showLoadError("exportPackageFiles");
+        if (button) { button.disabled = false; button.textContent = "生成所选格式"; }
       }
     }
 
@@ -5453,7 +5839,31 @@ def render_workbench_html() -> str:
       </div>`;
     }
 
-    $("refreshView").addEventListener("click", () => activateView(activeState.view));
+    async function refreshWithFeedback(button, action) {
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = "刷新中…";
+      try {
+        await action();
+        showNotice("数据已刷新。", "empty");
+      } catch (error) {
+        showNotice("刷新失败，请稍后重试。", "error");
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    }
+
+    $("refreshView").addEventListener("click", () => refreshWithFeedback($("refreshView"), async () => {
+      activateView(activeState.view);
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+    }));
+    $("topWorkspaceSelect").addEventListener("change", () => {
+      activeState.workspaceId = $("topWorkspaceSelect").value;
+      showNotice(`已切换投研空间：${$("topWorkspaceSelect").selectedOptions[0]?.textContent || "默认投研空间"}`);
+      refreshTaskPeriods();
+      activateView(activeState.view);
+    });
     $("refreshWorkspaces").addEventListener("click", loadWorkspaces);
     $("createWorkspace").addEventListener("click", createWorkspace);
     $("refreshStockpool").addEventListener("click", loadStockpool);
@@ -5472,8 +5882,10 @@ def render_workbench_html() -> str:
     $("ingestionStatus").addEventListener("change", loadIngestionBatches);
     $("manualImportType").addEventListener("change", updateManualImportFields);
     $("submitManualImport").addEventListener("click", submitManualImport);
-    $("refreshTasks").addEventListener("click", loadTasks);
+    $("refreshTasks").addEventListener("click", () => refreshWithFeedback($("refreshTasks"), loadTasks));
     $("symbolFilter").addEventListener("keydown", (event) => { if (event.key === "Enter") loadTasks(); });
+    $("taskOutcomeFilter").addEventListener("change", loadTasks);
+    $("archiveFailedTasks").addEventListener("click", () => archiveVisibleFailedTasks($("archiveFailedTasks")));
     $("refreshEvidence").addEventListener("click", loadEvidence);
     ["evidenceQuery", "evidenceCompany", "evidencePeriod", "evidenceTask"].forEach((id) => {
       $(id).addEventListener("keydown", (event) => { if (event.key === "Enter") loadEvidence(); });
@@ -5487,6 +5899,7 @@ def render_workbench_html() -> str:
     });
     $("documentStep").addEventListener("change", loadDocuments);
     $("refreshClaims").addEventListener("click", loadClaims);
+    $("approveSupportedClaims").addEventListener("click", approveSupportedClaimsForTask);
     ["claimQuery", "claimTask"].forEach((id) => {
       $(id).addEventListener("keydown", (event) => { if (event.key === "Enter") loadClaims(); });
     });
@@ -5521,7 +5934,8 @@ def render_workbench_html() -> str:
     $("exportSymbol").addEventListener("keydown", (event) => { if (event.key === "Enter") loadExports(); });
     $("exportStatus").addEventListener("change", loadExports);
 
-    loadDashboard();
+    loadTopWorkspaces();
+    activateView("dashboard");
     loadTasks();
     updateManualImportFields();
   </script>

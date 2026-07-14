@@ -41,9 +41,13 @@ DEFAULT_COMPANY_FACTS = [
     "RevenueFromContractWithCustomerExcludingAssessedTax",
     "NetIncomeLoss",
     "Assets",
+    "Liabilities",
+    "StockholdersEquity",
     "CashAndCashEquivalentsAtCarryingValue",
     "NetCashProvidedByUsedInOperatingActivities",
     "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
+    "NetCashProvidedByUsedInInvestingActivities",
+    "NetCashProvidedByUsedInFinancingActivities",
     "PaymentsToAcquirePropertyPlantAndEquipment",
     "PaymentsToAcquireProductiveAssets",
 ]
@@ -110,6 +114,7 @@ def fetch_macro_evidence(
         series=_series_map(macro_cfg.get("fred", {}), DEFAULT_FRED_SERIES),
         config_path=config_path,
         topk=max(topk, 1),
+        period=period,
     )
     hits.extend(fred_payload.hits)
     source_meta["fred"] = fred_payload.meta
@@ -118,11 +123,12 @@ def fetch_macro_evidence(
         series=_series_map(macro_cfg.get("bls", {}), DEFAULT_BLS_SERIES),
         config_path=config_path,
         topk=max(1, min(topk, 4)),
+        period=period,
     )
     hits.extend(bls_payload.hits)
     source_meta["bls"] = bls_payload.meta
 
-    bea_payload = fetch_bea_indicator_evidence(config_path=config_path)
+    bea_payload = fetch_bea_indicator_evidence(config_path=config_path, period=period)
     hits.extend(bea_payload.hits)
     source_meta["bea"] = bea_payload.meta
 
@@ -143,6 +149,7 @@ def fetch_fred_series_evidence(
     series: Dict[str, str] | None = None,
     config_path: str = "configs/data_sources.yaml",
     topk: int = 8,
+    period: str = "",
 ) -> SourcePayload:
     config = _load_data_source_config(config_path)
     fred_cfg = dict(config.get("independent_sources", {}).get("macro", {}).get("fred", {}))
@@ -155,15 +162,17 @@ def fetch_fred_series_evidence(
     hits: List[Dict[str, Any]] = []
     errors: List[str] = []
     for series_id, label in list((series or DEFAULT_FRED_SERIES).items())[:topk]:
-        query = parse.urlencode(
-            {
-                "series_id": series_id,
-                "api_key": api_key,
-                "file_type": "json",
-                "sort_order": "desc",
-                "limit": 4,
-            }
-        )
+        params = {
+            "series_id": series_id,
+            "api_key": api_key,
+            "file_type": "json",
+            "sort_order": "desc",
+            "limit": 4,
+        }
+        target_date = _period_target_date(period)
+        if target_date:
+            params["observation_end"] = target_date.isoformat()
+        query = parse.urlencode(params)
         try:
             payload = _get_json(f"{base_url}?{query}", timeout=timeout)
             observations = payload.get("observations", [])
@@ -171,16 +180,27 @@ def fetch_fred_series_evidence(
             if not latest:
                 continue
             obs_date = str(latest.get("date", ""))
+            parsed_obs_date = _parse_iso_date(obs_date)
+            if target_date and parsed_obs_date and parsed_obs_date > target_date:
+                continue
             value = str(latest.get("value", ""))
             hits.append(
                 _record(
                     evidence_id=f"fred_{series_id.lower()}_{obs_date.replace('-', '')}",
                     source_type="fred_series",
                     title=f"FRED {series_id}: {label}",
-                    content=f"{label} latest FRED observation is {value} for {obs_date}.",
+                    content=f"{label} {'period-matched' if target_date else 'latest'} FRED observation is {value} for {obs_date}.",
                     source_url=f"https://fred.stlouisfed.org/series/{series_id}",
                     publish_time=obs_date,
-                    metadata={"provider": "FRED", "series_id": series_id, "series_name": label, "observation_date": obs_date, "value": value},
+                    metadata={
+                        "provider": "FRED",
+                        "series_id": series_id,
+                        "series_name": label,
+                        "observation_date": obs_date,
+                        "value": value,
+                        "target_period": period,
+                        "period_match": bool(target_date and parsed_obs_date and parsed_obs_date <= target_date),
+                    },
                 )
             )
         except Exception as exc:
@@ -195,14 +215,17 @@ def fetch_bls_series_evidence(
     series: Dict[str, str] | None = None,
     config_path: str = "configs/data_sources.yaml",
     topk: int = 4,
+    period: str = "",
 ) -> SourcePayload:
     config = _load_data_source_config(config_path)
     bls_cfg = dict(config.get("independent_sources", {}).get("macro", {}).get("bls", {}))
     base_url = str(bls_cfg.get("base_url") or "https://api.bls.gov/publicAPI/v2/timeseries/data/")
     timeout = float(bls_cfg.get("timeout", 20))
     api_key = _resolve_api_key(bls_cfg, "api_key", "BLS_API_KEY")
-    start_year = str(bls_cfg.get("start_year") or max(date.today().year - 2, 2000))
-    end_year = str(bls_cfg.get("end_year") or date.today().year)
+    target_date = _period_target_date(period)
+    target_year = target_date.year if target_date else None
+    start_year = str(target_year or bls_cfg.get("start_year") or max(date.today().year - 2, 2000))
+    end_year = str(target_year or bls_cfg.get("end_year") or date.today().year)
     series_map = dict(list((series or DEFAULT_BLS_SERIES).items())[:topk])
     payload: Dict[str, Any] = {"seriesid": list(series_map.keys()), "startyear": start_year, "endyear": end_year}
     if api_key:
@@ -222,25 +245,33 @@ def fetch_bls_series_evidence(
         if not latest:
             continue
         year = str(latest.get("year", ""))
-        period = str(latest.get("period", ""))
-        obs_date = f"{year}-{period}" if year or period else ""
+        observation_period = str(latest.get("period", ""))
+        obs_date = f"{year}-{observation_period}" if year or observation_period else ""
         value = str(latest.get("value", ""))
         label = series_map.get(series_id, series_id)
         hits.append(
             _record(
-                evidence_id=f"bls_{series_id.lower()}_{year}_{period}",
+                evidence_id=f"bls_{series_id.lower()}_{year}_{observation_period}",
                 source_type="bls_series",
                 title=f"BLS {series_id}: {label}",
-                content=f"{label} latest BLS observation is {value} for {obs_date}.",
+                content=f"{label} {'period-matched' if target_date else 'latest'} BLS observation is {value} for {obs_date}.",
                 source_url="https://www.bls.gov/developers/api_signature_v2.htm",
                 publish_time=f"{year}-01-01" if year else "",
-                metadata={"provider": "BLS", "series_id": series_id, "series_name": label, "observation_date": obs_date, "value": value},
+                metadata={
+                    "provider": "BLS",
+                    "series_id": series_id,
+                    "series_name": label,
+                    "observation_date": obs_date,
+                    "value": value,
+                    "target_period": period,
+                    "period_match": bool(target_date),
+                },
             )
         )
     return SourcePayload(hits=hits, meta={"mode": "bls", "record_count": len(hits), "failure_reason": "" if hits else "no_observations"})
 
 
-def fetch_bea_indicator_evidence(config_path: str = "configs/data_sources.yaml") -> SourcePayload:
+def fetch_bea_indicator_evidence(config_path: str = "configs/data_sources.yaml", period: str = "") -> SourcePayload:
     config = _load_data_source_config(config_path)
     bea_cfg = dict(config.get("independent_sources", {}).get("macro", {}).get("bea", {}))
     api_key = _resolve_api_key(bea_cfg, "api_key", "BEA_API_KEY")
@@ -249,13 +280,14 @@ def fetch_bea_indicator_evidence(config_path: str = "configs/data_sources.yaml")
 
     base_url = str(bea_cfg.get("base_url") or "https://apps.bea.gov/api/data/")
     timeout = float(bea_cfg.get("timeout", 20))
+    target_date = _period_target_date(period)
     params = {
         "UserID": api_key,
         "method": "GetData",
         "datasetname": str(bea_cfg.get("datasetname") or "NIPA"),
         "TableName": str(bea_cfg.get("table_name") or "T10101"),
         "Frequency": str(bea_cfg.get("frequency") or "Q"),
-        "Year": str(bea_cfg.get("year") or "X"),
+        "Year": str(target_date.year if target_date else bea_cfg.get("year") or "X"),
         "ResultFormat": "JSON",
     }
     try:
@@ -275,10 +307,17 @@ def fetch_bea_indicator_evidence(config_path: str = "configs/data_sources.yaml")
                 evidence_id=f"bea_{hashlib.sha1((line_desc + time_period).encode('utf-8')).hexdigest()[:10]}",
                 source_type="bea_series",
                 title=f"BEA NIPA: {line_desc}",
-                content=f"{line_desc} latest BEA observation is {value} for {time_period}.",
+                content=f"{line_desc} {'period-matched' if target_date else 'latest'} BEA observation is {value} for {time_period}.",
                 source_url="https://www.bea.gov/open-data",
                 publish_time="",
-                metadata={"provider": "BEA", "time_period": time_period, "value": value, "raw": latest},
+                metadata={
+                    "provider": "BEA",
+                    "time_period": time_period,
+                    "value": value,
+                    "raw": latest,
+                    "target_period": period,
+                    "period_match": bool(target_date),
+                },
             )
         ],
         meta={"mode": "bea", "record_count": 1, "failure_reason": ""},
@@ -459,9 +498,10 @@ def _select_sec_metric_row(rows: List[Dict[str, Any]], period: str = "") -> Dict
 
 def _period_target_date(period: str | None) -> date | None:
     text = str(period or "").strip().upper()
-    if len(text) < 6 or not text[:4].isdigit():
+    year_match = re.search(r"20\d{2}", text)
+    if not year_match:
         return None
-    year = int(text[:4])
+    year = int(year_match.group(0))
     if "Q1" in text:
         return date(year, 3, 31)
     if "Q2" in text:

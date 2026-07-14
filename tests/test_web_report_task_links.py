@@ -62,3 +62,6 @@ def test_web_report_task_links_are_task_scoped(temp_db_engine, tmp_path):
     assert '/api/report-tasks/${encodeURIComponent(task.task_id)}' in html
     assert 'id="workbenchNotice"' in html
     assert "showNotice(`研报任务已创建：" in html
+    assert "humanReviewText(readiness.human_review_status, readiness.can_enter_human_review)" in html
+    assert '/api/report-tasks?limit=200' in html
+    assert "const displayRows = rows.slice(0, 30)" in html

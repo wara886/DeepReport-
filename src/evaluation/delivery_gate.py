@@ -22,6 +22,8 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
     quality = _read_json(outputs / "quality_report.json", {})
     llm_review = _read_json(outputs / "llm_quality_review.json", {})
     section_verification = _read_json(outputs / "section_verification.json", {})
+    section_packs = _read_json(outputs / "section_evidence_packs.json", {})
+    section_repair = _read_json(outputs / "section_repair.json", {})
     retrieval_attribution = _read_json(outputs / "evidence_retrieval_attribution.json", {})
     verifier_passed = bool(verification.get("passed", summary.get("verification_passed", False)))
     objective_pass = bool(quality.get("objective_pass", False))
@@ -32,6 +34,7 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
     if isinstance(retrieval_attribution, dict):
         attribution_issues = _attribution_diagnostic_issues(retrieval_attribution, start_index=len(issues) + 1)
         issues.extend(attribution_issues)
+    issues.extend(_section_delivery_issues(section_packs, section_verification, section_repair, len(issues) + 1))
 
     # Read contract-first generation artifacts for top_blockers
     contracts_data = _read_json(outputs / "report_section_contracts.json", None)
@@ -63,7 +66,16 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
         and objective_pass
     )
     llm_score_pass = llm_score_strict_pass or llm_score_relaxed_pass
-    llm_review_pass = bool(llm_review.get("llm_review_pass", False)) and llm_score_pass and not blocking_issue
+    llm_review_pass = bool(llm_review.get("llm_review_pass", False)) and llm_score_pass and not llm_blocking_issue
+    issues.extend(
+        _missing_gate_failure_issues(
+            issues,
+            verifier_passed=verifier_passed,
+            objective_pass=objective_pass,
+            llm_review_pass=llm_review_pass,
+        )
+    )
+    blocking_issue = any(item.get("severity") in {"fatal", "blocker"} for item in issues)
     content_depth_blockers = [
         item for item in issues
         if item.get("severity") in {"fatal", "blocker"}
@@ -96,6 +108,8 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
         "run_dir": str(Path(run_dir) if run_dir is not None else outputs),
         "status": status,
         "delivery_pass": delivery_pass,
+        "machine_quality_pass": delivery_pass,
+        "formal_delivery_pass": None,
         "diagnostic_delivery_pass": diagnostic_delivery_pass,
         "verifier_passed": verifier_passed,
         "objective_pass": objective_pass,
@@ -126,6 +140,10 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
             "section_verification_passed": bool(section_verification.get("formal_delivery_allowed", True)),
         },
         "evidence_retrieval_attribution": _attribution_summary(retrieval_attribution),
+        "section_evidence_contract": {
+            "available": bool(section_packs.get("packs")) if isinstance(section_packs, dict) else False,
+            "repair_status": section_repair.get("status") if isinstance(section_repair, dict) else None,
+        },
         "issue_counts": {
             "fatal": sum(1 for item in issues if item.get("severity") == "fatal"),
             "blocker": sum(1 for item in issues if item.get("severity") == "blocker"),
@@ -135,6 +153,41 @@ def build_delivery_gate_from_outputs(outputs_dir: str | Path, run_dir: str | Pat
         "top_issues": issues[:5],
         "issues": issues,
     }
+
+
+def _missing_gate_failure_issues(
+    issues: List[Dict[str, Any]],
+    *,
+    verifier_passed: bool,
+    objective_pass: bool,
+    llm_review_pass: bool,
+) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    requirements = [
+        ("verifier", verifier_passed, "Verifier did not pass, but no blocking verifier issue was emitted."),
+        ("objective_quality", objective_pass, "Objective quality checks did not pass."),
+        ("llm_review", llm_review_pass, "LLM review did not satisfy the formal quality contract."),
+    ]
+    for category, passed, message in requirements:
+        if passed:
+            continue
+        explained = any(
+            str(item.get("category") or "") in {category, "content", "content_depth", "gate"}
+            and str(item.get("severity") or "") in {"fatal", "blocker"}
+            for item in issues
+        )
+        if explained:
+            continue
+        output.append(
+            {
+                "issue_id": f"gate_requirement_{category}_{len(issues) + len(output) + 1:04d}",
+                "severity": "blocker",
+                "category": category,
+                "message": message,
+                "source": "delivery_gate",
+            }
+        )
+    return output
 
 
 def write_delivery_gate(run_dir: str | Path, gate: Dict[str, Any] | None = None) -> Dict[str, str]:
@@ -186,6 +239,49 @@ def _attribution_diagnostic_issues(attribution: Dict[str, Any], *, start_index: 
                 "cause": cause,
             }
         )
+    return output
+
+
+def _section_delivery_issues(packs: Any, verification: Any, repair: Any, start_index: int) -> List[Dict[str, Any]]:
+    if not isinstance(packs, dict) or not isinstance(packs.get("packs"), dict):
+        return []
+    results = verification.get("section_results") if isinstance(verification, dict) else {}
+    results = results if isinstance(results, dict) else {}
+    core_sections = {"executive_summary", "business_overview", "financial_analysis", "valuation", "risks", "conclusion"}
+    output: List[Dict[str, Any]] = []
+    for section, pack in packs["packs"].items():
+        if section not in core_sections or not isinstance(pack, dict):
+            continue
+        result = results.get(section) if isinstance(results.get(section), dict) else {}
+        unsupported = pack.get("unsupported_claim_ids") or []
+        required = pack.get("must_use_evidence_ids") or []
+        consumed = result.get("consumed_evidence_ids") or []
+        if unsupported:
+            output.append({
+                "issue_id": f"section_evidence_{start_index + len(output):04d}",
+                "severity": "blocker",
+                "category": "claim_support",
+                "section": section,
+                "message": f"Core section has unsupported claims: {', '.join(map(str, unsupported[:5]))}",
+                "source": "section_evidence_packs",
+            })
+        if required and not consumed:
+            output.append({
+                "issue_id": f"section_evidence_{start_index + len(output):04d}",
+                "severity": "blocker",
+                "category": "evidence_consumption",
+                "section": section,
+                "message": "Core section did not consume any must-use evidence.",
+                "source": "section_evidence_packs",
+            })
+    if isinstance(repair, dict) and repair.get("failed_sections_after"):
+        output.append({
+            "issue_id": f"section_repair_{start_index + len(output):04d}",
+            "severity": "blocker",
+            "category": "section_repair",
+            "message": "Section repair completed with unresolved core sections.",
+            "source": "section_repair",
+        })
     return output
 
 
@@ -298,10 +394,14 @@ def _nonblocking_contract_reason(reason: str) -> bool:
 def _nonblocking_contract_flag(flag: str) -> bool:
     return (
         flag.endswith("_uses_section_evidence_pack")
+        or "_uses_sec_10k" in flag
+        or "_uses_sec_proxy" in flag
+        or flag.endswith("_gap_summary_skipped")
         or flag.endswith("_evidence_fallback")
         or flag == "valuation_directional_only"
         or flag.endswith("_pdf_summary_fallback")
         or flag.endswith("_pdf_chunk_fallback")
+        or flag.endswith("_uses_official_pdf")
     )
 
 
@@ -319,5 +419,9 @@ def _contract_blockers_are_boundary_disclosures(blockers: list) -> bool:
         "quality:valuation_sensitivity_framework_only",
         "risk_factors:risk_official_pdf_not_found_and_no_industry_fallback",
         "quality:risk_generic_fallback_no_industry_policy",
+        "ownership_governance:governance_summary_not_injected",
+        "quality:peer_compare_boundary_only",
+        "quality:valuation_sensitivity_boundary_only",
+        "quality:valuation_sensitivity_earnings_bridge_only",
     }
     return all(str(item) in boundary_terms for item in blockers)

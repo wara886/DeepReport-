@@ -31,6 +31,51 @@ Alphabet Inc. (GOOGL) 的核心业务覆盖搜索、广告、云和 Other Bets�
     assert any(issue["category"] == "cross_report_symbol_pollution" for issue in report["issues"])
 
 
+def test_quality_evaluator_recovers_target_symbol_from_request_state(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="MSFT",
+        period="FY2024",
+        report_md="""
+# Microsoft (MSFT) FY2024 公司研报
+
+## 执行摘要
+Microsoft 云业务增长，结论基于增长驱动、估值与风险约束。
+## 业务概览
+公司业务覆盖云计算和生产力软件。
+## 三表摘要
+利润表、资产负债表和现金流量表均已摘要。
+## 财务分析
+收入、利润和现金流均已分析。
+## 同行对比
+同行比较覆盖盈利能力和估值指标。
+## 估值观察
+P/E 与 P/B 估值均已说明。
+## 估值敏感性
+收入增速变化影响利润与估值。
+## 风险评估
+竞争与宏观风险均已披露。
+## 投资结论
+基于增长驱动、竞争压力、估值和风险，维持中性。
+## 合规
+来源见引用，仅供参考，不构成投资建议，无利益冲突。
+""",
+    )
+    outputs = run_dir / "company" / "outputs"
+    (outputs / "run_summary.json").write_text(
+        json.dumps({"quality_feedback_used": True}, ensure_ascii=False), encoding="utf-8"
+    )
+    (outputs / "request_state.json").write_text(
+        json.dumps({"symbol": "MSFT", "period": "FY2024"}, ensure_ascii=False), encoding="utf-8"
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    messages = "\n".join(issue["message"] for issue in report["issues"])
+    assert "cannot resolve listed company symbol" not in messages
+    assert "unexpected ticker-like symbols" not in messages
+
+
 def test_quality_evaluator_blocks_official_evidence_identity_pollution(tmp_path):
     run_dir = _write_run(
         tmp_path,
@@ -75,6 +120,189 @@ def test_quality_evaluator_blocks_official_evidence_identity_pollution(tmp_path)
     report = evaluate_report_quality(run_dir)
 
     assert any(issue["category"] == "evidence_identity_pollution" for issue in report["issues"])
+
+
+def test_quality_evaluator_accepts_target_bound_official_pdf_section(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="600519.SS",
+        period="FY2024",
+        report_md="""
+# 600519.SS FY2024 公司研报
+
+## 执行摘要
+贵州茅台年度经营与财务情况已进入证据链。
+## 业务概览
+公司主营高端白酒生产与销售，品牌和渠道构成核心经营基础。
+## 三表摘要
+年度收入、利润、资产负债与现金流均按统一期间整理。
+## 财务分析
+收入、盈利能力和现金流质量需要结合年度披露判断。
+## 同行对比
+同行比较限定在同市场同业务公司，并统一财年和币种口径。
+## 估值观察
+估值结合盈利、现金流和市场价格观察，不使用无依据目标价。
+## 估值敏感性
+盈利增速和估值倍数变化会影响估值区间。
+## 风险评估
+需求、渠道库存、价格体系和行业竞争构成主要风险。
+## 投资结论
+基于盈利质量、估值约束和风险边界，维持中性观察。
+""",
+        evidence=[
+            {
+                "evidence_id": "pdf_section_directory",
+                "source_type": "pdf_section",
+                "source_document_type": "cninfo_announcement",
+                "source_authority": "official",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "title": "PDF section: ownership_governance",
+                "content": "第四节 公司治理 第七节 股份变动及股东情况 第十节 财务报告",
+                "source_url": "https://static.cninfo.com.cn/annual-report.pdf",
+                "metadata": {"expected_symbol": "600519.SS", "evidence_role": "target"},
+            }
+        ],
+        claims=[],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "evidence_identity_pollution" for issue in report["issues"])
+
+
+def test_quality_evaluator_accepts_pdf_section_with_identity_matched_parent(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="600519.SS",
+        period="FY2024",
+        report_md="## 执行摘要\n贵州茅台年度报告。\n## 风险评估\n需求和渠道风险需要关注。\n## 投资结论\n维持中性观察。",
+        evidence=[
+            {
+                "evidence_id": "cninfo_parent",
+                "source_type": "cninfo_announcement",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "title": "贵州茅台2024年年度报告",
+                "content": "CNINFO official announcement for 贵州茅台 (600519): 年度经营和财务披露。",
+                "source_url": "https://static.cninfo.com.cn/moutai.pdf",
+            },
+            {
+                "evidence_id": "pdf_section_risk",
+                "source_type": "pdf_section",
+                "symbol": "600519.SS",
+                "title": "PDF section: risk_factors",
+                "content": "The group is exposed to demand and channel risks.",
+                "source_url": "https://static.cninfo.com.cn/moutai.pdf",
+                "metadata": {"source_evidence_id": "cninfo_parent"},
+            },
+        ],
+        claims=[],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "evidence_identity_pollution" for issue in report["issues"])
+
+
+def test_quality_evaluator_accepts_recursive_pdf_lineage_with_official_terminal(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="600519.SS",
+        period="FY2024",
+        report_md="## 执行摘要\n贵州茅台年度报告。\n## 风险评估\n需求风险。\n## 投资结论\n维持中性。",
+        evidence=[
+            {
+                "evidence_id": "official_parent",
+                "source_type": "cninfo_announcement",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "title": "贵州茅台2024年年度报告",
+                "source_url": "https://static.cninfo.com.cn/moutai.pdf",
+            },
+            {
+                "evidence_id": "pdf_parent",
+                "source_type": "pdf_section",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "metadata": {"source_evidence_id": "official_parent"},
+            },
+            {
+                "evidence_id": "pdf_child",
+                "source_type": "pdf_section",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "content": "Demand and channel risk discussion.",
+                "metadata": {"source_evidence_id": "pdf_parent"},
+            },
+        ],
+        claims=[],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "evidence_identity_pollution" for issue in report["issues"])
+
+
+def test_quality_evaluator_blocks_pdf_lineage_cycle(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="600519.SS",
+        period="FY2024",
+        report_md="## 执行摘要\n贵州茅台年度报告。\n## 风险评估\n需求风险。\n## 投资结论\n维持中性。",
+        evidence=[
+            {
+                "evidence_id": "pdf_a",
+                "source_type": "pdf_section",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "content": "Generic risk text.",
+                "metadata": {"source_evidence_id": "pdf_b"},
+            },
+            {
+                "evidence_id": "pdf_b",
+                "source_type": "pdf_section",
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "content": "Generic governance text.",
+                "metadata": {"source_evidence_id": "pdf_a"},
+            },
+        ],
+        claims=[],
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert any(issue["category"] == "evidence_identity_pollution" for issue in report["issues"])
+
+
+def test_quality_evaluator_allows_approved_peer_only_in_peer_section(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        symbol="600519.SS",
+        period="FY2024",
+        report_md="## 执行摘要\n贵州茅台年度报告。\n## 同行对比\n002304.SZ 为批准同行。\n## 风险评估\n需求风险。\n## 投资结论\n维持中性。",
+    )
+    outputs = run_dir / "company" / "outputs"
+    reports = run_dir / "company" / "reports"
+    (outputs / "analysis_artifacts.json").write_text(
+        json.dumps({"peer_analysis": {"approved_peer_symbols": ["002304.SZ"]}}, ensure_ascii=False), encoding="utf-8"
+    )
+    (reports / "report.html").write_text(
+        '<html><body><h2 id="同行对比"><i></i> 同行对比</h2><p>002304.SZ 为批准同行。</p><h2>风险评估</h2><p>需求风险。</p></body></html>',
+        encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "cross_report_symbol_pollution" for issue in report["issues"])
+
+    (reports / "report.html").write_text(
+        '<html><body><h2>执行摘要</h2><p>002304.SZ 被错误写入摘要。</p><h2 id="同行对比">同行对比</h2><p>002304.SZ 为批准同行。</p></body></html>',
+        encoding="utf-8",
+    )
+    report = evaluate_report_quality(run_dir)
+    assert any(issue["category"] == "cross_report_symbol_pollution" for issue in report["issues"])
 
 
 def test_quality_evaluator_blocks_fy_source_end_date_mismatch(tmp_path):
@@ -244,6 +472,43 @@ def test_quality_half_sentence_check_ignores_javascript_trailing_commas(tmp_path
     (reports / "report.html").write_text(
         "<html><body><script>const config = {data: item.data, labels: item.labels,};</script></body></html>",
         encoding="utf-8",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(
+        issue["category"] == "content_depth" and "unfinished sentence pattern" in issue["message"]
+        for issue in report["issues"]
+    )
+
+
+def test_quality_half_sentence_check_allows_list_labels_ending_with_colon(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md="""
+# MSFT FY2024 公司研报
+
+## 执行摘要
+报告基于官方证据和结构化财务指标形成中性观察评级，覆盖业务、财务、估值和风险。
+
+## 财务分析
+收入、利润和经营现金流均用于判断盈利质量，现金流转换率是关键约束。
+
+## 估值敏感性
+盈利桥接（非DCF目标价）：
+估值敏感性分析：
+- 悲观情景：净利润为87.25。
+- 基准情景：净利润为88.14。
+- 乐观情景：净利润为89.02。
+
+## 风险评估
+主要风险包括需求波动、竞争压力、监管变化和估值倍数回落。
+
+## 投资结论
+维持中性观察评级，基于收入、现金流和估值约束，同时关注竞争和风险变化。
+""",
+        symbol="MSFT",
+        period="FY2024",
     )
 
     report = evaluate_report_quality(run_dir)
@@ -1005,6 +1270,26 @@ def _write_run_with_dossiers(
     return run_dir
 
 
+def test_claim_citation_policy_accepts_canonical_root_for_recursive_chunk(tmp_path):
+    recursive_id = "sec_10k_msft_fy2024__paragraph_1_chunk_abc123__paragraph_1_chunk_def456"
+    run_dir = _write_run(
+        tmp_path,
+        report_md=(
+            "# MSFT\n\n## 执行摘要\n\nMicrosoft overview [sec_10k_msft_fy2024].\n\n"
+            "## 财务分析\n\nRevenue analysis.\n\n## 风险评估\n\nRisk analysis.\n"
+        ),
+        claims=[{"claim_id": "cl_chunk", "claim_text": "Microsoft overview", "evidence_ids": [recursive_id], "confidence": 0.9}],
+        citations=[{"evidence_id": "sec_10k_msft_fy2024", "claim_ids": ["cl_chunk"]}],
+        evidence=[{"evidence_id": recursive_id, "source_type": "sec_edgar", "trust_level": "primary"}],
+        symbol="MSFT",
+        period="FY2024",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "claim_citation_policy" for issue in report["issues"])
+
+
 def test_content_depth_gate_flags_sparse_sections(tmp_path):
     """Short sections without data_gap flag -> content_depth issues."""
     run_dir = _write_run_with_dossiers(
@@ -1284,3 +1569,39 @@ NVIDIA、Intel、Broadcom peer comparison。
         assert issue["severity"] == "blocker", (
             f"Template phrase issue should be blocker, got {issue['severity']}: {issue['message']}"
         )
+
+
+def test_raw_english_detector_ignores_reference_list_metadata(tmp_path):
+    long_text = "公司收入、利润、现金流和资产负债结构均有完整解释，并绑定正式证据。" * 12
+    english_reference = "Risk Factors Management Discussion Company competition disclosure " * 30
+    run_dir = _write_run_with_dossiers(
+        tmp_path,
+        report_md=f"""# AAPL FY2024 报告
+
+## 执行摘要
+{long_text}
+## 业务概览
+{long_text}
+## 财务分析
+{long_text}
+## 同行对比
+{long_text}
+## 估值观察
+{long_text}
+## 风险评估
+{long_text}
+## 投资结论
+{long_text}
+
+## 参考来源
+{english_reference}
+""",
+        section_dossiers={
+            key: {"section_title": key, "min_content_level": "full"}
+            for key in ("executive_summary", "business_overview", "financial_analysis", "peer_compare", "valuation", "risks", "conclusion")
+        },
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "raw_english_annual_section_leak" for issue in report["issues"])

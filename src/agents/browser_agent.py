@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 from urllib import error, request
 
 from src.agents.base_agent import AgentTask, BaseAgent, TaskResult
+from src.data.company_universe import canonicalize_symbol, resolve_company_identifier_with_diagnostics
 from src.data.source_quality import apply_source_quality
 from src.models import ModelAdapter
 from src.utils.config import load_config
@@ -46,6 +47,10 @@ class BrowserAgent(BaseAgent):
 
         records = normalize_evidence_candidates(candidates)
         llm_notes: Dict[str, Any] = {}
+        expected_symbol = str(task.parameters.get("symbol") or "").strip().upper()
+        if expected_symbol:
+            records, identity_meta = filter_evidence_for_target(records, expected_symbol=expected_symbol)
+            llm_notes["identity_filter"] = identity_meta
         use_reader = bool(task.parameters.get("use_reader", False))
         use_playwright = bool(task.parameters.get("use_playwright", False))
         use_pdf_reader = bool(task.parameters.get("use_pdf_reader", True))
@@ -73,7 +78,7 @@ class BrowserAgent(BaseAgent):
                     extra_body={"max_tokens": 1200},
                 )
                 if isinstance(llm_payload.get("records"), list):
-                    llm_notes = {"llm_record_count": len(llm_payload["records"])}
+                    llm_notes["llm_record_count"] = len(llm_payload["records"])
                     records = merge_llm_key_points(records, llm_payload["records"])
             except Exception as exc:
                 llm_notes["llm_error"] = str(exc)
@@ -81,6 +86,62 @@ class BrowserAgent(BaseAgent):
             llm_notes = {"llm_skipped": True}
 
         return self.success(task, {"evidence_records": records}, metadata=llm_notes)
+
+
+def filter_evidence_for_target(
+    records: List[Dict[str, Any]],
+    *,
+    expected_symbol: str,
+    raw_data_root: str = "data/raw/real_data",
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Reject records whose source identity clearly resolves to another company."""
+
+    expected = canonicalize_symbol(expected_symbol)
+    accepted: List[Dict[str, Any]] = []
+    rejected: List[Dict[str, str]] = []
+    for record in records:
+        metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+        role = str(record.get("evidence_role") or metadata.get("evidence_role") or "target").lower()
+        if role == "peer":
+            accepted.append(record)
+            continue
+        declared = canonicalize_symbol(str(record.get("symbol") or metadata.get("symbol") or ""))
+        identity_text = " ".join(
+            [
+                str(record.get("title") or ""),
+                str(record.get("source_url") or ""),
+            ]
+        ).strip()
+        resolved = resolve_company_identifier_with_diagnostics(identity_text, raw_data_root=raw_data_root)
+        resolved_symbol = canonicalize_symbol(str(resolved.get("symbol") or ""))
+        confidence = float(resolved.get("confidence") or 0.0)
+        mismatch = bool(resolved_symbol and resolved_symbol != expected and confidence >= 0.65)
+        if not mismatch and declared and declared != expected:
+            mismatch = True
+            resolved_symbol = declared
+        if mismatch:
+            rejected.append(
+                {
+                    "evidence_id": str(record.get("evidence_id") or record.get("sample_id") or ""),
+                    "resolved_symbol": resolved_symbol,
+                    "reason": "target_company_mismatch",
+                }
+            )
+            continue
+        row = dict(record)
+        row["symbol"] = declared or expected
+        row_metadata = dict(metadata)
+        row_metadata["expected_symbol"] = expected
+        row_metadata["evidence_role"] = role
+        row["metadata"] = row_metadata
+        accepted.append(row)
+    return accepted, {
+        "expected_symbol": expected,
+        "input_count": len(records),
+        "accepted_count": len(accepted),
+        "rejected_count": len(rejected),
+        "rejected": rejected[:20],
+    }
 
 
 def normalize_evidence_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

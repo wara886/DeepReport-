@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import re
@@ -16,28 +16,35 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
-from src.app.chat_task_parser import latest_completed_period
-from src.app.web_ui import run_delivery_quality_pipeline
-from src.data.company_universe import infer_market_from_symbol
+from src.agents.base_agent import AgentTask
+from src.agents.verifier_agent import VerifierAgent
+from src.data.company_universe import infer_market_from_symbol, resolve_company_identity
 from src.data.canonical_metrics import write_canonical_metrics_artifact
+from src.data.evidence_intake_gate import PERIOD_GATED_SOURCE_TYPES, record_period_status
 from src.data.official_evidence_archive import build_official_evidence_artifacts
 from src.data.official_evidence_backfill import execute_official_evidence_backfill
 from src.data.source_authority import grade_source_authority
 from src.db.init_db import init_db
 from src.db.models import (
     ClaimEvidence,
+    Company,
     EvidenceItem,
     LLMRun,
     PromptTemplate,
     ReportArtifact,
     ReportTask,
     ReportTaskEvent,
+    ToolRun,
+    Workspace,
 )
 from src.db.session import create_engine_for_url
 from src.llm.harness import serialize_llm_run
 from src.llm.harness import LLMHarness
+from src.models.model_adapter import ModelAdapter
 from src.evaluation.evidence_retrieval_attribution import write_evidence_retrieval_attribution
+from src.evaluation.delivery_pipeline import run_delivery_quality_pipeline
 from src.evaluation.section_repair import repair_failed_sections_for_outputs
+from src.evaluation.section_evidence_pack import build_section_evidence_packs
 from src.evaluation.section_verification import write_section_verification
 from src.rag.retrieval_diagnostics import build_retrieval_coverage
 from src.report.citation_manager import build_citation_artifacts
@@ -57,7 +64,12 @@ from src.runtime.langgraph_report_runtime import (
     ReportGraphState,
     project_run_state_patch,
 )
+from src.runtime.run_manifest import commit_run_artifacts, validate_run_manifest
 from src.services.artifact_importer import ArtifactImporter
+from src.services.datasource_service import DataSourceService
+from src.services.entity_service import EntityService
+from src.utils.config import load_config
+from src.utils.periods import latest_completed_period
 
 
 class ReportTaskNotFound(LookupError):
@@ -85,6 +97,7 @@ class ReportTaskService:
         langgraph_runtime_enabled: bool = True,
         runtime_checkpoint_path: str | Path | None = None,
         engine: Engine | None = None,
+        section_repair_callback_factory: Callable[[str, dict[str, Any]], Callable[[dict[str, Any]], dict[str, Any]] | None] | None = None,
     ) -> None:
         self.database_url = database_url
         self.output_root = Path(output_root)
@@ -92,6 +105,7 @@ class ReportTaskService:
         self.config_path = config_path
         self.memory_root = Path(memory_root)
         self.mode = mode
+        self._uses_production_orchestrator = orchestrator_factory is None
         self.orchestrator_factory = orchestrator_factory or MultiAgentOrchestrator
         self.quality_runner = quality_runner or run_delivery_quality_pipeline
         self.langgraph_runtime_enabled = bool(langgraph_runtime_enabled)
@@ -101,19 +115,74 @@ class ReportTaskService:
         self._engine = engine
         self._session_factory: sessionmaker[Session] | None = None
         self._init_lock = threading.Lock()
+        self.section_repair_callback_factory = section_repair_callback_factory
+        self._enable_model_section_repair = orchestrator_factory is None or section_repair_callback_factory is not None
+
+    def recover_stale_running_tasks(self, *, max_age_minutes: int = 60) -> list[str]:
+        """Mark abandoned in-process tasks as timed out after a service restart."""
+
+        cutoff = _utc_now() - timedelta(minutes=max(1, int(max_age_minutes)))
+        recovered: list[str] = []
+        with self.session() as session:
+            tasks = list(
+                session.scalars(
+                    select(ReportTask).where(
+                        ReportTask.status == "running",
+                        ReportTask.started_at.is_not(None),
+                        ReportTask.started_at < cutoff,
+                    )
+                ).all()
+            )
+            for task in tasks:
+                previous_stage = str(task.current_stage or "running")
+                self._transition_task(task, "timeout", reason="stale_running_task_recovered_on_startup")
+                task.finished_at = _utc_now()
+                task.error_message = "服务重启后发现该任务已失去执行进程，可从 LangGraph 断点重试。"
+                metadata = dict(task.metadata_json or {})
+                metadata["runtime_failure"] = {
+                    "error_type": "OrphanedRuntime",
+                    "message": task.error_message,
+                    "checkpoint_available": self.langgraph_runtime_enabled,
+                    "previous_stage": previous_stage,
+                }
+                task.metadata_json = metadata
+                session.add(
+                    ReportTaskEvent(
+                        task_id=task.task_id,
+                        stage="timeout",
+                        status="timeout",
+                        message=task.error_message,
+                        metadata_json={
+                            "reason": "stale_running_task_recovered_on_startup",
+                            "previous_stage": previous_stage,
+                            "checkpoint_available": self.langgraph_runtime_enabled,
+                        },
+                    )
+                )
+                recovered.append(task.task_id)
+            session.commit()
+        return recovered
 
     def create_task(self, payload: dict[str, Any]) -> dict[str, Any]:
+        payload = _normalize_task_identity_payload(payload)
         symbol = str(payload.get("symbol") or "AAPL").strip().upper()
         period = str(payload.get("period") or latest_completed_period()).strip().upper()
+        if not re.fullmatch(r"(?:FY\d{4}|\d{4}Q[1-4])", period):
+            raise ValueError("period must use FY2025 or 2026Q2 format")
         task_id = self._new_task_id(payload.get("task_id"))
         report_type = str(payload.get("report_type") or "equity_research")
         metadata = self._build_task_metadata(task_id=task_id, payload=payload, symbol=symbol, period=period)
 
         with self.session() as session:
+            workspace_id, company_id = _resolve_task_bindings(session, payload=payload, symbol=symbol)
+            if company_id is not None:
+                bound_company = session.get(Company, company_id)
+                if bound_company is not None:
+                    metadata["company_name"] = bound_company.name
             task = ReportTask(
                 task_id=task_id,
-                workspace_id=_optional_int(payload.get("workspace_id")),
-                company_id=_optional_int(payload.get("company_id")),
+                workspace_id=workspace_id,
+                company_id=company_id,
                 symbol=symbol,
                 period=period,
                 report_type=report_type,
@@ -139,6 +208,7 @@ class ReportTaskService:
     def run_task(self, task_id: str) -> dict[str, Any]:
         with self.session() as session:
             task = self._get_task_for_update(session, task_id)
+            _repair_persisted_task_identity(session, task)
             if task.status == "running":
                 raise ReportTaskConflict(f"Task {task_id} is already running")
             if task.status not in {"queued", "failed", "timeout", "quality_failed"}:
@@ -152,10 +222,10 @@ class ReportTaskService:
             session.add(
                 ReportTaskEvent(
                     task_id=task.task_id,
-                    stage="evidence_gate",
+                    stage="runtime_start",
                     status="running",
-                    message="生成前证据门禁开始",
-                    metadata_json=None,
+                    message="研报运行开始",
+                    metadata_json={"runtime": "langgraph" if self.langgraph_runtime_enabled else "legacy"},
                 )
             )
             session.commit()
@@ -232,6 +302,12 @@ class ReportTaskService:
                     build_section_evidence_packs_callback=self._graph_build_section_evidence_packs_node,
                     verify_sections_callback=self._graph_verify_sections_node,
                     repair_failed_sections_callback=self._graph_repair_failed_sections_node,
+                    inspect_agent_execution_callback=self._graph_inspect_agent_execution_node,
+                    planning_callback=lambda state: self._graph_static_agent_phase_node(state, "planning"),
+                    research_callback=lambda state: self._graph_static_agent_phase_node(state, "research"),
+                    normalize_evidence_callback=lambda state: self._graph_static_agent_phase_node(state, "normalize_evidence"),
+                    analyze_callback=lambda state: self._graph_static_agent_phase_node(state, "analyze"),
+                    verify_report_callback=self._graph_verify_report_node,
                 )
                 self._langgraph_runtime = LangGraphReportRuntime(
                     handlers,
@@ -254,6 +330,12 @@ class ReportTaskService:
     def _graph_official_evidence_backfill_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
         summary = self._run_official_evidence_backfill(task_id)
+        metadata = self._task_metadata(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        _sync_task_retrieval_curated_dir(output_dir)
+        evidence_path = output_dir / "evidence.json"
+        if evidence_path.is_file():
+            self.import_artifacts(task_id)
         self._record_runtime_stage(
             task_id,
             stage="official_evidence_backfill",
@@ -266,6 +348,7 @@ class ReportTaskService:
     def _graph_build_canonical_metrics_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
         summary = self._refresh_canonical_metrics(task_id)
+        self._commit_run_artifacts(task_id, ["evidence", "canonical_metrics"])
         self._update_runtime_metadata(task_id, "canonical_metrics", summary)
         self._record_runtime_stage(
             task_id,
@@ -280,7 +363,9 @@ class ReportTaskService:
         task_id = str(state["task_id"])
         metadata = self._task_metadata(task_id)
         output_dir = Path(str(metadata.get("output_dir") or ""))
-        summary = _build_section_pack_manifest(output_dir)
+        artifact = build_section_evidence_packs(output_dir)
+        self._commit_run_artifacts(task_id, ["claims", "section_evidence_packs"])
+        summary = _build_section_pack_manifest(output_dir, artifact=artifact)
         self._update_runtime_metadata(task_id, "section_evidence_packs", summary)
         self._record_runtime_stage(
             task_id,
@@ -315,12 +400,140 @@ class ReportTaskService:
                 )
             )
             session.commit()
-        self._run_orchestrator(task_id=task_id, metadata=metadata)
+        if self.orchestrator_factory is MultiAgentOrchestrator and str(metadata.get("execution_mode") or "static") == "static":
+            self._run_orchestrator_instance(
+                task_id=task_id,
+                metadata=metadata,
+                stop_after_phase="final_answer",
+                resume_from_phase_artifacts=True,
+            )
+        else:
+            self._run_orchestrator(task_id=task_id, metadata=metadata)
         self._enhance_artifacts_with_task_evidence(task_id)
-        self._run_official_evidence_backfill(task_id)
         self._refresh_canonical_metrics(task_id)
+        refreshed_metadata = self._task_metadata(task_id)
+        refreshed_output_dir = Path(str(refreshed_metadata.get("output_dir") or ""))
+        build_section_evidence_packs(refreshed_output_dir)
         self.import_artifacts(task_id)
+        self._commit_run_artifacts(
+            task_id,
+            ["evidence", "canonical_metrics", "claims", "section_evidence_packs", "citations", "report"],
+        )
         return self._current_run_state_patch(task_id)
+
+    def _graph_verify_report_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        if self.orchestrator_factory is not MultiAgentOrchestrator or str(metadata.get("execution_mode") or "static") != "static":
+            return self._current_run_state_patch(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        report_dir = Path(str(metadata.get("report_dir") or ""))
+        claims = _read_json_list(output_dir / "claims.json")
+        evidence = _read_json_list(output_dir / "evidence.json")
+        markdown = (report_dir / "report.md").read_text(encoding="utf-8") if (report_dir / "report.md").exists() else ""
+        adapter = _build_role_model_adapter(
+            config_path=self.config_path,
+            role="verifier",
+            execution_tier=str(metadata.get("execution_tier") or "delivery"),
+        )
+        result = VerifierAgent(model=adapter if adapter.api_key else None).execute_task(
+            AgentTask(
+                task_id="task_005_verifier",
+                task_type="verifier",
+                description="Verify the persisted report artifact.",
+                parameters={
+                    "claims": claims,
+                    "markdown": markdown,
+                    "evidence_records": evidence,
+                    "charts": _read_json_list(output_dir / "charts.json"),
+                    "tables": _read_json_list(output_dir / "tables.json"),
+                    "valuation": _read_json_object(output_dir / "valuation_model.json"),
+                    "expected_symbol": metadata.get("symbol"),
+                    "period": metadata.get("period"),
+                },
+            )
+        )
+        verification = dict(result.output.get("verification_report") or {})
+        (output_dir / "verification_report.json").write_text(
+            json.dumps(verification, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
+        self._record_runtime_stage(
+            task_id,
+            stage="verify_report",
+            status="success" if verification.get("passed") else "warning",
+            message="独立报告校验节点完成",
+            metadata={
+                "passed": bool(verification.get("passed")),
+                "error_count": int(verification.get("error_count") or len(verification.get("errors") or [])),
+                "warning_count": int(verification.get("warning_count") or len(verification.get("warnings") or [])),
+                "llm_used": bool(verification.get("llm_used")),
+            },
+        )
+        return self._current_run_state_patch(task_id)
+
+    def _graph_static_agent_phase_node(self, state: ReportGraphState, phase: str) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        if self.orchestrator_factory is not MultiAgentOrchestrator or str(metadata.get("execution_mode") or "static") != "static":
+            return self._current_run_state_patch(task_id)
+        result = self._run_orchestrator_instance(
+            task_id=task_id,
+            metadata=metadata,
+            stop_after_phase=phase,
+            resume_from_phase_artifacts=True,
+        )
+        if phase in {"research", "normalize_evidence"}:
+            self._record_datasource_health(task_id=task_id, output_dir=Path(str(metadata.get("output_dir") or "")))
+        self._record_runtime_stage(
+            task_id,
+            stage=phase,
+            status="success",
+            message=f"Agent phase {phase} completed",
+            metadata={"checkpoint": result.get("checkpoint"), "result_keys": sorted(result)},
+        )
+        return self._current_run_state_patch(task_id)
+
+    def _graph_inspect_agent_execution_node(self, state: ReportGraphState) -> dict[str, Any]:
+        task_id = str(state["task_id"])
+        metadata = self._task_metadata(task_id)
+        output_dir = Path(str(metadata.get("output_dir") or ""))
+        if self.orchestrator_factory is not MultiAgentOrchestrator:
+            # Compatibility path for injected legacy orchestrators that still
+            # create analysis artifacts inside the generation callback.
+            self._refresh_canonical_metrics(task_id)
+            section_packs = build_section_evidence_packs(output_dir)
+            self._update_runtime_metadata(
+                task_id,
+                "section_evidence_packs",
+                _build_section_pack_manifest(output_dir, artifact=section_packs),
+            )
+            self._commit_run_artifacts(
+                task_id,
+                ["evidence", "canonical_metrics", "claims", "section_evidence_packs", "citations", "report"],
+            )
+        summary = _build_generation_execution_summary(output_dir)
+        datasource_health = self._record_datasource_health(task_id=task_id, output_dir=output_dir)
+        summary["datasource_health"] = datasource_health
+        self._update_runtime_metadata(task_id, "generation_execution", summary)
+        self._record_runtime_stage(
+            task_id,
+            stage="inspect_agent_execution",
+            status="success" if summary.get("status") == "ready" else "warning",
+            message="Agent 与工具执行轨迹检查完成",
+            metadata=summary,
+        )
+        return self._current_run_state_patch(task_id)
+
+    def _record_datasource_health(self, *, task_id: str, output_dir: Path) -> dict[str, Any]:
+        search_meta = _read_json_object(output_dir / "search_meta.json")
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            workspace_id = task.workspace_id
+        return DataSourceService(session_factory=self.session).record_search_run(
+            search_meta=search_meta,
+            task_id=task_id,
+            workspace_id=workspace_id,
+        )
 
     def _graph_verify_sections_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
@@ -345,12 +558,15 @@ class ReportTaskService:
         failed_sections = list(section_verification.get("failed_sections") or [])
         output_dir = Path(str(metadata.get("output_dir") or ""))
         report_dir = Path(str(metadata.get("report_dir") or ""))
+        repair_callback = self._build_section_repair_callback(task_id=task_id, metadata=metadata)
         repair = repair_failed_sections_for_outputs(
             output_dir=output_dir,
             report_dir=report_dir,
             section_verification=_read_json_object(output_dir / "section_verification.json") or section_verification,
+            repair_callback=repair_callback,
         )
         verification = _build_section_verification_manifest(output_dir=output_dir, report_dir=report_dir)
+        self._commit_run_artifacts(task_id, ["report", "section_verification"])
         self._update_runtime_metadata(task_id, "section_verification", verification)
         summary = {
             "schema_version": "section_repair_runtime.v1",
@@ -360,7 +576,13 @@ class ReportTaskService:
             "failed_section_count_after": len(verification.get("failed_sections") or []),
             "failed_sections_after": list(verification.get("failed_sections") or []),
             "repaired": bool(repair.get("repaired", False)),
-            "repair_strategy": "deterministic_section_rewrite",
+            "repair_strategy": str(repair.get("repair_strategy") or "deterministic_section_rewrite"),
+            "model_status": str(repair.get("model_status") or "unavailable"),
+            "llm_run_ids": [
+                str(item.get("llm_run_id"))
+                for item in repair.get("attempts") or []
+                if isinstance(item, dict) and item.get("llm_run_id")
+            ],
             "source_files": {
                 "section_repair": str(output_dir / "section_repair.json"),
                 "section_verification": str(output_dir / "section_verification.json"),
@@ -376,6 +598,57 @@ class ReportTaskService:
         )
         return self._current_run_state_patch(task_id)
 
+    def _build_section_repair_callback(
+        self,
+        *,
+        task_id: str,
+        metadata: dict[str, Any],
+    ) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
+        if self.section_repair_callback_factory is not None:
+            return self.section_repair_callback_factory(task_id, metadata)
+        if not self._enable_model_section_repair:
+            return None
+        adapter = _build_role_model_adapter(
+            config_path=self.config_path,
+            role="final_answer",
+            execution_tier=str(metadata.get("execution_tier") or "delivery"),
+        )
+        if not adapter.api_key:
+            return None
+        active_prompt = self._active_prompt("report_section_repair")
+        backend = SectionRepairModelBackend(adapter)
+        harness = LLMHarness(
+            session_factory=self.session,
+            backend=backend,
+            max_retries=1,
+            timeout_seconds=min(float(adapter.timeout or 90), 120.0),
+        )
+
+        def repair(payload: dict[str, Any]) -> dict[str, Any]:
+            result = harness.run_prompt(
+                prompt_key="report_section_repair",
+                input=payload,
+                schema={
+                    "type": "object",
+                    "required": ["section_markdown"],
+                    "properties": {"section_markdown": {"type": "string"}},
+                },
+                model_role="section_repair",
+                task_id=task_id,
+                prompt=(active_prompt or {}).get("content") or _DEFAULT_SECTION_REPAIR_PROMPT,
+                prompt_version_id=(active_prompt or {}).get("version_id"),
+                metadata={
+                    "source": "langgraph_section_repair",
+                    "section_key": payload.get("section_key"),
+                    "route_profile": adapter.route_profile,
+                },
+            )
+            output = dict(result.output)
+            output["llm_run_id"] = result.run_id
+            return output
+
+        return repair
+
     def _graph_quality_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
         with self.session() as session:
@@ -386,9 +659,29 @@ class ReportTaskService:
                 task.finished_at = None
                 session.commit()
         self.run_quality_gate(task_id)
+        self._validate_run_manifest(task_id)
         self._refresh_retrieval_attribution(task_id)
         self.import_artifacts(task_id)
         return self._current_run_state_patch(task_id)
+
+    def _commit_run_artifacts(self, task_id: str, artifact_names: list[str]) -> dict[str, Any]:
+        metadata = self._task_metadata(task_id)
+        manifest = commit_run_artifacts(
+            Path(str(metadata.get("output_dir") or "")),
+            Path(str(metadata.get("report_dir") or "")),
+            artifact_names,
+        )
+        self._update_runtime_metadata(task_id, "run_manifest", _run_manifest_summary(manifest))
+        return manifest
+
+    def _validate_run_manifest(self, task_id: str) -> dict[str, Any]:
+        metadata = self._task_metadata(task_id)
+        manifest = validate_run_manifest(
+            Path(str(metadata.get("output_dir") or "")),
+            Path(str(metadata.get("report_dir") or "")),
+        )
+        self._update_runtime_metadata(task_id, "run_manifest", _run_manifest_summary(manifest))
+        return manifest
 
     def _task_metadata(self, task_id: str) -> dict[str, Any]:
         with self.session() as session:
@@ -400,10 +693,12 @@ class ReportTaskService:
         output_dir = Path(str(metadata.get("output_dir") or ""))
         financial_metrics = _read_json_any(output_dir / "financial_metrics.json", default={})
         tables = _read_json_any(output_dir / "tables.json", default=[])
+        evidence_records = _read_json_any(output_dir / "evidence.json", default=[])
         artifact = write_canonical_metrics_artifact(
             output_dir,
             financial_metrics=financial_metrics,
             tables=tables,
+            evidence_records=evidence_records,
             symbol=str(metadata.get("symbol") or ""),
             period=str(metadata.get("period") or ""),
         )
@@ -676,6 +971,52 @@ class ReportTaskService:
             session.commit()
         return self.get_task(task_id)
 
+    def bulk_archive_failed_tasks(self, task_ids: list[str] | None = None) -> dict[str, Any]:
+        """Move failed tasks to the archive without touching deliverable or reviewable work."""
+
+        requested = {str(item).strip() for item in (task_ids or []) if str(item).strip()}
+        failure_statuses = {"failed", "quality_failed", "timeout", "cancelled"}
+        archived_ids: list[str] = []
+        skipped_ids: list[str] = []
+        with self.session() as session:
+            stmt = select(ReportTask).where(ReportTask.status != "archived")
+            if requested:
+                stmt = stmt.where(ReportTask.task_id.in_(requested))
+            tasks = list(session.scalars(stmt).all())
+            found_ids = {task.task_id for task in tasks}
+            skipped_ids.extend(sorted(requested - found_ids))
+            for task in tasks:
+                metadata = dict(task.metadata_json or {})
+                evidence_gate = metadata.get("pre_generation_evidence_gate")
+                evidence_gate = evidence_gate if isinstance(evidence_gate, dict) else {}
+                failed = task.status in failure_statuses or evidence_gate.get("blocked") is True or evidence_gate.get("status") == "failed"
+                if not failed or task.status in {"completed", "running", "archived"}:
+                    skipped_ids.append(task.task_id)
+                    continue
+                previous_status = task.status
+                self._transition_task(task, "archived", reason="bulk_failed_cleanup")
+                task.finished_at = task.finished_at or _utc_now()
+                metadata["archived_from_status"] = previous_status
+                metadata["archive_reason"] = "Bulk archived failed task from workbench"
+                task.metadata_json = metadata
+                session.add(
+                    ReportTaskEvent(
+                        task_id=task.task_id,
+                        stage="archived",
+                        status="archived",
+                        message="失败任务已从当前列表移入归档",
+                        metadata_json={"previous_status": previous_status, "source": "workbench_bulk_cleanup"},
+                    )
+                )
+                archived_ids.append(task.task_id)
+            session.commit()
+        return {
+            "archived_count": len(archived_ids),
+            "archived_task_ids": archived_ids,
+            "skipped_count": len(skipped_ids),
+            "skipped_task_ids": skipped_ids,
+        }
+
     def import_artifacts(self, task_id: str) -> list[dict[str, Any]]:
         importer = ArtifactImporter(
             session_factory=self.session,
@@ -683,7 +1024,49 @@ class ReportTaskService:
             report_root=self.report_root,
         )
         importer.import_for_task(task_id)
+        self._materialize_task_memory(task_id)
         return self.get_task(task_id).get("artifacts", [])
+
+    def _materialize_task_memory(self, task_id: str) -> dict[str, Any]:
+        """Best-effort, idempotent entity/relation materialization after evidence import."""
+
+        try:
+            extracted = EntityService(session_factory=self.session).extract_from_task(task_id)
+            summary = {
+                "status": "ready" if extracted.get("evidence_count", 0) else "no_evidence",
+                "evidence_count": int(extracted.get("evidence_count") or 0),
+                "entity_count": int(extracted.get("entity_count") or 0),
+                "relation_count": int(extracted.get("relation_count") or 0),
+                "materialized_at": _dt(_utc_now()),
+            }
+        except Exception as exc:
+            summary = {
+                "status": "failed",
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+                "materialized_at": _dt(_utc_now()),
+            }
+
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            metadata = dict(task.metadata_json or {})
+            previous = metadata.get("auto_memory_materialization")
+            previous = previous if isinstance(previous, dict) else {}
+            metadata["auto_memory_materialization"] = summary
+            task.metadata_json = metadata
+            comparable_keys = ("status", "evidence_count", "entity_count", "relation_count", "error_type", "error_message")
+            if any(previous.get(key) != summary.get(key) for key in comparable_keys):
+                session.add(
+                    ReportTaskEvent(
+                        task_id=task_id,
+                        stage="memory_materialization",
+                        status="success" if summary["status"] in {"ready", "no_evidence"} else "failed",
+                        message="任务证据已自动沉淀为实体与关系" if summary["status"] == "ready" else "任务记忆自动沉淀完成",
+                        metadata_json=summary,
+                    )
+                )
+            session.commit()
+        return summary
 
     def run_quality_gate(self, task_id: str) -> dict[str, Any]:
         with self.session() as session:
@@ -883,6 +1266,7 @@ class ReportTaskService:
             "blocks_generation": False,
             "source_file": str(output_dir / "official_evidence_backfill_run.json"),
         }
+        _sync_task_retrieval_curated_dir(output_dir)
         self._update_runtime_metadata(task_id, "official_evidence_backfill", summary)
         return summary
 
@@ -1152,8 +1536,17 @@ class ReportTaskService:
                     .limit(50)
                 ).all()
             )
+            tool_runs = list(
+                session.scalars(
+                    select(ToolRun)
+                    .where(ToolRun.task_id == task_id)
+                    .order_by(ToolRun.created_at.desc(), ToolRun.id.desc())
+                    .limit(200)
+                ).all()
+            )
             payload["quality_diagnostics"] = build_quality_diagnostics(task, llm_runs)
-            payload["runtime_observability"] = build_runtime_observability(task, llm_runs)
+            payload["tool_runs"] = [serialize_tool_run(item) for item in tool_runs]
+            payload["runtime_observability"] = build_runtime_observability(task, llm_runs, tool_runs)
             return payload
 
     def get_artifacts(self, task_id: str) -> dict[str, Any]:
@@ -1163,6 +1556,22 @@ class ReportTaskService:
             "artifacts": task.get("artifacts", []),
             "report_links": _report_links(task.get("artifacts", [])),
         }
+
+    def get_tool_runs(self, task_id: str, *, limit: int = 200) -> dict[str, Any]:
+        with self.session() as session:
+            task_exists = session.scalar(select(ReportTask.id).where(ReportTask.task_id == task_id))
+            if task_exists is None:
+                raise ReportTaskNotFound(task_id)
+            total = int(session.scalar(select(func.count(ToolRun.id)).where(ToolRun.task_id == task_id)) or 0)
+            rows = list(
+                session.scalars(
+                    select(ToolRun)
+                    .where(ToolRun.task_id == task_id)
+                    .order_by(ToolRun.created_at.desc(), ToolRun.id.desc())
+                    .limit(max(1, min(int(limit), 500)))
+                ).all()
+            )
+        return {"task_id": task_id, "items": [serialize_tool_run(item) for item in rows], "total": total}
 
     def session(self) -> Session:
         self._ensure_db()
@@ -1229,7 +1638,9 @@ class ReportTaskService:
         return f"task_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid.uuid4().hex[:8]}"
 
     def _build_task_metadata(self, *, task_id: str, payload: dict[str, Any], symbol: str, period: str) -> dict[str, Any]:
-        execution_mode = str(payload.get("execution_mode") or "collaborative")
+        # Keep the production path single-pass. The collaborative modes remain
+        # available for explicit diagnostics while LangGraph nodes are split.
+        execution_mode = str(payload.get("execution_mode") or "static")
         output_dir = self.output_root / "runs" / task_id / "outputs"
         report_dir = self.report_root / "runs" / task_id / "reports"
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -1255,13 +1666,19 @@ class ReportTaskService:
             "research_topic": str(payload.get("research_topic") or payload.get("topic") or f"Generate {symbol} {period} research report"),
             "company_name": str(payload.get("company_name") or symbol),
             "symbol": symbol,
+            "market": str(payload.get("market") or ""),
+            "exchange": str(payload.get("exchange") or ""),
+            "currency": str(payload.get("currency") or ""),
+            "country_region": str(payload.get("country_region") or ""),
             "period": period,
             "report_type": str(payload.get("report_type") or "equity_research"),
             "data_source_scope": str(payload.get("data_source_scope") or "official_first"),
             "execution_mode": execution_mode,
             "fast": bool(payload.get("fast", True)),
             "search_engines": _normalize_search_engines(payload.get("search_engines")),
-            "enable_remote_data": bool(payload.get("enable_remote_data", False)),
+            "enable_remote_data": _truthy(
+                payload.get("enable_remote_data", self.mode == "user" and self._uses_production_orchestrator)
+            ),
             "data_source_config_path": str(payload.get("data_source_config_path") or "configs/data_sources.yaml"),
             "memory_enabled": bool(payload.get("memory_enabled", False)),
             "execution_tier": str(payload.get("execution_tier") or ("user_fast" if self.mode == "user" else "developer_fast")),
@@ -1272,23 +1689,11 @@ class ReportTaskService:
         }
 
     def _run_orchestrator(self, *, task_id: str, metadata: dict[str, Any]) -> Any:
-        orchestrator = self.orchestrator_factory(
-            output_dir=str(metadata["output_dir"]),
-            report_dir=str(metadata["report_dir"]),
-            config_path=self.config_path,
-            memory_enabled=bool(metadata.get("memory_enabled", False)),
-            memory_root=str(self.memory_root / "durable"),
-            execution_tier=str(metadata.get("execution_tier") or "developer_fast"),
-        )
-        result = orchestrator.run(
-            research_topic=str(metadata.get("research_topic") or ""),
-            symbol=str(metadata.get("symbol") or ""),
-            period=str(metadata.get("period") or ""),
-            execution_mode=str(metadata.get("execution_mode") or "collaborative"),
-            fast=bool(metadata.get("fast", True)),
-            search_engines=list(metadata.get("search_engines") or []),
-            enable_remote_data=bool(metadata.get("enable_remote_data", False)),
-            data_source_config_path=str(metadata.get("data_source_config_path") or "configs/data_sources.yaml"),
+        phased_static = self.orchestrator_factory is MultiAgentOrchestrator and str(metadata.get("execution_mode") or "static") == "static"
+        result = self._run_orchestrator_instance(
+            task_id=task_id,
+            metadata=metadata,
+            resume_from_phase_artifacts=phased_static,
         )
         with self.session() as session:
             task = self._get_task_for_update(session, task_id)
@@ -1306,6 +1711,83 @@ class ReportTaskService:
             )
             session.commit()
         return result
+
+    def _run_orchestrator_instance(
+        self,
+        *,
+        task_id: str,
+        metadata: dict[str, Any],
+        stop_after_phase: str = "",
+        resume_from_phase_artifacts: bool = False,
+    ) -> Any:
+        orchestrator_kwargs: dict[str, Any] = {
+            "output_dir": str(metadata["output_dir"]),
+            "report_dir": str(metadata["report_dir"]),
+            "config_path": self.config_path,
+            "memory_enabled": bool(metadata.get("memory_enabled", False)),
+            "memory_root": str(self.memory_root / "durable"),
+            "execution_tier": str(metadata.get("execution_tier") or "developer_fast"),
+        }
+        if _supports_agent_stage_callback(self.orchestrator_factory):
+            orchestrator_kwargs["stage_callback"] = lambda payload: self._record_agent_stage(task_id, payload)
+        orchestrator = self.orchestrator_factory(
+            **orchestrator_kwargs,
+        )
+        run_kwargs: dict[str, Any] = {
+            "research_topic": str(metadata.get("research_topic") or ""),
+            "symbol": str(metadata.get("symbol") or ""),
+            "period": str(metadata.get("period") or ""),
+            "execution_mode": str(metadata.get("execution_mode") or "static"),
+            "fast": bool(metadata.get("fast", True)),
+            "search_engines": list(metadata.get("search_engines") or []),
+            "enable_remote_data": bool(metadata.get("enable_remote_data", False)),
+            "data_source_config_path": str(metadata.get("data_source_config_path") or "configs/data_sources.yaml"),
+        }
+        if self.orchestrator_factory is MultiAgentOrchestrator:
+            run_kwargs["stop_after_phase"] = stop_after_phase
+            run_kwargs["resume_from_phase_artifacts"] = resume_from_phase_artifacts
+        return orchestrator.run(**run_kwargs)
+
+    def _record_agent_stage(self, task_id: str, payload: dict[str, Any]) -> None:
+        phase = str(payload.get("phase") or "running")
+        agent_key = str(payload.get("agent_key") or "unknown")
+        status = "running" if phase == "started" else ("success" if payload.get("status") == "completed" else "failed")
+        with self.session() as session:
+            task = self._get_task_for_update(session, task_id)
+            if phase == "started":
+                task.current_stage = f"agent_{agent_key}"
+            metadata = dict(task.metadata_json or {})
+            runtime = dict(metadata.get("report_runtime") or {})
+            runtime["current_agent"] = {
+                "agent_key": agent_key,
+                "agent_name": payload.get("agent_name"),
+                "task_type": payload.get("task_type"),
+                "phase": phase,
+                "status": payload.get("status") or status,
+                "duration_ms": payload.get("duration_ms"),
+                "model_name": payload.get("model_name"),
+                "provider": payload.get("provider"),
+                "route_profile": payload.get("route_profile"),
+                "react_used": payload.get("react_used"),
+                "error": payload.get("error"),
+                "updated_at": _utc_now().isoformat(),
+            }
+            metadata["report_runtime"] = runtime
+            task.metadata_json = metadata
+            session.add(
+                ReportTaskEvent(
+                    task_id=task_id,
+                    stage=f"agent.{agent_key}",
+                    status=status,
+                    message=(
+                        f"{payload.get('agent_name') or agent_key} started"
+                        if phase == "started"
+                        else f"{payload.get('agent_name') or agent_key} finished"
+                    ),
+                    metadata_json=dict(payload),
+                )
+            )
+            session.commit()
 
     def _get_task_for_update(self, session: Session, task_id: str) -> ReportTask:
         task = session.scalar(
@@ -1352,12 +1834,16 @@ class ReportTaskService:
             .limit(1000)
         )
         items = list(session.scalars(stmt).unique().all())
-        return [item for item in items if _evidence_matches_task_gate(item, task=task, metadata=metadata)]
+        matched = [item for item in items if _evidence_matches_task_gate(item, task=task, metadata=metadata)]
+        return _dedupe_task_evidence_candidates(matched)
 
 
 def _evidence_matches_task_gate(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> bool:
     item_metadata = item.metadata_json or {}
     task_id = str(task.task_id or "")
+    company_match = _evidence_company_matches(item, task=task, metadata=metadata)
+    if not company_match:
+        return False
     if _norm(item_metadata.get("task_id")) == _norm(task_id):
         return True
     if item.document is not None and _norm(item.document.batch_id) == _norm(task_id):
@@ -1366,38 +1852,79 @@ def _evidence_matches_task_gate(item: EvidenceItem, *, task: ReportTask, metadat
         if link.claim is not None and _norm(link.claim.task_id) == _norm(task_id):
             return True
 
-    company_match = _evidence_company_matches(item, task=task, metadata=metadata)
     period_match = _evidence_period_matches(item, task=task, metadata=metadata)
+    if company_match and period_match and str(item.source_type or "").lower() in PERIOD_GATED_SOURCE_TYPES:
+        record = _artifact_record_from_evidence(item, task=task, metadata=metadata)
+        period_match = record_period_status(
+            record,
+            target_period=str(task.period or metadata.get("period") or ""),
+        ) != "mismatch"
     if _norm(task.period or metadata.get("period")):
         return company_match and period_match
     return company_match
 
 
+def _dedupe_task_evidence_candidates(items: list[EvidenceItem]) -> list[EvidenceItem]:
+    """Keep the newest reusable record for snapshot-like datasource outputs."""
+
+    seen: set[str] = set()
+    output: list[EvidenceItem] = []
+    for item in items:
+        source_type = str(item.source_type or "").strip().lower()
+        source_url = str(item.source_url or "").strip().lower().rstrip("/")
+        metadata = item.metadata_json or {}
+        period = str(
+            metadata.get("period")
+            or metadata.get("report_period")
+            or (item.document.report_period if item.document else "")
+            or ""
+        ).strip().upper()
+        if source_type in {"market_api", "market_data", "company_profile", "company_page"} and source_url:
+            key = f"snapshot|{source_type}|{source_url}|{period}"
+        else:
+            key = str(metadata.get("identity_key") or item.evidence_id or item.id)
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(item)
+    return output
+
+
 def _evidence_company_matches(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> bool:
-    expected_values = [
-        task.symbol,
-        metadata.get("symbol"),
-        metadata.get("company_name"),
-        metadata.get("company_symbol"),
-    ]
-    if task.company_id is not None and item.company_id == task.company_id:
-        return True
+    from src.data.company_universe import canonicalize_symbol
+
+    expected_symbol = canonicalize_symbol(str(task.symbol or metadata.get("symbol") or metadata.get("company_symbol") or ""))
+    source_identity_symbol = _immutable_source_symbol(item)
+    if expected_symbol and source_identity_symbol and expected_symbol != source_identity_symbol:
+        return False
+    if task.company_id is not None and item.company_id is not None:
+        return int(item.company_id) == int(task.company_id)
     company = item.company
-    item_values = [
-        company.name if company else "",
-        company.symbol if company else "",
-        *((company.aliases or []) if company else []),
-        (item.metadata_json or {}).get("symbol"),
-        (item.metadata_json or {}).get("company_name"),
-        (item.metadata_json or {}).get("company_symbol"),
-    ]
-    normalized_expected = [_norm(value) for value in expected_values if _norm(value)]
-    normalized_items = [_norm(value) for value in item_values if _norm(value)]
-    return any(
-        expected in item_value or item_value in expected
-        for expected in normalized_expected
-        for item_value in normalized_items
+    item_symbol = canonicalize_symbol(
+        str(
+            (company.symbol if company else "")
+            or (item.metadata_json or {}).get("symbol")
+            or (item.metadata_json or {}).get("company_symbol")
+            or ""
+        )
     )
+    if expected_symbol and item_symbol:
+        return expected_symbol == item_symbol
+    expected_name = _norm(metadata.get("company_name"))
+    item_name = _norm((company.name if company else "") or (item.metadata_json or {}).get("company_name"))
+    return bool(expected_name and item_name and expected_name == item_name)
+
+
+def _immutable_source_symbol(item: EvidenceItem) -> str:
+    """Resolve identity from source-controlled labels before mutable DB bindings."""
+
+    from src.data.company_universe import canonicalize_symbol, resolve_company_identifier_with_diagnostics
+
+    text = " ".join([str(item.title or ""), str(item.source_url or "")]).strip()
+    resolved = resolve_company_identifier_with_diagnostics(text)
+    if bool(resolved.get("resolved")) and float(resolved.get("confidence") or 0.0) >= 0.65:
+        return canonicalize_symbol(str(resolved.get("symbol") or ""))
+    return ""
 
 
 def _evidence_period_matches(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> bool:
@@ -1495,11 +2022,20 @@ def _source_display_name(source_key: str) -> str:
 
 
 def _artifact_record_from_evidence(item: EvidenceItem, *, task: ReportTask, metadata: dict[str, Any]) -> dict[str, Any]:
+    from src.schemas.runtime_contracts import normalize_evidence_record
+
     item_metadata = dict(item.metadata_json or {})
+    source_symbol = str(
+        _immutable_source_symbol(item)
+        or (item.company.symbol if item.company is not None else "")
+        or item_metadata.get("symbol")
+        or item_metadata.get("company_symbol")
+        or ""
+    )
     record = {
         "evidence_id": item.evidence_id,
         "sample_id": item.evidence_id,
-        "symbol": task.symbol or metadata.get("symbol"),
+        "symbol": source_symbol,
         "period": item_metadata.get("period") or item_metadata.get("report_period") or task.period or metadata.get("period"),
         "source_type": item.source_type or "local_evidence",
         "trust_level": item.trust_level or "medium",
@@ -1509,7 +2045,10 @@ def _artifact_record_from_evidence(item: EvidenceItem, *, task: ReportTask, meta
         "page": item.page_no,
         "metadata": {
             **item_metadata,
-            "task_id": item_metadata.get("task_id") or task.task_id,
+            "origin_task_id": item_metadata.get("task_id") or "",
+            "task_id": task.task_id,
+            "expected_symbol": task.symbol or metadata.get("symbol"),
+            "evidence_role": item_metadata.get("evidence_role") or "target",
             "db_evidence_item_id": item.id,
             "source_evidence_id": item.evidence_id,
         },
@@ -1526,7 +2065,13 @@ def _artifact_record_from_evidence(item: EvidenceItem, *, task: ReportTask, meta
             "source_document_type": item_metadata.get("source_document_type") or grade.get("source_document_type"),
         }
     )
-    return {key: value for key, value in record.items() if value not in (None, "")}
+    cleaned = {key: value for key, value in record.items() if value not in (None, "")}
+    return normalize_evidence_record(
+        cleaned,
+        task_id=task.task_id,
+        run_id=str(metadata.get("run_id") or task.task_id),
+        target_period=str(task.period or metadata.get("period") or ""),
+    )
 
 
 def _is_official_artifact_evidence(record: dict[str, Any]) -> bool:
@@ -1645,14 +2190,17 @@ def _patch_report_markdown_with_official_evidence(
         "投资结论": _render_meta_conclusion_section(source_names, ev1, meta),
     }
     for heading, replacement in sections.items():
-        body = _replace_or_insert_section(body, heading, replacement)
+        body = _replace_or_insert_section(body, heading, replacement, preserve_substantive=True)
     return f"{title}\n\n{body.strip()}\n"
 
 
-def _replace_or_insert_section(markdown: str, heading: str, content: str) -> str:
+def _replace_or_insert_section(markdown: str, heading: str, content: str, *, preserve_substantive: bool = False) -> str:
     pattern = re.compile(rf"(?ms)^##\s+{re.escape(heading)}\s*\n.*?(?=^##\s+|\Z)")
     replacement = f"## {heading}\n{content.strip()}\n\n"
-    if pattern.search(markdown):
+    match = pattern.search(markdown)
+    if match and preserve_substantive and _is_substantive_report_section(match.group(0)):
+        return markdown
+    if match:
         return pattern.sub(replacement, markdown, count=1)
 
     aliases = {
@@ -1663,9 +2211,19 @@ def _replace_or_insert_section(markdown: str, heading: str, content: str) -> str
     }
     for alias in aliases.get(heading, ()):
         alias_pattern = re.compile(rf"(?ms)^##\s+{re.escape(alias)}\s*\n.*?(?=^##\s+|\Z)")
-        if alias_pattern.search(markdown):
+        alias_match = alias_pattern.search(markdown)
+        if alias_match and preserve_substantive and _is_substantive_report_section(alias_match.group(0)):
+            return markdown
+        if alias_match:
             return alias_pattern.sub(replacement, markdown, count=1)
     return markdown.rstrip() + "\n\n" + replacement
+
+
+def _is_substantive_report_section(section: str) -> bool:
+    body = re.sub(r"(?m)^##\s+.*$", "", section).strip()
+    # This post-processing step may fill missing sections, but it must never
+    # replace a Writer-owned section merely because the prose states a data gap.
+    return len(re.findall(r"[\u4e00-\u9fff]", body)) >= 80
 
 
 def _report_meta_tags(symbol: str, official_records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1748,13 +2306,12 @@ def _render_meta_summary_section(
     evidence_id: str,
     meta: dict[str, Any],
 ) -> str:
-    tags = "、".join(meta.get("all_tags") or [])
     source_label = str(meta.get("source_label") or source_names or "权威来源披露")
     return "\n".join(
         [
             f"- 事实边界：本报告以{source_label}为核心事实来源，覆盖公司为{company}（{symbol}），期间为{period or '最近完整披露期'}。[{evidence_id}]",
-            f"- 元标签：{tags}。这些标签用于约束小节生成，避免把原始材料片段直接拼进正文。[{evidence_id}]",
-            f"- 研究状态：当前已形成{claim_count}条可追溯主张，适合作为草稿和人工复核入口；正式交付前仍需补齐预测模型、同业比较和敏感性分析。[{evidence_id}]",
+            f"- 证据基础：当前形成{claim_count}条可追溯主张，核心判断均应回溯至财务披露、经营事实和市场数据，不以缺少证据的推测替代分析。[{evidence_id}]",
+            f"- 投资判断：结合盈利能力、现金流、估值水平与主要风险形成方向性观点，并以关键经营指标变化作为后续跟踪依据。[{evidence_id}]",
         ]
     )
 
@@ -1769,13 +2326,12 @@ def _render_meta_financial_section(evidence_id: str, meta: dict[str, Any]) -> st
 
 
 def _render_meta_valuation_section(evidence_id: str, meta: dict[str, Any]) -> str:
-    valuation_tags = "、".join(meta.get("valuation_tags") or ["估值输入不足", "盈利预测待补"])
     currency = str(meta.get("currency") or "对应市场货币")
     return "\n".join(
         [
-            f"- 估值边界：当前证据主要解决事实核验，不直接给出目标价；估值输入仍标记为{valuation_tags}。[{evidence_id}]",
-            f"- 后续模型：正式版需要补齐{currency}口径下的收入预测、利润率假设、折现率或可比公司倍数，并展示关键假设敏感性。[{evidence_id}]",
-            f"- 判断约束：在预测模型未闭环前，估值结论应保持审慎观察，不把证据覆盖等同于买卖评级。[{evidence_id}]",
+            f"- 估值口径：估值应区分历史财务期间与当前市场时点，统一采用{currency}口径，并明确市盈率等倍数对应的盈利期间。[{evidence_id}]",
+            f"- 敏感性：围绕收入增速、利润率和估值倍数设置基准、乐观与审慎情景，量化关键假设变化对估值判断的影响。[{evidence_id}]",
+            f"- 判断约束：估值结论必须与盈利质量、现金流和风险事实交叉验证，证据覆盖本身不等同于买卖评级。[{evidence_id}]",
         ]
     )
 
@@ -1796,9 +2352,9 @@ def _render_meta_conclusion_section(source_names: str, evidence_id: str, meta: d
     source_label = str(meta.get("source_label") or source_names or "权威来源披露")
     return "\n".join(
         [
-            f"- 综合判断：基于{source_label}和当前证据链，本报告更适合作为投研草稿、复核清单和后续建模入口。[{evidence_id}]",
-            f"- 交付口径：证据引用已经覆盖核心事实，但正式投资建议仍缺少完整预测模型、同业比较、估值敏感性和人工校验记录。[{evidence_id}]",
-            f"- 建议动作：维持“中性 / 审慎观察”，优先补齐财务表格、关键假设和风险传导链，再进入正式交付。[{evidence_id}]",
+            f"- 综合判断：基于{source_label}和当前证据链，从盈利能力、现金创造、估值与风险四个维度形成方向性结论。[{evidence_id}]",
+            f"- 决策依据：投资观点必须由前文章节的量化指标和风险事实共同支撑，不使用脱离证据的模板化表述。[{evidence_id}]",
+            f"- 跟踪动作：重点监控收入增速、利润率、自由现金流和估值倍数的变化，任一核心假设恶化时重新评估观点。[{evidence_id}]",
         ]
     )
 
@@ -1845,6 +2401,19 @@ def _merge_records_by_id(existing: list[dict[str, Any]], additions: list[dict[st
         index_by_id[record_id] = len(merged)
         merged.append(dict(record))
     return merged
+
+
+def _sync_task_retrieval_curated_dir(output_dir: Path) -> None:
+    target_dir = output_dir / "retrieval_curated"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    source = output_dir / "official_backfill_curated.jsonl"
+    if source.is_file():
+        (target_dir / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    task_records = _read_json_list(output_dir / "evidence.json")
+    if task_records:
+        payload = "\n".join(json.dumps(item, ensure_ascii=False) for item in task_records) + "\n"
+        (target_dir / "task_evidence.jsonl").write_text(payload, encoding="utf-8")
 
 
 def _read_json_list(path: Path) -> list[dict[str, Any]]:
@@ -1958,11 +2527,13 @@ def _canonical_metrics_summary(*, output_dir: Path, artifact: dict[str, Any]) ->
     }
 
 
-def _build_section_pack_manifest(output_dir: Path) -> dict[str, Any]:
+def _build_section_pack_manifest(output_dir: Path, *, artifact: dict[str, Any] | None = None) -> dict[str, Any]:
+    artifact = artifact if isinstance(artifact, dict) else build_section_evidence_packs(output_dir)
     contracts = _read_json_object(output_dir / "report_section_contracts.json")
     section_dossiers = _read_json_object(output_dir / "section_dossiers.json")
     contract_map = contracts.get("contracts") if isinstance(contracts.get("contracts"), dict) else {}
-    pack_keys = sorted(set(contract_map) | set(section_dossiers))
+    packs = artifact.get("packs") if isinstance(artifact.get("packs"), dict) else {}
+    pack_keys = sorted(packs or set(contract_map) | set(section_dossiers))
     blocked_sections = sorted(
         key
         for key, value in contract_map.items()
@@ -1980,9 +2551,99 @@ def _build_section_pack_manifest(output_dir: Path) -> dict[str, Any]:
         "sections": pack_keys,
         "blocked_sections": blocked_sections,
         "citation_ready_section_count": citation_ready,
+        "must_use_evidence_count": sum(len(row.get("must_use_evidence_ids") or []) for row in packs.values() if isinstance(row, dict)),
+        "unsupported_claim_count": sum(len(row.get("unsupported_claim_ids") or []) for row in packs.values() if isinstance(row, dict)),
+        "missing_evidence_count": sum(len(row.get("missing_evidence_ids") or []) for row in packs.values() if isinstance(row, dict)),
         "source_files": {
+            "section_evidence_packs": str(output_dir / "section_evidence_packs.json"),
             "report_section_contracts": str(output_dir / "report_section_contracts.json"),
             "section_dossiers": str(output_dir / "section_dossiers.json"),
+        },
+    }
+
+
+def _run_manifest_summary(manifest: dict[str, Any]) -> dict[str, Any]:
+    artifacts = manifest.get("artifacts") if isinstance(manifest.get("artifacts"), dict) else {}
+    stale = manifest.get("stale_artifacts") if isinstance(manifest.get("stale_artifacts"), dict) else {}
+    return {
+        "schema_version": "report_run_manifest_runtime.v1",
+        "status": str(manifest.get("status") or "missing"),
+        "artifact_count": len(artifacts),
+        "artifact_versions": {
+            name: str(payload.get("version") or "")
+            for name, payload in artifacts.items()
+            if isinstance(payload, dict)
+        },
+        "stale_artifacts": stale,
+        "missing_artifacts": list(manifest.get("missing_artifacts") or []),
+    }
+
+
+def _build_generation_execution_summary(output_dir: Path) -> dict[str, Any]:
+    run_summary = _read_json_object(output_dir / "run_summary.json")
+    collaboration = _read_json_object(output_dir / "agent_collaboration_trace.json")
+    tool_trace = _read_json_object(output_dir / "tool_trace.json")
+    agents = [item for item in collaboration.get("agents", []) if isinstance(item, dict)]
+    failed_agents = [
+        {
+            "agent": str(item.get("agent") or "unknown"),
+            "task_type": str(item.get("task_type") or ""),
+            "status": str(item.get("status") or "unknown"),
+            "error": str(item.get("error") or ""),
+        }
+        for item in agents
+        if str(item.get("status") or "").lower() not in {"success", "completed", "skipped"}
+        or bool(item.get("error"))
+    ]
+    calls = [item for item in tool_trace.get("calls", []) if isinstance(item, dict)]
+    failed_tools = [
+        {
+            "caller_agent": str(item.get("caller_agent") or ""),
+            "tool_name": str(item.get("tool_name") or "unknown"),
+            "failure_reason": str(item.get("failure_reason") or ""),
+        }
+        for item in calls
+        if item.get("success") is False
+    ]
+    executed_agents = [str(item) for item in run_summary.get("executed_agents", []) if str(item)]
+    model_usage = run_summary.get("model_usage_by_agent")
+    model_usage = model_usage if isinstance(model_usage, dict) else {}
+    missing_artifacts = [
+        name
+        for name in ("evidence.json", "claims.json")
+        if not (output_dir / name).exists()
+    ]
+    trace_available = bool(agents or executed_agents)
+    if failed_agents or missing_artifacts:
+        status = "failed"
+        root_cause = "agent_execution_failed" if failed_agents else "generation_artifact_missing"
+    elif not trace_available:
+        status = "trace_missing"
+        root_cause = "generation_trace_missing"
+    elif failed_tools:
+        status = "degraded"
+        root_cause = "tool_execution_degraded"
+    else:
+        status = "ready"
+        root_cause = "none"
+    return {
+        "schema_version": "generation_execution_runtime.v1",
+        "status": status,
+        "root_cause": root_cause,
+        "trace_available": trace_available,
+        "agent_count": len(agents) or len(executed_agents),
+        "executed_agents": executed_agents or [str(item.get("agent") or "") for item in agents],
+        "failed_agent_count": len(failed_agents),
+        "failed_agents": failed_agents,
+        "tool_call_count": len(calls),
+        "failed_tool_count": len(failed_tools),
+        "failed_tools": failed_tools[:20],
+        "model_usage_by_agent": model_usage,
+        "missing_artifacts": missing_artifacts,
+        "source_files": {
+            "run_summary": str(output_dir / "run_summary.json"),
+            "agent_collaboration_trace": str(output_dir / "agent_collaboration_trace.json"),
+            "tool_trace": str(output_dir / "tool_trace.json"),
         },
     }
 
@@ -1990,6 +2651,7 @@ def _build_section_pack_manifest(output_dir: Path) -> dict[str, Any]:
 def _build_section_verification_manifest(*, output_dir: Path, report_dir: Path) -> dict[str, Any]:
     contracts = _read_json_object(output_dir / "report_section_contracts.json")
     remediation = _read_json_object(output_dir / "quality_remediation_plan.json")
+    packs = _read_json_object(output_dir / "section_evidence_packs.json")
     markdown = ""
     report_md = report_dir / "report.md"
     if report_md.exists():
@@ -1999,6 +2661,7 @@ def _build_section_verification_manifest(*, output_dir: Path, report_dir: Path) 
         markdown=markdown,
         report_section_contracts=contracts,
         quality_remediation_plan=remediation,
+        section_evidence_packs=packs,
     )
     return {
         "schema_version": "section_verification_runtime.v1",
@@ -2013,6 +2676,7 @@ def _build_section_verification_manifest(*, output_dir: Path, report_dir: Path) 
         "source_files": {
             "report_section_contracts": str(output_dir / "report_section_contracts.json"),
             "quality_remediation_plan": str(output_dir / "quality_remediation_plan.json"),
+            "section_evidence_packs": str(output_dir / "section_evidence_packs.json"),
             "section_verification": str(output_dir / "section_verification.json"),
             "report_md": str(report_md),
         },
@@ -2131,7 +2795,7 @@ def build_quality_diagnostics(task: ReportTask, llm_runs: list[LLMRun]) -> dict[
     }
 
 
-def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun]) -> dict[str, Any]:
+def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun], tool_runs: list[ToolRun] | None = None) -> dict[str, Any]:
     """Aggregate request tracing, node latency, and LLM usage for one task."""
 
     metadata = task.metadata_json or {}
@@ -2146,6 +2810,30 @@ def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun]) -> dic
     run_count_sum = len(llm_runs)
     pricing_status = "not_configured" if cost_raw == 0.0 and run_count_sum > 0 else "available" if cost_raw > 0 else "no_runs"
     llm_latency_ms = sum(int(item.latency_ms or 0) for item in llm_runs)
+    tool_runs = tool_runs or []
+    tool_latency_ms = sum(int(item.duration_ms or 0) for item in tool_runs)
+    latest_tool = tool_runs[0] if tool_runs else None
+    failed_tools = [item for item in tool_runs if item.status == "failed"]
+    latest_failed_tool = failed_tools[0] if failed_tools else None
+    retry_count = sum(max(0, int(item.attempt_count or 1) - 1) for item in tool_runs)
+    last_node = events[-1].get("node") if events and isinstance(events[-1], dict) else None
+    current_node = None if runtime.get("checkpoint_status") == "completed" else (last_node or task.current_stage)
+    runtime_failure = metadata.get("runtime_failure") if isinstance(metadata.get("runtime_failure"), dict) else {}
+    failure_root_cause = None
+    if latest_failed_tool is not None:
+        failure_root_cause = {
+            "type": latest_failed_tool.error_type or "tool_execution_failed",
+            "message": latest_failed_tool.error_message,
+            "tool_name": latest_failed_tool.tool_name,
+            "langgraph_node": latest_failed_tool.langgraph_node,
+        }
+    elif runtime_failure:
+        failure_root_cause = {
+            "type": runtime_failure.get("error_type") or "runtime_failed",
+            "message": runtime_failure.get("message"),
+            "tool_name": None,
+            "langgraph_node": current_node,
+        }
     elapsed_ms = None
     if task.started_at and task.finished_at:
         elapsed_ms = round((task.finished_at - task.started_at).total_seconds() * 1000, 3)
@@ -2157,7 +2845,8 @@ def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun]) -> dic
             "task_id": task.task_id,
         },
         "checkpoint_status": runtime.get("checkpoint_status", "not_started"),
-        "last_node": events[-1].get("node") if events and isinstance(events[-1], dict) else None,
+        "last_node": last_node,
+        "current_node": current_node,
         "node_latency_ms": node_latency,
         "total_node_latency_ms": round(sum(float(value or 0.0) for value in node_latency.values()), 3),
         "task_elapsed_ms": elapsed_ms,
@@ -2171,7 +2860,54 @@ def build_runtime_observability(task: ReportTask, llm_runs: list[LLMRun]) -> dic
             "pricing_status": pricing_status,
             "latency_ms": llm_latency_ms,
         },
+        "tools": {
+            "run_count": len(tool_runs),
+            "failed_run_count": sum(1 for item in tool_runs if item.status == "failed"),
+            "latency_ms": tool_latency_ms,
+            "retry_count": retry_count,
+            "current_tool": serialize_tool_run(latest_tool) if latest_tool is not None else None,
+            "failure_root_cause": failure_root_cause,
+            "by_agent": _tool_run_counts(tool_runs, key="agent_name"),
+            "by_tool": _tool_run_counts(tool_runs, key="tool_name"),
+        },
     }
+
+
+def serialize_tool_run(item: ToolRun) -> dict[str, Any]:
+    return {
+        "run_id": item.run_id,
+        "task_id": item.task_id,
+        "langgraph_node": item.langgraph_node,
+        "agent_name": item.agent_name,
+        "tool_name": item.tool_name,
+        "status": item.status,
+        "attempt_count": item.attempt_count,
+        "duration_ms": item.duration_ms,
+        "input": item.input_json or {},
+        "output_summary": item.output_summary_json or {},
+        "evidence_ids": item.evidence_ids or [],
+        "artifact_paths": item.artifact_paths or [],
+        "error_type": item.error_type,
+        "error_message": item.error_message,
+        "source": item.source,
+        "metadata": item.metadata_json or {},
+        "created_at": _dt(item.created_at),
+    }
+
+
+def _tool_run_counts(tool_runs: list[ToolRun], *, key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in tool_runs:
+        value = str(getattr(item, key, None) or "unknown")
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items(), key=lambda pair: (-pair[1], pair[0])))
+
+
+def _supports_agent_stage_callback(factory: Callable[..., Any]) -> bool:
+    try:
+        return isinstance(factory, type) and issubclass(factory, MultiAgentOrchestrator)
+    except TypeError:
+        return False
 
 
 def _compact_llm_run(item: LLMRun) -> dict[str, Any]:
@@ -2306,6 +3042,129 @@ def _optional_int(value: Any) -> int | None:
         return None
 
 
+def _resolve_task_bindings(session: Session, *, payload: dict[str, Any], symbol: str) -> tuple[int | None, int | None]:
+    """Bind queued tasks to real workspace/company rows when the UI omits IDs."""
+
+    workspace_id = _optional_int(payload.get("workspace_id"))
+    if workspace_id is None:
+        workspace_id = session.scalar(
+            select(Workspace.id).where(Workspace.is_active.is_(True)).order_by(Workspace.id.asc()).limit(1)
+        )
+    if workspace_id is None:
+        workspace = Workspace(
+            name="默认投研空间",
+            slug="default-research",
+            description="工作台自动创建的默认投研空间",
+            is_active=True,
+        )
+        session.add(workspace)
+        session.flush()
+        workspace_id = workspace.id
+
+    company_id = _optional_int(payload.get("company_id"))
+    if company_id is not None:
+        company = session.get(Company, company_id)
+        if company is not None and _symbols_refer_to_same_listing(company.symbol, symbol):
+            canonical_company = _find_company_by_symbol(session, symbol)
+            if canonical_company is not None and canonical_company.id != company.id:
+                return workspace_id, canonical_company.id
+            _apply_company_identity(company, payload=payload, symbol=symbol)
+            return workspace_id, company.id
+
+    market = str(payload.get("market") or infer_market_from_symbol(symbol).get("market") or "").strip().lower()
+    company = _find_company_by_symbol(session, symbol)
+    if company is None:
+        aliases = [item for item in _legacy_symbol_aliases(symbol) if item != symbol.upper()]
+        company = session.scalar(select(Company).where(func.upper(Company.symbol).in_(aliases)).order_by(Company.id.asc()).limit(1)) if aliases else None
+    if company is None:
+        company = Company(
+            name=str(payload.get("company_name") or symbol).strip(),
+            symbol=symbol,
+            market=market or None,
+            aliases=[symbol],
+        )
+        session.add(company)
+        session.flush()
+    else:
+        _apply_company_identity(company, payload=payload, symbol=symbol)
+    return workspace_id, company.id
+
+
+def _normalize_task_identity_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    requested = str(normalized.get("symbol") or normalized.get("company_name") or "AAPL").strip()
+    identity = resolve_company_identity(requested, default=requested.upper())
+    if not identity.is_listed and normalized.get("company_name"):
+        identity = resolve_company_identity(str(normalized["company_name"]), default=requested.upper())
+    if not identity.is_listed or not identity.canonical_symbol:
+        return normalized
+
+    original_name = str(normalized.get("company_name") or "").strip()
+    normalized.update(
+        {
+            "symbol": identity.canonical_symbol,
+            "company_name": original_name if original_name and original_name.upper() != requested.upper() else (identity.company_name or identity.canonical_symbol),
+            "market": identity.market,
+            "exchange": identity.exchange,
+            "currency": identity.currency,
+            "country_region": identity.country_region,
+        }
+    )
+    return normalized
+
+
+def _repair_persisted_task_identity(session: Session, task: ReportTask) -> None:
+    metadata = dict(task.metadata_json or {})
+    normalized = _normalize_task_identity_payload(
+        {
+            "symbol": task.symbol,
+            "company_name": metadata.get("company_name"),
+            "workspace_id": task.workspace_id,
+            "company_id": task.company_id,
+        }
+    )
+    canonical_symbol = str(normalized.get("symbol") or task.symbol).upper()
+    if canonical_symbol == str(task.symbol or "").upper() and str(metadata.get("market") or "").lower() not in {"", "unknown"}:
+        return
+
+    task.symbol = canonical_symbol
+    metadata.update({key: normalized.get(key) for key in ("symbol", "company_name", "market", "exchange", "currency", "country_region")})
+    task.metadata_json = metadata
+    workspace_id, company_id = _resolve_task_bindings(session, payload=normalized, symbol=canonical_symbol)
+    task.workspace_id = task.workspace_id or workspace_id
+    task.company_id = company_id
+    request_state_path = Path(str(metadata.get("output_dir") or "")) / "request_state.json"
+    if request_state_path.exists():
+        request_state = _read_json_object(request_state_path)
+        request_state["symbol"] = canonical_symbol
+        request_state_path.write_text(json.dumps(request_state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _apply_company_identity(company: Company, *, payload: dict[str, Any], symbol: str) -> None:
+    company.symbol = symbol
+    company.name = str(payload.get("company_name") or company.name or symbol).strip()
+    company.market = str(payload.get("market") or infer_market_from_symbol(symbol).get("market") or company.market or "").strip().lower() or None
+    company.aliases = sorted({str(item) for item in [*(company.aliases or []), *_legacy_symbol_aliases(symbol)] if str(item).strip()})
+
+
+def _find_company_by_symbol(session: Session, symbol: str) -> Company | None:
+    return session.scalar(
+        select(Company).where(func.upper(Company.symbol) == str(symbol or "").upper()).order_by(Company.id.asc()).limit(1)
+    )
+
+
+def _legacy_symbol_aliases(symbol: str) -> list[str]:
+    canonical = str(symbol or "").upper().strip()
+    aliases = {canonical}
+    if canonical.endswith((".SS", ".SZ", ".HK")):
+        aliases.add(canonical.rsplit(".", 1)[0])
+    return sorted(aliases)
+
+
+def _symbols_refer_to_same_listing(left: str | None, right: str | None) -> bool:
+    return bool(set(_legacy_symbol_aliases(str(left or ""))) & set(_legacy_symbol_aliases(str(right or ""))))
+
+
 def _safe_id(value: str) -> str:
     safe = re.sub(r"[^A-Za-z0-9_.:-]+", "_", value).strip("_")
     return safe or f"task_{uuid.uuid4().hex[:8]}"
@@ -2385,6 +3244,53 @@ class QualityGateTraceBackend:
             "issue_count": len(issues),
             "summary": summary,
         }
+
+
+_DEFAULT_SECTION_REPAIR_PROMPT = """Rewrite one failed Chinese equity-research report section.
+Return JSON with only section_markdown. Do not include the section heading.
+Use the canonical metrics and must-use evidence in the input. Cite evidence IDs in square brackets.
+Exceed verification.min_chars by at least 30 Chinese characters; do not satisfy length with lists or repeated filler.
+Do not invent facts, use placeholders, expose internal field names, or paste raw English source paragraphs.
+Give a concrete analytical conclusion, supporting reasons, risks, and evidence boundaries where relevant.
+Only repair the requested section."""
+
+
+class SectionRepairModelBackend:
+    """ModelAdapter bridge used by the observable LLM harness."""
+
+    def __init__(self, adapter: ModelAdapter) -> None:
+        self.adapter = adapter
+        self.name = f"section-repair:{adapter.model_name}"
+
+    def generate_structured(self, prompt: str, schema: dict[str, Any] | None = None, **kwargs: Any) -> dict[str, Any]:
+        del schema
+        payload = json.dumps(kwargs, ensure_ascii=False, default=str)
+        return self.adapter.generate_json(
+            prompt=f"{prompt}\n\nSection repair input:\n{payload}",
+            system_prompt=(
+                "You are a financial report section repair agent. Return valid JSON only. "
+                "The section must be written in Chinese and grounded in the supplied evidence."
+            ),
+            extra_body={"max_tokens": min(self.adapter.max_tokens, 2400)},
+        )
+
+
+def _build_role_model_adapter(*, config_path: str, role: str, execution_tier: str) -> ModelAdapter:
+    config = load_config(config_path)
+    routes = config.get("agent_model_routes") if isinstance(config, dict) else {}
+    defaults = routes.get("defaults", {}) if isinstance(routes, dict) and isinstance(routes.get("defaults"), dict) else {}
+    tier = str(execution_tier or "delivery").lower()
+    role_route = routes.get(role) if isinstance(routes, dict) else None
+    if isinstance(role_route, dict):
+        profile = str(role_route.get(tier) or role_route.get("delivery") or defaults.get(tier) or defaults.get("delivery") or "flash")
+    elif isinstance(role_route, str):
+        profile = role_route
+    else:
+        profile = str(defaults.get(tier) or defaults.get("delivery") or "flash")
+    try:
+        return ModelAdapter.from_profile(profile=profile, config_path=config_path, fallback_section="agent_model")
+    except Exception:
+        return ModelAdapter.from_config(config_path=config_path)
 
 
 def _report_links(artifacts: list[dict[str, Any]]) -> dict[str, Any]:
