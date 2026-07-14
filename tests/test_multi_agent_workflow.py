@@ -5,7 +5,8 @@ import sys
 from src.agents import AgentStatus, AgentTask, BrowserAgent, DeepAnalyzeAgent, FinalAnswerAgent, TaskResult, VerifierAgent
 from src.agents.analysis_role_agents import IdentityAgent, PeerAgent, RiskAgent, StatementAgent, ValuationAgent
 from src.agents.browser_agent import enrich_records_with_reader, read_pdf_content, read_url_content
-from src.agents.deep_analyze_agent import build_role_outputs, compact_records
+from src.agents.deep_analyze_agent import build_role_outputs, build_rule_claims, compact_records
+from src.agents.multi_agent_orchestrator import _verifier_valuation_payload
 from src.agents.final_answer_agent import (
     _claims_to_markdown_bullets,
     _filter_reportable_claims,
@@ -416,6 +417,59 @@ def test_deep_analyze_role_outputs_have_required_schema():
     assert "收入" in statement_text or "revenue" in statement_text
     assert "MSFT" in peer_text
     assert "估值" in valuation_text or "Valuation" in valuation_text
+
+
+def test_rule_claims_bind_governance_to_sec_proxy_instead_of_profile_gap():
+    claims = build_rule_claims(
+        records=[
+            {
+                "evidence_id": "profile_aapl",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "source_type": "company_profile",
+                "content": "Designs and sells consumer devices, software, and services.",
+                "metadata": {"company_name": "Apple Inc.", "symbol": "AAPL"},
+            },
+            {
+                "evidence_id": "sec_proxy_aapl_fy2024",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "source_type": "sec_proxy",
+                "content": (
+                    "Audit and Finance Committee Report; Security Ownership of Certain Beneficial Owners "
+                    "and Management; Equity Compensation Plan Information."
+                ),
+            },
+        ],
+        ratio_rows=[],
+        trend_rows=[],
+        expected_period="FY2024",
+    )
+
+    governance = next(claim for claim in claims if claim.section_name == "ownership_governance")
+
+    assert governance.evidence_ids == ["sec_proxy_aapl_fy2024"]
+    assert governance.citation_evidence_ids == ["sec_proxy_aapl_fy2024"]
+    assert "SEC 委托书" in governance.claim_text
+    assert "需关注治理结构" not in governance.claim_text
+
+
+def test_verifier_valuation_payload_preserves_complete_wrapper_and_rebuilds_persisted_model():
+    complete = {"valuation_available": True, "valuation_model": {"relative_valuation": {"multiples": {}}}}
+    assert _verifier_valuation_payload({"valuation": complete}) is complete
+
+    rebuilt = _verifier_valuation_payload({
+        "valuation_model": {
+            "valuation_status": "available",
+            "relative_valuation": {"multiples": {"pe": {}}},
+            "dcf_model": {"assumptions": {}},
+        },
+        "valuation_sensitivity": {"scenario_values": {}},
+    })
+
+    assert rebuilt["valuation_available"] is True
+    assert rebuilt["valuation_model"]["valuation_status"] == "available"
+    assert "valuation_sensitivity" in rebuilt
 
 
 def test_analysis_role_agents_write_only_authorized_blackboard_fields():

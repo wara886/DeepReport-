@@ -180,6 +180,29 @@ DEFAULT_PROFILE = {
 }
 
 
+def _verifier_valuation_payload(analysis_artifacts: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Return the complete valuation wrapper expected by valuation_audit."""
+    analysis = analysis_artifacts if isinstance(analysis_artifacts, dict) else {}
+    valuation = analysis.get("valuation") if isinstance(analysis.get("valuation"), dict) else {}
+    if "valuation_available" in valuation:
+        return valuation
+
+    model = analysis.get("valuation_model") if isinstance(analysis.get("valuation_model"), dict) else {}
+    if not model:
+        return {}
+    available = str(model.get("valuation_status") or "").lower() == "available" or bool(
+        model.get("relative_valuation") or model.get("dcf_model")
+    )
+    payload: Dict[str, Any] = {
+        "valuation_available": available,
+        "valuation_model": model,
+    }
+    sensitivity = analysis.get("valuation_sensitivity")
+    if isinstance(sensitivity, dict):
+        payload["valuation_sensitivity"] = sensitivity
+    return payload
+
+
 class MultiAgentOrchestrator:
     """Run the first visible financial multi-agent workflow."""
 
@@ -1388,7 +1411,7 @@ class MultiAgentOrchestrator:
                     "evidence_records": evidence_records,
                     "charts": charts,
                     "tables": analysis_artifacts.get("tables", []) if isinstance(analysis_artifacts, dict) else [],
-                    "valuation": analysis_artifacts.get("valuation", {}) if isinstance(analysis_artifacts, dict) else {},
+                    "valuation": _verifier_valuation_payload(analysis_artifacts),
                     "conversation_brief": conversation_brief,
                     "skill_brief": self._skill_brief("verify evidence gaps citations lineage", "verifier", max_items=2),
                     "expected_symbol": symbol,
@@ -2445,7 +2468,7 @@ class MultiAgentOrchestrator:
                         "evidence_records": list(state.get("evidence_records", [])),
                         "charts": list(state.get("charts", [])),
                         "tables": dict(state.get("analysis_artifacts", {})).get("tables", []),
-                        "valuation": dict(state.get("analysis_artifacts", {})).get("valuation", {}),
+                        "valuation": _verifier_valuation_payload(dict(state.get("analysis_artifacts", {}))),
                         "conversation_brief": refresh_conversation_brief(state),
                         "expected_symbol": str(state.get("symbol", "")),
                         "period": str(state.get("period", "")),
@@ -2810,7 +2833,7 @@ class MultiAgentOrchestrator:
                     "evidence_records": list(state.get("evidence_records", [])),
                     "charts": list(state.get("charts", [])),
                     "tables": analysis.get("tables", []),
-                    "valuation": analysis.get("valuation", {}),
+                    "valuation": _verifier_valuation_payload(analysis),
                     "conversation_brief": refresh_conversation_brief(state),
                     "expected_symbol": str(state.get("symbol", "")),
                     "period": str(state.get("period", "")),

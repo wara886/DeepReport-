@@ -5,6 +5,42 @@
 > Branch: `release/fin-research-workbench-v2`  
 > Scope: continue Stage 3 runtime artifact ownership without repeating earlier audits.
 
+## Stage 3 completion update
+
+Stage 3 is complete on 2026-07-14. The final isolated acceptance task was:
+
+```text
+task_id: release-stage3-ready-aapl-aapl-fy2024-20260714t135156z
+status: completed
+quality_score: 0.9554
+delivery_pass: true
+machine_quality_pass: true
+run_manifest.status: ready
+stale_artifacts: {}
+```
+
+The report remains pending human review, so the production-baseline summary correctly reports
+`formal_delivery=false`; this is not a machine-quality failure.
+
+Final fixes included:
+
+- Risk Claim evidence IDs from SEC Item 7A are owned by the risk section contract and appear in the final citations and bibliography.
+- Objective claim-citation checks now honor explicit `citation_evidence_ids`, matching CitationBinder and Verifier behavior.
+- Mixed-period evidence is detected chronologically and disclosed with its exact scope and impact when a later company-profile snapshot exists.
+- Governance Claims bind to SEC proxy evidence instead of turning missing company-profile fields into unsupported governance assertions.
+- All verifier and rework paths receive a complete valuation payload; the accepted AAPL artifacts pass real relative-valuation, DCF, and sensitivity arithmetic checks.
+
+Final verification:
+
+```text
+Stage 3 focused selection: 114 passed
+Report/contract/quality focused selection: 91 passed
+git diff --check: passed
+```
+
+Next work is Stage 4: run clean isolated FY2024 regressions for AAPL, NVDA, and MSFT,
+then expand to representative A-share and Hong Kong cases. Runtime data and secrets remain local only.
+
 ## Completed and pushed
 
 ### Stage 1

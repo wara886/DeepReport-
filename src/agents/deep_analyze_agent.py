@@ -359,6 +359,7 @@ def build_rule_claims(
     valuation = valuation or {}
     financial_evidence_ids = _financial_evidence_ids(records, statement_view=statement_view, expected_period=expected_period)
     profile_evidence_ids = _source_evidence_ids(records, {"company_profile"})
+    governance_evidence_ids = _source_evidence_ids(records, {"sec_proxy", "proxy_statement"})
     filing_evidence_ids = _source_evidence_ids(records, {"filing"})
     market_evidence_ids = _source_evidence_ids(records, {"market", "market_api"})
     profile_record = _first_record_by_source(records, {"company_profile"})
@@ -388,21 +389,38 @@ def build_rule_claims(
             str(profile_meta.get("management") or ""),
         ]
         governance_text = "；".join(item for item in governance_fields if item.strip())
-        if not governance_text:
-            governance_text = "当前本地 company_profile 尚未披露股权结构、董事会或管理层明细，需后续接入年报/DEF14A/公告表格补全。"
-        claims.append(
-            ClaimItem(
-                claim_id=f"cl_{claim_index:04d}",
-                section_name="ownership_governance",
-                claim_text=f"{company_name} 的股权结构与公司治理信息：{governance_text}",
-                evidence_ids=profile_evidence_ids,
-                numeric_values={},
-                risk_level="medium",
-                confidence=0.66 if "尚未披露" in governance_text else 0.76,
-                notes="治理信息由 company_profile 字段生成；缺失时显式标记数据缺口。",
+        if governance_evidence_ids:
+            claims.append(
+                ClaimItem(
+                    claim_id=f"cl_{claim_index:04d}",
+                    section_name="ownership_governance",
+                    claim_text=(
+                        f"{company_name} 的治理分析以 SEC 委托书为主要依据，覆盖董事会议案、"
+                        "审计与财务委员会报告、主要股东及管理层持股和股权激励计划等披露。"
+                    ),
+                    evidence_ids=governance_evidence_ids,
+                    citation_evidence_ids=governance_evidence_ids,
+                    numeric_values={},
+                    risk_level="medium",
+                    confidence=0.82,
+                    notes="治理信息由 SEC proxy statement 生成。",
+                )
             )
-        )
-        claim_index += 1
+            claim_index += 1
+        elif governance_text:
+            claims.append(
+                ClaimItem(
+                    claim_id=f"cl_{claim_index:04d}",
+                    section_name="ownership_governance",
+                    claim_text=f"{company_name} 的股权结构与公司治理信息：{governance_text}",
+                    evidence_ids=profile_evidence_ids,
+                    numeric_values={},
+                    risk_level="medium",
+                    confidence=0.76,
+                    notes="治理信息由 company_profile 的显式治理字段生成。",
+                )
+            )
+            claim_index += 1
 
     pdf_claims, claim_index = _build_pdf_section_claims(records=records, start_index=claim_index, expected_period=expected_period)
     claims.extend(pdf_claims)
@@ -914,12 +932,6 @@ def build_rule_claims(
 def _normalize_statement_claim_units(claims: List[ClaimItem]) -> List[ClaimItem]:
     for claim in claims:
         if claim.section_name != "financial_statements":
-            if claim.section_name == "ownership_governance" and any(term in claim.claim_text for term in ["尚未", "暂无", "未从当前公开来源"]):
-                symbol = claim.claim_text.split(" ", 1)[0] if claim.claim_text else "Company"
-                claim.claim_text = (
-                    f"{symbol} 需关注治理结构相关的董事会监督、股权结构和激励机制，"
-                    "上述因素可能对公司长期战略执行产生重要影响。"
-                )
             continue
         net_income = claim.numeric_values.get("net_income_billion")
         free_cash_flow = claim.numeric_values.get("free_cash_flow_billion")

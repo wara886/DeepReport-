@@ -208,7 +208,8 @@ def build_report_section_contracts(
     _build_valuation_sensitivity(contracts, valuation_model, valuation_sensitivity)
     _build_risk_factors(contracts, pdf_section_summaries, pdf_section_chunks,
                         evidence_records, analysis_artifacts, state,
-                        annual_report_sections=annual_report_sections)
+                        annual_report_sections=annual_report_sections,
+                        claims=claims)
     _build_investment_conclusion(contracts, financial_metrics, valuation_model, evidence_records, financial_evidence_ids)
     _build_period_note(contracts, period_info)
     _build_currency_data_quality(contracts, analysis_artifacts)
@@ -1058,6 +1059,7 @@ def _build_risk_factors(
     analysis_artifacts: Dict[str, Any],
     state: Dict[str, Any],
     annual_report_sections: List[Dict[str, Any]] = None,
+    claims: List[Dict[str, Any]] | None = None,
 ) -> None:
     c = contracts.ensure("risk_factors")
     c.allowed_source_types = list(ALLOWED_QUALITATIVE_PDF_ONLY | {SRC_INDUSTRY_POLICY})
@@ -1177,6 +1179,33 @@ def _build_risk_factors(
             c.add_blocked_reason("risk_official_pdf_not_found_and_no_industry_fallback")
             c.add_quality_flag("risk_generic_fallback_no_industry_policy")
 
+    # Risk claims are verified individually, so every available evidence ID
+    # attached to a risk claim must be part of the section citation contract.
+    # Otherwise the evidence pack can carry the claims as supporting context
+    # while CitationBinder has no ownership of their final Markdown citations.
+    evidence_by_id = {
+        str(record.get("evidence_id") or record.get("sample_id") or ""): record
+        for record in evidence_records
+        if isinstance(record, dict)
+    }
+    forbidden = set(c.forbidden_source_types)
+    for claim in claims or []:
+        if not isinstance(claim, dict):
+            continue
+        section_name = str(claim.get("section_name") or claim.get("section_key") or "").strip().lower()
+        if section_name not in {"risk", "risks", "risk_factors"}:
+            continue
+        for raw_evidence_id in claim.get("evidence_ids") or []:
+            evidence_id = str(raw_evidence_id or "").strip()
+            record = evidence_by_id.get(evidence_id)
+            if not evidence_id or record is None:
+                continue
+            source_type = str(record.get("source_type") or "").strip().lower()
+            if source_type in forbidden:
+                continue
+            if evidence_id not in c.citation_evidence_ids:
+                c.citation_evidence_ids.append(evidence_id)
+
 
 def _build_investment_conclusion(
     contracts: ReportSectionContracts,
@@ -1231,9 +1260,19 @@ def _build_period_note(
     latest = period_info.get("latest_available_period", "")
     target = period_info.get("target_period", "")
     mismatch = period_info.get("period_mismatch", False)
+    latest_source_types = {
+        str(item or "").strip().lower()
+        for item in period_info.get("latest_period_source_types", [])
+        if str(item or "").strip()
+    }
+    profile_only_mismatch = bool(mismatch and latest_source_types) and latest_source_types <= {
+        "company_profile",
+        "yahoo_profile",
+    }
 
     if latest:
-        c.add_fact("latest_period", f"最新可得披露数据期：{latest}",
+        latest_label = "非目标期公司资料快照" if profile_only_mismatch else "最新可得披露数据期"
+        c.add_fact("latest_period", f"{latest_label}：{latest}",
                    source_types=[SRC_FINANCIAL_METRIC])
         c.status = "supported"
     else:
@@ -1242,6 +1281,25 @@ def _build_period_note(
 
     if mismatch:
         c.add_quality_flag("period_mismatch")
+        mismatch_scope = (
+            f"{latest} 记录仅为公司资料快照，不包含本报告采用的财务数值或目标期事件"
+            if profile_only_mismatch
+            else f"证据中还包含 {latest} 的非目标期资料"
+        )
+        c.add_fact(
+            "period_mismatch_disclosure",
+            (
+                f"目标报告期为 {target}；{mismatch_scope}。"
+                f"收入、利润、现金流、资产负债、估值输入和投资结论均严格采用 {target} 口径；"
+                "非目标期资料不参与跨期比较，也不改变本报告结论。"
+            ),
+            source_types=[SRC_FINANCIAL_METRIC],
+        )
+        c.deterministic_text = (
+            f"目标报告期：{target}。{mismatch_scope}。"
+            f"口径影响：收入、利润、现金流、资产负债、估值输入和投资结论均严格采用 {target} 数据；"
+            "非目标期资料不用于替代目标期财务数据、不参与跨期比较，也不改变本报告结论。"
+        )
 
 
 def _investment_direction(financial_metrics: Dict[str, Any], valuation_model: Dict[str, Any]) -> str:
@@ -1818,39 +1876,49 @@ def _detect_period(
     """Detect the latest available period from all sources."""
     target_period = str(state.get("period", "") or "").upper()
     periods: List[str] = []
+    period_source_types: Dict[str, set[str]] = {}
+
+    def _record_period(period: str, source_type: str) -> None:
+        if not period:
+            return
+        if period not in periods:
+            periods.append(period)
+        if source_type:
+            period_source_types.setdefault(period, set()).add(source_type.strip().lower())
 
     # From financial_metrics
     metrics_list = financial_metrics.get("metrics", []) if isinstance(financial_metrics, dict) else []
     for m in metrics_list if isinstance(metrics_list, list) else []:
         if isinstance(m, dict):
             p = str(m.get("period", "") or "").strip().upper()
-            if p and p not in periods:
-                periods.append(p)
+            _record_period(p, str(m.get("source_type") or "financial_metric"))
 
     # From tables
     for table in tables if isinstance(tables, list) else []:
         if isinstance(table, dict):
             p = str(table.get("period", "") or "").strip().upper()
-            if p and p not in periods:
-                periods.append(p)
+            _record_period(p, str(table.get("source_type") or "financial_table"))
             for row in (table.get("rows", []) if isinstance(table.get("rows"), list) else []):
                 if isinstance(row, dict):
                     p = str(row.get("period", "") or "").strip().upper()
-                    if p and p not in periods:
-                        periods.append(p)
+                    _record_period(p, str(row.get("source_type") or "financial_table"))
 
     # From evidence_records
     for rec in evidence_records if isinstance(evidence_records, list) else []:
         if isinstance(rec, dict):
             p = str(rec.get("period", "") or "").strip().upper()
-            if p and p not in periods:
-                periods.append(p)
+            _record_period(p, str(rec.get("source_type") or "evidence"))
 
-    # Sort: FY periods first (FY2025 > FY2024), then quarterly
-    fy_periods = sorted([p for p in periods if p.startswith("FY")], reverse=True)
-    q_periods = sorted([p for p in periods if not p.startswith("FY")], reverse=True)
-    all_sorted = fy_periods + q_periods
-    latest = all_sorted[0] if all_sorted else ""
+    def _period_sort_key(period: str) -> tuple[int, int]:
+        fy_match = re.fullmatch(r"FY(20\d{2})", period)
+        if fy_match:
+            return int(fy_match.group(1)), 4
+        quarter_match = re.fullmatch(r"(20\d{2})Q([1-4])", period)
+        if quarter_match:
+            return int(quarter_match.group(1)), int(quarter_match.group(2))
+        return 0, 0
+
+    latest = max(periods, key=_period_sort_key) if periods else ""
 
     result: Dict[str, Any] = {
         "target_period": target_period,
@@ -1858,6 +1926,7 @@ def _detect_period(
         "period_mismatch": False,
         "period_conflicts": [],
         "available_periods": periods,
+        "latest_period_source_types": sorted(period_source_types.get(latest, set())),
     }
 
     if target_period and latest and target_period != latest:

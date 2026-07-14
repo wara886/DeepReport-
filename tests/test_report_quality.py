@@ -1290,6 +1290,34 @@ def test_claim_citation_policy_accepts_canonical_root_for_recursive_chunk(tmp_pa
     assert not any(issue["category"] == "claim_citation_policy" for issue in report["issues"])
 
 
+def test_claim_citation_policy_honors_explicit_citation_evidence_ownership(tmp_path):
+    run_dir = _write_run(
+        tmp_path,
+        report_md=(
+            "# AAPL\n\n## 执行摘要\n\nApple overview [sec_10k_aapl_fy2024_business_1].\n\n"
+            "## 财务分析\n\nRevenue analysis.\n\n## 风险评估\n\nRisk analysis.\n"
+        ),
+        claims=[{
+            "claim_id": "cl_owned",
+            "claim_text": "Apple overview",
+            "evidence_ids": ["sec_10k_aapl_fy2024_business_1", "fred_dgs10_20241231"],
+            "citation_evidence_ids": ["sec_10k_aapl_fy2024_business_1"],
+            "confidence": 0.9,
+        }],
+        citations=[{"evidence_id": "sec_10k_aapl_fy2024_business_1", "claim_ids": ["cl_owned"]}],
+        evidence=[
+            {"evidence_id": "sec_10k_aapl_fy2024_business_1", "source_type": "sec_edgar", "trust_level": "primary"},
+            {"evidence_id": "fred_dgs10_20241231", "source_type": "macro", "trust_level": "secondary"},
+        ],
+        symbol="AAPL",
+        period="FY2024",
+    )
+
+    report = evaluate_report_quality(run_dir)
+
+    assert not any(issue["category"] == "claim_citation_policy" for issue in report["issues"])
+
+
 def test_content_depth_gate_flags_sparse_sections(tmp_path):
     """Short sections without data_gap flag -> content_depth issues."""
     run_dir = _write_run_with_dossiers(

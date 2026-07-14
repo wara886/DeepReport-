@@ -44,6 +44,46 @@ def test_cny_billion_values_render_as_hundred_million_yuan():
     assert _format_billion_value(1513.836, context) == "15138.36 亿元人民币"
 
 
+def test_period_note_discloses_later_company_snapshot_without_replacing_target_financial_period():
+    contracts = build_report_section_contracts(
+        state={"symbol": "AAPL", "period": "FY2024"},
+        evidence_records=[
+            {
+                "evidence_id": "aapl_profile_2025q4",
+                "source_type": "company_profile",
+                "period": "2025Q4",
+                "content": "Apple designs and sells consumer devices and related services.",
+            }
+        ],
+        analysis_artifacts={
+            "financial_metrics": {
+                "metrics": [
+                    {
+                        "metric_name": "revenue",
+                        "value": 391_035_000_000,
+                        "period": "FY2024",
+                        "source_evidence_id": "sec_companyfacts_aapl_fy2024",
+                    }
+                ]
+            }
+        },
+        section_dossiers={},
+        citations=[],
+    )
+
+    period_note = contracts.get("period_note")
+
+    assert contracts.metadata["latest_available_period"] == "2025Q4"
+    assert contracts.metadata["period_mismatch"] is True
+    assert period_note is not None
+    assert contracts.metadata["latest_period_source_types"] == ["company_profile"]
+    assert "仅为公司资料快照" in period_note.deterministic_text
+    assert "估值输入和投资结论均严格采用 FY2024 数据" in period_note.deterministic_text
+    assert "不改变本报告结论" in period_note.deterministic_text
+    assert "2025Q4" in period_note.deterministic_text
+    assert "period_mismatch" in period_note.quality_flags
+
+
 # ── helpers ─────────────────────────────────────────────────────────────
 
 
@@ -318,6 +358,50 @@ class TestContractBuilder:
         assert risk.facts[0].evidence_ids == ["risk_pdf_001"]
         assert "risk_uses_official_pdf" in risk.quality_flags
         assert "risk_fallback_no_official_pdf" not in risk.quality_flags
+
+    def test_risk_contract_owns_all_available_claim_evidence_citations(self):
+        contracts = ReportSectionContracts()
+        evidence_records = [
+            _make_evidence_record("sec_10k_section", "sec_risk_item_1a"),
+            _make_evidence_record("sec_10k_section", "sec_market_risk_1"),
+            _make_evidence_record("sec_10k_section", "sec_market_risk_2"),
+            _make_evidence_record("income_table", "forbidden_financial_table"),
+        ]
+        claims = [
+            {"claim_id": "cl_1", "section_name": "risks", "evidence_ids": ["sec_risk_item_1a"]},
+            {"claim_id": "cl_2", "section_name": "risks", "evidence_ids": ["sec_market_risk_1"]},
+            {"claim_id": "cl_3", "section_name": "risk_factors", "evidence_ids": ["sec_market_risk_2"]},
+            {"claim_id": "cl_4", "section_name": "risks", "evidence_ids": ["forbidden_financial_table"]},
+        ]
+
+        _build_risk_factors(
+            contracts,
+            [],
+            [],
+            evidence_records,
+            {},
+            {"symbol": "AAPL", "period": "FY2024"},
+            claims=claims,
+        )
+
+        risk = contracts.get("risk_factors")
+        assert risk is not None
+        assert risk.citation_evidence_ids == [
+            "sec_risk_item_1a",
+            "sec_market_risk_1",
+            "sec_market_risk_2",
+        ]
+        assert "forbidden_financial_table" not in risk.citation_evidence_ids
+
+        binder = CitationBinder(evidence_records)
+        binder.bind_all(contracts)
+        markdown = binder.inject_bound_citations("# 研报\n\n## 风险评估\n\n市场风险分析。", contracts)
+        assert set(binder.get_citation_map()) == {
+            "sec_risk_item_1a",
+            "sec_market_risk_1",
+            "sec_market_risk_2",
+        }
+        assert "[1, 2, 3]" in markdown
 
     def test_governance_missing_has_specific_blocker(self):
         """Governance gap should have specific blocked_reason, not a generic one."""

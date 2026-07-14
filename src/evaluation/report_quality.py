@@ -1626,6 +1626,10 @@ def _period_alignment_score(artifacts: Dict[str, Any], issues: List[Dict[str, An
                 "disclosure_period",
                 "source_period",
                 "data_cutoff",
+                "数据滞后",
+                "数据延迟",
+                "期间不一致",
+                "数据期与目标期不一致",
             ),
         )
         severity = "warning" if has_delay_note else "blocker"
@@ -1843,7 +1847,10 @@ def _check_claim_citation_policy(artifacts: Dict[str, Any], issues: List[Dict[st
     for claim in claims:
         if not isinstance(claim, dict):
             continue
-        for eid in claim.get("evidence_ids") or []:
+        # Claims may retain broad supporting/context evidence while explicitly
+        # assigning a smaller authoritative subset to final citations.
+        bound_evidence_ids = claim.get("citation_evidence_ids") or claim.get("evidence_ids") or []
+        for eid in bound_evidence_ids:
             evidence_id = str(eid or "").strip()
             if not evidence_id:
                 continue

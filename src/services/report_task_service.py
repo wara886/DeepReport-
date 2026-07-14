@@ -484,6 +484,15 @@ class ReportTaskService:
         claims = _read_json_list(output_dir / "claims.json")
         evidence = _read_json_list(output_dir / "evidence.json")
         markdown = (report_dir / "report.md").read_text(encoding="utf-8") if (report_dir / "report.md").exists() else ""
+        valuation_model = _read_json_object(output_dir / "valuation_model.json")
+        valuation_payload = {
+            "valuation_available": (
+                str(valuation_model.get("valuation_status") or "").lower() == "available"
+                or bool(valuation_model.get("relative_valuation") or valuation_model.get("dcf_model"))
+            ),
+            "valuation_model": valuation_model,
+            "valuation_sensitivity": _read_json_object(output_dir / "valuation_sensitivity.json"),
+        } if valuation_model else {}
         adapter = _build_role_model_adapter(
             config_path=self.config_path,
             role="verifier",
@@ -500,7 +509,7 @@ class ReportTaskService:
                     "evidence_records": evidence,
                     "charts": _read_json_list(output_dir / "charts.json"),
                     "tables": _read_json_list(output_dir / "tables.json"),
-                    "valuation": _read_json_object(output_dir / "valuation_model.json"),
+                    "valuation": valuation_payload,
                     "expected_symbol": metadata.get("symbol"),
                     "period": metadata.get("period"),
                 },
