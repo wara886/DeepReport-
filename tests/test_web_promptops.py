@@ -14,3 +14,5 @@ def test_workbench_promptops_exposes_custom_test_inputs():
     assert "manual_test_evidence" in html
     assert "task_id: taskId" in html
     assert "model_role: promptModuleValue(roleText) || \"verifier\"" in html
+    assert "function promptTestSupported" in html
+    assert "不会用模拟模型伪造测试结果" in html

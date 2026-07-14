@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session, selectinload
 
 from src.agents.verifier import Verifier
 from src.db.models import PromptTemplate, PromptVersion
-from src.generation.backend_mock import MockGenerationBackend
 from src.llm.harness import LLMHarness
 from src.schemas.claim import ClaimItem
 
@@ -144,6 +143,10 @@ class PromptOpsService:
         input_payload = _dict_or_none(payload.get("input")) or {}
         prompt = _render_prompt(active["content"], input_payload)
         backend = payload.get("backend") or _module_backend(prompt_key=prompt_key, module=template.get("module"), input_payload=input_payload)
+        if backend is None and self.harness_factory is None:
+            raise PromptOpsConflict(
+                f"Prompt test execution is not connected for module: {template.get('module') or prompt_key}"
+            )
         harness = self._harness(backend=backend)
         result = harness.run_prompt(
             prompt_key=prompt_key,
@@ -204,7 +207,9 @@ class PromptOpsService:
     def _harness(self, *, backend: Any | None) -> LLMHarness:
         if self.harness_factory:
             return self.harness_factory(backend=backend)
-        return LLMHarness(session_factory=self.session_factory, backend=backend or MockGenerationBackend())
+        if backend is None:
+            raise PromptOpsConflict("Prompt test execution requires a bound runtime backend")
+        return LLMHarness(session_factory=self.session_factory, backend=backend)
 
 
 class ClaimVerifierPromptBackend:

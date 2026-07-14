@@ -55,8 +55,10 @@ contracts first and treat legacy fields as compatibility projections.
   same evidence identity and period contracts.
 - Persistent vector storage may be shared, but the default collection is
   isolated by curated source root, symbol, and period.
-- BM25, dense, and graph hits are fused by `identity_key`, so alternate adapter
+- BM25 and dense hits are fused by `identity_key`, so alternate adapter
   IDs for the same evidence do not inflate retrieval coverage.
+- The entity-relation graph is a persisted analysis and navigation view. It is
+  not a retrieval backend until an evidence-scored graph query is implemented.
 - `hash_fallback` is an explicit degraded embedding backend. Its score may keep
   retrieval available, but it must not be reported as semantic similarity.
 - Diagnostics distinguish source absence, no candidates, no hits, low semantic

@@ -296,13 +296,11 @@ def render_workbench_html() -> str:
     .choice:hover { border-color: var(--accent); color: var(--accent); }
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--line); background: #fbfcfd; }
     .form-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
-    .placeholder-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .placeholder { min-height: 136px; display: grid; align-content: center; gap: 8px; }
     @media (max-width: 1100px) {
       .app { grid-template-columns: 1fr; }
       .sidebar { position: static; height: auto; display: block; }
       .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-      .work-layout, .dashboard-layout, .dashboard-charts, .cards, .placeholder-grid { grid-template-columns: 1fr; }
+      .work-layout, .dashboard-layout, .dashboard-charts, .cards { grid-template-columns: 1fr; }
       .status-groups { grid-template-columns: 1fr; }
       .logic-flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .detail { position: static; max-height: none; }
@@ -1958,7 +1956,10 @@ def render_workbench_html() -> str:
       else if (view === "graph") loadRelations();
       else if (view === "evaluation") loadEvaluation();
       else if (view === "export") loadExports();
-      else renderPlaceholder(view);
+      else {
+        showNotice("未找到对应工作区，已返回投研首页。", "error");
+        if (view !== "dashboard") activateView("dashboard");
+      }
     }
 
     function setFormLabelsActive(container, active) {
@@ -2825,7 +2826,6 @@ def render_workbench_html() -> str:
         </div>
         <div>
           <div class="legend">${legend}</div>
-          ${realRows.length ? "" : `<div class="chart-note">${esc(options.demoNote || "暂无真实统计，当前显示流程示意。")}</div>`}
         </div>
       </div>`;
     }
@@ -2839,15 +2839,7 @@ def render_workbench_html() -> str:
       renderDonutChart("dataSourceChart", sourceRows, {
         centerLabel: "来源",
         emptyText: "暂无数据源统计",
-        demoNote: "暂无真实数据源统计，当前显示示意分布；示意分布不代表当前空间真实数据。",
         actions: [{ label: "配置数据源", view: "datasources", className: "primary" }],
-        demoRows: [
-          { label: "美国证监会年报", value: 35, color: chartColors[0] },
-          { label: "雅虎财经", value: 20, color: chartColors[1] },
-          { label: "巨潮资讯", value: 18, color: chartColors[2] },
-          { label: "港交所公告", value: 12, color: chartColors[3] },
-          { label: "本地文档", value: 15, color: chartColors[4] },
-        ],
       });
 
       const totalClaims = Number(summary.claim_count || 0);
@@ -2861,14 +2853,7 @@ def render_workbench_html() -> str:
       ], {
         centerLabel: "主张",
         emptyText: "暂无主张统计",
-        demoNote: "暂无真实主张统计，当前显示示意分布；示意分布不代表当前空间真实数据。",
         actions: [{ label: "生成新研报", view: "tasks", className: "primary" }],
-        demoRows: [
-          { label: "已校验", value: 58, color: chartColors[1] },
-          { label: "待复核", value: 14, color: chartColors[2] },
-          { label: "引用缺失", value: 7, color: chartColors[3] },
-          { label: "数字冲突", value: 5, color: chartColors[4] },
-        ],
       });
     }
 
@@ -4810,7 +4795,7 @@ def render_workbench_html() -> str:
               <td><span class="status ${item.is_active ? "completed" : "archived"}">${esc(item.is_active ? "启用中" : "已停用")}</span></td>
               <td>${esc(item.active_version ? "v" + item.active_version : "-")}</td>
               <td>${Object.keys(item.schema || {}).length ? `<span class="status completed">已配置</span>` : `<span class="status pending">未配置</span>`}</td>
-              <td><button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button></td>
+              <td>${promptTestSupported(item) ? `<button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button>` : `<span class="label">仅版本管理</span>`}</td>
             </tr>`).join("")
           : `<tr><td colspan="6"><div class="empty">暂无提示词模板</div></td></tr>`;
         document.querySelectorAll("[data-prompt-detail]").forEach((btn) => btn.addEventListener("click", () => loadPromptDetail(btn.dataset.promptDetail)));
@@ -4858,9 +4843,9 @@ def render_workbench_html() -> str:
           <div class="detail-section"><h3>版本</h3>${
             (item.versions || []).length ? item.versions.map((version) => `<div class="event"><strong>v${esc(version.version)}</strong> ${version.is_active ? `<span class="status completed">活动</span>` : `<button class="btn" data-prompt-activate-version="${esc(version.id)}" data-prompt-key="${esc(item.prompt_key)}">设为活动</button>`}<br>${esc(version.changelog || "-")}</div>`).join("") : `<div class="empty">暂无版本</div>`
           }</div>
-          ${renderPromptTestPanel(item)}
+          ${promptTestSupported(item) ? renderPromptTestPanel(item) : `<div class="form-note">该模块尚未绑定可执行运行时；当前只提供版本管理，不会用模拟模型伪造测试结果。</div>`}
           ${systemInfoBlock("系统信息", [["提示词标识", item.prompt_key]])}
-          <div class="links"><button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button><button class="btn" data-prompt-active="${esc(item.prompt_key)}" data-active="${item.is_active ? "false" : "true"}">${item.is_active ? "停用模板" : "启用模板"}</button></div>`;
+          <div class="links">${promptTestSupported(item) ? `<button class="btn primary" data-prompt-test="${esc(item.prompt_key)}">测试运行</button>` : ""}<button class="btn" data-prompt-active="${esc(item.prompt_key)}" data-active="${item.is_active ? "false" : "true"}">${item.is_active ? "停用模板" : "启用模板"}</button></div>`;
         bindPromptTestButtons($("promptDetail"));
         bindPromptManagementButtons($("promptDetail"));
       } catch (error) {
@@ -4883,6 +4868,12 @@ def render_workbench_html() -> str:
           <div class="field full"><label for="promptTestEvidence">证据文本</label><textarea id="promptTestEvidence" rows="3">${esc(defaultEvidence)}</textarea></div>
         </div>
       </div>`;
+    }
+
+    function promptTestSupported(item) {
+      const key = String(item?.prompt_key || "").toLowerCase();
+      const module = String(item?.module || "").toLowerCase();
+      return key === "claim_verifier" && ["verifier", "claim_verifier"].includes(module);
     }
 
     function bindPromptTestButtons(root = document) {
@@ -5816,27 +5807,6 @@ def render_workbench_html() -> str:
       } catch (error) {
         $("claimDetail").insertAdjacentHTML("afterbegin", `<div class="error">操作失败，请稍后重试。</div>`);
       }
-    }
-
-    function renderPlaceholder(view) {
-      const meta = viewMeta[view] || [view, "待接入"];
-      const target = $(view);
-      if (!target || target.dataset.rendered === "true") return;
-      target.dataset.rendered = "true";
-      target.innerHTML = `<div class="grid placeholder-grid">
-        <div class="panel placeholder">
-          <h2>${esc(meta[0])}</h2>
-          <div class="empty">${esc(meta[1])}</div>
-        </div>
-        <div class="panel placeholder">
-          <h2>数据契约</h2>
-          <div class="empty">等待规划中的接口和数据库表接入。</div>
-        </div>
-        <div class="panel placeholder">
-          <h2>追踪链路</h2>
-          <div class="empty">该模块后续会回链到稳定的任务、文档、证据、主张或产物编号。</div>
-        </div>
-      </div>`;
     }
 
     async function refreshWithFeedback(button, action) {

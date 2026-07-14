@@ -49,11 +49,10 @@ def test_promptops_api_crud_active_version_and_test_run(tmp_path):
     assert version.json()["version"] == 2
     assert active.status_code == 200
     assert active.json()["version"] == 2
-    assert test_run.status_code == 200
-    assert test_run.json()["prompt_version_id"] == active.json()["id"]
-    assert test_run.json()["schema_valid"] is True
+    assert test_run.status_code == 409
+    assert "not connected" in test_run.json()["error"]
     assert llm_runs.status_code == 200
-    assert llm_runs.json()["total"] == 1
+    assert llm_runs.json()["total"] == 0
 
 
 def test_promptops_api_can_activate_version_and_disable_template(tmp_path):

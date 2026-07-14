@@ -28,7 +28,7 @@ def reciprocal_rank_fusion(
             fused[hit_id]["rrf_score"] = float(fused[hit_id].get("rrf_score", 0.0)) + score
             fused[hit_id]["rank_sources"].append(component)
             fused[hit_id]["component_ranks"][component] = rank
-            for key in ("bm25_score", "vector_score", "graph_score", "rerank_score"):
+            for key in ("bm25_score", "vector_score", "rerank_score"):
                 if key in hit and fused[hit_id].get(key) is None:
                     fused[hit_id][key] = hit.get(key)
 

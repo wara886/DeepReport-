@@ -286,14 +286,13 @@ def _retrieve_evidence_with_hybrid_layer(
     _add_component_score_stats(meta, hits)
     if log:
         logger.info(
-            "retrieval | mode=%s | effective=%s | query=\"%s\" | hits=%d | bm25=%d | dense=%d | graph=%d",
+            "retrieval | mode=%s | effective=%s | query=\"%s\" | hits=%d | bm25=%d | dense=%d",
             meta["mode"],
             meta.get("mode_effective"),
             query[:80],
             len(hits),
             meta.get("bm25_hit_count", 0),
             meta.get("dense_hit_count", 0),
-            meta.get("graph_hit_count", 0),
         )
     top_scores = [float(h.get("final_score", 0.0) or 0.0) for h in hits[:3]]
     if top_scores:

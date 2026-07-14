@@ -1,16 +1,3 @@
-sources:
-  market:
-    mode: mock
-    local_path: data/raw/mock/market.jsonl
-  financials:
-    mode: mock
-    local_path: data/raw/mock/financials.jsonl
-  news:
-    mode: mock
-    local_path: data/raw/mock/news.jsonl
-  filings:
-    mode: mock
-    local_path: data/raw/mock/filings.jsonl
 search:
   tavily:
     mode: remote

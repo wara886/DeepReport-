@@ -54,6 +54,9 @@ def test_hybrid_retriever_contract_returns_hits_and_meta(tmp_path):
     assert meta["mode_effective"] in {"hybrid", "bm25"}
     assert meta["bm25_hit_count"] >= 1
     assert meta["vector_hit_count"] == meta["dense_hit_count"]
+    assert "graph_hit_count" not in meta
+    assert "graph" not in meta
+    assert "graph_score" not in hits[0]
     assert meta["returned_hit_count"] >= 1
     assert meta["retrieval_available"] is True
     assert "vector_score_max" in meta
@@ -62,6 +65,18 @@ def test_hybrid_retriever_contract_returns_hits_and_meta(tmp_path):
     assert meta["coverage"]["returned_count"] == meta["returned_hit_count"]
     assert "financials" in meta["coverage"]["returned_sources"]
     assert meta["coverage"]["summary"]
+
+
+def test_hybrid_retriever_rejects_unimplemented_graph_mode(tmp_path):
+    curated = tmp_path / "curated"
+    write_curated_json(curated)
+
+    try:
+        HybridRetriever(curated_dir=str(curated)).search("revenue", mode="graph")
+    except ValueError as exc:
+        assert "Unsupported retrieval mode: graph" in str(exc)
+    else:
+        raise AssertionError("graph mode must not masquerade as a working retriever")
 
 
 def test_legacy_retrieve_evidence_with_mode_uses_hybrid_layer(tmp_path):

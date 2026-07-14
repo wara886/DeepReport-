@@ -19,6 +19,19 @@ The production path uses `data/finsight_workbench.db` for business state,
 `data/outputs_user` and `data/reports_user` for task artifacts, and
 `data/vector_db` for the local retrieval index.
 
+Production retrieval is BM25 plus BGE dense retrieval, followed by the
+configured reranker. The entity-relation graph is visible in the workbench but
+does not participate in RAG ranking. PromptOps test execution is available only
+for modules with a bound runtime executor; unbound templates remain version
+management records and return an explicit conflict instead of mock success.
+
+Dashboard charts render database aggregates only. Empty datasets render empty
+states and never substitute demonstration rows.
+
+The production datasource configuration contains remote/official adapters only.
+Mock file sources are confined to `configs/local_*.yaml`, test fixtures, and
+benchmark scripts.
+
 ## Non-Production Paths
 
 The following paths remain for compatibility, benchmarks, or controlled tests:

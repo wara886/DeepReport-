@@ -71,7 +71,8 @@ def test_workbench_p1_closure_copy_and_task_linkage_are_productized():
     assert "进入评测中心" in html
     assert "尚未沉淀证据" in html
     assert "主张通常来自研报产物导入" in html
-    assert "示意分布不代表当前空间真实数据" in html
+    assert "示意分布不代表当前空间真实数据" not in html
+    assert "demoRows" not in html
     assert "带有黄色提示的图表不计入真实 KPI" not in html
     assert "renderTaskLinkageOverview" in html
     assert "documentEvidenceEmptyState" in html
