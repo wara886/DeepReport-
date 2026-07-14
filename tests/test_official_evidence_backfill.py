@@ -105,6 +105,68 @@ def test_backfill_executor_keeps_hk_formal_blocked_without_official_announcement
     assert "period_matched_official_filing" in coverage["missing_requirements"]
 
 
+def test_backfill_executor_retries_transient_official_source_failure(tmp_path):
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    initial = build_official_evidence_artifacts([], symbol="MSFT", period="FY2024", tables=[])
+    (outputs / "official_evidence_backfill_plan.json").write_text(
+        json.dumps(initial["official_evidence_backfill_plan"], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    manager = TransientSecSearchManager()
+
+    result = execute_official_evidence_backfill(
+        symbol="MSFT",
+        period="FY2024",
+        output_dir=outputs,
+        search_manager=manager,
+    )
+
+    assert manager.calls == 2
+    assert result["acquired_record_count"] == 1
+    assert result["attempts"][0]["status"] == "success"
+    assert result["attempts"][0]["meta"]["retried_after_transient_failure"] is True
+
+
+def test_backfill_executor_uses_validated_archive_after_retries_fail(tmp_path):
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    initial = build_official_evidence_artifacts([], symbol="MSFT", period="FY2024", tables=[])
+    (outputs / "official_evidence_backfill_plan.json").write_text(
+        json.dumps(initial["official_evidence_backfill_plan"], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    archive_dir = tmp_path / "archive" / "us" / "msft" / "fy2024"
+    archive_dir.mkdir(parents=True)
+    archived = {
+        "evidence_id": "sec_companyfacts_msft_fy2024",
+        "symbol": "MSFT",
+        "period": "FY2024",
+        "source_type": "sec_companyfacts",
+        "title": "MSFT SEC company facts",
+        "content": "MSFT FY2024 official SEC company facts.",
+        "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json",
+        "metadata": {"provider": "SEC", "fy": 2024, "fp": "FY"},
+    }
+    (archive_dir / "2026-07-13_test_records.jsonl").write_text(
+        json.dumps(archived) + "\n",
+        encoding="utf-8",
+    )
+    manager = TransientSecSearchManager(always_fail=True)
+
+    result = execute_official_evidence_backfill(
+        symbol="MSFT",
+        period="FY2024",
+        output_dir=outputs,
+        search_manager=manager,
+        archive_root=tmp_path / "archive",
+    )
+
+    assert manager.calls == 2
+    assert result["acquired_record_count"] == 1
+    assert result["attempts"][0]["meta"]["archive_fallback_used"] is True
+
+
 def test_backfill_executor_rejects_wrong_company_hkex_pdf_before_pdf_derivation(monkeypatch, tmp_path):
     outputs = tmp_path / "outputs"
     outputs.mkdir()
@@ -166,6 +228,44 @@ def test_backfill_executor_rejects_fy_mismatched_structured_financials(tmp_path)
     assert result["intake_rejected_count"] >= 1
     assert any(item["reason"] == "source_period_mismatch" for item in result["intake_rejections"])
     assert not any(item.get("evidence_id") == "aapl_wrong_fy" for item in evidence)
+
+
+class TransientSecSearchManager:
+    def __init__(self, *, always_fail=False):
+        self.calls = 0
+        self.always_fail = always_fail
+
+    def search(self, query, topk=10, engines=None, **kwargs):
+        self.calls += 1
+        engine = engines[0]
+        if self.calls == 1 or self.always_fail:
+            return {
+                "hits": [],
+                "meta": {
+                    "engine_meta": {
+                        engine: {
+                            "record_count": 0,
+                            "failure_reason": "fetch_error",
+                            "error": "The handshake operation timed out",
+                        }
+                    }
+                },
+            }
+        return _payload(
+            engine,
+            [
+                {
+                    "evidence_id": "sec_companyfacts_msft_fy2024",
+                    "symbol": "MSFT",
+                    "period": "FY2024",
+                    "source_type": "sec_companyfacts",
+                    "title": "MSFT SEC company facts",
+                    "content": "MSFT FY2024 official SEC company facts.",
+                    "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json",
+                    "metadata": {"provider": "SEC", "fy": 2024, "fp": "FY"},
+                }
+            ],
+        )
 
 
 class FakeSearchManager:

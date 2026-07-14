@@ -681,7 +681,10 @@ class TestContractBuilder:
         sensitivity = contracts.get("valuation_sensitivity")
         assert sensitivity is not None
         assert sensitivity.status == "partial"
-        assert "盈利桥接（非DCF目标价）" in sensitivity.deterministic_text
+        assert "盈利桥接（非DCF、非权益估值" in sensitivity.deterministic_text
+        assert "净利润=88.14" in sensitivity.deterministic_text
+        assert "不代表股权价值、DCF结果或目标价" in sensitivity.deterministic_text
+        assert "权益价值=" not in sensitivity.deterministic_text
         assert "valuation_sensitivity_earnings_bridge_only" in sensitivity.quality_flags
 
     def test_valuation_sensitivity_states_value_and_target_price_units(self):

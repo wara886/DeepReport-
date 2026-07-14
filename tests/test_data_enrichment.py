@@ -621,7 +621,8 @@ def test_minimum_valuation_claims_compute_multiples_and_sensitivity():
     assert "当前市值/FY净利润倍数约为 100.0x" in text
     assert "混合当前市值与2026Q1利润口径" in text
     assert "P/B 约为 4.0x" in text
-    assert "P/S 约为 10.0x" in text
+    assert "当前市值/2026Q1收入倍数（P/S）约为 10.0x" in text
+    assert "混合当前市值与目标财期收入口径" in text
     assert "敏感性分析显示" in text
 
 
@@ -649,6 +650,8 @@ def test_minimum_valuation_claim_prefers_provider_trailing_pe_over_mixed_period_
     valuation = next(claim for claim in claims if claim.section_name == "valuation" and "P/E" in claim.claim_text)
 
     assert "当前市场滚动 P/E 约为 38.2x" in valuation.claim_text
+    assert "4631.22 十亿美元（约 4.63 万亿美元）" in valuation.claim_text
+    assert valuation.numeric_values["market_cap_billion"] == 4631.217307648
     assert "49.4" not in valuation.claim_text
     assert valuation.numeric_values["pe"] == 38.174335
     assert "market_aapl" in valuation.citation_evidence_ids

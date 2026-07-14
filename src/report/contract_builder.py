@@ -1040,9 +1040,15 @@ def _build_valuation_sensitivity(
             or valuation_model.get("currency")
             or ""
         ).replace("_billion", "").upper()
-        c.deterministic_text = _render_sensitivity_text(rows, currency=sensitivity_currency)
-        if str(valuation_sensitivity.get("method") or "") == "earnings_bridge":
-            c.deterministic_text = "盈利桥接（非DCF目标价）：\n" + c.deterministic_text
+        method = str(valuation_sensitivity.get("method") or "")
+        metric = str(valuation_sensitivity.get("metric") or "")
+        c.deterministic_text = _render_sensitivity_text(
+            rows,
+            currency=sensitivity_currency,
+            method=method,
+            metric=metric,
+        )
+        if method == "earnings_bridge":
             c.status = "partial"
             c.add_quality_flag("valuation_sensitivity_earnings_bridge_only")
         else:
@@ -2039,11 +2045,34 @@ def _render_peer_table_markdown(
     return "\n".join(lines)
 
 
-def _render_sensitivity_text(rows: List[Any], currency: str = "") -> str:
+def _render_sensitivity_text(
+    rows: List[Any],
+    currency: str = "",
+    method: str = "",
+    metric: str = "",
+) -> str:
     if not rows:
         return ""
     currency_labels = {"CNY": "十亿元人民币", "HKD": "十亿港元", "USD": "十亿美元"}
     value_unit = currency_labels.get(str(currency or "").upper(), "十亿计价货币")
+    if method == "earnings_bridge":
+        metric_label = "净利润" if metric in {"", "net_income_billion"} else metric
+        parts = [
+            f"盈利桥接（非DCF、非权益估值；{metric_label}单位：{value_unit}）：",
+        ]
+        for row in rows[:5]:
+            if not isinstance(row, dict):
+                continue
+            label = str(row.get("label") or row.get("scenario") or row.get("variable") or "")
+            value = row.get(metric) if metric else None
+            if value is None:
+                value = row.get("net_income_billion")
+            if value is None:
+                value = row.get("value")
+            if value is not None:
+                parts.append(f"- {label}: {metric_label}={value}")
+        parts.append("上述情景仅反映盈利弹性，不代表股权价值、DCF结果或目标价。")
+        return "\n".join(parts) if len(parts) > 2 else ""
     parts = [f"估值敏感性分析（权益价值单位：{value_unit}；目标价单位：每股计价货币）："]
     for row in rows[:5]:
         if isinstance(row, dict):

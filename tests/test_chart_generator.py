@@ -189,3 +189,30 @@ def test_generate_report_charts_uses_plain_metric_keys_and_peer_artifacts(tmp_pa
     assert "financial_scale_bar" in chart_ids
     assert "cash_flow_bar" in chart_ids
     assert "peer_compare_bar" in chart_ids
+
+
+def test_earnings_bridge_chart_is_not_labeled_as_equity_valuation(tmp_path):
+    artifacts = {
+        "valuation_sensitivity": {
+            "method": "earnings_bridge",
+            "metric": "net_income_billion",
+            "scenario_values": {
+                "bear": {"net_income_billion": 29.46, "value": 29.46},
+                "base": {"net_income_billion": 29.76, "value": 29.76},
+                "bull": {"net_income_billion": 30.06, "value": 30.06},
+            },
+        }
+    }
+
+    charts = generate_report_charts(
+        claims=[],
+        evidence_records=[],
+        output_dir=str(tmp_path),
+        analysis_artifacts=artifacts,
+    )
+
+    chart = next(item for item in charts if item["chart_id"] == "valuation_sensitivity_bar")
+    assert chart["title"] == "盈利敏感性（非估值）"
+    assert chart["chart_js"]["label"] == "净利润（十亿计价货币）"
+    assert chart["chart_js"]["labels"] == ["悲观情景", "基准情景", "乐观情景"]
+    assert chart["chart_js"]["data"] == [29.46, 29.76, 30.06]

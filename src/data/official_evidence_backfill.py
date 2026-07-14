@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from src.data.financial_statement_metrics import build_standard_financial_metrics, build_standard_table_artifacts
+from src.data.company_universe import infer_market_from_symbol
 from src.data.evidence_intake_gate import evidence_ids, filter_evidence_records, rejection_record
 from src.data.official_evidence_archive import build_official_evidence_artifacts
 from src.data.pdf_artifacts import build_pdf_artifacts
@@ -37,6 +38,7 @@ def execute_official_evidence_backfill(
     pdf_cache_dir: str | Path | None = None,
     max_pdfs: int = 1,
     max_pdf_pages: int = 20,
+    archive_root: str | Path = "data/evidence_archive",
 ) -> dict[str, Any]:
     """Run source-specific searches and write official evidence artifacts.
 
@@ -89,6 +91,35 @@ def execute_official_evidence_backfill(
                 continue
             hits = _extract_engine_hits(payload, engine=engine)
             meta = _engine_meta(payload, engine=engine)
+            if not hits and _is_retryable_source_failure(meta):
+                try:
+                    payload = manager.search(
+                        query=query,
+                        topk=topk,
+                        engines=[engine],
+                        symbol=symbol,
+                        period=period,
+                        enable_remote=True,
+                    )
+                    hits = _extract_engine_hits(payload, engine=engine)
+                    retry_meta = _engine_meta(payload, engine=engine)
+                    meta = {**retry_meta, "retried_after_transient_failure": True}
+                except Exception as exc:
+                    meta = {**meta, "retried_after_transient_failure": True, "retry_error": str(exc)}
+                if not hits:
+                    archived_hits, archive_path = _load_archived_official_records(
+                        symbol=symbol,
+                        period=period,
+                        archive_root=archive_root,
+                    )
+                    if archived_hits:
+                        hits = archived_hits
+                        meta = {
+                            **meta,
+                            "archive_fallback_used": True,
+                            "archive_fallback_path": archive_path,
+                            "archive_record_count": len(archived_hits),
+                        }
             normalized_hits = _normalize_records(hits, source_key=source_key, symbol=symbol, period=period)
             accepted_hits, rejected_hits = filter_evidence_records(
                 normalized_hits,
@@ -174,6 +205,47 @@ def execute_official_evidence_backfill(
     }
     _write_json(outputs / "official_evidence_backfill_run.json", summary)
     return summary
+
+
+def _is_retryable_source_failure(meta: dict[str, Any]) -> bool:
+    text = " ".join(
+        str(meta.get(key) or "").lower()
+        for key in ("failure_reason", "error")
+    )
+    return bool(meta.get("timeout")) or any(
+        marker in text
+        for marker in ("timeout", "timed out", "handshake operation", "temporary", "connection reset")
+    )
+
+
+def _load_archived_official_records(
+    *,
+    symbol: str,
+    period: str,
+    archive_root: str | Path,
+) -> tuple[list[dict[str, Any]], str]:
+    market = str(infer_market_from_symbol(symbol).get("market") or "unknown").lower()
+    archive_dir = Path(archive_root) / market / symbol.lower() / period.lower()
+    for path in sorted(archive_dir.glob("*_records.jsonl"), reverse=True):
+        rows: list[dict[str, Any]] = []
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                item = json.loads(line)
+                if isinstance(item, dict):
+                    rows.append(item)
+        except (OSError, json.JSONDecodeError):
+            continue
+        accepted, _ = filter_evidence_records(
+            rows,
+            symbol=symbol,
+            period=period,
+            stage="official_archive_fallback",
+        )
+        if accepted:
+            return accepted, str(path)
+    return [], ""
 
 
 def execute_official_evidence_backfill_for_run(

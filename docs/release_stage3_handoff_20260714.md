@@ -179,3 +179,39 @@ do not modify main, and do not commit runtime data.
 ```
 
 Runtime SQLite, Chroma, reports, checkpoints, logs, export packages, and `.env` secrets are intentionally not synchronized by Git.
+
+## Stage 4 US regression completion (2026-07-14)
+
+Stage 4 US regression is complete for AAPL, NVDA, and MSFT without weakening verifier, objective-quality, LLM-review, or delivery gates.
+
+Implemented reliability and report-semantics fixes:
+
+- ReAct analysis observations are schema-checked; malformed ratio, trend, three-statement, peer, and valuation payloads fall back to deterministic registered tools instead of raising `KeyError('rows')`.
+- Transient official-source failures are retried once. If the retry also fails, the latest validated company/period-matched official archive can be used after the normal evidence intake gate.
+- Explicitly disclosed period mismatches are treated as boundary disclosures only after objective quality passes.
+- Earnings bridges are rendered as net-income sensitivity, explicitly marked as non-DCF and non-equity-valuation; charts use bear/base/bull labels and no longer call net income “equity value”.
+- Current market cap is expressed consistently in billions and trillions, and current-market/FY denominator mixing is stated explicitly.
+- Every agent call now has a 180-second default upper bound even when no overall execution deadline is supplied.
+- SEC response reading now enforces a total response deadline rather than only a per-socket inactivity timeout, preventing slow streaming responses from hanging normalization indefinitely.
+
+Real isolated acceptance results:
+
+```text
+AAPL FY2024: completed, objective score 0.9472, delivery_pass=true
+NVDA FY2024: completed, objective score 0.9494, LLM score 0.82,
+             run_manifest.status=ready, stale_artifacts={}, delivery_pass=true
+MSFT FY2024: completed, objective score 0.9434, LLM score 0.92,
+             run_manifest.status=ready, stale_artifacts={}, delivery_pass=true
+```
+
+Verification completed during Stage 4:
+
+```text
+expanded LangGraph/agent/contract/backfill/gate/chart/data set: 178 passed
+post-timeout multi-agent regression: 66 passed
+SEC annual-report flow after total-response deadline: 10 passed
+final focused Stage 4 fix set: 45 passed
+git diff --check: passed
+```
+
+The next release step is Stage 4 A/H-share expansion using fresh isolated directories. Start with one A-share and one Hong Kong company, require the same ready manifest and all delivery gates, then proceed to the final full-suite and browser-client acceptance. Runtime acceptance directories remain local and must not be committed.

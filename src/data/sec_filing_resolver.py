@@ -14,6 +14,7 @@ import json
 import os
 import re
 import socket
+import time
 from pathlib import Path
 from typing import Any
 from urllib import error, request
@@ -385,7 +386,7 @@ def _get_text(url: str, headers: dict[str, str] | None = None, timeout: float = 
     req = request.Request(url, headers=headers or {"User-Agent": "FinSight/0.1"}, method="GET")
     try:
         with request.urlopen(req, timeout=timeout) as resp:
-            return resp.read().decode("utf-8", errors="replace")
+            return _read_response_bytes(resp, timeout=timeout).decode("utf-8", errors="replace")
     except (TimeoutError, socket.timeout) as exc:
         raise RuntimeError("request timed out") from exc
     except error.HTTPError as exc:
@@ -393,3 +394,17 @@ def _get_text(url: str, headers: dict[str, str] | None = None, timeout: float = 
         raise RuntimeError(f"HTTP {exc.code}: {body[:300]}") from exc
     except error.URLError as exc:
         raise RuntimeError(f"URL error: {exc.reason}") from exc
+
+
+def _read_response_bytes(response: Any, *, timeout: float, chunk_size: int = 1024 * 1024) -> bytes:
+    """Bound total response time, not only each socket inactivity interval."""
+
+    deadline = time.monotonic() + max(float(timeout), 0.01)
+    chunks: list[bytes] = []
+    while True:
+        if time.monotonic() >= deadline:
+            raise RuntimeError("request timed out")
+        chunk = response.read(chunk_size)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)

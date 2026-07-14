@@ -230,6 +230,7 @@ class MultiAgentOrchestrator:
         skill_registry_config_path: str | None = "configs/skill_registry.yaml",
         execution_tier: str = "delivery",
         stage_callback: Callable[[Dict[str, Any]], None] | None = None,
+        agent_task_timeout_seconds: float = 180.0,
     ):
         self.output_dir = Path(output_dir)
         self.report_dir = Path(report_dir)
@@ -237,6 +238,7 @@ class MultiAgentOrchestrator:
         self.raw_data_root = raw_data_root
         self.app_config_path = app_config_path
         self.stage_callback = stage_callback
+        self.agent_task_timeout_seconds = max(float(agent_task_timeout_seconds), 0.01)
         _tier = str(execution_tier or "delivery").lower()
         FAST_TIERS = {"user_fast", "developer_fast"}
         if _tier in FAST_TIERS:
@@ -2274,36 +2276,32 @@ class MultiAgentOrchestrator:
             model_usage.get("api_key_env", ""),
             model_usage.get("api_key_present", False),
         )
-        # Enforce remaining deadline per task: if a deadline is set, each task
-        # gets at most the remaining time.  A 30s floor prevents killing tasks
-        # that could succeed within a single LLM call + retry window.
+        # Bound every agent call. If an overall deadline is present, use the
+        # smaller remaining budget so a stalled provider cannot hang the run.
         state = getattr(self, "state", None) or {}
         deadline = state.get("execution_deadline")
-        task_timeout = None
+        task_timeout = self.agent_task_timeout_seconds
         if deadline is not None:
             remaining = deadline - time.monotonic()
-            task_timeout = max(30.0, remaining)
+            task_timeout = min(task_timeout, max(0.01, remaining))
         started_at = time.perf_counter()
         timeout_fired = False
-        if task_timeout is not None:
-            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            future = pool.submit(agent.execute_task, task)
-            try:
-                result = future.result(timeout=task_timeout)
-            except concurrent.futures.TimeoutError:
-                future.cancel()
-                result = TaskResult(
-                    task_id=task.task_id,
-                    agent_name=agent.name,
-                    status=AgentStatus.FAILED,
-                    output={},
-                    error=f"task exceeded {task_timeout:.0f}s deadline",
-                )
-                timeout_fired = True
-            finally:
-                pool.shutdown(wait=False, cancel_futures=True)
-        else:
-            result = agent.execute_task(task)
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = pool.submit(agent.execute_task, task)
+        try:
+            result = future.result(timeout=task_timeout)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            result = TaskResult(
+                task_id=task.task_id,
+                agent_name=agent.name,
+                status=AgentStatus.FAILED,
+                output={},
+                error=f"task exceeded {task_timeout:.0f}s timeout",
+            )
+            timeout_fired = True
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
         duration_sec = round(time.perf_counter() - started_at, 3)
         trace_item = {
             "agent": agent.name,

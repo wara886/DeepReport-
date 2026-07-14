@@ -180,6 +180,43 @@ def test_orchestrator_emits_agent_stage_callbacks(tmp_path):
     assert stages[1]["react_used"] is True
 
 
+def test_orchestrator_bounds_agent_calls_without_an_overall_deadline(tmp_path):
+    import time
+
+    stages = []
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        model=FakeJsonModel(),
+        stage_callback=stages.append,
+        agent_task_timeout_seconds=0.02,
+    )
+
+    class HangingAgent:
+        name = "HangingAgent"
+
+        def execute_task(self, task):
+            time.sleep(0.2)
+            return TaskResult(
+                task_id=task.task_id,
+                agent_name=self.name,
+                status=AgentStatus.COMPLETED,
+                output={"late": True},
+            )
+
+    orchestrator.agents["critic"] = HangingAgent()
+    orchestrator.state = {}
+    result = orchestrator._execute(
+        "critic",
+        AgentTask(task_id="bounded-task", task_type="pre_write_critic", description="must time out"),
+    )
+
+    assert result.status == AgentStatus.FAILED
+    assert "exceeded" in result.error
+    assert orchestrator.state["_timeout_count"] == 1
+    assert [item["phase"] for item in stages] == ["started", "finished"]
+
+
 def test_phase_checkpoint_and_trace_payloads_are_bounded():
     huge = "x" * 500_000
     research = _compact_research_phase_output(
@@ -452,6 +489,67 @@ def test_rule_claims_bind_governance_to_sec_proxy_instead_of_profile_gap():
     assert governance.citation_evidence_ids == ["sec_proxy_aapl_fy2024"]
     assert "SEC 委托书" in governance.claim_text
     assert "需关注治理结构" not in governance.claim_text
+
+
+def test_deep_analyze_retries_invalid_react_tool_payloads(monkeypatch):
+    agent = DeepAnalyzeAgent()
+    tool_names = [
+        "calculate_financial_ratios",
+        "build_trend_features",
+        "build_three_statement_view",
+        "build_peer_comparison",
+        "perform_company_valuation",
+    ]
+    monkeypatch.setattr(
+        agent,
+        "_run_react_analysis",
+        lambda **kwargs: {
+            "observations": [
+                {"tool_name": name, "result": {"error": "transient tool failure"}}
+                for name in tool_names
+            ]
+        },
+    )
+    calls = []
+
+    def fake_call_tool(name, **kwargs):
+        calls.append(name)
+        return {
+            "calculate_financial_ratios": {"rows": []},
+            "build_trend_features": {"rows": []},
+            "build_three_statement_view": {"rows": [], "coverage": {}},
+            "build_peer_comparison": {"peer_rows": [], "peer_count": 0, "ranking": {}},
+            "perform_company_valuation": {
+                "valuation_available": False,
+                "valuation_status": "insufficient_inputs",
+                "error": "insufficient_inputs",
+            },
+        }[name]
+
+    monkeypatch.setattr(agent, "call_tool", fake_call_tool)
+    result = agent.execute_task(
+        AgentTask(
+            task_id="react-invalid-payloads",
+            task_type="deep_analyze",
+            description="Analyze",
+            parameters={
+                "symbol": "NVDA",
+                "period": "FY2024",
+                "evidence_records": [
+                    {
+                        "evidence_id": "nvda_profile",
+                        "symbol": "NVDA",
+                        "period": "FY2024",
+                        "source_type": "company_profile",
+                        "content": "NVIDIA designs accelerated computing platforms.",
+                    }
+                ],
+            },
+        )
+    )
+
+    assert result.status == AgentStatus.COMPLETED
+    assert set(calls) == set(tool_names)
 
 
 def test_verifier_valuation_payload_preserves_complete_wrapper_and_rebuilds_persisted_model():

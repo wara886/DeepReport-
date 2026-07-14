@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 from src.agents.annual_report_section_extractor import AnnualReportSectionExtractor, annual_sections_to_evidence_records
 from src.agents.multi_agent_orchestrator import attach_annual_report_sections_to_state
 from src.agents.section_dossier_builder import SectionDossierBuilder
 from src.data.sec_filing_resolver import resolve_sec_annual_filing, resolve_sec_proxy_filing
+from src.data.sec_filing_resolver import _read_response_bytes
 from src.report.chart_generator import sanitize_chart_payloads
 from src.report.deterministic_section_renderer import render_all_deterministic_blocks
 
@@ -28,6 +31,18 @@ marketable securities, operating cash flow, and capital allocation priorities.</
 <p>Consolidated financial statements follow.</p>
 </body></html>
 """
+
+
+def test_sec_response_reader_enforces_total_deadline(monkeypatch):
+    class StreamingResponse:
+        def read(self, _size):
+            return b"x"
+
+    ticks = iter([10.0, 10.5, 11.1])
+    monkeypatch.setattr("src.data.sec_filing_resolver.time.monotonic", lambda: next(ticks))
+
+    with pytest.raises(RuntimeError, match="request timed out"):
+        _read_response_bytes(StreamingResponse(), timeout=1.0)
 
 SPLIT_HEADING_10K = """
 <html><body>

@@ -204,7 +204,10 @@ def generate_report_charts(
 
     sensitivity_points = _valuation_sensitivity_points(artifacts)
     if sensitivity_points:
-        title = "估值敏感性"
+        sensitivity = artifacts.get("valuation_sensitivity") if isinstance(artifacts, dict) else {}
+        earnings_bridge = isinstance(sensitivity, dict) and sensitivity.get("method") == "earnings_bridge"
+        title = "盈利敏感性（非估值）" if earnings_bridge else "估值敏感性"
+        value_label = "净利润（十亿计价货币）" if earnings_bridge else title
         path = render_bar_chart(
             bars=sensitivity_points[:8],
             output_path=chart_dir / "valuation_sensitivity_bar.png",
@@ -218,7 +221,7 @@ def generate_report_charts(
             "output_path": str(path),
             "source_fields": "analysis_artifacts.valuation_sensitivity",
             "source_evidence_ids": _evidence_ids_from_claims(claims),
-            "chart_js": _chart_js_payload(chart_type="bar", points=sensitivity_points[:8], label=title),
+            "chart_js": _chart_js_payload(chart_type="bar", points=sensitivity_points[:8], label=value_label),
         })
 
     confidence_points = _confidence_points_from_claims(claims)
@@ -528,10 +531,21 @@ def _valuation_sensitivity_points(artifacts: Dict[str, Any]) -> List[Tuple[str, 
     if not isinstance(rows, list):
         return []
     points: List[Tuple[str, float]] = []
+    method = str(sensitivity.get("method") or "")
+    metric = str(sensitivity.get("metric") or "")
     for index, row in enumerate(rows, start=1):
         if isinstance(row, dict):
             label = str(row.get("label") or row.get("scenario") or row.get("assumption") or f"情景 {index}")
-            value = _safe_float(row.get("target_price") or row.get("equity_value_billion") or row.get("value"))
+            if method == "earnings_bridge":
+                label = {"bear": "悲观情景", "base": "基准情景", "bull": "乐观情景"}.get(
+                    label.lower(), label
+                )
+            if method == "earnings_bridge":
+                value = _safe_float(row.get(metric) if metric else None)
+                if value is None:
+                    value = _safe_float(row.get("net_income_billion") or row.get("value"))
+            else:
+                value = _safe_float(row.get("target_price") or row.get("equity_value_billion") or row.get("value"))
         else:
             label = f"情景 {index}"
             value = _safe_float(row)

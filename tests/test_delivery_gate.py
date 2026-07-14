@@ -230,6 +230,7 @@ def test_delivery_gate_demotes_boundary_contract_blockers_after_objective_pass(t
                 },
                 "strategy_business": {"blocked_reasons": ["strategy_pdf_sections_not_found"]},
                 "valuation_sensitivity": {"quality_flags": ["valuation_sensitivity_framework_only"]},
+                "period_note": {"quality_flags": ["period_mismatch"]},
                 "risk_factors": {
                     "blocked_reasons": ["risk_official_pdf_not_found_and_no_industry_fallback"],
                     "quality_flags": ["risk_generic_fallback_no_industry_policy"],

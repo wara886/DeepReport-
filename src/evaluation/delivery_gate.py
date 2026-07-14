@@ -423,5 +423,6 @@ def _contract_blockers_are_boundary_disclosures(blockers: list) -> bool:
         "quality:peer_compare_boundary_only",
         "quality:valuation_sensitivity_boundary_only",
         "quality:valuation_sensitivity_earnings_bridge_only",
+        "quality:period_mismatch",
     }
     return all(str(item) in boundary_terms for item in blockers)

@@ -115,21 +115,31 @@ class DeepAnalyzeAgent(BaseAgent):
             if isinstance(item, dict) and isinstance(item.get("result"), dict)
         }
 
-        ratio_payload = observed.get("calculate_financial_ratios") or self.call_tool("calculate_financial_ratios", records=records)
-        ratio_rows = ratio_payload["rows"]
+        ratio_payload = observed.get("calculate_financial_ratios")
+        ratio_rows = _tool_rows(ratio_payload)
         if ratio_rows is None:
-            ratio_rows = self.call_tool("calculate_financial_ratios", records=records)["rows"]
-        trend_payload = observed.get("build_trend_features") or self.call_tool("build_trend_features", records=records)
-        trend_rows = trend_payload["rows"]
-        statement_view = observed.get("build_three_statement_view") or self.call_tool("build_three_statement_view", records=records)
-        peer_context = observed.get("build_peer_comparison") or self.call_tool(
-            "build_peer_comparison",
-            symbol=symbol,
-            period=period,
-            raw_data_root=raw_data_root,
-            allow_external_discovery=_allow_external_peer_discovery(symbol),
-        )
-        valuation = observed.get("perform_company_valuation") or self.call_tool(
+            ratio_rows = _tool_rows(self.call_tool("calculate_financial_ratios", records=records)) or []
+        trend_payload = observed.get("build_trend_features")
+        trend_rows = _tool_rows(trend_payload)
+        if trend_rows is None:
+            trend_rows = _tool_rows(self.call_tool("build_trend_features", records=records)) or []
+        statement_view = observed.get("build_three_statement_view")
+        if not isinstance(statement_view, dict) or not isinstance(statement_view.get("rows"), list):
+            statement_view = self.call_tool("build_three_statement_view", records=records)
+        peer_context = observed.get("build_peer_comparison")
+        if not isinstance(peer_context, dict) or not isinstance(peer_context.get("peer_rows"), list):
+            peer_context = self.call_tool(
+                "build_peer_comparison",
+                symbol=symbol,
+                period=period,
+                raw_data_root=raw_data_root,
+                allow_external_discovery=_allow_external_peer_discovery(symbol),
+            )
+        valuation = observed.get("perform_company_valuation")
+        if not isinstance(valuation, dict) or not (
+            "valuation_available" in valuation or isinstance(valuation.get("valuation_model"), dict)
+        ):
+            valuation = self.call_tool(
                 "perform_company_valuation",
                 symbol=symbol,
                 period=period,
@@ -951,6 +961,15 @@ def _normalize_statement_claim_units(claims: List[ClaimItem]) -> List[ClaimItem]
     return claims
 
 
+def _tool_rows(payload: Any) -> List[Dict[str, Any]] | None:
+    if not isinstance(payload, dict):
+        return None
+    rows = payload.get("rows")
+    if not isinstance(rows, list):
+        return None
+    return [row for row in rows if isinstance(row, dict)]
+
+
 def build_role_outputs(
     records: List[Dict[str, Any]],
     claims: List[Dict[str, Any]],
@@ -1451,6 +1470,16 @@ def _minimum_valuation_claims(
 
     multiples: List[str] = []
     numeric_values: Dict[str, float] = {}
+    if market_cap and market_cap > 0:
+        numeric_values["market_cap_billion"] = market_cap
+        if market_unit == "CNY_billion":
+            multiples.append(f"当前市场快照市值约为 {market_cap:.2f} 十亿元人民币")
+        else:
+            trillion = market_cap / 1_000
+            multiples.append(
+                f"当前市场快照市值约为 {market_cap:.2f} 十亿美元"
+                + (f"（约 {trillion:.2f} 万亿美元）" if trillion >= 1 else "")
+            )
     if trailing_pe and trailing_pe > 0:
         pe = trailing_pe
         multiples.append(f"当前市场滚动 P/E 约为 {pe:.1f}x")
@@ -1465,7 +1494,7 @@ def _minimum_valuation_claims(
         numeric_values["pb"] = pb
     if market_cap and revenue and revenue > 0:
         ps = market_cap / _align_market_denominator(revenue)
-        multiples.append(f"P/S 约为 {ps:.1f}x")
+        multiples.append(f"当前市值/{period}收入倍数（P/S）约为 {ps:.1f}x（混合当前市值与目标财期收入口径）")
         numeric_values["ps"] = ps
 
     if multiples:
