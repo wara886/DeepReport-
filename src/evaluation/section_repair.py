@@ -10,6 +10,7 @@ from typing import Any, Dict
 
 from src.agents.final_answer_agent import (
     auto_rewrite_core_sections,
+    enforce_contract_numeric_consistency,
     remove_broken_or_half_sentences,
     remove_debug_leakage,
     remove_internal_ids,
@@ -139,6 +140,7 @@ def repair_failed_sections_for_outputs(
     repaired_md = remove_debug_leakage(repaired_md)
     repaired_md = remove_internal_ids(repaired_md)
     repaired_md = remove_template_phrases(repaired_md)
+    repaired_md = enforce_contract_numeric_consistency(repaired_md, contracts)
     changed = repaired_md != original
     if changed:
         report_md.write_text(repaired_md, encoding="utf-8")

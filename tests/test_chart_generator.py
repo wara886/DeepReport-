@@ -191,6 +191,28 @@ def test_generate_report_charts_uses_plain_metric_keys_and_peer_artifacts(tmp_pa
     assert "peer_compare_bar" in chart_ids
 
 
+def test_generate_report_charts_falls_back_to_verified_statement_tables(tmp_path):
+    charts = generate_report_charts(
+        claims=[],
+        evidence_records=[],
+        output_dir=str(tmp_path),
+        tables=[{
+            "table_id": "income",
+            "table_type": "income_statement",
+            "rows": [
+                {"line_item": "revenue", "value": 660257, "unit": "CNY_million", "period_match": True},
+                {"line_item": "net_income", "value": 196467, "unit": "CNY_million", "period_match": True},
+                {"line_item": "total_assets", "value": 1333425, "unit": "CNY_million", "period_match": True},
+            ],
+        }],
+    )
+
+    chart = next(item for item in charts if item["chart_id"] == "financial_scale_bar")
+    assert chart["chart_js"]["labels"] == ["收入", "净利润", "总资产"]
+    assert chart["chart_js"]["raw_currency"] == "USD"
+    assert (tmp_path / "financial_scale_bar.png").is_file()
+
+
 def test_earnings_bridge_chart_is_not_labeled_as_equity_valuation(tmp_path):
     artifacts = {
         "valuation_sensitivity": {

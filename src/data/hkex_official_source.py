@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import re
+import time
 from typing import Any
 from urllib import parse, request
 
@@ -54,7 +55,7 @@ def fetch_hkex_official_announcements(
 def _stock_directory(timeout: float) -> dict[str, dict[str, Any]]:
     req = request.Request(STOCK_LIST_URL, headers=HEADERS, method="GET")
     with request.urlopen(req, timeout=timeout) as response:
-        payload = json.loads(response.read().decode("utf-8-sig"))
+        payload = json.loads(_read_response_bytes(response, timeout=timeout).decode("utf-8-sig"))
     return {
         str(row.get("c") or "").zfill(5): dict(row)
         for row in payload
@@ -72,9 +73,21 @@ def _query_documents(stock_id: str, year: str, timeout: float) -> list[dict[str,
     }
     req = request.Request(f"{TITLE_SEARCH_URL}?{parse.urlencode(params)}", headers=HEADERS, method="GET")
     with request.urlopen(req, timeout=timeout) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+        payload = json.loads(_read_response_bytes(response, timeout=timeout).decode("utf-8"))
     rows = json.loads(str(payload.get("result") or "[]"))
     return [dict(row) for row in rows if isinstance(row, dict)]
+
+
+def _read_response_bytes(response: Any, *, timeout: float, chunk_size: int = 1024 * 1024) -> bytes:
+    deadline = time.monotonic() + max(float(timeout), 0.01)
+    chunks: list[bytes] = []
+    while True:
+        if time.monotonic() >= deadline:
+            raise RuntimeError("request timed out")
+        chunk = response.read(chunk_size)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
 
 
 def _matches(row: dict[str, Any], *, code: str, year: str) -> bool:

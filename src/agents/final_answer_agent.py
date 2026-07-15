@@ -302,8 +302,8 @@ class FinalAnswerAgent(BaseAgent):
                 evidence_records and already called bind_all(contracts).
         """
         from src.report.contract_renderer import (
-            render_diagnostic_contract_inputs,
             render_full_report_from_contracts,
+            render_section_contract_inputs,
         )
         from src.report.section_contracts import ALL_SECTION_KEYS, SECTION_TITLES, ReportSectionContracts
         from src.report.html_report_generator import render_professional_html_report
@@ -355,32 +355,10 @@ class FinalAnswerAgent(BaseAgent):
         # For sections with allow_llm_rewrite, rewrite one at a time.
         # Each section gets its own focused LLM call so a timeout/cutoff on one
         # section doesn't lose the others (Fix: per-section rewrite, not batch JSON).
-        llm_context = render_diagnostic_contract_inputs(contracts)
         pack_rows = section_evidence_packs.get("packs", {}) if isinstance(section_evidence_packs.get("packs"), dict) else {}
-        if pack_rows:
-            llm_context += "\n\nPre-write section evidence packs:\n" + json.dumps(
-                {
-                    key: {
-                        "must_use_evidence_ids": value.get("must_use_evidence_ids", []),
-                        "supporting_evidence": [
-                            {
-                                "evidence_id": row.get("evidence_id"),
-                                "period": row.get("period"),
-                                "authority": row.get("authority"),
-                                "content_excerpt": row.get("content_excerpt", "")[:500],
-                            }
-                            for row in value.get("supporting_evidence", [])[:6]
-                            if isinstance(row, dict)
-                        ],
-                    }
-                    for key, value in pack_rows.items()
-                    if isinstance(value, dict)
-                },
-                ensure_ascii=False,
-            )
         final_md = contract_markdown
         llm_used = False
-        if self.model and hasattr(self.model, "generate") and llm_context:
+        if self.model and hasattr(self.model, "generate"):
             REWRITE_SECTION_KEYS = {
                 "executive_summary",
                 "business_overview",
@@ -400,6 +378,18 @@ class FinalAnswerAgent(BaseAgent):
                     continue
 
                 heading = SECTION_TITLES.get(sk, sk)
+                llm_context = render_section_contract_inputs(contracts, sk)
+                pack = pack_rows.get(sk) if isinstance(pack_rows.get(sk), dict) else {}
+                if pack:
+                    llm_context += "\n\nPre-write section evidence pack:\n" + json.dumps(
+                        {
+                            "must_use_evidence_ids": pack.get("must_use_evidence_ids", []),
+                            "supporting_evidence": pack.get("supporting_evidence", [])[:6],
+                        },
+                        ensure_ascii=False,
+                    )
+                if not llm_context:
+                    continue
                 try:
                     llm_prompt = (
                         f"Research topic: {topic}\n"
@@ -464,6 +454,7 @@ class FinalAnswerAgent(BaseAgent):
         final_md = remove_a_share_template_contamination(final_md, symbol)
         final_md = remove_instructional_report_text(final_md)
         final_md = dedupe_section_paragraphs(final_md)
+        final_md = enforce_contract_numeric_consistency(final_md, contracts)
 
         # Step 4: Write citation artifacts to disk
         import os
@@ -517,6 +508,75 @@ class FinalAnswerAgent(BaseAgent):
                 "citation_map": citation_map,
             },
         )
+
+
+def enforce_contract_numeric_consistency(markdown: str, contracts: Any) -> str:
+    """Normalize unit conversions and matched profit margins from the owned three-statement table."""
+
+    if hasattr(contracts, "get"):
+        statement = contracts.get("three_statement_summary")
+        deterministic = str(getattr(statement, "deterministic_text", "") or "")
+    elif isinstance(contracts, dict):
+        statement = (contracts.get("contracts") or {}).get("three_statement_summary", {})
+        deterministic = str(statement.get("deterministic_text") or "") if isinstance(statement, dict) else ""
+    else:
+        deterministic = ""
+    if not deterministic:
+        return markdown
+
+    values: Dict[str, float] = {}
+    for label, key in (("收入", "revenue"), ("净利润", "net_income"), ("总资产", "total_assets"),
+                       ("总负债", "total_liabilities"), ("权益", "equity")):
+        match = re.search(rf"\|\s*{label}\s*\|\s*([\d,]+(?:\.\d+)?)\s*亿元", deterministic)
+        if match:
+            values[key] = float(match.group(1).replace(",", ""))
+
+    output = str(markdown or "")
+    label_values = {
+        "总资产": values.get("total_assets"),
+        "总负债": values.get("total_liabilities"),
+        "股东权益": values.get("equity"),
+        "权益": values.get("equity"),
+    }
+    for label, yi_value in label_values.items():
+        if yi_value is None:
+            continue
+        correct = f"{yi_value / 10000:.2f}万亿元人民币（{yi_value:,.2f}亿元）"
+        output = re.sub(
+            rf"({label}(?:约|为)?)[\d,.]+\s*万亿(?:元)?(?:人民币)?(?:（[^）]*）)?",
+            lambda match: match.group(1) + correct,
+            output,
+        )
+
+    revenue = values.get("revenue")
+    net_income = values.get("net_income")
+    if revenue and net_income is not None:
+        matched_margin = net_income / revenue * 100.0
+        for title in ("执行摘要", "财务分析"):
+            body = _section_body(output, title)
+            if body is None:
+                continue
+            normalized = re.sub(
+                r"(净利率(?:约|为|达到|高达)?\s*)\d+(?:\.\d+)?%",
+                rf"\g<1>{matched_margin:.2f}%",
+                body,
+            )
+            output = _replace_section(output, title, normalized)
+        valuation_body = _section_body(output, "估值观察")
+        if valuation_body is not None:
+            def _label_attributable_income(match: re.Match[str]) -> str:
+                amount = float(match.group(1).replace(",", ""))
+                if abs(amount - net_income) / max(abs(net_income), 1.0) < 0.005:
+                    return match.group(0)
+                return f"归属于公司权益持有人的净利润约{match.group(1)}亿元"
+
+            valuation_body = re.sub(
+                r"(?<!归母)(?<!权益持有人的)净利润约([\d,]+(?:\.\d+)?)亿元",
+                _label_attributable_income,
+                valuation_body,
+            )
+            output = _replace_section(output, "估值观察", valuation_body)
+    return output
 
 
 def _claim_dicts(raw: Any) -> List[Dict[str, Any]]:

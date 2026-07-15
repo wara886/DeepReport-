@@ -76,6 +76,22 @@ def render_diagnostic_contract_inputs(contracts: ReportSectionContracts) -> str:
     return "\n".join(inputs)
 
 
+def render_section_contract_inputs(contracts: ReportSectionContracts, section_key: str) -> str:
+    """Render only the current section and its required deterministic dependencies."""
+
+    dependency_map = {
+        "executive_summary": ["executive_summary", "three_statement_summary", "valuation", "risk_factors"],
+        "financial_analysis": ["financial_analysis", "three_statement_summary"],
+    }
+    keys = dependency_map.get(section_key, [section_key])
+    return "\n".join(
+        _render_llm_contract_brief(contract)
+        for key in keys
+        for contract in [contracts.get(key)]
+        if contract is not None
+    )
+
+
 def _render_llm_contract_brief(contract: SectionEvidenceContract) -> str:
     """Compact contract brief for LLM-rewrite sections."""
     parts = [f"--- {contract.title} ---", f"状态: {contract.status}"]

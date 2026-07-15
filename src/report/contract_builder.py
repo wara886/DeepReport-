@@ -214,6 +214,11 @@ def build_report_section_contracts(
     _build_period_note(contracts, period_info)
     _build_currency_data_quality(contracts, analysis_artifacts)
 
+    # Claims are verifier-owned artifacts. Their explicitly selected citation
+    # IDs must also be owned by the corresponding section contract so Writer
+    # cannot silently drop non-risk claim support.
+    _attach_claim_citation_ownership(contracts, claims, evidence_records)
+
     # Run cross-section quality checks
     _check_contract_quality(contracts)
 
@@ -223,6 +228,54 @@ def build_report_section_contracts(
     _apply_pdf_fallback(contracts, pdf_section_summaries, pdf_section_chunks, evidence_records)
 
     return contracts
+
+
+def _attach_claim_citation_ownership(
+    contracts: ReportSectionContracts,
+    claims: List[Dict[str, Any]],
+    evidence_records: List[Dict[str, Any]],
+) -> None:
+    section_map = {
+        "executive_summary": "executive_summary",
+        "business_overview": "business_overview",
+        "ownership_governance": "ownership_governance",
+        "strategy_business": "strategy_business",
+        "financial_statements": "three_statement_summary",
+        "three_statement_summary": "three_statement_summary",
+        "financial_analysis": "financial_analysis",
+        "peer_compare": "peer_compare",
+        "valuation": "valuation",
+        "valuation_sensitivity": "valuation_sensitivity",
+        "risk": "risk_factors",
+        "risks": "risk_factors",
+        "risk_factors": "risk_factors",
+        "conclusion": "investment_conclusion",
+        "investment_conclusion": "investment_conclusion",
+    }
+    evidence_by_id = {
+        str(record.get("evidence_id") or record.get("sample_id") or ""): record
+        for record in evidence_records
+        if isinstance(record, dict)
+    }
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        contract_key = section_map.get(str(claim.get("section_name") or claim.get("section_key") or "").lower())
+        contract = contracts.get(contract_key) if contract_key else None
+        if contract is None:
+            continue
+        selected_ids = claim.get("citation_evidence_ids") or claim.get("evidence_ids") or []
+        forbidden = set(contract.forbidden_source_types)
+        for raw_evidence_id in selected_ids:
+            evidence_id = str(raw_evidence_id or "").strip()
+            record = evidence_by_id.get(evidence_id)
+            if not evidence_id or record is None:
+                continue
+            source_type = str(record.get("source_type") or "").strip().lower()
+            if source_type in forbidden:
+                continue
+            if evidence_id not in contract.citation_evidence_ids:
+                contract.citation_evidence_ids.append(evidence_id)
 
 
 # ── Section builders ────────────────────────────────────────────────────
@@ -909,6 +962,17 @@ def _build_valuation(
 
     status = str(valuation_model.get("valuation_status", "") or "")
     if status in ("rough_observation_only", "blocked_due_to_incomplete_inputs"):
+        inputs = valuation_model.get("input_summary") if isinstance(valuation_model.get("input_summary"), dict) else {}
+        revenue = _safe_number(inputs.get("revenue_billion"))
+        attributable_income = _safe_number(inputs.get("net_income_billion"))
+        if revenue is not None and attributable_income is not None:
+            c.add_fact(
+                "earnings_bridge_boundary",
+                f"盈利桥采用归属于公司权益持有人的净利润口径：收入约{revenue:.2f}B，"
+                f"归母净利润约{attributable_income:.2f}B；该口径不等同于合并利润表的年度利润。",
+                evidence_ids=financial_evidence_ids[:6],
+                source_types=[SRC_FINANCIAL_METRIC],
+            )
         c.add_blocked_reason(f"valuation_model_status:{status}")
         c.status = "fallback"
         c.deterministic_text = (
@@ -1458,13 +1522,37 @@ def _safe_list(obj: Any, key: str) -> List[Any]:
 def _format_key_metrics(financial_metrics: Dict[str, Any]) -> str:
     """Format key financial metrics into a single line."""
     flat = _normalize_metrics_flat(financial_metrics)
+    units: Dict[str, str] = {}
+    for metric in financial_metrics.get("metrics", []) if isinstance(financial_metrics, dict) else []:
+        if not isinstance(metric, dict):
+            continue
+        name = str(metric.get("metric_name") or metric.get("key") or "")
+        if name and name not in units:
+            units[name] = str(metric.get("unit") or metric.get("currency") or "")
     parts = []
     for key in ["revenue", "net_income", "operating_cash_flow", "free_cash_flow",
                  "total_assets", "total_liabilities", "gross_margin", "operating_margin"]:
         val = flat.get(key)
         if val is not None:
-            parts.append(f"{key}: {val}")
+            parts.append(f"{key}: {_format_metric_with_unit(val, units.get(key, ''))}")
     return "; ".join(parts[:8])
+
+
+def _format_metric_with_unit(value: Any, unit: str) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return f"{value} {unit}".strip()
+    normalized_unit = str(unit or "").strip()
+    lower = normalized_unit.lower()
+    if lower.endswith("_million"):
+        currency = normalized_unit.rsplit("_", 1)[0].upper()
+        return f"{number:,.2f} {normalized_unit}（{number / 100:,.2f} 亿元{currency}）"
+    if lower in {"cny", "hkd", "usd"} and abs(number) >= 100_000_000:
+        return f"{number:,.2f} {normalized_unit}（{number / 100_000_000:,.2f} 亿元）"
+    if lower in {"pct", "%", "percent"}:
+        return f"{number:.2f}%"
+    return f"{number:,.2f}{(' ' + normalized_unit) if normalized_unit else ''}"
 
 
 def _normalize_metrics_flat(raw: Dict[str, Any]) -> Dict[str, Any]:

@@ -126,6 +126,7 @@ class DeepAnalyzeAgent(BaseAgent):
         statement_view = observed.get("build_three_statement_view")
         if not isinstance(statement_view, dict) or not isinstance(statement_view.get("rows"), list):
             statement_view = self.call_tool("build_three_statement_view", records=records)
+        financial_metric_lineage = build_financial_metric_lineage(records)
         peer_context = observed.get("build_peer_comparison")
         if not isinstance(peer_context, dict) or not isinstance(peer_context.get("peer_rows"), list):
             peer_context = self.call_tool(
@@ -135,6 +136,7 @@ class DeepAnalyzeAgent(BaseAgent):
                 raw_data_root=raw_data_root,
                 allow_external_discovery=_allow_external_peer_discovery(symbol),
             )
+        peer_context = _enforce_peer_period_scope(peer_context, period=period)
         valuation = observed.get("perform_company_valuation")
         if not isinstance(valuation, dict) or not (
             "valuation_available" in valuation or isinstance(valuation.get("valuation_model"), dict)
@@ -146,6 +148,10 @@ class DeepAnalyzeAgent(BaseAgent):
                 records=records,
                 raw_data_root=raw_data_root,
             )
+        valuation = _enrich_unavailable_valuation_from_metrics(
+            valuation,
+            financial_metric_lineage=financial_metric_lineage,
+        )
         if (
             isinstance(valuation, dict)
             and isinstance(valuation.get("peer_context"), dict)
@@ -153,7 +159,6 @@ class DeepAnalyzeAgent(BaseAgent):
             and int(valuation["peer_context"].get("peer_count", 0) or 0) > 0
         ):
             peer_context = valuation["peer_context"]
-        financial_metric_lineage = build_financial_metric_lineage(records)
         table_artifacts = build_financial_metric_tables(records)
         valuation_model = valuation.get("valuation_model", {}) if isinstance(valuation, dict) else {}
         if not valuation_model and isinstance(valuation, dict) and valuation.get("valuation_available") is False:
@@ -968,6 +973,89 @@ def _tool_rows(payload: Any) -> List[Dict[str, Any]] | None:
     if not isinstance(rows, list):
         return None
     return [row for row in rows if isinstance(row, dict)]
+
+
+def _enrich_unavailable_valuation_from_metrics(
+    payload: Any,
+    *,
+    financial_metric_lineage: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Preserve a quantified earnings bridge when a full valuation is unavailable."""
+
+    if not isinstance(payload, dict):
+        return {}
+    output = dict(payload)
+    if output.get("valuation_available") is not False:
+        return output
+    existing = output.get("input_summary")
+    if isinstance(existing, dict) and existing.get("revenue_billion") and existing.get("net_income_billion"):
+        return output
+    metrics = financial_metric_lineage.get("metrics") if isinstance(financial_metric_lineage, dict) else []
+    metric_values: Dict[str, float] = {}
+    for item in metrics if isinstance(metrics, list) else []:
+        if not isinstance(item, dict) or item.get("period_match") is False:
+            continue
+        name = str(item.get("metric_name") or "").strip().lower()
+        if name not in {"revenue", "net_income", "operating_cash_flow"} or name in metric_values:
+            continue
+        try:
+            value = float(item.get("value"))
+        except (TypeError, ValueError):
+            continue
+        unit = str(item.get("unit") or "").lower()
+        metric_values[name] = value if "billion" in unit else value / 1_000_000_000.0
+    revenue = metric_values.get("revenue")
+    net_income = metric_values.get("net_income")
+    if revenue is None or revenue <= 0 or net_income is None:
+        return output
+    input_summary = dict(existing) if isinstance(existing, dict) else {}
+    input_summary.update({"revenue_billion": revenue, "net_income_billion": net_income})
+    if metric_values.get("operating_cash_flow") is not None:
+        input_summary["operating_cash_flow_billion"] = metric_values["operating_cash_flow"]
+    output["input_summary"] = input_summary
+    output["valuation_status"] = "rough_observation_only"
+    output.setdefault("missing_inputs", ["market_valuation_inputs", "normalized_free_cash_flow"])
+    return output
+
+
+def _enforce_peer_period_scope(payload: Any, *, period: str) -> Dict[str, Any]:
+    """Do not present current-TTM peers as an FY same-period comparison."""
+
+    if not isinstance(payload, dict):
+        return {}
+    output = dict(payload)
+    if not str(period or "").upper().startswith("FY"):
+        return output
+    rows = output.get("peer_rows") if isinstance(output.get("peer_rows"), list) else output.get("rows")
+    if not isinstance(rows, list):
+        return output
+    accepted: List[Dict[str, Any]] = []
+    rejected: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        data_period = str(row.get("data_period") or row.get("period") or "").strip().upper()
+        if data_period in {"CURRENT_TTM", "TTM", "CURRENT"}:
+            rejected.append(row)
+        else:
+            accepted.append(row)
+    if not rejected:
+        return output
+    output["peer_rows"] = accepted
+    output["rows"] = accepted
+    output["period_mismatch_rows"] = rejected
+    output["period_scope"] = str(period or "")
+    missing = list(output.get("missing_inputs") or [])
+    if not accepted and "same_period_peer_data" not in missing:
+        missing.append("same_period_peer_data")
+    output["missing_inputs"] = missing
+    if not accepted:
+        output["status"] = "period_mismatch"
+        output["approved_peer_symbols"] = []
+        output["ranking"] = {}
+        output["findings"] = [f"同行数据仅有 current TTM 口径，未作为 {period} 同期间量化对比。"]
+        output["impact_on_report"] = "同行量化对比降级为数据缺口说明。"
+    return output
 
 
 def build_role_outputs(
@@ -2803,7 +2891,7 @@ def _build_pdf_section_claims(records: List[Dict[str, Any]], start_index: int, e
             continue
         metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
         section_type = str(metadata.get("section_type") or "")
-        if section_type:
+        if section_type and section_type != "financial_statements" and _pdf_claim_record_is_usable(record):
             buckets.setdefault(section_type, []).append(record)
 
     specs = [
@@ -2811,10 +2899,9 @@ def _build_pdf_section_claims(records: List[Dict[str, Any]], start_index: int, e
         ("management_discussion", "strategy_business", "管理层讨论与经营情况 PDF 片段显示：{snippet}"),
         ("ownership_governance", "ownership_governance", "股东结构、治理或管理层 PDF 片段显示：{snippet}"),
         ("risk_factors", "risks", "风险提示 PDF 片段显示：{snippet}"),
-        ("financial_statements", "financial_statements", "财务报表 PDF 片段显示：{snippet}"),
     ]
     for section_type, section_name, template in specs:
-        rows = buckets.get(section_type, [])
+        rows = [row for row in buckets.get(section_type, []) if _pdf_claim_record_is_usable(row)]
         if not rows:
             continue
         snippets = [_compact_snippet(str(row.get("content") or ""), limit=220) for row in rows[:2]]
@@ -2829,6 +2916,7 @@ def _build_pdf_section_claims(records: List[Dict[str, Any]], start_index: int, e
                 section_name=section_name,
                 claim_text=template.format(snippet="；".join(snippets)),
                 evidence_ids=evidence_ids,
+                citation_evidence_ids=evidence_ids,
                 numeric_values={},
                 risk_level="medium" if section_type == "risk_factors" else "low",
                 confidence=0.73,
@@ -2836,10 +2924,19 @@ def _build_pdf_section_claims(records: List[Dict[str, Any]], start_index: int, e
             )
         )
         claim_index += 1
-    for claim in _build_generic_pdf_insight_claims(buckets=buckets, start_index=claim_index):
-        claims.append(claim)
-        claim_index += 1
     return claims, claim_index
+
+
+def _pdf_claim_record_is_usable(record: Dict[str, Any]) -> bool:
+    text = re.sub(r"\s+", " ", str(record.get("content") or "")).strip()
+    if len(text) < 40:
+        return False
+    dot_leaders = len(re.findall(r"(?:\.{5,}|…{3,})", text))
+    if dot_leaders >= 2:
+        return False
+    if re.search(r"第[一二三四五六七八九十\d]+节.{0,30}(第[一二三四五六七八九十\d]+节)", text):
+        return False
+    return True
 
 
 
@@ -2880,6 +2977,7 @@ def _build_generic_pdf_insight_claims(buckets: Dict[str, List[Dict[str, Any]]], 
                 section_name=section_name,
                 claim_text=f"{prefix} {_compact_snippet(content, 220)}",
                 evidence_ids=[evidence_id] if evidence_id else [],
+                citation_evidence_ids=[evidence_id] if evidence_id else [],
                 numeric_values={},
                 risk_level="high" if section_name == "risks" else "medium",
                 confidence=0.72,

@@ -1,6 +1,6 @@
 # Release Stage 3 Handoff
 
-> Updated: 2026-07-14 (Asia/Shanghai)  
+> Updated: 2026-07-15 (Asia/Shanghai)
 > Repository: `DeepReport-fin-workbench-v2`  
 > Branch: `release/fin-research-workbench-v2`  
 > Scope: continue Stage 3 runtime artifact ownership without repeating earlier audits.
@@ -215,3 +215,53 @@ git diff --check: passed
 ```
 
 The next release step is Stage 4 A/H-share expansion using fresh isolated directories. Start with one A-share and one Hong Kong company, require the same ready manifest and all delivery gates, then proceed to the final full-suite and browser-client acceptance. Runtime acceptance directories remain local and must not be committed.
+
+## Stage 4 A/H regression completion (2026-07-15)
+
+Stage 4 A/H-share expansion is complete for Kweichow Moutai and Tencent without weakening verifier, objective-quality, LLM-review, section-contract, or delivery gates.
+
+Implemented cross-market fixes:
+
+- Annual FY reports reject current-TTM peer rows instead of presenting them as same-period comparisons.
+- Raw PDF claims filter table-of-contents/repeated-heading noise and never use misclassified raw PDF sections as formal financial-statement claims.
+- Explicit non-risk Claim citation ownership is propagated into the appropriate section contracts.
+- HKEX response reading enforces a total response deadline; the accepted Tencent run obtained the official annual report without hanging.
+- When a full valuation is unavailable, period-matched canonical revenue and attributable net income support a clearly labeled earnings bridge; this remains non-DCF and non-target-price analysis.
+- Contract rewrite context is section-scoped. Financial analysis receives its own contract plus the three-statement summary, preventing unrelated valuation/risk facts from leaking into the section.
+- Financial metric context preserves source units and adds readable conversions for `CNY_million`; deterministic consistency guards distinguish consolidated annual profit from profit attributable to equity holders.
+- Verified statement tables now generate a lineage-backed financial-scale chart even when stochastic Claims do not carry enough numeric fields.
+- A successfully cleaned PDF boilerplate flag is diagnostic rather than a contract blocker; actual missing evidence and failed cleaning remain gated.
+
+Real isolated acceptance results:
+
+```text
+600519.SS FY2024
+task_id: release-stage4-ah-accepted-600519.ss-fy2024-20260714t155639z
+status: completed
+objective score: 0.9639
+LLM score: 0.82
+run_manifest.status: ready
+stale_artifacts: {}
+delivery_pass: true
+blocker_count: 0
+
+0700.HK FY2024
+task_id: release-stage4-hk-pass-0700.hk-fy2024-20260715t022840z
+status: completed
+objective score: 0.9525
+LLM score: 0.82
+run_manifest.status: ready
+stale_artifacts: {}
+citation_binding_mismatches: 0
+delivery_pass: true
+blocker_count: 0
+```
+
+Final relevant regression selection:
+
+```text
+multi-agent + section contracts + HKEX + delivery gate + charts: 112 passed
+git diff --check: passed
+```
+
+Stage 4 is therefore complete across AAPL, NVDA, MSFT, 600519.SS, and 0700.HK. The next release step is the final full-suite run followed by browser-client acceptance of the workbench UI and report/export flows. Runtime acceptance directories and secrets remain local only.

@@ -34,7 +34,10 @@ from src.report.contract_builder import (
     _build_three_statement_summary,
     _clip_at_sentence_boundary,
     _format_billion_value,
+    _format_key_metrics,
 )
+from src.report.contract_renderer import render_section_contract_inputs
+from src.agents.final_answer_agent import enforce_contract_numeric_consistency
 from src.utils.money import build_currency_context
 from src.report.citation_binder import CitationBinder
 
@@ -42,6 +45,63 @@ from src.report.citation_binder import CitationBinder
 def test_cny_billion_values_render_as_hundred_million_yuan():
     context = build_currency_context(market="cn_a", statement_currency="CNY", display_currency="CNY")
     assert _format_billion_value(1513.836, context) == "15138.36 亿元人民币"
+
+
+def test_key_metric_context_preserves_million_units_and_readable_conversion():
+    text = _format_key_metrics({
+        "metrics": [
+            {"metric_name": "total_assets", "value": 1_333_425, "unit": "CNY_million"},
+        ]
+    })
+
+    assert "1,333,425.00 CNY_million" in text
+    assert "13,334.25 亿元CNY" in text
+
+
+def test_section_contract_context_excludes_unrelated_sections():
+    contracts = ReportSectionContracts()
+    contracts.ensure("financial_analysis").add_fact("metric", "financial-only")
+    contracts.ensure("three_statement_summary").deterministic_text = "statement-only"
+    contracts.ensure("valuation").add_fact("valuation", "valuation-must-not-leak")
+
+    context = render_section_contract_inputs(contracts, "financial_analysis")
+
+    assert "financial-only" in context
+    assert "statement-only" in context
+    assert "valuation-must-not-leak" not in context
+
+
+def test_contract_numeric_consistency_repairs_trillion_scale_and_matched_margin():
+    contracts = ReportSectionContracts()
+    contracts.ensure("three_statement_summary").deterministic_text = (
+        "| 指标 | 金额 | 期间 | 来源 |\n"
+        "|---|---:|---|---|\n"
+        "| 收入 | 6602.57 亿元人民币 | FY2024 | PDF |\n"
+        "| 净利润 | 1964.67 亿元人民币 | FY2024 | PDF |\n"
+        "| 总资产 | 13334.25 亿元人民币 | FY2024 | PDF |\n"
+        "| 总负债 | 5553.82 亿元人民币 | FY2024 | PDF |\n"
+        "| 权益 | 7780.43 亿元人民币 | FY2024 | PDF |"
+    )
+    markdown = (
+        "## 执行摘要\n\n净利润为1964.67亿元，对应净利率约29.4%。\n\n"
+        "## 财务分析\n\n净利率29.7%，总资产约133.34万亿人民币，股东权益约77.80万亿。\n\n"
+        "## 估值敏感性\n\n归母净利率约29.4%。"
+    )
+
+    repaired = enforce_contract_numeric_consistency(markdown, contracts)
+
+    assert repaired.count("净利率约29.76%") == 1
+    assert "净利率29.76%" in repaired
+    assert "总资产约1.33万亿元人民币（13,334.25亿元）" in repaired
+    assert "股东权益约0.78万亿元人民币（7,780.43亿元）" in repaired
+    assert "归母净利率约29.4%" in repaired
+
+    valuation_markdown = markdown.replace(
+        "## 估值敏感性",
+        "## 估值观察\n\n同期收入约6603亿元，净利润约1941亿元。\n\n## 估值敏感性",
+    )
+    valuation_repaired = enforce_contract_numeric_consistency(valuation_markdown, contracts)
+    assert "归属于公司权益持有人的净利润约1941亿元" in valuation_repaired
 
 
 def test_period_note_discloses_later_company_snapshot_without_replacing_target_financial_period():
@@ -219,6 +279,38 @@ class TestSectionContractData:
 
 
 class TestContractBuilder:
+
+    def test_non_risk_claim_citations_are_owned_by_section_contract(self):
+        evidence = {
+            "evidence_id": "cninfo_company_profile",
+            "source_type": "cninfo_announcement",
+            "symbol": "600519.SS",
+            "period": "FY2024",
+            "content": "贵州茅台酒股份有限公司是上海证券交易所上市公司。",
+        }
+        contracts = build_report_section_contracts(
+            state={
+                "symbol": "600519.SS",
+                "period": "FY2024",
+                "claims": [
+                    {
+                        "claim_id": "cl_profile",
+                        "section_name": "business_overview",
+                        "claim_text": "贵州茅台酒股份有限公司是上市公司。",
+                        "evidence_ids": ["cninfo_company_profile"],
+                        "citation_evidence_ids": ["cninfo_company_profile"],
+                    }
+                ],
+            },
+            evidence_records=[evidence],
+            analysis_artifacts={},
+            section_dossiers={},
+            citations=[],
+        )
+
+        business = contracts.get("business_overview")
+        assert business is not None
+        assert "cninfo_company_profile" in business.citation_evidence_ids
     """Test the contract builder with A-share PDF summaries."""
 
     def test_sentence_boundary_clipping_keeps_report_facts_readable(self):
@@ -628,6 +720,7 @@ class TestContractBuilder:
         )
 
         sensitivity = contracts.get("valuation_sensitivity")
+        valuation = contracts.get("valuation")
 
         assert sensitivity is not None
         assert sensitivity.status == "fallback"
@@ -650,6 +743,7 @@ class TestContractBuilder:
         )
 
         sensitivity = contracts.get("valuation_sensitivity")
+        valuation = contracts.get("valuation")
 
         assert sensitivity is not None
         assert sensitivity.status == "partial"
@@ -657,6 +751,8 @@ class TestContractBuilder:
         assert "收入上升或下降1%" in sensitivity.deterministic_text
         assert "0.94B" in sensitivity.deterministic_text
         assert "valuation_sensitivity_earnings_bridge_only" in sensitivity.quality_flags
+        assert "归属于公司权益持有人的净利润口径" in valuation.facts[0].text
+        assert "不等同于合并利润表" in valuation.facts[0].text
 
     def test_valuation_sensitivity_keeps_structured_earnings_bridge_partial(self):
         contracts = build_report_section_contracts(

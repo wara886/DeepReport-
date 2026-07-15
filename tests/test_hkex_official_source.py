@@ -1,11 +1,14 @@
 import json
 
-from src.data.hkex_official_source import fetch_hkex_official_announcements
+import pytest
+
+from src.data.hkex_official_source import _read_response_bytes, fetch_hkex_official_announcements
 
 
 class FakeResponse:
     def __init__(self, payload):
         self.payload = payload
+        self.consumed = False
 
     def __enter__(self):
         return self
@@ -13,8 +16,23 @@ class FakeResponse:
     def __exit__(self, *_args):
         return False
 
-    def read(self):
+    def read(self, _size=-1):
+        if self.consumed:
+            return b""
+        self.consumed = True
         return self.payload
+
+
+def test_hkex_response_reader_enforces_total_deadline(monkeypatch):
+    class StreamingResponse:
+        def read(self, _size):
+            return b"x"
+
+    ticks = iter([10.0, 10.5, 11.1])
+    monkeypatch.setattr("src.data.hkex_official_source.time.monotonic", lambda: next(ticks))
+
+    with pytest.raises(RuntimeError, match="request timed out"):
+        _read_response_bytes(StreamingResponse(), timeout=1.0)
 
 
 def test_hkex_direct_source_filters_symbol_period_and_pdf(monkeypatch):

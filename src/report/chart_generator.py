@@ -158,6 +158,12 @@ def generate_report_charts(
 
     # Split metric points by category to avoid mixing units (billions vs percentages)
     category_points = _categorize_metric_points(claims)
+    table_points = _categorize_table_metric_points(tables or [])
+    for category, points in table_points.items():
+        existing = {label for label, _ in category_points.get(category, [])}
+        category_points.setdefault(category, []).extend(
+            (label, value) for label, value in points if label not in existing
+        )
     for cat_key in ("financial_scale", "profitability", "cash_flow", "valuation"):
         points = category_points.get(cat_key, [])
         if not points:
@@ -459,6 +465,31 @@ def _categorize_metric_points(claims: List[Dict[str, Any]]) -> Dict[str, List[Tu
             if label not in categories[cat]:
                 categories[cat][label] = parsed
     return {cat: list(points.items()) for cat, points in categories.items()}
+
+
+def _categorize_table_metric_points(tables: List[Dict[str, Any]]) -> Dict[str, List[Tuple[str, float]]]:
+    """Use verified statement tables when claims do not carry enough chart metrics."""
+
+    categories: Dict[str, Dict[str, float]] = defaultdict(dict)
+    for table in tables:
+        if not isinstance(table, dict):
+            continue
+        for row in table.get("rows", []) if isinstance(table.get("rows"), list) else []:
+            if not isinstance(row, dict) or row.get("period_match") is False:
+                continue
+            key = str(row.get("line_item") or row.get("metric_name") or "").strip()
+            value = _safe_float(row.get("value"))
+            if not key or value is None or key not in _METRIC_CATEGORY:
+                continue
+            unit = str(row.get("unit") or "").lower()
+            if unit.endswith("_million"):
+                value *= 1_000_000
+            elif unit.endswith("_billion"):
+                value *= 1_000_000_000
+            label = METRIC_LABEL_MAP.get(key) or FALLBACK_LABEL_MAP.get(key, key)
+            category = _METRIC_CATEGORY.get(key, "financial_scale")
+            categories[category].setdefault(label, value)
+    return {category: list(points.items()) for category, points in categories.items()}
 
 
 def _chart_value_in_base_units(metric_key: str, value: float) -> float:

@@ -402,6 +402,7 @@ def _nonblocking_contract_flag(flag: str) -> bool:
         or flag.endswith("_pdf_summary_fallback")
         or flag.endswith("_pdf_chunk_fallback")
         or flag.endswith("_uses_official_pdf")
+        or flag == "business_overview_boilerplate_cleaned"
     )
 
 

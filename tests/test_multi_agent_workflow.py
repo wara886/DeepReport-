@@ -5,7 +5,14 @@ import sys
 from src.agents import AgentStatus, AgentTask, BrowserAgent, DeepAnalyzeAgent, FinalAnswerAgent, TaskResult, VerifierAgent
 from src.agents.analysis_role_agents import IdentityAgent, PeerAgent, RiskAgent, StatementAgent, ValuationAgent
 from src.agents.browser_agent import enrich_records_with_reader, read_pdf_content, read_url_content
-from src.agents.deep_analyze_agent import build_role_outputs, build_rule_claims, compact_records
+from src.agents.deep_analyze_agent import (
+    _build_pdf_section_claims,
+    _enrich_unavailable_valuation_from_metrics,
+    _enforce_peer_period_scope,
+    build_role_outputs,
+    build_rule_claims,
+    compact_records,
+)
 from src.agents.multi_agent_orchestrator import _verifier_valuation_payload
 from src.agents.final_answer_agent import (
     _claims_to_markdown_bullets,
@@ -144,6 +151,82 @@ class FakeJsonModel:
                 "final_outputs": ["report.md", "report.html"],
             }
         return {}
+
+
+def test_annual_report_peer_scope_rejects_current_ttm_rows():
+    payload = {
+        "status": "complete",
+        "peer_rows": [
+            {"symbol": "PEER", "data_period": "current_ttm", "gross_margin_pct": 50.0},
+        ],
+        "rows": [
+            {"symbol": "PEER", "data_period": "current_ttm", "gross_margin_pct": 50.0},
+        ],
+        "approved_peer_symbols": ["PEER"],
+        "ranking": {"gross_margin_pct": {"rank": 1, "peer_count": 1}},
+    }
+
+    scoped = _enforce_peer_period_scope(payload, period="FY2024")
+
+    assert scoped["status"] == "period_mismatch"
+    assert scoped["peer_rows"] == []
+    assert scoped["rows"] == []
+    assert scoped["approved_peer_symbols"] == []
+    assert scoped["ranking"] == {}
+    assert scoped["missing_inputs"] == ["same_period_peer_data"]
+
+
+def test_unavailable_valuation_uses_period_matched_canonical_metrics_for_earnings_bridge():
+    valuation = _enrich_unavailable_valuation_from_metrics(
+        {"valuation_available": False, "error": "target financials not found", "input_summary": {}},
+        financial_metric_lineage={
+            "metrics": [
+                {"metric_name": "revenue", "value": 174_100_000_000, "unit": "CNY", "period_match": True},
+                {"metric_name": "net_income", "value": 86_200_000_000, "unit": "CNY", "period_match": True},
+                {"metric_name": "operating_cash_flow", "value": 92_400_000_000, "unit": "CNY", "period_match": True},
+                {"metric_name": "revenue", "value": 999, "unit": "CNY_billion", "period_match": False},
+            ]
+        },
+    )
+
+    assert valuation["valuation_available"] is False
+    assert valuation["valuation_status"] == "rough_observation_only"
+    assert valuation["input_summary"]["revenue_billion"] == 174.1
+    assert valuation["input_summary"]["net_income_billion"] == 86.2
+    assert valuation["input_summary"]["operating_cash_flow_billion"] == 92.4
+    assert valuation["error"] == "target financials not found"
+
+
+def test_pdf_claims_reject_toc_and_financial_section_noise():
+    claims, _ = _build_pdf_section_claims(
+        [
+            {
+                "evidence_id": "toc",
+                "source_type": "pdf_section",
+                "content": "第四节 公司治理 ................................ 22 第五节 环境与社会责任 ........................ 45",
+                "metadata": {"section_type": "ownership_governance"},
+            },
+            {
+                "evidence_id": "governance",
+                "source_type": "pdf_section",
+                "content": "公司全年召开股东大会并审议多项议案，董事会持续推进全面风险管理、内部控制体系建设和治理规范化工作。",
+                "metadata": {"section_type": "ownership_governance"},
+            },
+            {
+                "evidence_id": "misclassified_financial",
+                "source_type": "pdf_section",
+                "content": "公司品牌影响力持续提升，董事会成员出席会议并履行相应职责。",
+                "metadata": {"section_type": "financial_statements"},
+            },
+        ],
+        start_index=1,
+        expected_period="FY2024",
+    )
+
+    assert len(claims) == 1
+    assert claims[0].section_name == "ownership_governance"
+    assert claims[0].evidence_ids == ["governance"]
+    assert claims[0].citation_evidence_ids == ["governance"]
 
 
 def test_orchestrator_emits_agent_stage_callbacks(tmp_path):
