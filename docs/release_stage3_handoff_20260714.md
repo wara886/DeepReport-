@@ -265,3 +265,36 @@ git diff --check: passed
 ```
 
 Stage 4 is therefore complete across AAPL, NVDA, MSFT, 600519.SS, and 0700.HK. The next release step is the final full-suite run followed by browser-client acceptance of the workbench UI and report/export flows. Runtime acceptance directories and secrets remain local only.
+
+## Final full-suite and browser acceptance (2026-07-15)
+
+The release-candidate verification phase is complete.
+
+Two compatibility fixes were applied while closing the full suite:
+
+- Valid short official-PDF sections are retained while table-of-contents dot leaders and repeated section headings remain filtered. PDF-derived business, governance, and risk claims keep explicit citation ownership and readable provenance wording.
+- `DeepAnalyzeAgent` passes optional peer-discovery arguments only to tool handlers that support them, preserving injected/custom tool compatibility without disabling external peer discovery in the production handler.
+
+Final automated verification:
+
+```text
+pytest: 990 collected, 986 passed, 4 skipped, 0 failed
+focused compatibility regressions: 4 passed
+git diff --check: passed
+```
+
+Browser-client acceptance used the isolated accepted Tencent FY2024 database and report on a local server. Confirmed behavior:
+
+- the dashboard and create-task modal render without the earlier alignment/overflow defects;
+- the primary create-task action is visible in the top bar and defaults to immediate background execution;
+- task rows hide internal task IDs, use compact spacing, and support search plus current/success/manual-review/failure/archive filters;
+- refresh returns visible `数据已刷新。` feedback;
+- failed-task bulk removal is present and remains disabled when the filtered result has no failed tasks;
+- selecting a task opens its overview, runtime, quality, evidence, and artifact tabs;
+- accepted reports are reachable as HTML, Markdown, and structured JSON artifacts;
+- the HTML report opens successfully with its table of contents, sections, chart, and references;
+- the export center exposes HTML, Markdown, PDF, DOCX, CSV, and JSON, with HTML and Markdown selected by default;
+- average-duration metrics use the shared minute formatter; per-run diagnostic latency remains in milliseconds;
+- no browser console errors were recorded on either the workbench or report page.
+
+The isolated browser-acceptance server was stopped after verification. Runtime acceptance data and secrets remain excluded from Git.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import re
 from typing import Any, Dict, List
@@ -129,12 +130,16 @@ class DeepAnalyzeAgent(BaseAgent):
         financial_metric_lineage = build_financial_metric_lineage(records)
         peer_context = observed.get("build_peer_comparison")
         if not isinstance(peer_context, dict) or not isinstance(peer_context.get("peer_rows"), list):
+            peer_kwargs = {
+                "symbol": symbol,
+                "period": period,
+                "raw_data_root": raw_data_root,
+            }
+            if _handler_accepts_keyword(self.tools.get("build_peer_comparison"), "allow_external_discovery"):
+                peer_kwargs["allow_external_discovery"] = _allow_external_peer_discovery(symbol)
             peer_context = self.call_tool(
                 "build_peer_comparison",
-                symbol=symbol,
-                period=period,
-                raw_data_root=raw_data_root,
-                allow_external_discovery=_allow_external_peer_discovery(symbol),
+                **peer_kwargs,
             )
         peer_context = _enforce_peer_period_scope(peer_context, period=period)
         valuation = observed.get("perform_company_valuation")
@@ -312,7 +317,8 @@ class DeepAnalyzeAgent(BaseAgent):
             "build_three_statement_view": lambda **kwargs: raw_handlers["build_three_statement_view"](
                 records=kwargs.pop("records", records), **kwargs
             ),
-            "build_peer_comparison": lambda **kwargs: raw_handlers["build_peer_comparison"](
+            "build_peer_comparison": lambda **kwargs: _call_with_supported_kwargs(
+                raw_handlers["build_peer_comparison"],
                 symbol=kwargs.pop("symbol", symbol),
                 period=kwargs.pop("period", period),
                 raw_data_root=kwargs.pop("raw_data_root", raw_data_root),
@@ -2895,10 +2901,10 @@ def _build_pdf_section_claims(records: List[Dict[str, Any]], start_index: int, e
             buckets.setdefault(section_type, []).append(record)
 
     specs = [
-        ("business_overview", "strategy_business", "年报/公告 PDF 抽取的主营业务与业务结构片段显示：{snippet}"),
-        ("management_discussion", "strategy_business", "管理层讨论与经营情况 PDF 片段显示：{snippet}"),
-        ("ownership_governance", "ownership_governance", "股东结构、治理或管理层 PDF 片段显示：{snippet}"),
-        ("risk_factors", "risks", "风险提示 PDF 片段显示：{snippet}"),
+        ("business_overview", "strategy_business", "年报/公告 PDF 抽取的主营业务与业务结构提供了以下信息：{snippet}"),
+        ("management_discussion", "strategy_business", "管理层讨论与经营情况 PDF 片段提供了以下信息：{snippet}"),
+        ("ownership_governance", "ownership_governance", "股权与治理相关 PDF 片段提供了以下信息：{snippet}"),
+        ("risk_factors", "risks", "风险因素 PDF 片段提供了以下信息：{snippet}"),
     ]
     for section_type, section_name, template in specs:
         rows = [row for row in buckets.get(section_type, []) if _pdf_claim_record_is_usable(row)]
@@ -2929,7 +2935,7 @@ def _build_pdf_section_claims(records: List[Dict[str, Any]], start_index: int, e
 
 def _pdf_claim_record_is_usable(record: Dict[str, Any]) -> bool:
     text = re.sub(r"\s+", " ", str(record.get("content") or "")).strip()
-    if len(text) < 40:
+    if len(text) < 16:
         return False
     dot_leaders = len(re.findall(r"(?:\.{5,}|…{3,})", text))
     if dot_leaders >= 2:
@@ -2938,6 +2944,24 @@ def _pdf_claim_record_is_usable(record: Dict[str, Any]) -> bool:
         return False
     return True
 
+
+def _handler_accepts_keyword(handler: Any, keyword: str) -> bool:
+    if not callable(handler):
+        return False
+    try:
+        parameters = inspect.signature(handler).parameters.values()
+    except (TypeError, ValueError):
+        return True
+    return any(parameter.kind == inspect.Parameter.VAR_KEYWORD or parameter.name == keyword for parameter in parameters)
+
+
+def _call_with_supported_kwargs(handler: Any, **kwargs: Any) -> Any:
+    supported = {
+        key: value
+        for key, value in kwargs.items()
+        if _handler_accepts_keyword(handler, key)
+    }
+    return handler(**supported)
 
 
 def _build_generic_pdf_insight_claims(buckets: Dict[str, List[Dict[str, Any]]], start_index: int) -> List[ClaimItem]:
