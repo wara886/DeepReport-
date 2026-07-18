@@ -1,60 +1,128 @@
 <div align="center">
 
-# Open DeepReport++
+# FinSight DeepReport++
 
-**Evidence-first multi-agent research reports for public companies**
+**证据驱动、过程可观测、结果可复核的多智能体金融研报工作台**
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-Web%20Service-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Workbench-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Checkpointed-1C3C3C)](https://langchain-ai.github.io/langgraph/)
+[![SQLite](https://img.shields.io/badge/SQLite-State%20%26%20Checkpoint-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![License](https://img.shields.io/badge/Use-Research%20Only-111827)](#boundaries)
 
-Generate Markdown / HTML / JSON company research reports with traceable claims,
-official-source evidence, charts, and quality gates.
+从官方披露、结构化行情和本地文档中建立证据链，经过指标仲裁、章节写作、自动返工和交付门禁，输出可追溯的 Markdown / HTML / JSON 研报。
+
+[快速开始](#快速开始) · [核心架构](#核心架构) · [数据覆盖](#数据覆盖) · [验收状态](#验收状态) · [使用边界](#使用边界)
 
 </div>
 
-![FinSight overview](docs/assets/finsight-overview.svg)
+<img src="docs/assets/generated-report.jpg" alt="FinSight generated financial report" width="100%">
 
-## Highlights
+## 当前产品
 
-- **Claim-first writing**: every important statement is tied to `evidence_id`.
-- **Official-source routing**: SEC filings/companyfacts for US, CNINFO/SSE/SZSE
-  for A-share, and HKEX-oriented disclosure paths for HK coverage.
-- **10-K annual report parsing**: US FY reports resolve SEC 10-K filings and
-  extract Item 1, Item 1A, Item 7, and related sections before writing.
-- **Quality gates**: delivery checks flag missing evidence, raw companyfacts
-  dumps, weak sections, broken citations, and chart/report mismatch.
-- **User web app**: FastAPI financial research workbench on port `7860`.
-- **Docker-first deployment**: one command starts the user-facing service.
+FinSight 不是一次性调用大模型的报告脚本。它将一次研报任务拆成可检查、可重试、可恢复的 LangGraph 节点，并让写作节点只能消费已经治理过的指标和章节证据包。
 
-## Public Repo Scope
+| 能力 | 当前实现 |
+| --- | --- |
+| 任务工作台 | 创建、启动、追踪、复核、导出与失败诊断 |
+| Agent Runtime | LangGraph 节点级 checkpoint、失败恢复和人工复核中断 |
+| ReAct 工具调用 | 有界循环、参数约束、超时、错误分类和完整调用轨迹 |
+| RAG | BM25 / Vector / Hybrid / Reranker，按任务、公司和期间隔离 |
+| 数据治理 | Evidence → Metric Candidate → Canonical / Derived Metric |
+| 报告生成 | 章节合同、must-use evidence、章节级校验与定向返工 |
+| 质量控制 | 数字、引用、证据、章节、图表、LLM Review 和交付门禁 |
+| 交付产物 | Markdown、HTML、JSON、图表、引用、验证报告与运行清单 |
 
-- **Published entrypoint**: `main.py` starts the user-facing service on `7860`.
-- **Local-only developer entrypoint**: `main_dev.py` stays ignored and is not part
-  of the public branch.
-- **Tracked fixtures**: frozen benchmark snapshots and curated samples remain for
-  reproducibility and tests.
-- **Ignored runtime state**: generated reports, memory, evidence archives, and
-  temporary runs stay local.
+### 工作台界面
 
-## Visual Overview
+<img src="docs/assets/workbench-dashboard.jpg" alt="FinSight research workbench dashboard" width="100%">
 
-![Artifact flow](docs/assets/report-artifacts.svg)
+首页指标直接读取任务、文档、证据、主张和数据源状态，不再使用固定示意漏斗。完整工作台位于 `/workbench`，根路径 `/` 也可进入当前产品入口。
 
-## Product Flow
+## 核心架构
 
 ```mermaid
 flowchart LR
-    U[Request] --> P[Plan]
-    P --> R[Route]
-    R --> E[Evidence]
-    E --> A[Analyze]
-    A --> G[Gate]
-    G --> O[Report]
+    UI["Web Workbench"] --> API["FastAPI"]
+    API --> TASK["ReportTaskService"]
+    TASK --> LG["LangGraph Runtime"]
+
+    subgraph FLOW["Checkpointed report flow"]
+      B["Official backfill"] --> E["Evidence gate"]
+      E --> P["Planning"]
+      P --> R["Research + bounded ReAct"]
+      R --> N["Normalize evidence"]
+      N --> A["Analyze"]
+      A --> C["Canonical metrics"]
+      C --> S["Section evidence packs"]
+      S --> W["Write sections"]
+      W --> V["Verify report + sections"]
+      V --> X["Repair failed sections"]
+      X --> Q["Quality gate"]
+      Q --> H["Human review / delivery"]
+    end
+
+    LG --> B
+    DB[("SQLite task state")] <--> TASK
+    CP[("SQLite checkpoints")] <--> LG
+    VS[("Task-isolated vector store")] <--> R
+    ART[("Versioned artifacts")] <--> C
+    ART <--> S
+    ART <--> W
+    ART <--> V
 ```
 
-## Quick Start
+每个运行节点记录状态、耗时、错误、重试和产物版本。上游证据或指标改变时，下游报告、主张和引用会被明确标记失效，避免正文与证据版本错位。
+
+### Agent 与工具
+
+核心 Tool Registry 当前注册 9 个工具：
+
+| 类别 | Tool |
+| --- | --- |
+| 检索 | `retrieve_local_evidence` |
+| 市场快照 | `fetch_yahoo_market_snapshot` |
+| 财务计算 | `calculate_financial_ratios`, `build_three_statement_view` |
+| 分析 | `build_trend_features`, `build_peer_comparison`, `perform_company_valuation` |
+| 图表与组装 | `render_all_charts`, `attach_charts_to_report` |
+
+Research Agent 只开放与当前任务相关的工具；运行时注入公司、期间和数据目录等受控参数。工具失败会被归类为数据降级、参数错误、超时或运行故障，不会直接伪装成研究结论。
+
+## 数据覆盖
+
+| 市场 | 官方 / 主要来源 | 结构化补充来源 | 说明 |
+| --- | --- | --- | --- |
+| 美股 | SEC EDGAR、Companyfacts | Yahoo Finance、FRED、BEA、Tavily | 年报章节、三表、行情、宏观和检索补充 |
+| A 股 | CNINFO、SSE、SZSE | Tushare Pro、BaoStock、Yahoo Finance | 公告与财务数据按股票和期间归一化 |
+| 港股 | HKEX 披露 | Yahoo Finance、搜索补充 | 官方披露优先；可用性取决于目标年度覆盖 |
+| 本地材料 | PDF、表格、文本手动导入 | BGE Embedding / Reranker | 解析、切分、证据化、向量化后进入任务证据库 |
+
+外部来源的“已配置、已启用、健康”是三个独立状态。需要密钥或网络不可用的来源不会被误报为健康来源。
+
+## 验收状态
+
+2026-07-18 当前发布分支的最新真实回归：
+
+| 样本 | 质量分 | Canonical Metrics | 章节合同 | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| AAPL FY2024 | 0.975 | 32 | 13 / 13 | `delivery_pass=true` |
+
+- Verifier、Objective Quality 与 LLM Review 全部通过。
+- 5 张财务、现金流、估值、同行和敏感性图表通过一致性与 lineage 校验。
+- 聚焦回归测试：`206 passed, 2 skipped`。
+- 冻结多市场样本与基准结果用于回归，不代表实时数据源永远可用或投资表现承诺。
+
+历史多策略对照基准：
+
+| Variant | Delivery Pass Rate | Objective Quality Score | Traceable Claim Rate |
+| --- | ---: | ---: | ---: |
+| Direct LLM | 16.67% | 51.21 | 29.66% |
+| Single-Agent RAG | 27.78% | 52.52 | 34.89% |
+| Multi-Agent RAG | 72.22% | 86.27 | 70.01% |
+
+详见 [formal benchmark protocol](docs/formal_benchmark_protocol.md)、[architecture](docs/architecture.md) 和 [limitations](docs/limitations.md)。
+
+## 快速开始
 
 ### Docker
 
@@ -65,170 +133,85 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Open:
+打开 `http://localhost:7860/workbench`。
 
-```text
-http://localhost:7860
-```
-
-Generated user reports are persisted under:
-
-```text
-data/outputs_user/
-data/reports_user/
-data/evidence_archive/
-memory/
-```
-
-Run the published image:
-
-```bash
-docker run --env-file .env -p 7860:7860 \
-  -v ./data/outputs_user:/app/data/outputs_user \
-  -v ./data/reports_user:/app/data/reports_user \
-  -v ./data/evidence_archive:/app/data/evidence_archive \
-  -v ./memory:/app/memory \
-  ghcr.io/wara886/deepreport-plus:latest
-```
-
-### Local Python
+### 本地 Python
 
 ```bash
 python -m venv .venv
+source .venv/bin/activate
 python -m pip install -e ".[pdf]"
+cp .env.example .env
 python main.py
 ```
 
-Then open `http://localhost:7860`.
+可使用 `python main.py --port 7863` 指定其他端口。
 
-### What Ships in Docker
+### 最小配置
 
-- `main.py`
-- `src/`
-- `configs/`
-- `scripts/`
-- `.env.example`
-
-The image intentionally excludes local reports, benchmark outputs, developer
-notes, and private scratch entrypoints.
-
-### Smoke Test
-
-```bash
-python scripts/run_multi_agent_demo.py --symbol AAPL --period FY2024 --execution-mode dynamic --fast
-python -m pytest -q tests/test_sec_annual_report_flow.py
-```
-
-## Repository Layout
+密钥只写入本地 `.env`，不要提交到 Git：
 
 ```text
-.
-├── configs/                  # model, source, report, and gate policies
-├── docs/                     # architecture and benchmark documentation
-├── scripts/                  # reproducible smoke/evaluation commands
-├── src/
-│   ├── agents/               # planning, research, analysis, writing, verifier
-│   ├── app/                  # FastAPI service and current workbench frontend
-│   ├── data/                 # source adapters and SEC filing resolver
-│   ├── evaluation/           # quality gates and benchmark scoring
-│   ├── report/               # charts, citations, HTML rendering
-│   └── schemas/              # report/evidence/claim data contracts
-├── tests/                    # regression tests
-├── main.py                   # user-facing service entrypoint
-├── Dockerfile
-└── docker-compose.yml
+DEEPSEEK_API_KEY=
+MIMO_API_KEY=
+TAVILY_API_KEY=
+TUSHARE_TOKEN=
+FRED_API_KEY=
+BEA_API_KEY=
+SEC_USER_AGENT=Your Name contact@example.com
 ```
 
-`main_dev.py` is intentionally local-only and ignored by Git. Public runs should
-use `main.py` or Docker Compose.
+未配置可选来源时，系统会显示准确的降级状态。SEC 实时访问必须提供可联系的 `SEC_USER_AGENT`。
 
-## Core Artifacts
-
-| Artifact | Why it exists |
-| --- | --- |
-| `evidence.json` | normalized source records |
-| `claims.json` | claim-first intermediate report facts |
-| `sec_filing_resolver.json` | SEC 10-K target filing resolution |
-| `annual_report_sections.json` | parsed Item 1 / Item 1A / Item 7 evidence |
-| `section_dossiers.json` | per-section writing brief and deterministic tables |
-| `citations.json` | citation map used by final report |
-| `verification_report.json` | delivery gate and evidence-gap diagnostics |
-| `report.md`, `report.html`, `report.json` | final user deliverables |
-
-## API Surface
+## API 与产物
 
 | Route | Purpose |
 | --- | --- |
-| `GET /` | current financial research workbench |
-| `GET /workbench` | explicit workbench alias |
-| `GET /health`, `GET /api/health` | container and deployment health checks |
-| `POST /api/report-tasks` | create a report task |
-| `POST /api/report-tasks/{task_id}/start` | start a queued report task |
-| `GET /api/report-tasks/{task_id}` | task state, readiness, and artifacts |
-| `GET /artifacts/*` | generated report artifacts |
+| `GET /`, `GET /workbench` | 当前投研工作台 |
+| `GET /health`, `GET /api/health` | 服务与部署健康检查 |
+| `POST /api/report-tasks` | 创建研报任务 |
+| `POST /api/report-tasks/{task_id}/start` | 启动待执行任务 |
+| `GET /api/report-tasks/{task_id}` | 节点、质量、复核和产物状态 |
+| `GET /artifacts/*` | 访问生成的报告与图表 |
 
-## Release Hygiene
+| Artifact | Purpose |
+| --- | --- |
+| `evidence.json` | 归一化证据与业务级身份 |
+| `canonical_metrics.json` | 正式指标、单位、期间与来源 lineage |
+| `section_evidence_packs.json` | 每个章节必须消费的证据包 |
+| `claims.json`, `citations.json` | 主张与引用绑定 |
+| `verification_report.json` | 数字、引用、章节和质量诊断 |
+| `run_manifest.json` | 上下游产物版本与失效关系 |
+| `report.md`, `report.html`, `report.json` | 最终交付物 |
 
-- `main_dev.py`, status notes, scratch scripts, and local planning documents are
-  kept out of Git.
-- GitHub Linguist is configured to treat benchmark/data snapshots as generated so
-  the repo surface stays focused on product code.
-- Docker build context excludes runtime artifacts and internal notes to keep the
-  image smaller and safer to publish.
-- Environment loading is repository-local. Credentials are never inherited from
-  sibling projects.
+运行数据默认保存在 `data/outputs_user/`、`data/reports_user/`、`data/evidence_archive/` 和 `memory/`，这些目录中的本地用户数据不会随源码提交。
 
-Inspect the current code/config/runtime baseline without exposing secret values:
+## 项目结构
+
+```text
+configs/       model, source, report and quality policies
+docs/          architecture, protocol and acceptance notes
+scripts/       smoke, baseline and runtime hygiene commands
+src/agents/    planning, research, analysis, writer and verifier
+src/app/       FastAPI routes and workbench frontend
+src/data/      source adapters and canonical metric pipeline
+src/runtime/   LangGraph state, checkpoints and run manifests
+src/report/    contracts, enrichment, charts and rendering
+src/evaluation quality gates, review and section repair
+src/retrieval/ chunking, hybrid retrieval and vector isolation
+tests/         focused and production regression tests
+```
+
+检查本地配置与运行状态但不输出密钥值：
 
 ```bash
 python scripts/runtime_hygiene.py status --output tmp/runtime_baseline.json
 ```
 
-Preview removable logs and scratch state, then explicitly apply the cleanup:
+## 使用边界
 
-```bash
-python scripts/runtime_hygiene.py clean
-python scripts/runtime_hygiene.py clean --apply
-```
-
-The cleanup command does not remove user reports, the workbench database,
-vector indexes, or frozen benchmark fixtures.
-
-## Benchmarks
-
-The repository includes frozen benchmark summaries for reproducibility. They are
-not a promise of live-source availability or investment performance.
-
-| Variant | Delivery Pass Rate | Objective Quality Score | Traceable Claim Rate |
-| --- | ---: | ---: | ---: |
-| Direct LLM | 16.67% | 51.21 | 29.66% |
-| Single-Agent RAG | 27.78% | 52.52 | 34.89% |
-| Multi-Agent RAG | 72.22% | 86.27 | 70.01% |
-
-See [formal benchmark protocol](docs/formal_benchmark_protocol.md),
-[architecture](docs/architecture.md), and [limitations](docs/limitations.md).
-
-## Configuration
-
-Secrets live in `.env`; non-secret runtime settings live in `configs/*.yaml`.
-
-Common environment variables:
-
-```text
-DEEPSEEK_API_KEY=
-TAVILY_API_KEY=
-SEC_USER_AGENT=Your Name contact@example.com
-HOST=0.0.0.0
-PORT=7860
-```
-
-For SEC access, set a descriptive `SEC_USER_AGENT` before running live annual
-report workflows.
-
-## Boundaries
-
-- This is a research and auditability tool, not investment advice.
-- Reports are only as strong as the available public evidence.
-- Missing official evidence should produce a degraded report or explicit data
-  gap, not invented analysis.
-- Durable memory is context only and never replaces cited evidence.
+- 本项目用于公开信息研究与可审计报告生成，不构成投资建议。
+- 实时行情与历史财务数据必须明确区分 `market_as_of_date` 和 `financial_period`。
+- 缺少官方证据、核心指标或章节合同未通过时，任务应降级为草稿，而不是生成虚构结论。
+- 长期记忆只提供上下文，不能替代报告中的正式证据和引用。
+- 估值结果取决于可用输入；相对估值与机械敏感性分析不等同于完整 DCF 目标价。
