@@ -304,6 +304,71 @@ def test_llm_review_reconciles_disclosed_ttm_and_fiscal_period_context(tmp_path)
     assert review["issues"][0]["category"] == "llm_review_reconciled"
 
 
+def test_llm_review_reconciles_verified_valuation_lineage_issue(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    outputs = run_dir / "company" / "outputs"
+    reports = run_dir / "company" / "reports"
+    (outputs / "section_verification.json").write_text(
+        json.dumps({"status": "passed", "formal_delivery_allowed": True}), encoding="utf-8"
+    )
+    (outputs / "verification_report.json").write_text(
+        json.dumps({"passed": True, "valuation_audit": {"passed": True, "errors": []}}), encoding="utf-8"
+    )
+    (reports / "report.md").write_text(
+        "## 估值观察\nP/E 25.0x，输入指标及公式已绑定证据。\n\n"
+        "## 估值敏感性\n悲观、基准和乐观情景均为公式推导。",
+        encoding="utf-8",
+    )
+    model = FakeReviewModel({
+        "total_score": 0.82,
+        "dimension_scores": {},
+        "verdict": "估值证据需要复核。",
+        "issues": [{
+            "severity": "fatal",
+            "category": "valuation",
+            "message": "Valuation sensitivity figures lack supporting evidence and linked lineage.",
+        }],
+    })
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["issues"][0]["severity"] == "warning"
+
+
+def test_llm_review_reconciles_approved_peers_confined_to_peer_section(tmp_path):
+    run_dir = _write_review_run(tmp_path)
+    outputs = run_dir / "company" / "outputs"
+    reports = run_dir / "company" / "reports"
+    (outputs / "section_verification.json").write_text(
+        json.dumps({"status": "passed", "formal_delivery_allowed": True}), encoding="utf-8"
+    )
+    (outputs / "analysis_artifacts.json").write_text(
+        json.dumps({"peer_analysis": {"approved_peer_symbols": ["MSFT", "GOOGL"]}}), encoding="utf-8"
+    )
+    (reports / "report.md").write_text(
+        "## 同行对比\nMSFT 与 GOOGL 为当前 TTM 可比公司。\n\n"
+        "## 投资结论\n维持中性，基于估值和风险约束。\n\n"
+        "## 参考来源\nhttps://finance.yahoo.com/quote/MSFT",
+        encoding="utf-8",
+    )
+    model = FakeReviewModel({
+        "total_score": 0.84,
+        "dimension_scores": {},
+        "verdict": "同行代码可能污染。",
+        "issues": [{
+            "severity": "fatal",
+            "category": "identity",
+            "message": "Non-target symbols MSFT and GOOGL appear outside peer comparison section.",
+        }],
+    })
+
+    review = review_report_with_llm(run_dir, model=model)
+
+    assert review["llm_review_pass"] is True
+    assert review["issues"][0]["severity"] == "warning"
+
+
 def test_review_prompt_compacts_large_evidence_payloads():
     huge = "financial filing text " * 200000
     prompt = _build_review_prompt(

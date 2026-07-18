@@ -388,6 +388,17 @@ def _build_business_overview(
                 c.add_quality_flag("business_overview_uses_sec_10k")
                 break
 
+    known_candidate_ids = {str(item.get("evidence_id") or "") for item in candidates}
+    for record in evidence_records:
+        if str(record.get("source_type") or "").lower() != "sec_10k_section":
+            continue
+        identity = " ".join(str(record.get(key) or "").lower() for key in ("evidence_id", "title"))
+        evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
+        if "business" not in identity or not evidence_id or evidence_id in known_candidate_ids:
+            continue
+        _append_candidate(str(record.get("content") or ""), evidence_id, SRC_SEC_10K_SECTION)
+        known_candidate_ids.add(evidence_id)
+
     if candidates:
         candidates.sort(key=lambda item: (item.get("score", 0), len(str(item.get("text") or ""))), reverse=True)
         chosen_texts: List[str] = []
@@ -669,6 +680,28 @@ def _build_strategy_business(
                 c.status = "supported"
                 c.add_quality_flag("strategy_uses_sec_10k_mda")
                 break
+
+    if c.status == "gap":
+        for record in evidence_records:
+            if str(record.get("source_type") or "").lower() != "sec_10k_section":
+                continue
+            identity = " ".join(str(record.get(key) or "").lower() for key in ("evidence_id", "title"))
+            if not any(token in identity for token in ("mda", "management discussion", "competition", "segments")):
+                continue
+            text = _clean_and_clip_pdf_text(str(record.get("content") or ""), 600)
+            evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
+            if len(text) < 50 or not evidence_id:
+                continue
+            c.add_fact(
+                "strategy_discussion",
+                text,
+                evidence_ids=[evidence_id],
+                source_types=[SRC_SEC_10K_SECTION],
+            )
+            evidence_ids_used.append(evidence_id)
+            c.status = "supported"
+            c.add_quality_flag("strategy_uses_sec_10k_mda")
+            break
 
     for chunk in strategy_chunks:
         text = str(chunk.get("summary_zh") or chunk.get("text") or chunk.get("content") or "")

@@ -19,7 +19,8 @@ from src.agents.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.agents.base_agent import AgentTask
 from src.agents.verifier_agent import VerifierAgent
 from src.data.company_universe import infer_market_from_symbol, resolve_company_identity
-from src.data.canonical_metrics import write_canonical_metrics_artifact
+from src.data.canonical_metrics import canonical_metrics_as_statement_tables, write_canonical_metrics_artifact
+from src.report.prewrite_enrichment import enrich_prewrite_inputs
 from src.data.evidence_intake_gate import PERIOD_GATED_SOURCE_TYPES, record_period_status
 from src.data.official_evidence_archive import build_official_evidence_artifacts
 from src.data.official_evidence_backfill import execute_official_evidence_backfill
@@ -404,10 +405,15 @@ class ReportTaskService:
         self._record_runtime_stage(
             task_id,
             stage="build_canonical_metrics",
-            status="success",
-            message="正式指标候选池已建立",
+            status="success" if summary.get("status") == "ready" else "error",
+            message="正式指标候选池已建立" if summary.get("status") == "ready" else "正式指标候选池为空，已停止写作",
             metadata=summary,
         )
+        if summary.get("status") != "ready":
+            raise RuntimeError(
+                "canonical_metrics_unavailable: no period-matched structured metrics; "
+                "retry evidence normalization or official data acquisition before writing"
+            )
         return self._current_run_state_patch(task_id)
 
     def _graph_build_section_evidence_packs_node(self, state: ReportGraphState) -> dict[str, Any]:
@@ -546,12 +552,19 @@ class ReportTaskService:
         )
         if phase in {"research", "normalize_evidence"}:
             self._record_datasource_health(task_id=task_id, output_dir=Path(str(metadata.get("output_dir") or "")))
+        phase_status = str(result.get("phase_status") or "success")
+        degraded = phase_status != "success"
         self._record_runtime_stage(
             task_id,
             stage=phase,
-            status="success",
-            message=f"Agent phase {phase} completed",
-            metadata={"checkpoint": result.get("checkpoint"), "result_keys": sorted(result)},
+            status="warning" if degraded else "success",
+            message=f"Agent phase {phase} completed" if not degraded else f"Agent phase {phase} completed with degradation",
+            metadata={
+                "checkpoint": result.get("checkpoint"),
+                "result_keys": sorted(result),
+                "phase_status": phase_status,
+                "phase_error": result.get("phase_error"),
+            },
         )
         return self._current_run_state_patch(task_id)
 
@@ -764,6 +777,27 @@ class ReportTaskService:
             symbol=str(metadata.get("symbol") or ""),
             period=str(metadata.get("period") or ""),
         )
+        projected_tables = canonical_metrics_as_statement_tables(artifact)
+        if projected_tables:
+            tables = projected_tables
+            (output_dir / "tables.json").write_text(
+                json.dumps(tables, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+            )
+
+        enriched = enrich_prewrite_inputs(
+            analysis_artifacts=_read_json_object(output_dir / "analysis_artifacts.json"),
+            claims=_read_json_list(output_dir / "claims.json"),
+            evidence_records=evidence_records,
+            canonical_metrics=artifact,
+            tables=tables,
+            symbol=str(metadata.get("symbol") or ""),
+            period=str(metadata.get("period") or ""),
+        )
+        (output_dir / "analysis_artifacts.json").write_text(
+            json.dumps(enriched["analysis_artifacts"], ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
+        _write_json_list(output_dir / "claims.json", enriched["claims"])
+        _write_json_list(output_dir / "evidence.json", enriched["evidence_records"])
         summary = _canonical_metrics_summary(output_dir=output_dir, artifact=artifact)
         self._update_runtime_metadata(task_id, "canonical_metrics", summary)
         return summary

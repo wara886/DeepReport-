@@ -213,6 +213,27 @@ def test_generate_report_charts_falls_back_to_verified_statement_tables(tmp_path
     assert (tmp_path / "financial_scale_bar.png").is_file()
 
 
+def test_generate_report_charts_builds_cashflow_chart_from_canonical_table_keys(tmp_path):
+    charts = generate_report_charts(
+        claims=[],
+        evidence_records=[],
+        output_dir=str(tmp_path),
+        tables=[{
+            "table_id": "cashflow",
+            "table_type": "cash_flow_statement",
+            "rows": [
+                {"line_item": "operating_cash_flow", "value": 118.254, "unit": "USD_billion", "period_match": True},
+                {"line_item": "free_cash_flow", "value": 108.807, "unit": "USD_billion", "period_match": True},
+            ],
+        }],
+    )
+
+    chart = next(item for item in charts if item["chart_id"] == "cash_flow_bar")
+    assert chart["chart_js"]["labels"] == ["经营现金流", "自由现金流"]
+    assert chart["chart_js"]["data"] == [118.254, 108.807]
+    assert (tmp_path / "cash_flow_bar.png").is_file()
+
+
 def test_earnings_bridge_chart_is_not_labeled_as_equity_valuation(tmp_path):
     artifacts = {
         "valuation_sensitivity": {

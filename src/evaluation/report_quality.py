@@ -376,12 +376,37 @@ def _score_multimodal(artifacts: Dict[str, Any], issues: List[Dict[str, Any]]) -
         _issue(issues, "blocker", "multimodal", "missing chart artifacts")
     useful = 0
     for chart in charts:
-        title = str(chart.get("title") or chart.get("chart_id") or "") if isinstance(chart, dict) else ""
-        if _contains_any(title, ("revenue", "income", "cash", "margin", "metrics", "profit")):
+        title = (
+            " ".join(
+                str(chart.get(key) or "")
+                for key in ("title", "chart_id", "section_name")
+            )
+            if isinstance(chart, dict)
+            else ""
+        )
+        if _contains_any(
+            title,
+            (
+                "revenue",
+                "income",
+                "cash",
+                "margin",
+                "metrics",
+                "profit",
+                "收入",
+                "利润",
+                "现金流",
+                "财务",
+                "估值",
+                "同行",
+                "同业",
+                "敏感性",
+            ),
+        ):
             useful += 1
     if charts and useful == 0:
         _issue(issues, "warning", "multimodal", "charts do not clearly serve financial analysis")
-    figure_mentioned = 1.0 if _contains_any(text, ("figure", "chart", "table", "graph")) else 0.0
+    figure_mentioned = 1.0 if _contains_any(text, ("figure", "chart", "table", "graph", "图表", "表格", "图形")) else 0.0
     return round(0.45 * min(1.0, len(charts) / 2) + 0.25 * min(1.0, useful / 1) + 0.2 * min(1.0, len(tables) / 3) + 0.1 * figure_mentioned, 4)
 
 
@@ -686,7 +711,7 @@ def _check_delivery_policy(artifacts: Dict[str, Any], issues: List[Dict[str, Any
 
     report_text = _report_text(artifacts)
     memory_trace = artifacts.get("agent_collaboration_trace", {})
-    memory_text = json.dumps(memory_trace, ensure_ascii=False) if isinstance(memory_trace, dict) else ""
+    memory_text = json.dumps(memory_trace, ensure_ascii=False) if isinstance(memory_trace, dict) and memory_trace else ""
     if "DurableMemory" in report_text or "[DurableMemory]" in report_text:
         _issue(issues, "blocker", "delivery_policy", "report text appears to use memory content as factual source")
     if memory_text and "facts require evidence/citation/verifier" not in memory_text:

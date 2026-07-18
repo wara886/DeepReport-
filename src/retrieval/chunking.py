@@ -101,7 +101,10 @@ def chunk_records(records: Iterable[Any], max_chars: int = 650) -> List[Evidence
 
 
 def chunk_record(record: Any, max_chars: int = 650) -> List[EvidenceChunk]:
-    data = normalize_evidence_record(_record_to_dict(record))
+    raw_data = _record_to_dict(record)
+    data = normalize_evidence_record(raw_data)
+    if _is_existing_chunk(raw_data):
+        return [_existing_chunk(data)]
     parent_id = str(data.get("sample_id") or data.get("evidence_id") or _stable_id(data, "record"))
     source_type = str(data.get("source_type", ""))
     metadata = data.get("metadata", {}) if isinstance(data.get("metadata"), dict) else {}
@@ -119,6 +122,57 @@ def chunk_record(record: Any, max_chars: int = 650) -> List[EvidenceChunk]:
         chunks.append(_make_chunk(data, parent_id, str(data.get("content", "")), "paragraph", 1))
 
     return _dedupe_chunks(chunks)
+
+
+def _is_existing_chunk(data: Dict[str, Any]) -> bool:
+    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    chunking = metadata.get("chunking") if isinstance(metadata.get("chunking"), dict) else {}
+    return bool(chunking.get("strategy") or data.get("chunk_id") or data.get("parent_sample_id"))
+
+
+def _existing_chunk(data: Dict[str, Any]) -> EvidenceChunk:
+    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    chunking = metadata.get("chunking") if isinstance(metadata.get("chunking"), dict) else {}
+    chunk_id = str(data.get("chunk_id") or data.get("sample_id") or data.get("evidence_id") or _stable_id(data, "chunk"))
+    parent_id = str(
+        data.get("parent_sample_id")
+        or data.get("parent_evidence_id")
+        or chunking.get("parent_sample_id")
+        or chunk_id
+    )
+    chunk_type = str(data.get("chunk_type") or _chunk_type_from_id(chunk_id) or "paragraph")
+    chunk_index = data.get("chunk_index")
+    if chunk_index in (None, ""):
+        match = re.search(rf"__{re.escape(chunk_type)}_(\d+)_chunk_", chunk_id)
+        chunk_index = int(match.group(1)) if match else 1
+    return EvidenceChunk(
+        chunk_id=chunk_id,
+        parent_sample_id=parent_id,
+        source_type=str(data.get("source_type") or ""),
+        symbol=str(data.get("symbol") or ""),
+        period=str(data.get("period") or ""),
+        title=str(data.get("title") or ""),
+        publish_time=str(data.get("publish_time") or ""),
+        content=str(data.get("content") or "").strip(),
+        source_url=str(data.get("source_url") or ""),
+        trust_level=str(data.get("trust_level") or ""),
+        chunk_type=chunk_type,
+        chunk_index=int(chunk_index),
+        page=data.get("page") if isinstance(data.get("page"), int) else None,
+        table_id=str(data.get("table_id") or ""),
+        row_id=str(data.get("row_id") or ""),
+        cell_refs=[str(item) for item in data.get("cell_refs", [])] if isinstance(data.get("cell_refs"), list) else [],
+        metric_name=str(data.get("metric_name") or ""),
+        numeric_values=_numeric_dict(data.get("numeric_values", {}))
+        if isinstance(data.get("numeric_values"), dict)
+        else {},
+        metadata=dict(metadata),
+    )
+
+
+def _chunk_type_from_id(chunk_id: str) -> str:
+    matches = re.findall(r"__(paragraph|table_row|metric)_\d+_chunk_", str(chunk_id or ""))
+    return matches[-1] if matches else ""
 
 
 def _make_chunk(

@@ -596,10 +596,13 @@ def _ticker_mentions(text: str) -> set[str]:
         "ROA",
         "ROE",
         "SEC",
+        "SE",
         "SH",
         "SS",
         "SZ",
         "TC",
+        "TTM",
+        "TV",
         "US",
         "USD",
         "UNRATE",
@@ -688,7 +691,19 @@ def _non_peer_report_text(text: str) -> str:
     sections = _split_markdown_sections(text)
     if not sections:
         return text
-    allowed_keywords = ("peer", "同行", "同业", "可比", "comparison", "competitor")
+    allowed_keywords = (
+        "peer",
+        "同行",
+        "同业",
+        "可比",
+        "comparison",
+        "competitor",
+        "reference",
+        "source",
+        "参考来源",
+        "引用",
+        "证据来源",
+    )
     kept = []
     for title, body in sections:
         lowered = title.lower()

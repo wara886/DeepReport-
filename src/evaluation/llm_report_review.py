@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 from typing import Any, Dict, List
 
 from src.evaluation.report_quality import resolve_run_paths
@@ -237,6 +238,8 @@ def _reconcile_review_with_runtime_artifacts(review: Dict[str, Any], artifacts: 
             or _is_disclosed_ttm_period_context_issue(message, report_md=report_md)
             or _is_reviewer_unfinished_sentence_false_positive(message, artifacts=artifacts)
             or _is_disclosed_directional_rating_false_positive(message, report_md=report_md)
+            or _is_verified_valuation_false_positive(message, artifacts=artifacts)
+            or _is_approved_peer_false_positive(message, artifacts=artifacts)
         ):
             row = dict(issue)
             row["severity"] = "warning"
@@ -272,6 +275,47 @@ def _is_disclosed_directional_rating_false_positive(message: str, *, report_md: 
         for term in ("非dcf目标价", "不构成目标价", "不输出确定目标价", "不输出确定性目标价")
     )
     return has_directional_rating and (alleges_missing_rating or (alleges_missing_target and target_price_boundary))
+
+
+def _is_verified_valuation_false_positive(message: str, *, artifacts: Dict[str, Any]) -> bool:
+    text = str(message or "").lower()
+    if not any(term in text for term in ("valuation", "估值", "target price", "目标价", "sensitivity", "敏感性")):
+        return False
+    if not any(term in text for term in ("evidence", "证据", "support", "linked", "reproduc")):
+        return False
+    verification = artifacts.get("verification_report") if isinstance(artifacts.get("verification_report"), dict) else {}
+    audit = verification.get("valuation_audit") if isinstance(verification.get("valuation_audit"), dict) else {}
+    return verification.get("passed") is True and audit.get("passed") is True
+
+
+def _is_approved_peer_false_positive(message: str, *, artifacts: Dict[str, Any]) -> bool:
+    text = str(message or "").lower()
+    if not any(term in text for term in ("non-target", "ticker", "symbol", "公司污染", "标的污染")):
+        return False
+    approved = {str(item or "").upper() for item in artifacts.get("approved_peer_symbols", []) if str(item or "")}
+    if not approved:
+        return False
+    report = _remove_markdown_sections(
+        str(artifacts.get("report_md") or ""),
+        {"同行对比", "peer comparison", "图表", "charts", "参考来源", "references"},
+    )
+    return not any(re.search(rf"(?<![A-Z0-9]){re.escape(symbol)}(?![A-Z0-9])", report, flags=re.I) for symbol in approved)
+
+
+def _remove_markdown_sections(markdown: str, titles: set[str]) -> str:
+    lines = str(markdown or "").splitlines()
+    output: list[str] = []
+    skipping = False
+    normalized_titles = {item.strip().lower() for item in titles}
+    for line in lines:
+        match = re.match(r"^##\s+(.+?)\s*$", line.strip())
+        if match:
+            skipping = match.group(1).strip().lower() in normalized_titles
+            if skipping:
+                continue
+        if not skipping:
+            output.append(line)
+    return "\n".join(output)
 
 
 def _is_disclosed_ttm_period_context_issue(message: str, *, report_md: str) -> bool:
@@ -507,11 +551,18 @@ def _build_review_prompt(artifacts: Dict[str, Any]) -> str:
     payload = {
         "objective_quality_report": artifacts["quality_report"],
         "verification_report": artifacts["verification_report"],
-        "claims_sample": _compact_review_claims(artifacts["claims"][:8]),
+        "claims_sample": _compact_review_claims(artifacts["claims"]),
         "evidence_sample": _compact_review_evidence(artifacts["evidence"][:8]),
         "citations_sample": _compact_review_citations(artifacts["citations"][:8]),
         "approved_peer_symbols": artifacts.get("approved_peer_symbols", []),
         "peer_symbol_policy": "approved_peer_symbols are valid only inside the peer comparison section; they are not cross-report contamination there",
+        "canonical_metrics": {
+            "coverage": artifacts.get("canonical_metrics", {}).get("coverage", {}),
+            "metrics": _compact_review_metrics(artifacts.get("canonical_metrics", {}).get("metrics", [])),
+        },
+        "valuation_model": artifacts.get("valuation_model", {}),
+        "valuation_sensitivity": artifacts.get("valuation_sensitivity", {}),
+        "valuation_audit": artifacts.get("verification_report", {}).get("valuation_audit", {}),
         "report_markdown": artifacts["report_md"][:18000],
     }
     return (
@@ -525,6 +576,23 @@ def _build_review_prompt(artifacts: Dict[str, Any]) -> str:
 
 
 def _compact_review_claims(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    priority = {
+        "business_overview": 0,
+        "strategy_business": 1,
+        "financial_analysis": 2,
+        "peer_compare": 3,
+        "valuation": 4,
+        "valuation_sensitivity": 5,
+        "risks": 6,
+        "risk": 6,
+        "conclusion": 7,
+        "investment_conclusion": 7,
+    }
+    ordered = sorted(
+        enumerate(records),
+        key=lambda item: (priority.get(str(item[1].get("section_name") or ""), 20), item[0]),
+    )
+    selected = [item for _, item in ordered[:12]]
     return [
         {
             "claim_id": row.get("claim_id"),
@@ -533,7 +601,7 @@ def _compact_review_claims(records: List[Dict[str, Any]]) -> List[Dict[str, Any]
             "evidence_ids": list(row.get("evidence_ids") or [])[:8],
             "numeric_values": row.get("numeric_values") if isinstance(row.get("numeric_values"), dict) else {},
         }
-        for row in records
+        for row in selected
     ]
 
 
@@ -569,6 +637,20 @@ def _compact_review_citations(records: List[Dict[str, Any]]) -> List[Dict[str, A
     ]
 
 
+def _compact_review_metrics(records: Any) -> List[Dict[str, Any]]:
+    return [
+        {
+            "metric_name": row.get("metric_name"),
+            "value": row.get("value"),
+            "unit": row.get("unit"),
+            "period": row.get("period"),
+            "source_evidence_id": row.get("source_evidence_id"),
+        }
+        for row in records[:40]
+        if isinstance(row, dict)
+    ] if isinstance(records, list) else []
+
+
 def _system_prompt() -> str:
     return "你是严格的金融研报评审。只输出可解析 JSON，不要输出 Markdown。"
 
@@ -581,6 +663,8 @@ def _load_review_artifacts(outputs_dir: Path, reports_dir: Path) -> Dict[str, An
         "section_verification": _read_json(outputs_dir / "section_verification.json", {}),
         "section_repair": _read_json(outputs_dir / "section_repair.json", {}),
         "canonical_metrics": _read_json(outputs_dir / "canonical_metrics.json", {}),
+        "valuation_model": _read_json(outputs_dir / "valuation_model.json", {}),
+        "valuation_sensitivity": _read_json(outputs_dir / "valuation_sensitivity.json", {}),
         "claims": _as_list(_read_json(outputs_dir / "claims.json", [])),
         "evidence": _as_list(_read_json(outputs_dir / "evidence.json", [])),
         "citations": _as_list(_read_json(outputs_dir / "citations.json", [])),

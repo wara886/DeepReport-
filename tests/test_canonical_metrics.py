@@ -1,4 +1,8 @@
-from src.data.canonical_metrics import build_canonical_metrics_artifact, canonical_metrics_as_financial_metrics
+from src.data.canonical_metrics import (
+    build_canonical_metrics_artifact,
+    canonical_metrics_as_financial_metrics,
+    canonical_metrics_as_statement_tables,
+)
 from src.evaluation.report_quality import load_quality_artifacts, resolve_run_paths
 
 
@@ -243,7 +247,8 @@ def test_canonical_metrics_extracts_period_matched_yahoo_statement_history():
         period="FY2024",
     )
 
-    assert artifact["metric_count"] == 8
+    assert artifact["metric_count"] == 9
+    assert artifact["canonical_metrics"]["gross_profit"]["value"] == 180.683
     assert artifact["canonical_metrics"]["revenue"]["value"] == 391.035
     assert artifact["canonical_metrics"]["net_income"]["value"] == 93.736
     assert artifact["canonical_metrics"]["total_assets"]["value"] == 364.98
@@ -251,6 +256,178 @@ def test_canonical_metrics_extracts_period_matched_yahoo_statement_history():
     assert artifact["canonical_metrics"]["revenue"]["source_evidence_id"] == "aapl_yahoo_financials"
     assert artifact["canonical_metrics"]["revenue"]["report_date"] == "2024-09-30"
     assert artifact["canonical_metrics"]["revenue"]["unit"] == "USD_billion"
+
+
+def test_canonical_metrics_projects_detailed_three_statement_rows():
+    artifact = build_canonical_metrics_artifact(
+        financial_metrics={"metrics": []},
+        tables=[],
+        evidence_records=[
+            {
+                "evidence_id": "aapl_detailed_statements",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "source_type": "market_api",
+                "metadata": {
+                    "target_period": "FY2024",
+                    "financials": {
+                        "income_history": [{
+                            "end_date": "2024-09-30",
+                            "Total Revenue": 391035000000.0,
+                            "Cost Of Revenue": 210352000000.0,
+                            "Gross Profit": 180683000000.0,
+                            "Operating Income": 123216000000.0,
+                            "Pretax Income": 123485000000.0,
+                            "Net Income": 93736000000.0,
+                            "Basic EPS": 6.11,
+                            "Diluted EPS": 6.08,
+                        }],
+                        "balance_history": [{
+                            "end_date": "2024-09-30",
+                            "Total Assets": 364980000000.0,
+                            "Current Assets": 152987000000.0,
+                            "Cash And Cash Equivalents": 29943000000.0,
+                            "Inventory": 7286000000.0,
+                            "Total Liabilities Net Minority Interest": 308030000000.0,
+                            "Current Liabilities": 176392000000.0,
+                            "Total Debt": 106629000000.0,
+                            "Stockholders Equity": 56950000000.0,
+                            "Ordinary Shares Number": 15116786000.0,
+                        }],
+                        "cashflow_history": [{
+                            "end_date": "2024-09-30",
+                            "Operating Cash Flow": 118254000000.0,
+                            "Capital Expenditure": -9447000000.0,
+                            "Free Cash Flow": 108807000000.0,
+                            "Investing Cash Flow": 2935000000.0,
+                            "Financing Cash Flow": -121983000000.0,
+                            "Cash Dividends Paid": -15234000000.0,
+                            "Repurchase Of Capital Stock": -94949000000.0,
+                        }],
+                    },
+                },
+            }
+        ],
+        symbol="AAPL",
+        period="FY2024",
+    )
+
+    assert artifact["canonical_metrics"]["shares_outstanding"]["value"] == 15.116786
+    assert artifact["canonical_metrics"]["total_equity"]["value"] == 56.95
+    tables = {item["table_type"]: item for item in canonical_metrics_as_statement_tables(artifact)}
+    assert len(tables["income_statement"]["rows"]) == 8
+    assert len(tables["balance_sheet"]["rows"]) == 9
+    assert len(tables["cash_flow_statement"]["rows"]) == 7
+    assert {row["line_item"] for row in tables["cash_flow_statement"]["rows"]} >= {
+        "operating_cash_flow",
+        "capital_expenditure",
+        "free_cash_flow",
+    }
+
+
+def test_canonical_metrics_extracts_yahoo_statements_in_chunk_parent_metadata():
+    artifact = build_canonical_metrics_artifact(
+        financial_metrics={"metrics": []},
+        tables=[],
+        evidence_records=[
+            {
+                "evidence_id": "aapl_yahoo_financials_chunk",
+                "symbol": "AAPL",
+                "period": "FY2024",
+                "source_type": "market_api",
+                "metadata": {
+                    "target_period": "FY2024",
+                    "parent_metadata": {
+                        "financials": {
+                            "income_history": [
+                                {
+                                    "end_date": "2024-09-30",
+                                    "Total Revenue": 391035000000.0,
+                                    "Net Income": 93736000000.0,
+                                    "Gross Profit": 180683000000.0,
+                                }
+                            ],
+                            "balance_history": [
+                                {
+                                    "end_date": "2024-09-30",
+                                    "Total Assets": 364980000000.0,
+                                    "Total Liabilities": 308030000000.0,
+                                    "Cash And Cash Equivalents": 29943000000.0,
+                                }
+                            ],
+                            "cashflow_history": [
+                                {
+                                    "end_date": "2024-09-30",
+                                    "Operating Cash Flow": 118254000000.0,
+                                    "Free Cash Flow": 108807000000.0,
+                                }
+                            ],
+                        }
+                    },
+                },
+            }
+        ],
+        symbol="AAPL",
+        period="FY2024",
+    )
+
+    assert artifact["metric_count"] == 9
+    assert artifact["canonical_metrics"]["gross_profit"]["value"] == 180.683
+
+
+def test_canonical_metrics_resolves_historical_deep_chunk_metadata():
+    nested = {
+        "financials": {
+            "income_history": [{
+                "end_date": "2024-09-30",
+                "Total Revenue": 391035000000.0,
+                "Net Income": 93736000000.0,
+                "Gross Profit": 180683000000.0,
+            }],
+            "balance_history": [{
+                "end_date": "2024-09-30",
+                "Total Assets": 364980000000.0,
+                "Total Liabilities": 308030000000.0,
+                "Cash And Cash Equivalents": 29943000000.0,
+            }],
+            "cashflow_history": [{
+                "end_date": "2024-09-30",
+                "Operating Cash Flow": 118254000000.0,
+                "Free Cash Flow": 108807000000.0,
+            }],
+        }
+    }
+    for _ in range(12):
+        nested = {"parent_metadata": nested, "chunking": {"strategy": "paragraph_table_metric_v1"}}
+
+    artifact = build_canonical_metrics_artifact(
+        financial_metrics={"metrics": []},
+        tables=[],
+        evidence_records=[{
+            "evidence_id": "deep_existing_chunk",
+            "symbol": "AAPL",
+            "period": "FY2024",
+            "source_type": "market_api",
+            "metadata": nested,
+        }],
+        symbol="AAPL",
+        period="FY2024",
+    )
+
+    assert artifact["coverage"]["missing_core_metrics"] == []
+    assert artifact["canonical_metrics"]["revenue"]["value"] == 391.035
+    assert artifact["canonical_metrics"]["free_cash_flow"]["value"] == 108.807
+    assert artifact["canonical_metrics"]["revenue"]["source_evidence_id"] == "deep_existing_chunk"
+
+    tables = canonical_metrics_as_statement_tables(artifact)
+    assert [table["table_type"] for table in tables] == [
+        "income_statement",
+        "balance_sheet",
+        "cash_flow_statement",
+    ]
+    assert tables[0]["extraction_method"] == "canonical_metric_projection"
+    assert tables[0]["rows"][0]["metric_name"] == "revenue"
+    assert tables[2]["rows"][1]["value"] == 108.807
 
 
 def test_quality_artifact_loader_prefers_canonical_metrics(tmp_path):

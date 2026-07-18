@@ -105,12 +105,12 @@ agent_model_routes:
     developer_fast: developer_fast
   planning:
     preview: flash
-    delivery: mimo_flash
+    delivery: flash
     user_fast: user_fast
     developer_fast: developer_fast
   research:
     preview: flash
-    delivery: mimo_flash
+    delivery: flash
     user_fast: user_fast
     developer_fast: developer_fast
   browser:

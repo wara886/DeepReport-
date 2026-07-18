@@ -288,7 +288,6 @@ def test_orchestrator_bounds_agent_calls_without_an_overall_deadline(tmp_path):
             )
 
     orchestrator.agents["critic"] = HangingAgent()
-    orchestrator.state = {}
     result = orchestrator._execute(
         "critic",
         AgentTask(task_id="bounded-task", task_type="pre_write_critic", description="must time out"),
@@ -298,6 +297,64 @@ def test_orchestrator_bounds_agent_calls_without_an_overall_deadline(tmp_path):
     assert "exceeded" in result.error
     assert orchestrator.state["_timeout_count"] == 1
     assert [item["phase"] for item in stages] == ["started", "finished"]
+
+
+def test_static_planning_timeout_persists_deterministic_fallback_plan(tmp_path):
+    import time
+
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        model=FakeJsonModel(),
+        agent_task_timeout_seconds=0.02,
+    )
+
+    class HangingPlanner:
+        name = "PlanningAgent"
+
+        def execute_task(self, task):
+            time.sleep(0.2)
+            return TaskResult(
+                task_id=task.task_id,
+                agent_name=self.name,
+                status=AgentStatus.COMPLETED,
+                output={"plan": {"late": True}},
+            )
+
+    orchestrator.agents["planning"] = HangingPlanner()
+    result = orchestrator.run(
+        research_topic="Analyze AAPL FY2024",
+        symbol="AAPL",
+        period="FY2024",
+        execution_mode="static",
+        stop_after_phase="planning",
+    )
+
+    plan = json.loads((tmp_path / "outputs" / "task_plan.json").read_text(encoding="utf-8"))
+    assert result["phase"] == "planning"
+    assert result["phase_status"] == "degraded"
+    assert plan["tasks"]
+    assert plan["fallback_used"] is True
+    assert "timeout" in plan["fallback_reason"]
+
+
+def test_static_phase_status_ignores_failures_from_prior_checkpoints(tmp_path):
+    orchestrator = MultiAgentOrchestrator(
+        output_dir=str(tmp_path / "outputs"),
+        report_dir=str(tmp_path / "reports"),
+        model=FakeJsonModel(),
+    )
+    orchestrator.output_dir.mkdir(parents=True, exist_ok=True)
+    orchestrator.trace = [
+        {"agent_key": "planning", "status": "failed", "error": "old timeout"},
+        {"agent_key": "research", "status": "completed", "error": ""},
+    ]
+    orchestrator._phase_trace_start = 1
+
+    result = orchestrator._static_phase_result("research", [])
+
+    assert result["phase_status"] == "success"
+    assert result["phase_error"] == ""
 
 
 def test_phase_checkpoint_and_trace_payloads_are_bounded():
@@ -978,6 +1035,8 @@ def test_static_prewrite_checkpoint_keeps_upstream_artifacts_immutable_for_write
     assert completed["phase"] == "final_answer"
     assert [item["agent_key"] for item in writer_stages if item["phase"] == "started"] == ["final_answer"]
     assert {name: (output_dir / name).read_bytes() for name in upstream_files} == before
+    collaboration = json.loads((output_dir / "agent_collaboration_trace.json").read_text(encoding="utf-8"))
+    assert collaboration["memory"]["fact_boundary"].startswith("Memory is routing")
 
 
 def test_static_delivery_path_enables_bounded_react_for_research_and_analyze(tmp_path):
@@ -2300,6 +2359,40 @@ def test_rule_verifier_fails_target_symbol_mismatch():
 
     assert report["passed"] is False
     assert any("Target symbol mismatch" in error for error in report["errors"])
+
+
+def test_rule_verifier_ignores_peer_reference_tickers_and_financial_abbreviations():
+    verifier = Verifier()
+    claims = [
+        ClaimItem(
+            claim_id="cl_aapl",
+            section_name="financial_analysis",
+            claim_text="AAPL FY2024 revenue was supported by the annual filing.",
+            evidence_ids=["ev_aapl"],
+            confidence=0.9,
+        )
+    ]
+    report = verifier.verify(
+        claims=claims,
+        markdown=(
+            "# AAPL Report\n\n"
+            "## 执行摘要\nAAPL FY2024 review.\n\n"
+            "## 业务概览\niPhone SE remains part of the product portfolio.\n\n"
+            "## 财务分析\nFY2024 financial review [ev_aapl].\n\n"
+            "## 同行对比\nMSFT and GOOGL are current TTM peers.\n\n"
+            "## 风险评估\nDemand and regulation remain relevant risks.\n\n"
+            "## 投资结论\nAAPL remains neutral based on valuation and risk.\n\n"
+            "## 参考来源\nMSFT and GOOGL Yahoo Finance snapshots."
+        ),
+        evidence_records=[
+            {"evidence_id": "ev_aapl", "symbol": "AAPL", "content": "AAPL annual filing."},
+            {"evidence_id": "ev_msft", "symbol": "MSFT", "content": "MSFT peer snapshot."},
+        ],
+        expected_symbol="AAPL",
+    )
+
+    assert report["passed"] is True
+    assert not any("non-peer sections mention" in warning for warning in report["warnings"])
 
 
 def test_final_answer_agent_reports_context_pack_meta():

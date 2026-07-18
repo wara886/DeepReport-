@@ -174,10 +174,10 @@ def test_repository_delivery_routes_split_deepseek_and_mimo():
     config = load_config("configs/model_backends.yaml")
     routes = config["agent_model_routes"]
 
-    for role in ("chat", "task_parser", "planning", "research", "browser"):
+    for role in ("chat", "task_parser", "browser"):
         assert routes[role]["delivery"] == "mimo_flash"
 
-    for role in ("deep_analyze", "final_answer", "verifier", "llm_report_review"):
+    for role in ("planning", "research", "deep_analyze", "final_answer", "verifier", "llm_report_review"):
         assert routes[role]["delivery"] == "flash"
 
 
@@ -202,9 +202,9 @@ def test_repository_delivery_orchestrator_instantiates_mimo_for_light_roles(monk
             execution_tier="delivery",
         )
 
-    assert calls == ["mimo_flash", "mimo_flash", "mimo_flash", "mimo_flash", "flash", "flash", "flash"]
-    assert orchestrator.model_usage_by_agent["planning"]["route_profile"] == "mimo_flash"
-    assert orchestrator.model_usage_by_agent["research"]["model_name"] == "mimo_flash-model"
+    assert calls == ["mimo_flash", "flash", "flash", "mimo_flash", "flash", "flash", "flash"]
+    assert orchestrator.model_usage_by_agent["planning"]["route_profile"] == "flash"
+    assert orchestrator.model_usage_by_agent["research"]["model_name"] == "flash-model"
     assert orchestrator.model_usage_by_agent["deep_analyze"]["route_profile"] == "flash"
     assert "model_route_summary" in caplog.text
     assert "mimo_flash-model" in caplog.text
@@ -307,8 +307,8 @@ def test_agent_execute_trace_includes_model_usage_and_log_line(monkeypatch, tmp_
         )
 
     assert result.status == AgentStatus.COMPLETED
-    assert orchestrator.trace[-1]["model_usage"]["route_profile"] == "mimo_flash"
-    assert orchestrator.trace[-1]["model_usage"]["model_name"] == "mimo_flash-model"
+    assert orchestrator.trace[-1]["model_usage"]["route_profile"] == "flash"
+    assert orchestrator.trace[-1]["model_usage"]["model_name"] == "flash-model"
     assert "agent_trace_start" in caplog.text
     assert "agent_trace_finish" in caplog.text
     assert "task_trace_001" in caplog.text

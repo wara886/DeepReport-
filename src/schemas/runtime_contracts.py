@@ -131,7 +131,12 @@ def normalize_evidence_record(
         "source_period": period["source_period"],
         "source_document_id": source_document_id,
     }
-    document_key = _stable_key("doc", document_seed)
+    document_key = str(
+        data.get("document_key")
+        or metadata.get("document_key")
+        or existing_provenance.get("document_key")
+        or _stable_key("doc", document_seed)
+    )
     locator = {
         "parent_evidence_id": data.get("parent_evidence_id") or data.get("parent_sample_id") or metadata.get("source_evidence_id"),
         "chunk_id": data.get("chunk_id"),
@@ -141,7 +146,12 @@ def normalize_evidence_record(
         "row_id": data.get("row_id") or metadata.get("row_id"),
         "content_hash": content_hash,
     }
-    identity_key = _stable_key("evi", {"document_key": document_key, **locator})
+    identity_key = str(
+        data.get("identity_key")
+        or metadata.get("identity_key")
+        or existing_provenance.get("identity_key")
+        or _stable_key("evi", {"document_key": document_key, **locator})
+    )
     evidence_id = str(data.get("evidence_id") or data.get("sample_id") or data.get("chunk_id") or identity_key)
     resolved_task_id = str(task_id or data.get("task_id") or metadata.get("task_id") or existing_provenance.get("task_id") or "")
     resolved_run_id = str(run_id or data.get("run_id") or metadata.get("run_id") or existing_provenance.get("run_id") or resolved_task_id)

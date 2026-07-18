@@ -35,7 +35,7 @@ from src.agents.final_answer_agent import FinalAnswerAgent
 from src.agents.gap_resolver_agent import GapResolverAgent
 from src.agents.gap_router import build_gap_resolution_trace
 from src.agents.annual_report_section_extractor import AnnualReportSectionExtractor, annual_sections_to_evidence_records
-from src.agents.planning_agent import PlanningAgent
+from src.agents.planning_agent import PlanningAgent, build_default_research_plan
 from src.agents.research_blackboard import (
     apply_pre_write_critic,
     initialize_research_blackboard,
@@ -295,6 +295,9 @@ class MultiAgentOrchestrator:
         self.agent_name_to_key = {agent.name: key for key, agent in self.agents.items()}
         self.model_usage_by_agent = self._build_model_usage_by_agent(model is not None)
         self.trace: List[Dict[str, Any]] = []
+        # Planning is the first executable phase, before static/dynamic run state
+        # is assembled. Keep a minimal state available for timeout accounting.
+        self.state: Dict[str, Any] = {}
         self._log_model_routing_summary()
 
     def run(
@@ -768,6 +771,7 @@ class MultiAgentOrchestrator:
     ) -> Dict[str, str]:
         stored_trace = self._read_json("static_phase_trace.json", []) if resume_from_phase_artifacts else []
         self.trace = [dict(item) for item in stored_trace if isinstance(item, dict)]
+        self._phase_trace_start = len(self.trace)
         profile = self._resolve_profile(fast)
         run_started_at = time.perf_counter()
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -837,6 +841,14 @@ class MultiAgentOrchestrator:
                 ),
             )
             plan = planning_result.output.get("plan", {})
+            if not plan:
+                plan = build_default_research_plan(
+                    research_topic=research_topic,
+                    requirements=requirements,
+                    output_format="markdown, html, json with citations",
+                )
+                plan["fallback_used"] = True
+                plan["fallback_reason"] = planning_result.error or "planning_result_missing"
             self._write_json("task_plan.json", plan)
         if stop_after_phase == "planning":
             return self._static_phase_result("planning", ["task_plan.json"])
@@ -1386,6 +1398,19 @@ class MultiAgentOrchestrator:
                 "\n".join(json.dumps(item, ensure_ascii=False, default=str) for item in self.trace) + "\n",
                 encoding="utf-8",
             )
+            collaboration_trace = build_agent_collaboration_trace(
+                trace=self.trace,
+                state={
+                    **static_state,
+                    "research_topic": research_topic,
+                    "symbol": symbol,
+                    "period": period,
+                    "memory_enabled": self.memory_config.enabled,
+                    "memory_context_scope": self.memory_config.context_scope,
+                    "research_blackboard": research_blackboard,
+                },
+            )
+            self._write_json("agent_collaboration_trace.json", collaboration_trace)
             return self._static_phase_result(
                 "final_answer",
                 [
@@ -1398,6 +1423,7 @@ class MultiAgentOrchestrator:
                     "section_evidence_packs.json",
                     "final_answer_phase.json",
                     "task_trace.jsonl",
+                    "agent_collaboration_trace.json",
                 ],
             )
 
@@ -1658,6 +1684,14 @@ class MultiAgentOrchestrator:
             ),
         )
         plan = planning_result.output.get("plan", {})
+        if not plan:
+            plan = build_default_research_plan(
+                research_topic=research_topic,
+                requirements=requirements,
+                output_format="markdown, html, json with citations",
+            )
+            plan["fallback_used"] = True
+            plan["fallback_reason"] = planning_result.error or "planning_result_missing"
         self._write_json("task_plan.json", plan)
 
         state: Dict[str, Any] = {
@@ -2278,7 +2312,8 @@ class MultiAgentOrchestrator:
         )
         # Bound every agent call. If an overall deadline is present, use the
         # smaller remaining budget so a stalled provider cannot hang the run.
-        state = getattr(self, "state", None) or {}
+        state = self.state if isinstance(self.state, dict) else {}
+        self.state = state
         deadline = state.get("execution_deadline")
         task_timeout = self.agent_task_timeout_seconds
         if deadline is not None:
@@ -2345,7 +2380,7 @@ class MultiAgentOrchestrator:
             result.error,
         )
         if timeout_fired:
-            self.state["_timeout_count"] = self.state.get("_timeout_count", 0) + 1
+            state["_timeout_count"] = int(state.get("_timeout_count") or 0) + 1
             return result
         if result.status != AgentStatus.COMPLETED:
             raise RuntimeError(f"{agent.name} failed: {result.error}")
@@ -2607,8 +2642,16 @@ class MultiAgentOrchestrator:
             "trace_count": len(self.trace),
         }
         self._write_json("static_phase_checkpoint.json", manifest)
+        phase_trace_start = max(0, int(getattr(self, "_phase_trace_start", 0) or 0))
+        failed_trace = [
+            item
+            for item in self.trace[phase_trace_start:]
+            if isinstance(item, dict) and str(item.get("status") or "") != AgentStatus.COMPLETED.value
+        ]
         return {
             "phase": phase,
+            "phase_status": "degraded" if failed_trace else "success",
+            "phase_error": str(failed_trace[0].get("error") or "") if failed_trace else "",
             "checkpoint": str(self.output_dir / "static_phase_checkpoint.json"),
             **manifest["artifacts"],
         }

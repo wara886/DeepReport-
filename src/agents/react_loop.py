@@ -101,10 +101,20 @@ def run_react_tool_loop(
             except (json.JSONDecodeError, ValueError, TypeError) as exc:
                 tool_name = _tool_name(call)
                 model_arguments = {}
-                arguments = {}
-                observation = {"error": str(exc), "error_type": "invalid_arguments"}
-                attempts = 0
-                duration_ms = 0.0
+                arguments = dict(bound_arguments.get(tool_name, {}))
+                validation_errors = _validate_arguments(arguments, schema_by_name.get(tool_name, {}))
+                if arguments and not validation_errors and tool_name in handlers:
+                    observation, attempts, duration_ms = _invoke_tool(
+                        handlers[tool_name],
+                        arguments=arguments,
+                        timeout_seconds=tool_timeout_seconds,
+                        max_attempts=tool_max_attempts,
+                    )
+                else:
+                    detail = "; ".join(validation_errors) if validation_errors else str(exc)
+                    observation = {"error": detail, "error_type": "invalid_arguments"}
+                    attempts = 0
+                    duration_ms = 0.0
 
             if isinstance(observation, dict) and observation.get("error"):
                 had_tool_error = True

@@ -161,6 +161,109 @@ def canonical_metrics_as_financial_metrics(artifact: Any, fallback: Any | None =
     return output
 
 
+def canonical_metrics_as_statement_tables(artifact: Any) -> list[dict[str, Any]]:
+    """Project canonical winners into the three statement tables used by reporting."""
+
+    if not isinstance(artifact, dict):
+        return []
+    canonical = artifact.get("canonical_metrics") if isinstance(artifact.get("canonical_metrics"), dict) else {}
+    symbol = str(artifact.get("symbol") or "").upper()
+    period = str(artifact.get("period") or "").upper()
+    specs = [
+        (
+            "income_statement",
+            (
+                ("revenue", "收入"),
+                ("cost_of_revenue", "营业成本"),
+                ("gross_profit", "毛利润"),
+                ("operating_income", "营业利润"),
+                ("pretax_income", "税前利润"),
+                ("net_income", "净利润"),
+                ("basic_eps", "基本每股收益"),
+                ("diluted_eps", "稀释每股收益"),
+            ),
+        ),
+        (
+            "balance_sheet",
+            (
+                ("total_assets", "总资产"),
+                ("current_assets", "流动资产"),
+                ("cash_and_equivalents", "现金及等价物"),
+                ("inventory", "存货"),
+                ("total_liabilities", "总负债"),
+                ("current_liabilities", "流动负债"),
+                ("total_debt", "有息债务"),
+                ("total_equity", "股东权益"),
+                ("shares_outstanding", "期末流通股本"),
+            ),
+        ),
+        (
+            "cash_flow_statement",
+            (
+                ("operating_cash_flow", "经营现金流"),
+                ("capital_expenditure", "资本开支"),
+                ("free_cash_flow", "自由现金流"),
+                ("investing_cash_flow", "投资现金流"),
+                ("financing_cash_flow", "筹资现金流"),
+                ("dividends_paid", "已付股息"),
+                ("share_repurchases", "股份回购"),
+            ),
+        ),
+    ]
+    tables: list[dict[str, Any]] = []
+    for statement, metric_specs in specs:
+        rows: list[dict[str, Any]] = []
+        for metric_name, label in metric_specs:
+            metric = canonical.get(metric_name)
+            if not isinstance(metric, dict) or _float_or_none(metric.get("value")) is None:
+                continue
+            evidence_id = str(metric.get("source_evidence_id") or "")
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "period": str(metric.get("period") or period),
+                    "statement": statement,
+                    "line_item": metric_name,
+                    "display_label": label,
+                    "metric_name": metric_name,
+                    "value": float(metric["value"]),
+                    "unit": str(metric.get("unit") or ""),
+                    "currency": str(metric.get("currency") or ""),
+                    "estimated": False,
+                    "evidence_id": evidence_id,
+                    "source_evidence_id": evidence_id,
+                    "report_date": str(metric.get("report_date") or ""),
+                    "source_period": str(metric.get("source_period") or metric.get("period") or period),
+                    "period_match": metric.get("period_match"),
+                    "source_type": str(metric.get("source_type") or "canonical_metric"),
+                    "provider": str(metric.get("source_authority") or metric.get("source_type") or "canonical_metric"),
+                    "canonical": True,
+                }
+            )
+        if len(rows) < 2:
+            continue
+        source_ids = list(dict.fromkeys(row["source_evidence_id"] for row in rows if row["source_evidence_id"]))
+        table_id = f"{symbol.lower()}_{period.lower()}_{statement}_canonical"
+        columns = sorted({key for row in rows for key in row})
+        tables.append(
+            {
+                "table_id": table_id,
+                "table_type": statement,
+                "rows": rows,
+                "columns": columns,
+                "source_evidence_id": source_ids[0] if source_ids else "",
+                "source_evidence_ids": source_ids,
+                "period": period,
+                "currency": str(rows[0].get("currency") or ""),
+                "unit": "canonical_metric_units",
+                "extraction_method": "canonical_metric_projection",
+                "confidence": min(float(canonical[name].get("confidence") or 0.0) for name, _ in metric_specs if name in canonical),
+                "metadata": {"canonical_metrics_schema": str(artifact.get("schema_version") or "")},
+            }
+        )
+    return tables
+
+
 def _build_derived_metrics(canonical: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     specs = {
         "net_margin": ("net_income", "revenue", "net_income / revenue * 100"),
@@ -291,7 +394,7 @@ def _structured_evidence_candidates(
         if not isinstance(record, dict):
             continue
         metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-        financials = metadata.get("financials") if isinstance(metadata.get("financials"), dict) else {}
+        financials = _evidence_financials(metadata)
         if not financials:
             continue
         evidence_id = str(record.get("evidence_id") or record.get("sample_id") or "")
@@ -319,30 +422,67 @@ def _structured_evidence_candidates(
         revenue = _first_number(income, ("Total Revenue", "Operating Revenue", "revenue"))
         net_income = _first_number(income, ("Net Income", "Net Income Common Stockholders"))
         gross_profit = _first_number(income, ("Gross Profit",))
-        values = {
+        monetary_values = {
             "revenue": revenue,
             "net_income": net_income,
-            "gross_margin": (gross_profit / revenue * 100.0) if gross_profit is not None and revenue not in (None, 0) else None,
+            "cost_of_revenue": _first_number(income, ("Cost Of Revenue", "Reconciled Cost Of Revenue")),
+            "gross_profit": gross_profit,
+            "operating_income": _first_number(income, ("Operating Income", "Total Operating Income As Reported")),
+            "pretax_income": _first_number(income, ("Pretax Income",)),
             "total_assets": _first_number(balance, ("Total Assets",)),
+            "current_assets": _first_number(balance, ("Current Assets",)),
             "total_liabilities": _first_number(balance, ("Total Liabilities Net Minority Interest", "Total Liabilities")),
+            "current_liabilities": _first_number(balance, ("Current Liabilities",)),
+            "total_debt": _first_number(balance, ("Total Debt",)),
+            "total_equity": _first_number(
+                balance,
+                ("Stockholders Equity", "Common Stock Equity", "Total Equity Gross Minority Interest"),
+            ),
             "cash_and_equivalents": _first_number(balance, ("Cash And Cash Equivalents",)),
+            "inventory": _first_number(balance, ("Inventory",)),
             "operating_cash_flow": _first_number(
                 cashflow,
                 ("Operating Cash Flow", "Cash Flow From Continuing Operating Activities"),
             ),
+            "capital_expenditure": _first_number(cashflow, ("Capital Expenditure", "Purchase Of PPE")),
             "free_cash_flow": _first_number(cashflow, ("Free Cash Flow",)),
+            "investing_cash_flow": _first_number(
+                cashflow,
+                ("Investing Cash Flow", "Cash Flow From Continuing Investing Activities"),
+            ),
+            "financing_cash_flow": _first_number(
+                cashflow,
+                ("Financing Cash Flow", "Cash Flow From Continuing Financing Activities"),
+            ),
+            "dividends_paid": _first_number(cashflow, ("Cash Dividends Paid", "Common Stock Dividend Paid")),
+            "share_repurchases": _first_number(cashflow, ("Repurchase Of Capital Stock", "Common Stock Payments")),
+        }
+        ratio_values = {
+            "gross_margin": (gross_profit / revenue * 100.0) if gross_profit is not None and revenue not in (None, 0) else None,
+        }
+        per_share_values = {
+            "basic_eps": _first_number(income, ("Basic EPS",)),
+            "diluted_eps": _first_number(income, ("Diluted EPS",)),
+        }
+        share_values = {
+            "shares_outstanding": _first_number(balance, ("Ordinary Shares Number", "Share Issued")),
         }
         report_date = str(income.get("end_date") or balance.get("end_date") or cashflow.get("end_date") or "")
-        for metric_name, raw_value in values.items():
+        values = {
+            **{name: (value, f"{currency}_billion", True) for name, value in monetary_values.items()},
+            **{name: (value, "pct", False) for name, value in ratio_values.items()},
+            **{name: (value, f"{currency}_per_share", False) for name, value in per_share_values.items()},
+            **{name: (value, "billion_shares", True) for name, value in share_values.items()},
+        }
+        for metric_name, (raw_value, unit, scale_to_billion) in values.items():
             if raw_value is None:
                 continue
-            is_ratio = metric_name == "gross_margin"
             candidate = _normalize_candidate(
                 {
                     **common,
                     "metric_name": metric_name,
-                    "value": raw_value if is_ratio else _to_billion(raw_value),
-                    "unit": "pct" if is_ratio else f"{currency}_billion",
+                    "value": _to_billion(raw_value) if scale_to_billion else raw_value,
+                    "unit": unit,
                     "report_date": report_date,
                 },
                 symbol=symbol,
@@ -351,6 +491,29 @@ def _structured_evidence_candidates(
             if candidate:
                 output.append(candidate)
     return output
+
+
+def _evidence_financials(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Resolve structured statements retained by one or more chunking passes."""
+
+    pending: list[dict[str, Any]] = [metadata]
+    visited: set[int] = set()
+    while pending and len(visited) < 64:
+        current = pending.pop(0)
+        marker = id(current)
+        if marker in visited:
+            continue
+        visited.add(marker)
+        financials = current.get("financials")
+        if isinstance(financials, dict) and financials:
+            return financials
+        parent = current.get("parent_metadata")
+        if isinstance(parent, dict):
+            pending.append(parent)
+        raw_record = current.get("raw_artifact_record")
+        if isinstance(raw_record, dict) and isinstance(raw_record.get("metadata"), dict):
+            pending.append(raw_record["metadata"])
+    return {}
 
 
 def _period_statement_row(financials: dict[str, Any], keys: tuple[str, ...], target_period: str) -> dict[str, Any]:

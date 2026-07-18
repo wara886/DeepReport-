@@ -229,6 +229,63 @@ def test_report_task_analysis_package_connects_quality_chain_and_risk(tmp_path):
     assert any(action["view"] == "claims" for action in body["recommended_actions"])
 
 
+def test_report_task_analysis_excludes_signals_bound_to_another_task(tmp_path):
+    client, service = build_client(tmp_path)
+    with service.session() as session:
+        company = Company(name="Apple Inc.", symbol="AAPL", market="US")
+        session.add(company)
+        session.flush()
+        session.add_all(
+            [
+                ReportTask(task_id="task-current", company_id=company.id, symbol="AAPL", period="FY2024"),
+                ReportTask(task_id="task-old", company_id=company.id, symbol="AAPL", period="FY2024"),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                InvestmentSignal(
+                    signal_id="signal-current",
+                    task_id="task-current",
+                    company_id=company.id,
+                    signal_type="margin_decline",
+                    category="profitability",
+                    title="Current task signal",
+                    summary="Current task evidence-backed signal.",
+                    period="FY2024",
+                ),
+                InvestmentSignal(
+                    signal_id="signal-old-source-gap",
+                    task_id="task-old",
+                    company_id=company.id,
+                    signal_type="official_source_missing",
+                    category="source_gap",
+                    title="Stale source gap",
+                    summary="This belongs to an older task.",
+                    period="FY2024",
+                ),
+                InvestmentSignal(
+                    signal_id="signal-shared",
+                    task_id=None,
+                    company_id=company.id,
+                    signal_type="revenue_growth_acceleration",
+                    category="growth",
+                    title="Shared company signal",
+                    summary="Reusable company-level signal.",
+                    period="FY2024",
+                ),
+            ]
+        )
+        session.commit()
+
+    with client:
+        response = client.get("/api/report-tasks/task-current/analysis")
+
+    assert response.status_code == 200
+    signal_ids = {item["signal_id"] for item in response.json()["investment_signals"]}
+    assert signal_ids == {"signal-current", "signal-shared"}
+
+
 def test_report_task_analysis_detects_report_citation_usage_gap(tmp_path):
     client, service = build_client(tmp_path)
     seed_analysis_package(service)

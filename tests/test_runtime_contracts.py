@@ -57,6 +57,33 @@ def test_different_chunks_share_document_key_but_not_identity_key():
     assert first["identity_key"] != second["identity_key"]
 
 
+def test_existing_business_identity_survives_renormalization():
+    historical = {
+        "evidence_id": "legacy_chunk_1",
+        "chunk_id": "legacy_chunk_1",
+        "parent_sample_id": "legacy_parent",
+        "symbol": "AAPL",
+        "period": "FY2024",
+        "source_type": "market_api",
+        "source_url": "https://finance.yahoo.com/quote/AAPL/key-statistics",
+        "content": "Revenue was 391.035 billion.",
+        "metadata": {
+            "chunking": {"strategy": "paragraph_table_metric_v1"},
+            "document_key": "doc_historical",
+            "identity_key": "evi_historical",
+        },
+    }
+
+    normalized = normalize_evidence_record(historical, target_period="FY2024")
+    repeated = normalize_evidence_record(normalized, target_period="FY2024")
+
+    assert normalized["document_key"] == "doc_historical"
+    assert normalized["identity_key"] == "evi_historical"
+    assert repeated["document_key"] == "doc_historical"
+    assert repeated["identity_key"] == "evi_historical"
+    assert repeated["metadata"]["identity_key"] == "evi_historical"
+
+
 def test_metric_candidate_keeps_period_and_lineage_contracts():
     metric = normalize_metric_candidate(
         {

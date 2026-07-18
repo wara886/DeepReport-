@@ -52,6 +52,41 @@ def test_quality_remediation_plan_collects_gate_issues_and_updates_summary(tmp_p
     assert summary["quality_remediation_plan_path"].endswith("quality_remediation_plan.json")
 
 
+def test_passed_delivery_does_not_label_warning_only_sections_as_failed(tmp_path):
+    outputs = tmp_path / "run" / "company" / "outputs"
+    outputs.mkdir(parents=True)
+    (outputs / "run_summary.json").write_text(
+        json.dumps({"symbol": "AAPL", "period": "FY2024"}),
+        encoding="utf-8",
+    )
+    (outputs / "quality_report.json").write_text(
+        json.dumps({"objective_pass": True, "required_checks": {"passed": True, "details": {}}}),
+        encoding="utf-8",
+    )
+    (outputs / "llm_quality_review.json").write_text(
+        json.dumps({"llm_review_pass": True, "issues": []}),
+        encoding="utf-8",
+    )
+    (outputs / "delivery_gate.json").write_text(
+        json.dumps({
+            "delivery_pass": True,
+            "issues": [{
+                "severity": "warning",
+                "category": "llm_review_reconciled",
+                "message": "Peer comparison uses TTM data and the period boundary is disclosed.",
+            }],
+        }),
+        encoding="utf-8",
+    )
+
+    plan = build_quality_remediation_plan(tmp_path / "run")
+
+    assert plan["delivery_pass"] is True
+    assert plan["quality_feedback_used"] is False
+    assert plan["failed_sections"] == []
+    assert plan["required_fixes"] == []
+
+
 def test_financial_gate_failures_route_to_data_and_claim_owners(tmp_path):
     outputs = tmp_path / "run" / "company" / "outputs"
     outputs.mkdir(parents=True)

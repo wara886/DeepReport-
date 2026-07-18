@@ -47,15 +47,16 @@ class DeepResearcherAgent(BaseAgent):
                 candidates = react_payload.get("evidence_candidates", [])
                 if candidates:
                     if not bool(task.parameters.get("merge_standard_search_after_react", True)):
+                        selected = _select_evidence_candidates(candidates, topk=topk)
                         return self.success(
                             task,
                             {
                                 "query": query,
-                                "evidence_candidates": candidates[:topk],
+                                "evidence_candidates": selected,
                                 "search_meta": react_payload.get("search_meta", {}),
                             },
                             metadata={
-                                "hit_count": len(candidates[:topk]),
+                                "hit_count": len(selected),
                                 "react_used": True,
                                 "standard_search_merged": False,
                                 "react_trace": react_payload.get("react_trace", []),
@@ -64,7 +65,10 @@ class DeepResearcherAgent(BaseAgent):
                             },
                         )
                     fallback_payload = self._run_standard_search(task=task, query=query, topk=topk, engines=engines)
-                    candidates = _merge_evidence_candidates(candidates, fallback_payload.get("hits", []))[:topk]
+                    candidates = _select_evidence_candidates(
+                        _merge_evidence_candidates(candidates, fallback_payload.get("hits", [])),
+                        topk=topk,
+                    )
                     search_meta = dict(fallback_payload.get("meta", {}))
                     search_meta["react_tool_loop"] = react_payload.get("search_meta", {})
                     search_meta["react_merged_with_standard_search"] = True
@@ -231,3 +235,65 @@ def _merge_evidence_candidates(primary: List[Dict[str, Any]], secondary: List[Di
         seen.add(key)
         merged.append(row)
     return merged
+
+
+def _select_evidence_candidates(candidates: List[Dict[str, Any]], *, topk: int) -> List[Dict[str, Any]]:
+    """Keep required financial and market roles before filling by retrieval order."""
+
+    limit = max(1, int(topk))
+    rows = [item for item in candidates if isinstance(item, dict)]
+    if len(rows) <= limit:
+        return rows
+
+    selected: List[Dict[str, Any]] = []
+    selected_ids: set[int] = set()
+    for required_role in ("period_matched_financial_supplement", "current_market_snapshot"):
+        match = next((item for item in rows if _candidate_context_type(item) == required_role), None)
+        if match is None:
+            continue
+        selected.append(match)
+        selected_ids.add(id(match))
+        if len(selected) >= limit:
+            return selected
+
+    for item in rows:
+        if id(item) in selected_ids:
+            continue
+        selected.append(item)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def _candidate_context_type(candidate: Dict[str, Any]) -> str:
+    pending: List[Dict[str, Any]] = [candidate]
+    raw = candidate.get("raw")
+    if isinstance(raw, dict):
+        pending.append(raw)
+    visited: set[int] = set()
+    while pending and len(visited) < 64:
+        current = pending.pop(0)
+        marker = id(current)
+        if marker in visited:
+            continue
+        visited.add(marker)
+        context_type = str(current.get("context_type") or "").strip().lower()
+        if context_type:
+            return context_type
+        metadata = current.get("metadata")
+        if isinstance(metadata, dict):
+            pending.append(metadata)
+        parent = current.get("parent_metadata")
+        if isinstance(parent, dict):
+            pending.append(parent)
+        raw_record = current.get("raw_artifact_record")
+        if isinstance(raw_record, dict):
+            pending.append(raw_record)
+
+    title = str(candidate.get("title") or "").lower()
+    url = str(candidate.get("url") or candidate.get("source_url") or "").lower()
+    if "yahoo" in title and "market snapshot" in title:
+        return "current_market_snapshot"
+    if "finance.yahoo" in url and any(token in title for token in ("financial", "statement", "key statistics")):
+        return "period_matched_financial_supplement"
+    return ""

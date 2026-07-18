@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from src.db.models import (
@@ -350,12 +350,16 @@ def _signals_for_task(
         .order_by(InvestmentSignal.updated_at.desc(), InvestmentSignal.id.desc())
         .limit(120)
     )
-    filters: list[Any] = [InvestmentSignal.task_id == task_id]
+    scope_filters: list[Any] = []
     if company_id:
-        filters.append(InvestmentSignal.company_id == company_id)
+        scope_filters.append(InvestmentSignal.company_id == company_id)
     if symbol:
-        filters.append(InvestmentSignal.company.has(Company.symbol == symbol))
-    stmt = stmt.where(or_(*filters))
+        scope_filters.append(InvestmentSignal.company.has(Company.symbol == symbol))
+    shared_company_signals = and_(
+        InvestmentSignal.task_id.is_(None),
+        or_(*scope_filters),
+    ) if scope_filters else InvestmentSignal.task_id.is_(None)
+    stmt = stmt.where(or_(InvestmentSignal.task_id == task_id, shared_company_signals))
     if period:
         stmt = stmt.where(or_(InvestmentSignal.period == period, InvestmentSignal.period.is_(None)))
     return list(session.scalars(stmt).unique().all())

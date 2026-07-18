@@ -19,7 +19,10 @@ def audit_valuation_model(valuation: Dict[str, Any]) -> Dict[str, Any]:
     sensitivity = valuation.get("valuation_sensitivity", {})
 
     _audit_relative(relative if isinstance(relative, dict) else {}, errors)
-    _audit_dcf(dcf if isinstance(dcf, dict) else {}, errors, warnings)
+    if dcf:
+        _audit_dcf(dcf if isinstance(dcf, dict) else {}, errors, warnings)
+    else:
+        warnings.append("dcf_not_provided_relative_valuation_only")
     _audit_sensitivity(sensitivity if isinstance(sensitivity, dict) else {}, errors)
     _audit_scale_guardrails(valuation, relative if isinstance(relative, dict) else {}, dcf if isinstance(dcf, dict) else {}, errors, warnings)
 

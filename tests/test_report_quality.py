@@ -1,7 +1,50 @@
 import json
 
 from src.agents.final_answer_agent import auto_rewrite_core_sections
-from src.evaluation.report_quality import _check_delivery_policy, evaluate_report_quality, write_quality_outputs
+from src.evaluation.report_quality import (
+    _check_delivery_policy,
+    _score_multimodal,
+    evaluate_report_quality,
+    write_quality_outputs,
+)
+
+
+def test_multimodal_score_recognizes_chinese_financial_chart_titles():
+    issues = []
+    score = _score_multimodal(
+        {
+            "charts": [
+                {"chart_id": "financial_scale_bar", "title": "财务规模", "section_name": "三表摘要"},
+                {"chart_id": "valuation_bar", "title": "估值指标", "section_name": "估值观察"},
+            ],
+            "tables": [{}, {}, {}],
+            "report_md": "## 图表\n财务图表与正文对应。",
+            "report_html": "",
+        },
+        issues,
+    )
+
+    assert score == 1.0
+    assert not any(item["message"] == "charts do not clearly serve financial analysis" for item in issues)
+
+
+def test_delivery_policy_does_not_warn_for_absent_collaboration_trace():
+    issues = []
+    _check_delivery_policy(
+        {
+            "summary": {"symbol": "AAPL", "entity_resolution": {"confidence": 1.0}},
+            "request_state": {},
+            "report_json": {},
+            "report_md": "AAPL valuation and risk report. Not investment advice.",
+            "report_html": "",
+            "agent_collaboration_trace": {},
+            "search_meta": {"engines": ["sec_edgar", "yahoo_finance"]},
+            "evidence_coverage": {},
+        },
+        issues,
+    )
+
+    assert not any("memory cannot replace factual evidence" in item["message"] for item in issues)
 
 
 def test_quality_evaluator_blocks_cross_report_symbol_pollution(tmp_path):

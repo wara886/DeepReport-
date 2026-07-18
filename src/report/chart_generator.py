@@ -28,6 +28,7 @@ METRIC_LABEL_MAP: Dict[str, str] = {
     "debt_to_equity": "资产负债率",
     "pe_ratio": "市盈率(P/E)",
     "pb_ratio": "市净率(P/B)",
+    "ps_ratio": "市销率(P/S)",
     "revenue_growth_pct": "收入增长率",
     "net_income_growth_pct": "净利润增长率",
     "eps_basic": "基本每股收益",
@@ -52,6 +53,9 @@ FALLBACK_LABEL_MAP: Dict[str, str] = {
     "total_liabilities": "总负债",
     "operating_cash_flow": "经营现金流",
     "free_cash_flow": "自由现金流",
+    "capital_expenditure": "资本开支",
+    "dividends_paid": "已付股息",
+    "share_repurchases": "股份回购",
     "capex": "资本开支",
     "pe_ttm": "市盈率",
     "market_cap_trillion": "市值",
@@ -111,6 +115,7 @@ _METRIC_CATEGORY: Dict[str, str] = {
     "debt_to_equity": "profitability",
     "pe_ratio": "valuation",
     "pb_ratio": "valuation",
+    "ps_ratio": "valuation",
     "revenue_growth_pct": "profitability",
     "net_income_growth_pct": "profitability",
     "eps_basic": "financial_scale",
@@ -125,7 +130,16 @@ _METRIC_CATEGORY: Dict[str, str] = {
     "equity": "financial_scale",
     "total_assets": "financial_scale",
     "total_liabilities": "financial_scale",
+    "cash_and_equivalents": "financial_scale",
+    "current_assets": "financial_scale",
+    "current_liabilities": "financial_scale",
+    "total_debt": "financial_scale",
+    "total_equity": "financial_scale",
     "operating_cash_flow": "cash_flow",
+    "free_cash_flow": "cash_flow",
+    "capital_expenditure": "cash_flow",
+    "dividends_paid": "cash_flow",
+    "share_repurchases": "cash_flow",
     "investing_cash_flow": "cash_flow",
     "financing_cash_flow": "cash_flow",
 }
@@ -168,6 +182,7 @@ def generate_report_charts(
         points = category_points.get(cat_key, [])
         if not points:
             continue
+        supporting_claims = _claims_for_metric_category(claims, cat_key)
         cat_title = CATEGORY_TITLES.get(cat_key, cat_key)
         chart_id = f"{cat_key}_bar"
         path = render_bar_chart(
@@ -183,13 +198,14 @@ def generate_report_charts(
             "output_path": str(path),
             "source_fields": "claims.numeric_values",
             "input_table_ids": table_ids,
-            "input_claim_ids": _claim_ids_with_numeric_values(claims),
-            "source_evidence_ids": _evidence_ids_from_claims(claims),
+            "input_claim_ids": _claim_ids_with_numeric_values(supporting_claims),
+            "source_evidence_ids": _evidence_ids_from_claims(supporting_claims),
             "chart_js": _chart_js_payload(chart_type="bar", points=points[:8], label=cat_title),
         })
 
     peer_points = _peer_points_from_artifacts(artifacts)
     if peer_points:
+        peer_claims = _claims_for_sections(claims, {"peer_compare", "peer_comparison"})
         title = "同业比较"
         path = render_bar_chart(
             bars=peer_points[:8],
@@ -204,12 +220,14 @@ def generate_report_charts(
             "output_path": str(path),
             "source_fields": "analysis_artifacts.peer_analysis.rows",
             "input_table_ids": table_ids,
-            "source_evidence_ids": _evidence_ids_from_claims(claims),
+            "input_claim_ids": _claim_ids(peer_claims),
+            "source_evidence_ids": _evidence_ids_from_claims(peer_claims),
             "chart_js": _chart_js_payload(chart_type="bar", points=peer_points[:8], label="净利率"),
         })
 
     sensitivity_points = _valuation_sensitivity_points(artifacts)
     if sensitivity_points:
+        sensitivity_claims = _claims_for_sections(claims, {"valuation_sensitivity"})
         sensitivity = artifacts.get("valuation_sensitivity") if isinstance(artifacts, dict) else {}
         earnings_bridge = isinstance(sensitivity, dict) and sensitivity.get("method") == "earnings_bridge"
         title = "盈利敏感性（非估值）" if earnings_bridge else "估值敏感性"
@@ -226,7 +244,8 @@ def generate_report_charts(
             "section_name": "估值敏感性",
             "output_path": str(path),
             "source_fields": "analysis_artifacts.valuation_sensitivity",
-            "source_evidence_ids": _evidence_ids_from_claims(claims),
+            "input_claim_ids": _claim_ids(sensitivity_claims),
+            "source_evidence_ids": _evidence_ids_from_claims(sensitivity_claims),
             "chart_js": _chart_js_payload(chart_type="bar", points=sensitivity_points[:8], label=value_label),
         })
 
@@ -433,6 +452,8 @@ def _metric_points_from_claims(claims: List[Dict[str, Any]]) -> List[Tuple[str, 
         if not isinstance(numeric_values, dict):
             continue
         for key, value in numeric_values.items():
+            if str(key).startswith(("peer_", "target_")):
+                continue
             parsed = _safe_float(value)
             if parsed is None:
                 continue
@@ -465,6 +486,25 @@ def _categorize_metric_points(claims: List[Dict[str, Any]]) -> Dict[str, List[Tu
             if label not in categories[cat]:
                 categories[cat][label] = parsed
     return {cat: list(points.items()) for cat, points in categories.items()}
+
+
+def _claims_for_metric_category(claims: List[Dict[str, Any]], category: str) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    for claim in claims:
+        numeric = claim.get("numeric_values") if isinstance(claim, dict) else None
+        if not isinstance(numeric, dict):
+            continue
+        if any(_METRIC_CATEGORY.get(str(key)) == category for key in numeric):
+            output.append(claim)
+    return output
+
+
+def _claims_for_sections(claims: List[Dict[str, Any]], sections: set[str]) -> List[Dict[str, Any]]:
+    return [
+        claim
+        for claim in claims
+        if isinstance(claim, dict) and str(claim.get("section_name") or "").lower() in sections
+    ]
 
 
 def _categorize_table_metric_points(tables: List[Dict[str, Any]]) -> Dict[str, List[Tuple[str, float]]]:

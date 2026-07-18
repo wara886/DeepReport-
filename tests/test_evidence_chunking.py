@@ -74,6 +74,25 @@ def test_chunk_records_creates_table_row_chunks():
     assert table_chunks[0].numeric_values["value"] == 33.1
 
 
+def test_chunk_record_is_idempotent_for_existing_chunk_metadata():
+    first = chunk_record({
+        "sample_id": "aapl_financials",
+        "source_type": "market_api",
+        "symbol": "AAPL",
+        "period": "FY2024",
+        "content": "Revenue 391.035B and net income 93.736B.",
+        "metadata": {"financials": {"income_history": [{"end_date": "2024-09-30"}]}},
+    })[0].to_dict()
+
+    second = chunk_record(first)[0].to_dict()
+    third = chunk_record(second)[0].to_dict()
+
+    assert second["evidence_id"] == first["evidence_id"]
+    assert third["evidence_id"] == first["evidence_id"]
+    assert second["metadata"] == first["metadata"]
+    assert third["metadata"] == first["metadata"]
+
+
 def test_retrieval_can_rank_metric_chunks_from_curated_dir(tmp_path):
     import pandas as pd
 

@@ -3,7 +3,8 @@ import time
 
 from src.agents import AgentTask
 from src.agents.deep_analyze_agent import DeepAnalyzeAgent, apply_evidence_gate
-from src.agents.deep_researcher_agent import DeepResearcherAgent
+from src.agents.deep_analyze_agent import _normalize_valuation_tool_observation
+from src.agents.deep_researcher_agent import DeepResearcherAgent, _select_evidence_candidates
 from src.agents.react_loop import run_react_tool_loop
 from src.models import ModelResponse
 from src.schemas.claim import ClaimItem
@@ -252,6 +253,48 @@ def test_react_loop_returns_invalid_arguments_to_model_instead_of_crashing():
     assert result["observations"][0]["result"]["error_type"] == "invalid_arguments"
 
 
+def test_react_loop_recovers_invalid_json_when_required_arguments_are_bound():
+    model = ScriptedReactModel(
+        [
+            ModelResponse(success=True, tool_calls=[_tool_call("lookup", '{"symbol":"AAPL"')]),
+            ModelResponse(success=True, content="Recovered with bound arguments."),
+        ]
+    )
+
+    result = run_react_tool_loop(
+        model=model,
+        system_prompt="test",
+        user_prompt="test",
+        tool_schemas=[{
+            "type": "function",
+            "function": {
+                "name": "lookup",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"symbol": {"type": "string"}},
+                    "required": ["symbol"],
+                },
+            },
+        }],
+        handlers={"lookup": lambda symbol: {"symbol": symbol, "ok": True}},
+        bound_arguments={"lookup": {"symbol": "AAPL"}},
+    )
+
+    assert result["success"] is True
+    assert result["observations"][0]["result"] == {"symbol": "AAPL", "ok": True}
+    assert result["trace"][0]["error"] == ""
+
+
+def test_unavailable_valuation_is_a_business_result_not_tool_error():
+    normalized = _normalize_valuation_tool_observation(
+        {"valuation_available": False, "error": "target financials not found"}
+    )
+
+    assert "error" not in normalized
+    assert normalized["valuation_status"] == "target financials not found"
+    assert normalized["unavailability_reason"] == "target financials not found"
+
+
 def test_react_loop_marks_max_steps_as_failed():
     model = ScriptedReactModel(
         [ModelResponse(success=True, tool_calls=[_tool_call("lookup", "{}")])]
@@ -402,6 +445,38 @@ def test_research_react_merges_standard_search_by_default():
 
     assert result.metadata["standard_search_merged"] is True
     assert {item["result_id"] for item in result.output["evidence_candidates"]} == {"ev_react", "ev_standard"}
+
+
+def test_research_candidate_selection_preserves_financial_and_market_roles():
+    local_rows = [
+        {
+            "result_id": f"local_{index}",
+            "title": "Local filing chunk",
+            "url": f"https://example.com/{index}",
+        }
+        for index in range(8)
+    ]
+    financial = {
+        "result_id": "yahoo_financials",
+        "title": "AAPL Yahoo Finance financial data",
+        "url": "https://finance.yahoo.com/quote/AAPL/key-statistics",
+        "raw": {"metadata": {"context_type": "period_matched_financial_supplement"}},
+    }
+    snapshot = {
+        "result_id": "yahoo_snapshot",
+        "title": "AAPL Yahoo Finance market snapshot",
+        "url": "https://finance.yahoo.com/quote/AAPL",
+        "raw": {
+            "metadata": {
+                "parent_metadata": {"context_type": "current_market_snapshot"},
+            }
+        },
+    }
+
+    selected = _select_evidence_candidates([*local_rows, financial, snapshot], topk=4)
+
+    assert len(selected) == 4
+    assert {item["result_id"] for item in selected} >= {"yahoo_financials", "yahoo_snapshot"}
 
 
 def test_analyze_evidence_gate_rejects_unsupported_numeric_claims():

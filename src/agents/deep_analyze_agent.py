@@ -324,12 +324,14 @@ class DeepAnalyzeAgent(BaseAgent):
                 raw_data_root=kwargs.pop("raw_data_root", raw_data_root),
                 **kwargs,
             ),
-            "perform_company_valuation": lambda **kwargs: raw_handlers["perform_company_valuation"](
-                symbol=kwargs.pop("symbol", symbol),
-                period=kwargs.pop("period", period),
-                records=kwargs.pop("records", records),
-                raw_data_root=kwargs.pop("raw_data_root", raw_data_root),
-                **kwargs,
+            "perform_company_valuation": lambda **kwargs: _normalize_valuation_tool_observation(
+                raw_handlers["perform_company_valuation"](
+                    symbol=kwargs.pop("symbol", symbol),
+                    period=kwargs.pop("period", period),
+                    records=kwargs.pop("records", records),
+                    raw_data_root=kwargs.pop("raw_data_root", raw_data_root),
+                    **kwargs,
+                )
             ),
         }
         return run_react_tool_loop(
@@ -1021,6 +1023,19 @@ def _enrich_unavailable_valuation_from_metrics(
     output["input_summary"] = input_summary
     output["valuation_status"] = "rough_observation_only"
     output.setdefault("missing_inputs", ["market_valuation_inputs", "normalized_free_cash_flow"])
+    return output
+
+
+def _normalize_valuation_tool_observation(payload: Any) -> Any:
+    """Represent missing valuation inputs as a business result, not a tool crash."""
+
+    if not isinstance(payload, dict) or payload.get("valuation_available") is not False:
+        return payload
+    output = dict(payload)
+    reason = str(output.get("error") or output.get("valuation_status") or "valuation_inputs_unavailable")
+    output["valuation_status"] = str(output.get("valuation_status") or reason)
+    output["unavailability_reason"] = reason
+    output.pop("error", None)
     return output
 
 

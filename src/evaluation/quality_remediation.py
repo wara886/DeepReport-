@@ -41,10 +41,16 @@ def build_quality_remediation_plan_from_outputs(
     if not issues:
         issues = _normalize_issues((quality.get("issues") or []) + (llm_review.get("issues") or []))
 
-    required_fixes = _required_fixes(issues, quality, llm_review)
-    failed_sections = _failed_sections(issues, quality)
-    forbidden_patterns = _forbidden_patterns(issues)
-    responsible_agents = _responsible_agents(issues, failed_sections)
+    delivery_pass = bool(delivery_gate.get("delivery_pass", False))
+    actionable_issues = (
+        [item for item in issues if item.get("severity") in {"fatal", "blocker"}]
+        if delivery_pass
+        else issues
+    )
+    required_fixes = _required_fixes(actionable_issues, quality, llm_review) if actionable_issues else []
+    failed_sections = _failed_sections(actionable_issues, quality)
+    forbidden_patterns = _forbidden_patterns(actionable_issues)
+    responsible_agents = _responsible_agents(actionable_issues, failed_sections)
     summary_text = _summary_text(summary, delivery_gate, issues, required_fixes)
     return {
         "schema_version": "quality_remediation_plan.v1",
@@ -52,8 +58,8 @@ def build_quality_remediation_plan_from_outputs(
         "run_dir": str(Path(run_dir) if run_dir is not None else outputs),
         "symbol": str(summary.get("symbol") or ""),
         "period": str(summary.get("period") or ""),
-        "delivery_pass": bool(delivery_gate.get("delivery_pass", False)),
-        "quality_feedback_used": bool(issues or not delivery_gate.get("delivery_pass", True)),
+        "delivery_pass": delivery_pass,
+        "quality_feedback_used": bool(actionable_issues or not delivery_pass),
         "issue_counts": dict(delivery_gate.get("issue_counts") or {}),
         "failed_sections": failed_sections,
         "responsible_agents": responsible_agents,
