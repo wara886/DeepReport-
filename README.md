@@ -9,7 +9,7 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-Checkpointed-1C3C3C)](https://langchain-ai.github.io/langgraph/)
 [![SQLite](https://img.shields.io/badge/SQLite-State%20%26%20Checkpoint-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://github.com/wara886/DeepReport-/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/wara886/DeepReport-/actions/workflows/docker-publish.yml)
+[![Tests](https://github.com/wara886/Financial-Platform-Agent/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/wara886/Financial-Platform-Agent/actions/workflows/docker-publish.yml)
 
 从官方披露、结构化行情和本地文档中建立证据链，经过指标仲裁、章节写作、自动返工和交付门禁，输出可追溯的 Markdown / HTML / PDF / DOCX / JSON / CSV 研报包。
 
@@ -133,8 +133,8 @@ BM25 与哈希向量回退可在核心安装中运行；Chroma、BGE Embedding �
 ### Docker
 
 ```bash
-git clone https://github.com/wara886/DeepReport-.git
-cd DeepReport-
+git clone https://github.com/wara886/Financial-Platform-Agent.git
+cd Financial-Platform-Agent
 cp .env.example .env
 docker compose up --build -d
 ```

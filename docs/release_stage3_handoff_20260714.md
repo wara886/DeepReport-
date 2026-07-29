@@ -164,7 +164,7 @@ git status --short --branch
 For a new clone:
 
 ```bash
-git clone https://github.com/wara886/DeepReport-.git DeepReport-fin-workbench-v2
+git clone https://github.com/wara886/Financial-Platform-Agent.git DeepReport-fin-workbench-v2
 cd DeepReport-fin-workbench-v2
 git switch --track origin/release/fin-research-workbench-v2
 ```

@@ -2,7 +2,7 @@
 
 > 日期：2026-07-10
 > 作者：Recovery Agent
-> 仓库：`https://github.com/wara886/DeepReport-`
+> 仓库：`https://github.com/wara886/Financial-Platform-Agent`
 > 分支：`feat/fin-research-agent-workbench-v2`
 
 ---
