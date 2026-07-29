@@ -12,7 +12,6 @@ services:
       PORT: "7860"
       HF_HOME: /app/models/huggingface
       SENTENCE_TRANSFORMERS_HOME: /app/models/sentence_transformers
-      TRANSFORMERS_CACHE: /app/models/huggingface/transformers
       HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
     ports:
       - "7860:7860"

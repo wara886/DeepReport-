@@ -30,12 +30,10 @@ def ensure_model_cache_env(config: Dict[str, Any] | None = None) -> Path:
         cache_root = repo_root / cache_root
     hf_home = cache_root / "huggingface"
     st_home = cache_root / "sentence_transformers"
-    transformers_cache = hf_home / "transformers"
-    for path in [hf_home, st_home, transformers_cache]:
+    for path in [hf_home, st_home]:
         path.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("HF_HOME", str(hf_home))
     os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", str(st_home))
-    os.environ.setdefault("TRANSFORMERS_CACHE", str(transformers_cache))
     os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     return cache_root
 

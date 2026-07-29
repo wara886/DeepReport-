@@ -400,16 +400,30 @@ class ReportTaskService:
     def _graph_build_canonical_metrics_node(self, state: ReportGraphState) -> dict[str, Any]:
         task_id = str(state["task_id"])
         summary = self._refresh_canonical_metrics(task_id)
+        metadata = self._task_metadata(task_id)
+        canonical_required_before_generation = (
+            self.orchestrator_factory is MultiAgentOrchestrator
+            and str(metadata.get("execution_mode") or "static") == "static"
+        )
+        canonical_ready = summary.get("status") == "ready"
         self._commit_run_artifacts(task_id, ["evidence", "canonical_metrics"])
         self._update_runtime_metadata(task_id, "canonical_metrics", summary)
         self._record_runtime_stage(
             task_id,
             stage="build_canonical_metrics",
-            status="success" if summary.get("status") == "ready" else "error",
-            message="正式指标候选池已建立" if summary.get("status") == "ready" else "正式指标候选池为空，已停止写作",
-            metadata=summary,
+            status="success" if canonical_ready else ("error" if canonical_required_before_generation else "warning"),
+            message=(
+                "正式指标候选池已建立"
+                if canonical_ready
+                else (
+                    "正式指标候选池为空，已停止写作"
+                    if canonical_required_before_generation
+                    else "正式指标候选池将在兼容生成流程产出证据后重建"
+                )
+            ),
+            metadata={**summary, "required_before_generation": canonical_required_before_generation},
         )
-        if summary.get("status") != "ready":
+        if not canonical_ready and canonical_required_before_generation:
             raise RuntimeError(
                 "canonical_metrics_unavailable: no period-matched structured metrics; "
                 "retry evidence normalization or official data acquisition before writing"

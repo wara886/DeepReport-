@@ -32,6 +32,7 @@ browser = [
 ]
 local_rag = [
   "chromadb>=0.5.5",
+  "grpcio>=1.63.2",
   "sentence-transformers>=3.0.1",
   "socksio>=1.0.0",
 ]

@@ -105,9 +105,6 @@ class SearchManager:
         manager.register_engine("hk_financials", hk_financials_search)
         manager.register_engine("serper", serper_search)
         manager.register_engine("tavily", tavily_search)
-        # metaso / sogou: 无 API Key 配置，注册为 no_key 占位
-        # manager.register_engine("metaso", metaso_search)
-        # manager.register_engine("sogou", sogou_search)
         manager.register_engine("local_evidence", local_evidence_search)
         return manager
 
