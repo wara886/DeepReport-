@@ -2,45 +2,76 @@
 
 # FinSight DeepReport++
 
-**证据驱动、过程可观测、结果可复核的多智能体金融研报工作台**
+**面向公开公司研究的证据驱动多智能体研报工作台**<br/>
+把官方披露、结构化财务数据与本地材料组织为可追溯证据链，经过指标仲裁、章节写作、自动返工和人工复核，交付可审计研报包。
 
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-Workbench-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![LangGraph](https://img.shields.io/badge/LangGraph-Checkpointed-1C3C3C)](https://langchain-ai.github.io/langgraph/)
-[![SQLite](https://img.shields.io/badge/SQLite-State%20%26%20Checkpoint-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://github.com/wara886/Financial-Platform-Agent/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/wara886/Financial-Platform-Agent/actions/workflows/docker-publish.yml)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Workbench-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Checkpointed-1C3C3C?style=flat-square)](https://langchain-ai.github.io/langgraph/)
+[![Hybrid RAG](https://img.shields.io/badge/RAG-Hybrid%20%2B%20Reranker-E85D04?style=flat-square)](#检索与工具)
+[![Docker](https://img.shields.io/badge/Docker-amd64%20%7C%20arm64-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/wara886/Financial-Platform-Agent/pkgs/container/deepreport-plus)
+[![Tests](https://img.shields.io/github/actions/workflow/status/wara886/Financial-Platform-Agent/docker-publish.yml?branch=main&style=flat-square&label=tests)](https://github.com/wara886/Financial-Platform-Agent/actions/workflows/docker-publish.yml)
 
-从官方披露、结构化行情和本地文档中建立证据链，经过指标仲裁、章节写作、自动返工和交付门禁，输出可追溯的 Markdown / HTML / PDF / DOCX / JSON / CSV 研报包。
-
-[快速开始](#快速开始) · [核心架构](#核心架构) · [数据覆盖](#数据覆盖) · [验收状态](#验收状态) · [使用边界](#使用边界)
+[项目亮点](#项目亮点) · [当前能力](#当前能力) · [架构概览](#架构概览) · [评测结果](#评测结果) · [快速开始](#快速开始) · [使用边界](#使用边界)
 
 </div>
 
-<img src="docs/assets/generated-report.jpg" alt="FinSight generated financial report" width="100%">
+<img src="docs/assets/finsight-overview.svg" alt="FinSight evidence-first report workflow" width="100%">
 
-## 当前产品
+## 简介
 
-FinSight 不是一次性调用大模型的报告脚本。它将一次研报任务拆成可检查、可重试、可恢复的 LangGraph 节点，并让写作节点只能消费已经治理过的指标和章节证据包。
+FinSight DeepReport++ 是一个面向美股、A 股和港股公开公司研究的多智能体系统。它解决的核心问题不是“让模型写一篇看起来完整的报告”，而是让每个数字、主张、图表和章节都能回答三个问题：**证据来自哪里、指标如何得到、失败后从哪里继续**。
 
-| 能力 | 当前实现 |
-| --- | --- |
-| 任务工作台 | 创建、启动、追踪、复核、导出与失败诊断 |
-| Agent Runtime | LangGraph 节点级 checkpoint、失败恢复和人工复核中断 |
-| ReAct 工具调用 | 有界循环、参数约束、超时、错误分类和完整调用轨迹 |
-| RAG | BM25 / Vector / Hybrid / Reranker，按任务、公司和期间隔离 |
-| 数据治理 | Evidence → Metric Candidate → Canonical / Derived Metric |
-| 报告生成 | 章节合同、must-use evidence、章节级校验与定向返工 |
-| 质量控制 | 数字、引用、证据、章节、图表、LLM Review 和交付门禁 |
-| 交付产物 | Markdown、HTML、PDF、DOCX、JSON、CSV、图表、引用、验证报告与运行清单 |
+系统使用 LangGraph 将研报任务拆为可检查、可重试、可恢复的节点。Writer 不能直接读取未经治理的原始材料，只能消费经过来源分级、期间/币种/单位归一化和冲突仲裁后的 Canonical Metrics 与 Section Evidence Packs；Verifier 会检查数字、引用、章节合同和图表 lineage，失败章节进入定向返工，机器门禁通过后仍需完成人工主张复核才能正式导出。
 
-### 工作台界面
+> 当前定位是个人开源研究项目与工程演示，不是线上投资顾问服务。基准结果衡量冻结样本下的报告交付质量，不代表投资收益或实时数据源稳定性。
+
+## 项目亮点
+
+| 能力 | 实现方式 | 解决的问题 |
+| --- | --- | --- |
+| Evidence-first 写作 | Evidence → Metric Candidate → Canonical Metric → Section Pack → Claim / Citation | 阻止模型绕过证据直接编造财务结论 |
+| 可恢复 Agent Runtime | LangGraph 节点级 checkpoint、SQLite 状态、幂等重试、人工复核中断 | 长链路失败后无需整条任务重跑 |
+| 有界 ReAct | Tool Registry、参数白名单、循环上限、超时与错误分类 | 保留工具调用能力，同时控制失控循环和脏参数 |
+| 混合检索 | BM25 / Vector / Hybrid / Reranker，按任务、公司和期间隔离 | 同时覆盖精确财务术语与语义改写，避免跨任务串库 |
+| 财务指标治理 | 单位、币种、期间、来源权威性与 lineage 仲裁 | 避免 TTM / FY、元 / 百万元等口径混写 |
+| 章节级返工 | 13 类章节合同、must-use evidence、失败原因路由 | 只重写不合格章节，不破坏已通过内容 |
+| 可审计交付 | MD / HTML / PDF / DOCX / JSON / CSV、SHA-256 manifest | 让报告、引用、图表和验证结果作为同一版本交付 |
+| 冻结基准 | 18 家公司 × 3 种 Agent 策略，共 54 次离线评测 | 在同一证据输入下比较编排与检索策略 |
+
+## 当前能力
+
+### 1. 多智能体研报主链
+
+- **Planner**：解析公司、市场和报告期间，生成研究计划与章节任务。
+- **Research Agent**：优先回填官方披露，通过有界 ReAct 调用检索、行情、财务和估值工具，并保留完整调用轨迹。
+- **Evidence Normalizer**：统一来源身份、期间、币种、单位和业务主键，隔离不满足正式报告要求的证据。
+- **Analysis Agent**：构建三表视图、趋势、同行、相对估值和敏感性分析，输出结构化指标候选。
+- **Metric Adjudicator**：按来源权威性和口径冲突选出 Canonical Metrics，保留衍生公式与上游 lineage。
+- **Writer**：按章节合同消费指定证据包，生成带主张与引用绑定的报告正文。
+- **Verifier / Repair**：检查数字、引用、章节、图表和质量门禁，将失败原因路由到对应章节进行有限次返工。
+- **Human Review**：逐条通过、驳回或编辑关键主张；机器通过与人工批准分别记录。
+
+### 2. 三市场证据接入
+
+| 市场 | 官方 / 主要来源 | 结构化补充来源 | 当前用途 |
+| --- | --- | --- | --- |
+| 美股 | SEC EDGAR、Companyfacts | Yahoo Finance、FRED、BEA、Tavily | 年报、三表、行情、宏观与检索补充 |
+| A 股 | CNINFO、SSE、SZSE | Tushare Pro、BaoStock、Yahoo Finance | 公告、财务数据与行情归一化 |
+| 港股 | HKEX 披露 | Yahoo Finance、搜索补充 | 年报披露优先，缺失时显式降级 |
+| 本地材料 | PDF、表格、纯文本 | BGE Embedding / Reranker | 解析、切分、证据化后进入任务知识库 |
+
+数据源的“已配置、已启用、健康”是三种独立状态。需要密钥、额度或网络但当前不可用的来源不会被标记为健康，也不会伪装成已取得的官方证据。
+
+### 3. 工作台与交付
 
 <img src="docs/assets/workbench-dashboard.jpg" alt="FinSight research workbench dashboard" width="100%">
 
-首页指标直接读取任务、文档、证据、主张和数据源状态，不再使用固定示意漏斗。完整工作台位于 `/workbench`，根路径 `/` 也可进入当前产品入口。
+工作台支持创建任务、查看节点进度、诊断失败、复核关键主张和生成正式导出包。首页统计直接读取任务、文档、证据、主张与数据源状态；运行产物按任务和版本隔离保存。
 
-## 核心架构
+<img src="docs/assets/generated-report.jpg" alt="Example report rendered by FinSight" width="100%">
+
+## 架构概览
 
 ```mermaid
 flowchart LR
@@ -73,64 +104,79 @@ flowchart LR
     ART <--> V
 ```
 
-每个运行节点记录状态、耗时、错误、重试和产物版本。上游证据或指标改变时，下游报告、主张和引用会被明确标记失效，避免正文与证据版本错位。
+每个节点记录状态、耗时、错误、重试和产物版本。上游证据或指标变化时，下游报告、主张和引用会被明确标记失效，防止正文继续引用旧版本结果。
 
-### Agent 与工具
+### 证据与产物生命周期
 
-核心 Tool Registry 当前注册 9 个工具：
+```mermaid
+flowchart LR
+    DOC["Official filing / local document"] --> EV["Evidence"]
+    EV --> MC["Metric candidates"]
+    MC --> CM["Canonical metrics"]
+    CM --> SP["Section evidence packs"]
+    SP --> CL["Claims + citations"]
+    CL --> VR["Verification report"]
+    VR --> PKG["Signed export package"]
+
+    VR -- "failed section" --> RP["Targeted repair"]
+    RP --> CL
+    CM -- "upstream changed" --> IV["Invalidate descendants"]
+    IV --> SP
+```
+
+<img src="docs/assets/report-artifacts.svg" alt="FinSight artifact lifecycle" width="100%">
+
+## 检索与工具
+
+核心 Tool Registry 注册 9 个工具。Research Agent 只获得当前任务允许调用的子集，公司、期间和数据目录等关键参数由运行时注入，不能由模型任意改写。
 
 | 类别 | Tool |
 | --- | --- |
-| 检索 | `retrieve_local_evidence` |
+| 证据检索 | `retrieve_local_evidence` |
 | 市场快照 | `fetch_yahoo_market_snapshot` |
 | 财务计算 | `calculate_financial_ratios`, `build_three_statement_view` |
-| 分析 | `build_trend_features`, `build_peer_comparison`, `perform_company_valuation` |
+| 趋势与估值 | `build_trend_features`, `build_peer_comparison`, `perform_company_valuation` |
 | 图表与组装 | `render_all_charts`, `attach_charts_to_report` |
 
-Research Agent 只开放与当前任务相关的工具；运行时注入公司、期间和数据目录等受控参数。工具失败会被归类为数据降级、参数错误、超时或运行故障，不会直接伪装成研究结论。
+核心安装可使用 BM25 与哈希向量回退；Chroma、BGE Embedding 与 Reranker 属于 `local_rag` 可选依赖。语义模型不可用时，运行轨迹会明确记录实际降级后端，不把哈希回退标记成 BGE 检索。
 
-BM25 与哈希向量回退可在核心安装中运行；Chroma、BGE Embedding 与 Reranker 属于 `local_rag` 可选依赖。系统会在语义模型不可用时明确记录降级后端，不把哈希回退标记为真实 BGE 检索。
+## 评测结果
 
-## 数据覆盖
+### Formal-18 冻结基准
 
-| 市场 | 官方 / 主要来源 | 结构化补充来源 | 说明 |
-| --- | --- | --- | --- |
-| 美股 | SEC EDGAR、Companyfacts | Yahoo Finance、FRED、BEA、Tavily | 年报章节、三表、行情、宏观和检索补充 |
-| A 股 | CNINFO、SSE、SZSE | Tushare Pro、BaoStock、Yahoo Finance | 公告与财务数据按股票和期间归一化 |
-| 港股 | HKEX 披露 | Yahoo Finance、搜索补充 | 官方披露优先；可用性取决于目标年度覆盖 |
-| 本地材料 | PDF、表格、文本手动导入 | BGE Embedding / Reranker | 解析、切分、证据化、向量化后进入任务证据库 |
+基准版本 `formal18_fy2024_v1` 包含 18 家 FY2024 公司（美股、港股、A 股各 6 家）。三种策略共享同一份经过 SHA-256 校验的冻结证据，评测阶段禁止联网取数，共完成 54 次 variant / case 运行。
 
-外部来源的“已配置、已启用、健康”是三个独立状态。需要密钥或网络不可用的来源不会被误报为健康来源。
-
-## 验收状态
-
-当前最新已记录的真实隔离回归（2026-07-18）：
-
-| 样本 | 质量分 | Canonical Metrics | 章节合同 | 结果 |
-| --- | ---: | ---: | ---: | --- |
-| AAPL FY2024 | 0.975 | 32 | 13 / 13 | `delivery_pass=true` |
-
-- Verifier、Objective Quality 与 LLM Review 全部通过。
-- 5 张财务、现金流、估值、同行和敏感性图表通过一致性与 lineage 校验。
-- 聚焦回归测试：`206 passed, 2 skipped`。
-- 当前源码全量回归（2026-07-29）：`1007 collected, 1005 passed, 2 optional-fixture skips, 0 failed`。
-- 冻结多市场样本与基准结果用于回归，不代表实时数据源永远可用或投资表现承诺。
-
-这里的 `delivery_pass=true` 表示机器证据、引用、质量与产物门禁通过；工作台中的正式导出还要求人工复核完成。两种状态独立展示，机器通过不等于人工已批准。
-
-历史多策略对照基准：
-
-| Variant | Delivery Pass Rate | Objective Quality Score | Traceable Claim Rate |
+| Variant | Delivery Pass Rate | Objective Quality Score | Traceable Claim Rate v1 |
 | --- | ---: | ---: | ---: |
 | Direct LLM | 16.67% | 51.21 | 29.66% |
 | Single-Agent RAG | 27.78% | 52.52 | 34.89% |
-| Multi-Agent RAG | 72.22% | 86.27 | 70.01% |
+| **Multi-Agent RAG** | **72.22%** | **86.27** | **70.01%** |
 
-详见 [formal benchmark protocol](docs/formal_benchmark_protocol.md)、[architecture](docs/architecture.md)、[latest repository audit](docs/repository_audit_20260729.md) 和 [limitations](docs/limitations.md)。
+| Multi-Agent RAG 市场拆分 | Delivery Pass Rate | Objective Quality Score | Traceable Claim Rate v1 |
+| --- | ---: | ---: | ---: |
+| US | 100.00% | 85.06 | 100.00% |
+| HK | 66.67% | 87.53 | 37.80% |
+| CN-A | 50.00% | 86.22 | 72.22% |
+
+结果表明多智能体链路在该冻结协议下优于两个单次生成基线，但也暴露出港股引用可追溯率偏低、A 股交付失败仍较多的问题。完整输入合同、评分规则、逐市场结果和失败分类见 [基准协议](docs/formal_benchmark_protocol.md) 与 [基准报告](bench/formal18_fy24/formal_benchmark_report.md)。这些数字不代表生产稳定性或投资判断准确率。
+
+### 工程回归与隔离验收
+
+- 最新已记录的隔离真实数据回归：`AAPL FY2024`，质量分 `0.975`、`32` 个 Canonical Metrics、`13/13` 章节合同通过、`delivery_pass=true`、`5` 张图表通过一致性与 lineage 校验。
+- 当前源码全量回归（2026-07-29）：`1007 collected, 1005 passed, 2 optional-fixture skips, 0 failed`。
+- GitHub Actions 在 Pull Request 和 `main` 推送时分别使用 Python 3.10 / 3.11 运行全量测试，全部通过后才允许发布 amd64 / arm64 Docker 镜像。
+
+`delivery_pass=true` 只表示机器证据、引用、质量和产物门禁通过；正式导出仍要求完成人工主张复核，两种状态不会合并展示。
+
+### 一个完整失败案例
+
+一次 Canonical Metric 节点升级曾把“生成前指标池为空”对所有 orchestrator 都判为致命错误。生产链路的指标来自预先收集的静态证据，这个门禁是正确的；但测试注入与兼容链路会在 generation callback 中创建证据，导致任务启动、artifact 导入、checkpoint resume / retry、质量门禁和生命周期测试共出现 **19 个回归失败**。
+
+修复没有移除生产门禁，而是按执行合同分流：生产 `MultiAgentOrchestrator` 继续要求写作前必须存在 Canonical Metrics；兼容链路记录 warning，先生成测试 artifact，再重建指标。最终相关服务回归 `44 passed`，全量测试恢复为 `1005 passed / 2 skipped / 0 failed`。根因与验证记录见 [repository audit](docs/repository_audit_20260729.md)。
 
 ## 快速开始
 
-### Docker
+### 1. 使用 Docker 启动
 
 ```bash
 git clone https://github.com/wara886/Financial-Platform-Agent.git
@@ -139,11 +185,19 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-打开 `http://localhost:7860/workbench`。
+打开 `http://localhost:7860/workbench`，健康检查位于 `http://localhost:7860/health`。
 
-### 本地 Python
+也可以直接拉取已发布的多架构镜像：
 
 ```bash
+docker pull ghcr.io/wara886/deepreport-plus:latest
+```
+
+### 2. 使用本地 Python 启动
+
+```bash
+git clone https://github.com/wara886/Financial-Platform-Agent.git
+cd Financial-Platform-Agent
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ".[pdf]"
@@ -151,16 +205,16 @@ cp .env.example .env
 python main.py
 ```
 
-可使用 `python main.py --port 7863` 指定其他端口。
+默认监听 `7860` 端口；可使用 `python main.py --port 7863` 指定其他端口。
 
-如需本地 Chroma/BGE 检索和完整 DOCX 后端，安装全部可选能力：
+### 3. 启用完整本地 RAG 与 DOCX
 
 ```bash
 python -m pip install -e ".[pdf,docx,local_rag]"
 python scripts/setup_local_rag_models.py
 ```
 
-### 最小配置
+### 4. 配置可选数据源
 
 密钥只写入本地 `.env`，不要提交到 Git：
 
@@ -176,71 +230,121 @@ BEA_API_KEY=
 SEC_USER_AGENT=Your Name contact@example.com
 ```
 
-未配置可选来源时，系统会显示准确的降级状态。BLS 公共接口可不带 Key 使用；SEC 实时访问应提供可联系的 `SEC_USER_AGENT`。数据源的可用性还受网络、额度、账号权限和目标期间披露状态影响。
+未配置可选来源时，系统会显示准确的降级状态。BLS 公共接口可不带 Key 使用；SEC 实时访问应提供可联系的 `SEC_USER_AGENT`。实际可用性仍受网络、额度、账号权限和目标期间披露状态影响。
 
-## API 与产物
+## 使用流程
+
+1. 在 `/workbench` 创建任务，填写公司、市场、财务期间和报告模板。
+2. 按需要导入本地文本、PDF 或表格，并确认数据源健康状态。
+3. 启动任务，查看 LangGraph 节点、Tool Call、降级事件和失败原因。
+4. 在质量页检查 Evidence、Canonical Metrics、章节合同、图表与引用。
+5. 对关键 Claim 执行通过、驳回或编辑；阻塞项修复后重新进入门禁。
+6. 生成 Markdown、HTML、PDF、DOCX、JSON 或 CSV，并下载带校验清单的交付包。
+
+手动粘贴的正文会进入解析和证据化流程；只填写 URL 或本地 PDF 路径但未提供可读取内容时，会保留为待处理记录，不会被当作已完成导入。
+
+## API 概览
 
 | Route | Purpose |
 | --- | --- |
-| `GET /`, `GET /workbench` | 当前投研工作台 |
+| `GET /`, `GET /workbench` | 投研工作台 |
 | `GET /health`, `GET /api/health` | 服务与部署健康检查 |
 | `POST /api/report-tasks` | 创建研报任务 |
 | `POST /api/report-tasks/{task_id}/start` | 启动待执行任务 |
-| `GET /api/report-tasks/{task_id}` | 节点、质量、复核和产物状态 |
+| `GET /api/report-tasks/{task_id}` | 查询节点、质量、复核和产物状态 |
 | `GET /api/claims`, `POST /api/claims/{claim_id}/*` | 查询、通过、驳回或编辑主张 |
-| `GET /api/exports/{task_id}`, `POST /api/exports/{task_id}/package/files` | 检查导出门禁并生成所选格式 |
+| `GET /api/exports/{task_id}` | 检查正式导出门禁 |
+| `POST /api/exports/{task_id}/package/files` | 生成所选格式的导出包 |
 | `GET /artifacts/*` | 访问生成的报告与图表 |
+
+## 交付产物
 
 | Artifact | Purpose |
 | --- | --- |
-| `evidence.json` | 归一化证据与业务级身份 |
-| `canonical_metrics.json` | 正式指标、单位、期间与来源 lineage |
-| `section_evidence_packs.json` | 每个章节必须消费的证据包 |
-| `claims.json`, `citations.json` | 主张与引用绑定 |
+| `evidence.json` | 归一化证据、来源与业务级身份 |
+| `canonical_metrics.json` | 正式指标、单位、期间、公式与来源 lineage |
+| `section_evidence_packs.json` | 每个章节允许和必须消费的证据包 |
+| `claims.json`, `citations.json` | 主张、引用与人工复核状态 |
 | `verification_report.json` | 数字、引用、章节和质量诊断 |
 | `run_manifest.json` | 上下游产物版本与失效关系 |
-| `report.md`, `report.html`, `report.json` | 最终交付物 |
+| `report.md`, `report.html`, `report.json` | 结构化与可阅读报告 |
+| `export_manifest.json` | `formal_export_manifest.v1` 文件 SHA-256、包摘要与 trace context |
 
-运行数据默认保存在 `data/outputs_user/`、`data/reports_user/`、`data/evidence_archive/` 和 `memory/`，这些目录中的本地用户数据不会随源码提交。
+运行数据默认保存在 `data/outputs_user/`、`data/reports_user/`、`data/evidence_archive/` 和 `memory/`。这些目录中的本地用户数据、checkpoint、向量库和密钥不会随源码提交。
 
 ## 项目结构
 
 ```text
-configs/       model, source, report and quality policies
-docs/          architecture, protocol and acceptance notes
-scripts/       smoke, baseline and runtime hygiene commands
-src/agents/    planning, research, analysis, writer and verifier
-src/app/       FastAPI routes and workbench frontend
-src/data/      source adapters and canonical metric pipeline
-src/runtime/   LangGraph state, checkpoints and run manifests
-src/report/    contracts, enrichment, charts and rendering
-src/evaluation quality gates, review and section repair
-src/retrieval/ chunking, hybrid retrieval and vector isolation
-tests/         focused and production regression tests
+configs/          模型、来源、报告和质量策略
+bench/            冻结基准结果与失败分类
+docs/             架构、协议、验收和限制说明
+scripts/          数据准备、基准、健康检查与运行治理命令
+src/agents/       planning、research、analysis、writer、verifier
+src/app/          FastAPI 路由与工作台前端
+src/data/         数据源适配器与 Canonical Metric 管线
+src/runtime/      LangGraph 状态、checkpoint 与 run manifest
+src/report/       章节合同、指标增强、图表和导出渲染
+src/evaluation/   质量门禁、人工复核与章节返工
+src/retrieval/    chunking、混合检索与任务级向量隔离
+tests/            单元、集成、恢复与生产链路回归
 ```
 
-检查本地配置与运行状态但不输出密钥值：
+## 验证与部署
+
+检查本地配置和运行目录状态，但不输出密钥值：
 
 ```bash
 python scripts/runtime_hygiene.py status --output tmp/runtime_baseline.json
 ```
 
-提交前运行完整回归：
+运行完整回归：
 
 ```bash
+python -m pip install -e ".[pdf,docx]"
 pytest -q
 ```
 
-GitHub Actions 会在 Pull Request 和 `main` 推送时运行全量测试；Docker 镜像仅在测试通过后发布。
+运行冻结 Formal-18 基准前，请先阅读 [基准协议](docs/formal_benchmark_protocol.md)。证据采集、快照构建和离线评测是三个独立步骤；正式 runner 会拒绝不完整或哈希不一致的快照。
+
+GitHub Actions 会在 Pull Request 和 `main` 推送时运行全量测试。Docker 镜像只在 `main` / tag 测试通过后发布到 `ghcr.io/wara886/deepreport-plus`，目标平台为 `linux/amd64` 与 `linux/arm64`。
+
+## 常见问题
+
+<details>
+<summary><strong>没有配置所有 API Key，项目还能运行吗？</strong></summary>
+
+可以。核心工作台、BM25、哈希向量回退、本地材料和离线测试不要求全部外部密钥；相关数据源会显示未配置或降级，不会被误报为健康。
+
+</details>
+
+<details>
+<summary><strong>质量分很高，为什么仍然不能正式导出？</strong></summary>
+
+内容质量分与交付门禁是不同概念。缺少官方证据、Canonical Metrics、章节合同、引用绑定或人工主张复核中的任一项，都可能阻止正式导出。
+
+</details>
+
+<details>
+<summary><strong>为什么报告不能直接用最新行情替代 FY2024 数据？</strong></summary>
+
+实时行情使用 `market_as_of_date`，年报指标使用 `financial_period`。current-TTM 同行快照与 FY 报告期指标会分开展示，避免把不同期间伪装成可直接比较的数据。
+
+</details>
+
+<details>
+<summary><strong>Formal-18 的 72.22% 可以视为线上成功率吗？</strong></summary>
+
+不能。该数字只适用于 `formal18_fy2024_v1` 冻结证据和既定评分合同，用于策略对照与回归，不代表实时数据源、长期运行或投资结论的成功率。
+
+</details>
 
 ## 使用边界
 
-- 本项目用于公开信息研究与可审计报告生成，不构成投资建议。
-- 实时行情与历史财务数据必须明确区分 `market_as_of_date` 和 `financial_period`。
+- 本项目用于公开信息研究、Agent 工程验证与可审计报告生成，不构成投资建议。
 - 缺少官方证据、核心指标或章节合同未通过时，任务应降级为草稿，而不是生成虚构结论。
 - 长期记忆只提供上下文，不能替代报告中的正式证据和引用。
 - 估值结果取决于可用输入；相对估值与机械敏感性分析不等同于完整 DCF 目标价。
-- current-TTM 同行快照与 FY 报告期数据必须分开展示，不能伪装成同期间比较。
-- 正式导出要求完成主张人工复核；机器交付通过只代表报告具备进入复核的条件。
+- 外部数据源健康取决于网络、凭证、额度、权限与披露覆盖，仓库不承诺持续在线可用。
+- 当前仓库未声明开源许可证；除非另有书面许可，源码默认保留作者权利。
 
-更完整的已知限制、降级策略与证据边界见 [limitations](docs/limitations.md) 和 [production path boundary](docs/production_path_boundary.md)。
+更完整的已知限制、降级策略和证据边界见 [limitations](docs/limitations.md)、[production path boundary](docs/production_path_boundary.md) 与 [latest repository audit](docs/repository_audit_20260729.md)。
