@@ -16,10 +16,10 @@
   <rect x="64" y="56" width="1152" height="508" rx="32" fill="#FFFFFF" filter="url(#shadow)"/>
 
   <rect x="112" y="112" width="330" height="396" rx="28" fill="url(#dark)"/>
-  <text x="148" y="178" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="38" font-weight="700">Open DeepReport++</text>
+  <text x="148" y="178" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="38" font-weight="700">FinSight</text>
   <text x="148" y="222" fill="#B9C8D8" font-family="Segoe UI, Arial, sans-serif" font-size="21">Evidence-first reports</text>
   <rect x="148" y="276" width="250" height="64" rx="18" fill="#314B63"/>
-  <text x="173" y="316" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="600">Generate META report</text>
+  <text x="173" y="316" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="600">Build FY2024 report</text>
   <circle cx="162" cy="389" r="7" fill="#6BE7A6"/>
   <circle cx="162" cy="425" r="7" fill="#6BE7A6"/>
   <circle cx="162" cy="461" r="7" fill="#6BE7A6"/>
@@ -39,7 +39,7 @@
   <text x="818" y="210" fill="#64748B" font-family="Segoe UI, Arial, sans-serif" font-size="18">Claims + metrics</text>
   <rect x="782" y="354" width="220" height="150" rx="22" fill="#FFF7E8" stroke="#E8C982"/>
   <text x="818" y="412" fill="#6C4B00" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Deliver</text>
-  <text x="818" y="448" fill="#8A6A21" font-family="Segoe UI, Arial, sans-serif" font-size="18">HTML / MD / JSON</text>
+  <text x="818" y="448" fill="#8A6A21" font-family="Segoe UI, Arial, sans-serif" font-size="18">HTML / PDF / DOCX</text>
 
   <path d="M442 190H492" stroke="#8B98A7" stroke-width="6" stroke-linecap="round"/>
   <path d="M616 266V340" stroke="#8B98A7" stroke-width="6" stroke-linecap="round"/>
