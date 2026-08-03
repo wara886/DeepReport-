@@ -4,13 +4,14 @@
 
 **证据驱动、过程可观测、结果可复核的多智能体金融研报工作台**
 
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Workbench-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Checkpointed-1C3C3C)](https://langchain-ai.github.io/langgraph/)
 [![SQLite](https://img.shields.io/badge/SQLite-State%20%26%20Checkpoint-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Tests](https://github.com/wara886/Financial-Platform-Agent/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/wara886/Financial-Platform-Agent/actions/workflows/docker-publish.yml)
 
-从官方披露、结构化行情和本地文档中建立证据链，经过指标仲裁、章节写作、自动返工和交付门禁，输出可追溯的 Markdown / HTML / JSON 研报。
+从官方披露、结构化行情和本地文档中建立证据链，经过指标仲裁、章节写作、自动返工和交付门禁，输出可追溯的 Markdown / HTML / PDF / DOCX / JSON / CSV 研报包。
 
 [快速开始](#快速开始) · [核心架构](#核心架构) · [数据覆盖](#数据覆盖) · [验收状态](#验收状态) · [使用边界](#使用边界)
 
@@ -31,7 +32,7 @@ FinSight 不是一次性调用大模型的报告脚本。它将一次研报任�
 | 数据治理 | Evidence → Metric Candidate → Canonical / Derived Metric |
 | 报告生成 | 章节合同、must-use evidence、章节级校验与定向返工 |
 | 质量控制 | 数字、引用、证据、章节、图表、LLM Review 和交付门禁 |
-| 交付产物 | Markdown、HTML、JSON、图表、引用、验证报告与运行清单 |
+| 交付产物 | Markdown、HTML、PDF、DOCX、JSON、CSV、图表、引用、验证报告与运行清单 |
 
 ### 工作台界面
 
@@ -88,6 +89,8 @@ flowchart LR
 
 Research Agent 只开放与当前任务相关的工具；运行时注入公司、期间和数据目录等受控参数。工具失败会被归类为数据降级、参数错误、超时或运行故障，不会直接伪装成研究结论。
 
+BM25 与哈希向量回退可在核心安装中运行；Chroma、BGE Embedding 与 Reranker 属于 `local_rag` 可选依赖。系统会在语义模型不可用时明确记录降级后端，不把哈希回退标记为真实 BGE 检索。
+
 ## 数据覆盖
 
 | 市场 | 官方 / 主要来源 | 结构化补充来源 | 说明 |
@@ -101,7 +104,7 @@ Research Agent 只开放与当前任务相关的工具；运行时注入公司�
 
 ## 验收状态
 
-2026-07-18 当前发布分支的最新真实回归：
+当前最新已记录的真实隔离回归（2026-07-18）：
 
 | 样本 | 质量分 | Canonical Metrics | 章节合同 | 结果 |
 | --- | ---: | ---: | ---: | --- |
@@ -110,7 +113,10 @@ Research Agent 只开放与当前任务相关的工具；运行时注入公司�
 - Verifier、Objective Quality 与 LLM Review 全部通过。
 - 5 张财务、现金流、估值、同行和敏感性图表通过一致性与 lineage 校验。
 - 聚焦回归测试：`206 passed, 2 skipped`。
+- 当前源码全量回归（2026-07-29）：`1007 collected, 1005 passed, 2 optional-fixture skips, 0 failed`。
 - 冻结多市场样本与基准结果用于回归，不代表实时数据源永远可用或投资表现承诺。
+
+这里的 `delivery_pass=true` 表示机器证据、引用、质量与产物门禁通过；工作台中的正式导出还要求人工复核完成。两种状态独立展示，机器通过不等于人工已批准。
 
 历史多策略对照基准：
 
@@ -120,15 +126,15 @@ Research Agent 只开放与当前任务相关的工具；运行时注入公司�
 | Single-Agent RAG | 27.78% | 52.52 | 34.89% |
 | Multi-Agent RAG | 72.22% | 86.27 | 70.01% |
 
-详见 [formal benchmark protocol](docs/formal_benchmark_protocol.md)、[architecture](docs/architecture.md) 和 [limitations](docs/limitations.md)。
+详见 [formal benchmark protocol](docs/formal_benchmark_protocol.md)、[architecture](docs/architecture.md)、[latest repository audit](docs/repository_audit_20260729.md) 和 [limitations](docs/limitations.md)。
 
 ## 快速开始
 
 ### Docker
 
 ```bash
-git clone https://github.com/wara886/DeepReport-.git
-cd DeepReport-
+git clone https://github.com/wara886/Financial-Platform-Agent.git
+cd Financial-Platform-Agent
 cp .env.example .env
 docker compose up --build -d
 ```
@@ -147,6 +153,13 @@ python main.py
 
 可使用 `python main.py --port 7863` 指定其他端口。
 
+如需本地 Chroma/BGE 检索和完整 DOCX 后端，安装全部可选能力：
+
+```bash
+python -m pip install -e ".[pdf,docx,local_rag]"
+python scripts/setup_local_rag_models.py
+```
+
 ### 最小配置
 
 密钥只写入本地 `.env`，不要提交到 Git：
@@ -155,13 +168,15 @@ python main.py
 DEEPSEEK_API_KEY=
 MIMO_API_KEY=
 TAVILY_API_KEY=
+SERPER_API_KEY=
 TUSHARE_TOKEN=
 FRED_API_KEY=
+BLS_API_KEY=
 BEA_API_KEY=
 SEC_USER_AGENT=Your Name contact@example.com
 ```
 
-未配置可选来源时，系统会显示准确的降级状态。SEC 实时访问必须提供可联系的 `SEC_USER_AGENT`。
+未配置可选来源时，系统会显示准确的降级状态。BLS 公共接口可不带 Key 使用；SEC 实时访问应提供可联系的 `SEC_USER_AGENT`。数据源的可用性还受网络、额度、账号权限和目标期间披露状态影响。
 
 ## API 与产物
 
@@ -172,6 +187,8 @@ SEC_USER_AGENT=Your Name contact@example.com
 | `POST /api/report-tasks` | 创建研报任务 |
 | `POST /api/report-tasks/{task_id}/start` | 启动待执行任务 |
 | `GET /api/report-tasks/{task_id}` | 节点、质量、复核和产物状态 |
+| `GET /api/claims`, `POST /api/claims/{claim_id}/*` | 查询、通过、驳回或编辑主张 |
+| `GET /api/exports/{task_id}`, `POST /api/exports/{task_id}/package/files` | 检查导出门禁并生成所选格式 |
 | `GET /artifacts/*` | 访问生成的报告与图表 |
 
 | Artifact | Purpose |
@@ -208,6 +225,14 @@ tests/         focused and production regression tests
 python scripts/runtime_hygiene.py status --output tmp/runtime_baseline.json
 ```
 
+提交前运行完整回归：
+
+```bash
+pytest -q
+```
+
+GitHub Actions 会在 Pull Request 和 `main` 推送时运行全量测试；Docker 镜像仅在测试通过后发布。
+
 ## 使用边界
 
 - 本项目用于公开信息研究与可审计报告生成，不构成投资建议。
@@ -215,3 +240,7 @@ python scripts/runtime_hygiene.py status --output tmp/runtime_baseline.json
 - 缺少官方证据、核心指标或章节合同未通过时，任务应降级为草稿，而不是生成虚构结论。
 - 长期记忆只提供上下文，不能替代报告中的正式证据和引用。
 - 估值结果取决于可用输入；相对估值与机械敏感性分析不等同于完整 DCF 目标价。
+- current-TTM 同行快照与 FY 报告期数据必须分开展示，不能伪装成同期间比较。
+- 正式导出要求完成主张人工复核；机器交付通过只代表报告具备进入复核的条件。
+
+更完整的已知限制、降级策略与证据边界见 [limitations](docs/limitations.md) 和 [production path boundary](docs/production_path_boundary.md)。

@@ -12,21 +12,6 @@ search:
     gl: us
     hl: en
     max_results: 5
-  metaso:
-    mode: remote_optional
-    base_url: https://api.metaso.com/v1/search
-    api_key_env: METASO_API_KEY
-    language: zh-cn
-    region: cn
-    max_results: 5
-    timeout: 20
-  sogou:
-    mode: remote_optional
-    base_url: https://api.sogou.com/v1/search
-    api_key_env: SOGOU_API_KEY
-    language: zh-cn
-    max_results: 5
-    timeout: 20
   jina_reader:
     mode: remote
     base_url: https://r.jina.ai

@@ -1,6 +1,6 @@
 # DeepReport- / FinSight Research Agent 升级重构任务书（Codex 执行版 v2）
 
-> 适用仓库：`https://github.com/wara886/DeepReport-`  
+> 适用仓库：`https://github.com/wara886/Financial-Platform-Agent`
 > 建议放置路径：`docs/fin_research_agent_upgrade_plan.md`  
 > 建议执行分支：`feat/fin-research-agent-workbench-v2`  
 > 执行原则：严格按 **P0 → P1 → P2 → P3** 推进；每完成一个小模块都必须补测试；每完成一个阶段必须提交并推送到 GitHub。
@@ -14,7 +14,7 @@
 1. **文档开头先复述用户要求**，再进入正式任务书，避免 Codex 理解偏差。
 2. **再次复核参考视频关键帧内容**，确认黑灰产情报分析 Agent 项目中值得借鉴的产品能力没有遗漏，并把这些能力映射到金融研报项目中。
 3. **强调 GitHub 提交流程**：每完成一个 P0/P1/P2/P3 阶段，必须提交一次 GitHub；更细粒度地说，每完成一个 P0.x / P1.x 小模块，也应先跑测试、commit、push。
-4. **明确仓库地址**：所有代码提交到 `https://github.com/wara886/DeepReport-`。
+4. **明确仓库地址**：所有代码提交到 `https://github.com/wara886/Financial-Platform-Agent`。
 5. **另起功能分支开发**：不要继续只在 docs 分支上做功能开发；建议从 `main` 拉出 `feat/fin-research-agent-workbench-v2` 分支。
 6. **主分支放新的版本**：功能分支完成并通过测试后，合并回 `main`，让 `main` 保持新的投研工作台版本。
 7. **旧项目处理**：之前没用的老项目、旧 UI、旧代理层、废弃脚本，可以删除；如果存在复用风险，则集中放入类似 `archive/legacy_v0/` 或 `old/` 的目录，并建立说明文档，不要混在新主线里。
@@ -24,7 +24,7 @@
 
 ## 1. 给 Codex 的总执行说明
 
-你正在改造 `wara886/DeepReport-` 仓库。当前项目已经具备“输入公司/期间 → 生成研报”的基础能力，但产品形态仍偏单次生成工具。本轮升级目标是将其升级为：
+你正在改造 `wara886/Financial-Platform-Agent` 仓库。当前项目已经具备“输入公司/期间 → 生成研报”的基础能力，但产品形态仍偏单次生成工具。本轮升级目标是将其升级为：
 
 > **FinSight Research Agent：可追踪的投研任务系统 + 金融数据处理漏斗 + 证据复核工作台 + PromptOps / Harness 可观测框架。**
 
@@ -35,8 +35,8 @@
 请按下面流程开始实现：
 
 ```bash
-git clone https://github.com/wara886/DeepReport-.git
-cd DeepReport-
+git clone https://github.com/wara886/Financial-Platform-Agent.git
+cd Financial-Platform-Agent
 git checkout main
 git pull origin main
 git checkout -b feat/fin-research-agent-workbench-v2

@@ -29,8 +29,6 @@ KEYS = [
     "DEEPSEEK_API_KEY",
     "TAVILY_API_KEY",
     "SERPER_API_KEY",
-    "METASO_API_KEY",
-    "SOGOU_API_KEY",
     "FRED_API_KEY",
     "BLS_API_KEY",
     "BEA_API_KEY",
@@ -82,10 +80,6 @@ def run_checks(config_path: str = "configs/data_sources.yaml") -> Dict[str, Any]
     result["model"]["deepseek"] = _check_deepseek()
     result["search"]["tavily"] = _check_engine(manager, "tavily", "AMD 2025 annual report revenue SEC", "AMD")
     result["search"]["serper"] = _check_engine(manager, "serper", "AMD 2025 annual report revenue SEC", "AMD")
-    metaso = _check_engine(manager, "metaso", "贵州茅台 2025 年报 营收", "600519.SS")
-    if not metaso["ok"]:
-        metaso["status"] = "degraded_optional"
-    result["search"]["metaso"] = metaso
 
     macro = fetch_macro_evidence(period="2025Q4", config_path=config_path, topk=8).to_dict()
     result["macro"] = {

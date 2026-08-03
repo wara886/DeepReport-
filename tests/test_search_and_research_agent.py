@@ -2,8 +2,6 @@ import json
 import time
 import pandas as pd
 
-import pytest
-
 from src.agents import AgentStatus, AgentTask, DeepResearcherAgent
 from src.search import SearchManager
 from src.features.trend_analysis import build_trend_features
@@ -510,87 +508,6 @@ search:
 
     assert payload["meta"]["mode"] == "serper"
     assert payload["hits"][0]["source_url"] == "https://example.com/nvda"
-    assert payload["hits"][0]["source_type"] == "web_search"
-
-
-@pytest.mark.skip(reason="metaso backend was intentionally removed")
-def test_metaso_search_normalizes_response(monkeypatch, tmp_path):
-    monkeypatch.setenv("METASO_API_KEY", "metaso-test")
-
-    config_path = tmp_path / "data_sources.yaml"
-    config_path.write_text(
-        """
-search:
-  metaso:
-    base_url: https://api.metaso.com/v1/search
-    api_key_env: METASO_API_KEY
-    language: zh-cn
-    region: cn
-    max_results: 3
-""".strip(),
-        encoding="utf-8",
-    )
-
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def read(self):
-            return b'{"results":[{"title":"AAPL filing","url":"https://example.com/aapl","description":"Revenue grew.","rank":1,"score":0.88}]}'
-
-    def fake_urlopen(req, timeout):
-        assert req.get_header("Authorization") == "Bearer metaso-test"
-        return FakeResponse()
-
-    monkeypatch.setattr("src.search.search_manager.request.urlopen", fake_urlopen)
-
-    payload = metaso_search(query="AAPL 财报", topk=2, data_source_config_path=str(config_path))
-
-    assert payload["meta"]["mode"] == "metaso"
-    assert payload["hits"][0]["source_url"] == "https://example.com/aapl"
-    assert payload["hits"][0]["source_type"] == "web_search"
-
-
-@pytest.mark.skip(reason="sogou backend was intentionally removed")
-def test_sogou_search_normalizes_response(monkeypatch, tmp_path):
-    monkeypatch.setenv("SOGOU_API_KEY", "sogou-test")
-
-    config_path = tmp_path / "data_sources.yaml"
-    config_path.write_text(
-        """
-search:
-  sogou:
-    base_url: https://api.sogou.com/v1/search
-    api_key_env: SOGOU_API_KEY
-    language: zh-cn
-    max_results: 3
-""".strip(),
-        encoding="utf-8",
-    )
-
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def read(self):
-            return b'{"items":[{"title":"AAPL annual report","url":"https://example.com/aapl.pdf","abstract":"Annual report PDF.","rank":1,"score":0.91}]}'
-
-    def fake_urlopen(req, timeout):
-        assert req.get_header("Authorization") == "Bearer sogou-test"
-        return FakeResponse()
-
-    monkeypatch.setattr("src.search.search_manager.request.urlopen", fake_urlopen)
-
-    payload = sogou_search(query="AAPL annual report", topk=2, data_source_config_path=str(config_path))
-
-    assert payload["meta"]["mode"] == "sogou"
-    assert payload["hits"][0]["source_url"] == "https://example.com/aapl.pdf"
     assert payload["hits"][0]["source_type"] == "web_search"
 
 

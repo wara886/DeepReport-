@@ -36,7 +36,6 @@ def main() -> int:
     if args.source in {"hf", "hf-mirror"}:
         os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
     os.environ.setdefault("HF_HOME", str(local_model_root / "huggingface"))
-    os.environ.setdefault("TRANSFORMERS_CACHE", str(local_model_root / "huggingface" / "transformers"))
     os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", str(local_model_root / "sentence_transformers"))
     os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     embedding_model = str(args.embedding_model or rag_cfg.get("embedding_model_name", "BAAI/bge-small-en-v1.5"))
