@@ -12,7 +12,7 @@
 [![Docker](https://img.shields.io/badge/Docker-amd64%20%7C%20arm64-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/wara886/Financial-Platform-Agent/pkgs/container/deepreport-plus)
 [![Tests](https://img.shields.io/github/actions/workflow/status/wara886/Financial-Platform-Agent/docker-publish.yml?branch=main&style=flat-square&label=tests)](https://github.com/wara886/Financial-Platform-Agent/actions/workflows/docker-publish.yml)
 
-[项目亮点](#项目亮点) · [当前能力](#当前能力) · [架构概览](#架构概览) · [评测结果](#评测结果) · [快速开始](#快速开始) · [使用边界](#使用边界)
+[项目亮点](#项目亮点) · [当前能力](#当前能力) · [架构概览](#架构概览) · [快速开始](#快速开始) · [使用边界](#使用边界)
 
 </div>
 
@@ -139,40 +139,6 @@ flowchart LR
 | 图表与组装 | `render_all_charts`, `attach_charts_to_report` |
 
 核心安装可使用 BM25 与哈希向量回退；Chroma、BGE Embedding 与 Reranker 属于 `local_rag` 可选依赖。语义模型不可用时，运行轨迹会明确记录实际降级后端，不把哈希回退标记成 BGE 检索。
-
-## 评测结果
-
-### Formal-18 冻结基准
-
-基准版本 `formal18_fy2024_v1` 包含 18 家 FY2024 公司（美股、港股、A 股各 6 家）。三种策略共享同一份经过 SHA-256 校验的冻结证据，评测阶段禁止联网取数，共完成 54 次 variant / case 运行。
-
-| Variant | Delivery Pass Rate | Objective Quality Score | Traceable Claim Rate v1 |
-| --- | ---: | ---: | ---: |
-| Direct LLM | 16.67% | 51.21 | 29.66% |
-| Single-Agent RAG | 27.78% | 52.52 | 34.89% |
-| **Multi-Agent RAG** | **72.22%** | **86.27** | **70.01%** |
-
-| Multi-Agent RAG 市场拆分 | Delivery Pass Rate | Objective Quality Score | Traceable Claim Rate v1 |
-| --- | ---: | ---: | ---: |
-| US | 100.00% | 85.06 | 100.00% |
-| HK | 66.67% | 87.53 | 37.80% |
-| CN-A | 50.00% | 86.22 | 72.22% |
-
-结果表明多智能体链路在该冻结协议下优于两个单次生成基线，但也暴露出港股引用可追溯率偏低、A 股交付失败仍较多的问题。完整输入合同、评分规则、逐市场结果和失败分类见 [基准协议](docs/formal_benchmark_protocol.md) 与 [基准报告](bench/formal18_fy24/formal_benchmark_report.md)。这些数字不代表生产稳定性或投资判断准确率。
-
-### 工程回归与隔离验收
-
-- 最新已记录的隔离真实数据回归：`AAPL FY2024`，质量分 `0.975`、`32` 个 Canonical Metrics、`13/13` 章节合同通过、`delivery_pass=true`、`5` 张图表通过一致性与 lineage 校验。
-- 当前源码全量回归（2026-07-29）：`1007 collected, 1005 passed, 2 optional-fixture skips, 0 failed`。
-- GitHub Actions 在 Pull Request 和 `main` 推送时分别使用 Python 3.10 / 3.11 运行全量测试，全部通过后才允许发布 amd64 / arm64 Docker 镜像。
-
-`delivery_pass=true` 只表示机器证据、引用、质量和产物门禁通过；正式导出仍要求完成人工主张复核，两种状态不会合并展示。
-
-### 一个完整失败案例
-
-一次 Canonical Metric 节点升级曾把“生成前指标池为空”对所有 orchestrator 都判为致命错误。生产链路的指标来自预先收集的静态证据，这个门禁是正确的；但测试注入与兼容链路会在 generation callback 中创建证据，导致任务启动、artifact 导入、checkpoint resume / retry、质量门禁和生命周期测试共出现 **19 个回归失败**。
-
-修复没有移除生产门禁，而是按执行合同分流：生产 `MultiAgentOrchestrator` 继续要求写作前必须存在 Canonical Metrics；兼容链路记录 warning，先生成测试 artifact，再重建指标。最终相关服务回归 `44 passed`，全量测试恢复为 `1005 passed / 2 skipped / 0 failed`。根因与验证记录见 [repository audit](docs/repository_audit_20260729.md)。
 
 ## 快速开始
 
@@ -328,13 +294,6 @@ GitHub Actions 会在 Pull Request 和 `main` 推送时运行全量测试。Dock
 <summary><strong>为什么报告不能直接用最新行情替代 FY2024 数据？</strong></summary>
 
 实时行情使用 `market_as_of_date`，年报指标使用 `financial_period`。current-TTM 同行快照与 FY 报告期指标会分开展示，避免把不同期间伪装成可直接比较的数据。
-
-</details>
-
-<details>
-<summary><strong>Formal-18 的 72.22% 可以视为线上成功率吗？</strong></summary>
-
-不能。该数字只适用于 `formal18_fy2024_v1` 冻结证据和既定评分合同，用于策略对照与回归，不代表实时数据源、长期运行或投资结论的成功率。
 
 </details>
 
