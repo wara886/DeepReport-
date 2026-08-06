@@ -1,4 +1,4 @@
-name: Test and publish Docker image
+name: Validate and publish Docker image
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   packages: write
 
 jobs:
-  test:
+  validate:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -26,13 +26,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - name: Install test dependencies
+      - name: Install runtime dependencies
         run: python -m pip install -e ".[pdf,docx]"
-      - name: Run full test suite
-        run: pytest -q
+      - name: Compile application sources
+        run: python -m compileall -q src scripts main.py
+      - name: Create application
+        run: python -c "from src.app.api_fastapi import create_fastapi_app; create_fastapi_app(mode='user'); print('app import ok')"
 
   publish:
-    needs: test
+    needs: validate
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:

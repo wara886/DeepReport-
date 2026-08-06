@@ -1,20 +1,31 @@
 # Limitations And Reporting Boundaries
 
-FinSight is designed for reproducible report-generation evaluation, with clear boundaries on what its current artifacts demonstrate.
+FinSight produces research-system outputs from available public and user-provided
+evidence. It is not an investment adviser and does not predict investment returns.
 
-## What The Formal Result Shows
+## Data Boundaries
 
-- On the frozen `formal18_fy2024_v1` protocol, Multi-Agent RAG achieves higher delivery, quality and traceability scores than the two one-shot baselines.
-- All variants receive the same frozen case evidence; benchmark runtime fetching is prohibited.
-- The manifest and summary artifacts preserve the input hash and result tables needed to audit that claim.
+- Live source availability depends on network access, credentials, quotas,
+  permissions, and issuer disclosure coverage.
+- Official evidence coverage is not uniform across US, A-share, and Hong Kong
+  markets. Missing required evidence must degrade or block formal delivery.
+- Historical financial periods and current market snapshots are different time
+  dimensions and must not be presented as the same-period value.
+- Currency, scale, and reporting-unit uncertainty can block valuation and numeric
+  conclusions.
 
-## What It Does Not Show
+## Model Boundaries
 
-- It does not prove production stability on live, changing data sources.
-- It does not establish investment return, investment recommendation accuracy or regulatory suitability.
-- It does not guarantee equal coverage across markets: Formal-18 shows weak HK traceability and remaining CN-A delivery failures.
-- It does not make optional model, network or vector-search dependencies universally available.
+- Model output is accepted only after deterministic evidence, numeric, citation,
+  section, and chart checks.
+- A high prose-quality score does not override missing evidence or pending human
+  review.
+- Memory and graph context may guide research but never replace report citations.
+- Relative valuation and mechanical sensitivity analysis are not a complete DCF
+  target-price model.
 
-## Public Demonstration Policy
+## Public Repository Boundary
 
-Published claims should remain tied to a dataset version, a named metric and the linked artifacts. Generated reports are research-system outputs and should not be represented as investment advice.
+The public main branch contains the application runtime and product documentation.
+Internal test suites, frozen evaluation inputs, historical run outputs, and repair
+handoffs are intentionally not published with the application checkout.

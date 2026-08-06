@@ -1,4 +1,4 @@
-"""Inspect or clean local runtime state without touching user or benchmark data."""
+"""Inspect or clean local runtime state without touching user data."""
 
 from __future__ import annotations
 

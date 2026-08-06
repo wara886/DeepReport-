@@ -8,9 +8,6 @@
 *.sh text eol=lf
 *.ps1 text eol=crlf
 
-bench/** linguist-generated=true
-data/benchmarks/** linguist-generated=true
-data/eval_v1/** linguist-generated=true
 data/raw/mock/** linguist-generated=true
 data/raw/real_data/** linguist-generated=true
 data/curated/** linguist-generated=true

@@ -67,11 +67,10 @@ def build_manifest(
             "artifacts": ["data/outputs_user", "data/reports_user", "data/evidence_archive"],
             "vector_store": "data/vector_db",
         },
-        "legacy_and_benchmark_paths": [
+        "legacy_validation_paths": [
             "src/app/pipeline.py",
             "src/agents/orchestrator.py",
             "src/agents/collaborative_orchestrator.py",
-            "scripts/run_*benchmark*.py",
             "configs/local_*.yaml",
         ],
         "database": {

@@ -10,8 +10,8 @@ from typing import Any, Dict, List
 class ClaimItem:
     """Claim unit linked to evidence ids and numeric values.
 
-    Formal benchmark runs set ``is_critical`` and ``critical_claim_type`` so
-    traceability scoring does not need to infer important claims from prose.
+    Runtime planning sets ``is_critical`` and ``critical_claim_type`` so
+    traceability checks do not need to infer important claims from prose.
     """
 
     claim_id: str

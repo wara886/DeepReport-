@@ -10,7 +10,7 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-Checkpointed-1C3C3C?style=flat-square)](https://langchain-ai.github.io/langgraph/)
 [![Hybrid RAG](https://img.shields.io/badge/RAG-Hybrid%20%2B%20Reranker-E85D04?style=flat-square)](#检索与工具)
 [![Docker](https://img.shields.io/badge/Docker-amd64%20%7C%20arm64-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/wara886/Financial-Platform-Agent/pkgs/container/deepreport-plus)
-[![Tests](https://img.shields.io/github/actions/workflow/status/wara886/Financial-Platform-Agent/docker-publish.yml?branch=main&style=flat-square&label=tests)](https://github.com/wara886/Financial-Platform-Agent/actions/workflows/docker-publish.yml)
+[![Build](https://img.shields.io/github/actions/workflow/status/wara886/Financial-Platform-Agent/docker-publish.yml?branch=main&style=flat-square&label=build)](https://github.com/wara886/Financial-Platform-Agent/actions/workflows/docker-publish.yml)
 
 [项目亮点](#项目亮点) · [当前能力](#当前能力) · [架构概览](#架构概览) · [快速开始](#快速开始) · [使用边界](#使用边界)
 
@@ -24,7 +24,7 @@ FinSight DeepReport++ 是一个面向美股、A 股和港股公开公司研究�
 
 系统使用 LangGraph 将研报任务拆为可检查、可重试、可恢复的节点。Writer 不能直接读取未经治理的原始材料，只能消费经过来源分级、期间/币种/单位归一化和冲突仲裁后的 Canonical Metrics 与 Section Evidence Packs；Verifier 会检查数字、引用、章节合同和图表 lineage，失败章节进入定向返工，机器门禁通过后仍需完成人工主张复核才能正式导出。
 
-> 当前定位是个人开源研究项目与工程演示，不是线上投资顾问服务。基准结果衡量冻结样本下的报告交付质量，不代表投资收益或实时数据源稳定性。
+> 当前定位是个人开源研究项目与工程演示，不是线上投资顾问服务。实时数据源的可用性取决于网络、凭证、额度和目标期间披露状态。
 
 ## 项目亮点
 
@@ -37,7 +37,6 @@ FinSight DeepReport++ 是一个面向美股、A 股和港股公开公司研究�
 | 财务指标治理 | 单位、币种、期间、来源权威性与 lineage 仲裁 | 避免 TTM / FY、元 / 百万元等口径混写 |
 | 章节级返工 | 13 类章节合同、must-use evidence、失败原因路由 | 只重写不合格章节，不破坏已通过内容 |
 | 可审计交付 | MD / HTML / PDF / DOCX / JSON / CSV、SHA-256 manifest | 让报告、引用、图表和验证结果作为同一版本交付 |
-| 冻结基准 | 18 家公司 × 3 种 Agent 策略，共 54 次离线评测 | 在同一证据输入下比较编排与检索策略 |
 
 ## 当前能力
 
@@ -242,9 +241,8 @@ SEC_USER_AGENT=Your Name contact@example.com
 
 ```text
 configs/          模型、来源、报告和质量策略
-bench/            冻结基准结果与失败分类
 docs/             架构、协议、验收和限制说明
-scripts/          数据准备、基准、健康检查与运行治理命令
+scripts/          数据准备、来源回填、健康检查与运行治理命令
 src/agents/       planning、research、analysis、writer、verifier
 src/app/          FastAPI 路由与工作台前端
 src/data/         数据源适配器与 Canonical Metric 管线
@@ -252,7 +250,6 @@ src/runtime/      LangGraph 状态、checkpoint 与 run manifest
 src/report/       章节合同、指标增强、图表和导出渲染
 src/evaluation/   质量门禁、人工复核与章节返工
 src/retrieval/    chunking、混合检索与任务级向量隔离
-tests/            单元、集成、恢复与生产链路回归
 ```
 
 ## 验证与部署
@@ -263,23 +260,22 @@ tests/            单元、集成、恢复与生产链路回归
 python scripts/runtime_hygiene.py status --output tmp/runtime_baseline.json
 ```
 
-运行完整回归：
+运行发布前自检：
 
 ```bash
 python -m pip install -e ".[pdf,docx]"
-pytest -q
+python -m compileall -q src scripts main.py
+python -c "from src.app.api_fastapi import create_fastapi_app; create_fastapi_app(mode='user'); print('app import ok')"
 ```
 
-运行冻结 Formal-18 基准前，请先阅读 [基准协议](docs/formal_benchmark_protocol.md)。证据采集、快照构建和离线评测是三个独立步骤；正式 runner 会拒绝不完整或哈希不一致的快照。
-
-GitHub Actions 会在 Pull Request 和 `main` 推送时运行全量测试。Docker 镜像只在 `main` / tag 测试通过后发布到 `ghcr.io/wara886/deepreport-plus`，目标平台为 `linux/amd64` 与 `linux/arm64`。
+GitHub Actions 会在 Pull Request 和 `main` 推送时执行安装、编译和应用创建检查。Docker 镜像只在这些检查通过后发布到 `ghcr.io/wara886/deepreport-plus`，目标平台为 `linux/amd64` 与 `linux/arm64`。
 
 ## 常见问题
 
 <details>
 <summary><strong>没有配置所有 API Key，项目还能运行吗？</strong></summary>
 
-可以。核心工作台、BM25、哈希向量回退、本地材料和离线测试不要求全部外部密钥；相关数据源会显示未配置或降级，不会被误报为健康。
+可以。核心工作台、BM25、哈希向量回退和本地材料不要求全部外部密钥；相关数据源会显示未配置或降级，不会被误报为健康。
 
 </details>
 
@@ -306,4 +302,4 @@ GitHub Actions 会在 Pull Request 和 `main` 推送时运行全量测试。Dock
 - 外部数据源健康取决于网络、凭证、额度、权限与披露覆盖，仓库不承诺持续在线可用。
 - 当前仓库未声明开源许可证；除非另有书面许可，源码默认保留作者权利。
 
-更完整的已知限制、降级策略和证据边界见 [limitations](docs/limitations.md)、[production path boundary](docs/production_path_boundary.md) 与 [latest repository audit](docs/repository_audit_20260729.md)。
+更完整的已知限制、降级策略和证据边界见 [limitations](docs/limitations.md) 与 [production path boundary](docs/production_path_boundary.md)。

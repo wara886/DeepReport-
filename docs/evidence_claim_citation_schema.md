@@ -54,6 +54,6 @@ A rendered citation states that the report actually used the linked evidence:
 ## Verification Rules
 
 - A factual claim without `evidence_ids` is not deliverable as supported fact.
-- A critical numeric claim must cite frozen evidence and pass numeric audit in Formal-18.
+- A critical numeric claim must cite approved evidence and pass the production numeric-consistency gate.
 - A citation only counts as traceable when it is present in the rendered report.
 - Valuation and charts carry their own source lineage and are checked alongside narrative claims.
